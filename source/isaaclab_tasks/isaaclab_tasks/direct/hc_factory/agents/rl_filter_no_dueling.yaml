@@ -1,0 +1,83 @@
+params:
+  seed: 42
+  algo:
+    name: rl_filter_no_dueling
+  
+  # environment wrapper clipping, not used
+  env:
+    # added to the wrapper
+    clip_observations: 5.0
+    # can make custom wrapper?
+    clip_actions: 1.0
+
+  config:
+
+    name: HRTA_direct
+    env_name: rlgpu_HRTA
+    device: 'cuda:0'
+    device_name: 'cuda:0'
+    time_str: "None"
+
+    gamma: 0.99
+    tau: 0.95
+    learning_rate: 1.0e-4
+    learning_rate_sft: 1.0e-3
+    lr_schedule: adaptive
+    schedule_type: standard
+    kl_threshold: 0.016
+    # score_to_win: 20000
+    max_epochs: 1.0e+11
+    # save_best_after: 50
+    # save_frequency: 100
+    # print_stats: True
+    # grad_norm: 1.0
+    # entropy_coef: 0.0
+    # truncate_grads: False
+    # e_clip: 0.2
+    # horizon_length: 1000
+    # minibatch_size: 4
+    # mini_epochs: 8
+    # critic_coef: 2
+    # clip_value: True
+    # seq_length: 4
+    # bounds_loss_coef: 0.0001
+    reward_shaper: #no use
+      scale_value: 0.1
+    batch_size: 512
+    # batch_size: 64
+    # num_warmup_steps: 5.0e+4
+    # cost_num_warmup_steps: 1.0e+4
+    # use_cost_num_steps: 50.e+4
+    test: False
+    env_rule_based_exploration: False
+    test_all_settings: False
+    use_prediction_net: False
+    use_fatigue_mask: False
+    other_filters: False
+    max_num_worker: 3
+    max_num_robot: 3
+    # test_one:
+    acti_agv: 2
+    acti_charc: 3
+    test_times: 10
+    test_env_max_length: 2500
+    only_train_cost: False
+    wandb_activate: False
+    # wandb_group: ''
+    # wandb_name: ''
+    wandb_project: 'HRTA'
+    time_str: 'None'
+
+    # load_checkpoint: False
+    load_dir: ''
+    load_name: ''
+    gantt_chart_data: False
+    
+    # load_dir: /FactoryTaskAllocationMiC2024-10-24_15-30-51/nn
+    # load_name: /FactoryTaskAllocationMiC_ep_14079_rew_8.060657.pth
+
+
+
+
+   
+

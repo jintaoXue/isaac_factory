@@ -1,0 +1,4 @@
+In summary, for fatigue parameter estimation, PF surpasses KF and EKF due to its capacity to handle nonlinear models. In contrast, KF and EKF excel in recovery parameter estimation, aligning with the simpler, near-linear recovery formula. Moreover, the recovery parameter's near-zero value challenges PF, as minimal differences between particles result in slight likelihood variations, limiting effective weight updates and accuracy. 
+
+Both filter types show good accuracy in parameter estimation overall. PF performs best in fatigue parameter $\lambda$ estimation, but worst in recovery parameter $\mu$ estimation. Nevertheless, PF-based estimation demonstrates robustness when measurement noise increases, while KF and EKF diverge. Consequently, the resulting PF-CD3Q shows robustness when noise increases, with limited fluctuation in makespan and overwork metrics.
+
