@@ -142,12 +142,13 @@ class HcEnvBase(DirectRLEnv):
     
     def done_update(self):
         """Assign environments for reset if successful or failed."""
-        task_finished = self.materials.done()
+        # task_finished = self.materials.done()
+        task_finished = False
         is_last_step = self.episode_length_buf[0] >= self.dynamic_episode_len - 1
         #TODO for debug
         # is_last_step = False
         # If max episode length has been reached
-        if is_last_step or task_finished :
+        if is_last_step or task_finished:
             self.reset_buf[0] = 1
             '''gantt chart'''
             if self._test and self.gantt_chart_data:
@@ -197,7 +198,8 @@ class HcEnvBase(DirectRLEnv):
             self.reward_action = 0.1
 
     def calculate_metrics(self):
-        task_finished = self.materials.done()
+        # task_finished = self.materials.done()
+        task_finished = False
         is_last_step = self.episode_length_buf[0] >= self.dynamic_episode_len - 1
         """Compute reward at current timestep."""
         reward_time = (self.episode_length_buf[0] - self.pre_progress_step)*-0.002
@@ -309,6 +311,8 @@ class HcEnvBase(DirectRLEnv):
 
     def get_fatigue_mask(self):
         # fatigue_mask = torch.zeros(len(self.task_manager.task_dic), device=self.cuda_device)
+        if self.task_manager.characters.acti_num_charc == 0:
+            return torch.zeros(len(self.task_manager.task_dic))
         _masks = self.task_manager.characters.fatigue_task_masks
         fatigue_mask = _masks[0]
         for i in range(1, self.task_manager.characters.acti_num_charc):
@@ -372,82 +376,7 @@ class HcEnvBase(DirectRLEnv):
         self.machine_random_time = np.random.uniform(0,self.cfg.machine_time_random)
     
     def reset_machine_state(self):
-        # conveyor
-        #0 free 1 working
-        self.convey_state = 0
-        #cutting machine
-        #to do 
-        self.cutting_state_dic = {0:"free", 1:"work", 2:"reseting"}
-        self.cutting_machine_state = 0
-        self.c_machine_oper_time = 0
-        self.c_machine_oper_len = self.cfg.cutting_machine_oper_len
-        #gripper
-        speed = 0.6
-        self.operator_gripper = torch.tensor([speed]*10, device=self.cuda_device)
-        self.gripper_inner_task_dic = {0: "reset", 1:"pick_cut", 2:"place_cut_to_inner_station", 3:"place_cut_to_outer_station", 
-                                    4:"pick_product_from_inner", 5:"pick_product_from_outer", 6:"place_product_from_inner", 7:"place_product_from_outer"}
-        self.gripper_inner_task = 0
-        self.gripper_inner_state_dic = {0: "free_empty", 1:"picking", 2:"placing"}
-        self.gripper_inner_state = 0
-
-        self.gripper_outer_task_dic = {0: "reset", 1:"pick_upper_tube_for_inner_station", 2:"pick_upper_tube_for_outer_station", 3:"place_upper_tube_to_inner_station", 4:"place_upper_tube_to_outer_station"}
-        self.gripper_outer_task = 0
-        self.gripper_outer_state_dic = {0: "free_empty", 1:"picking", 2:"placing"}
-        self.gripper_outer_state = 0
-
-        #welder 
-        # self.max_speed_welder = 0.1
-        self.welder_inner_oper_time = 0
-        self.welder_outer_oper_time = 0
-        self.welding_once_time = self.cfg.welding_once_time
-        self.operator_welder = torch.tensor([0.4], device=self.cuda_device)
-        self.welder_task_dic = {0: "reset", 1:"weld_left", 2:"weld_right", 3:"weld_middle",}
-        self.welder_state_dic = {0: "free_empty", 1: "moving_left", 2:"welding_left", 3:"welded_left", 4:"moving_right",
-                                 5:"welding_right", 6:"rotate_and_welding", 7:"welded_right", 8:"welding_middle" , 9:"welded_upper"}
-        self.welder_inner_task = 0
-        self.welder_inner_state = 0
-        self.welder_outer_task = 0
-        self.welder_outer_state = 0
-        
-        #station
-        # self.welder_inner_oper_time = 10
-        self.operator_station = torch.tensor([0.3, 0.3, 0.3, 0.3], device=self.cuda_device)
-        self.station_task_left_dic = {0: "reset", 1:"weld"}
-        self.station_state_left_dic = {0: "reset_empty", 1:"loading", 2:"rotating", 3:"waiting", 4:"welding", 5:"welded", 6:"finished", -1:"resetting"}
-        self.station_task_inner_left = 0
-        self.station_task_outer_left = 0
-        self.station_state_inner_left = -1
-        self.station_state_outer_left = -1
-
-        self.station_middle_task_dic = {0: "reset", 1:"weld_left", 2:"weld_middle", 3:"weld_right"}
-        self.station_state_middle_dic = {-1:"resetting", 0: "reset_empty", 1:"placing", 2:"placed", 3:"moving_left", 4:"welding_left", 
-                                         5:"welded_left", 6:"welding_right", 7:"welded_right", 8:"welding_upper", 9:"welded_upper"}
-        self.station_state_inner_middle = 0
-        self.station_state_outer_middle = 0
-        self.station_task_inner_middle = 0
-        self.station_task_outer_middle = 0
-        
-        self.station_right_task_dic = {0: "reset", 1:"weld"}
-        self.station_state_right_dic = {0: "reset_empty", 1:"placing", 2:"placed", 3:"moving", 4:"welding_right", -1:"resetting"}
-        self.station_state_inner_right = 0
-        self.station_state_outer_right = 0
-        self.station_task_outer_right = 0
-        self.station_task_inner_right = 0
-        
-        self.process_groups_dict = {}
-        self.proc_groups_inner_list = []
-        self.proc_groups_outer_list = []
-        '''side table state'''
-        self.depot_state_dic = {0: "empty", 1:"placing", 2: "placed"}
-        # self.table_capacity = 4
-        self.depot_hoop_set = set()
-        self.depot_bending_tube_set = set()
-        self.state_depot_hoop = 0
-        self.state_depot_bending_tube = 0
-        self.depot_product_set = set()
-        '''progress step'''
-        self.pre_progress_step = 0
-        # self.available_task_dic = {'none': -1}
+        #TODO
 
         return
 

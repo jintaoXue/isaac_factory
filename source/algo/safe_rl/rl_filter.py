@@ -690,7 +690,8 @@ class SafeRlFilterAgent():
                 if self.step_num < self.demonstration_steps:
                     action = None
                 else: 
-                    action = self.act_random(obs)
+                    # action = self.act_random(obs)
+                    action = torch.zeros([1], dtype=torch.int32)
             else:
                 with torch.no_grad():
                     action, cost_mask = self.act(obs)
@@ -698,107 +699,18 @@ class SafeRlFilterAgent():
             with torch.no_grad():
                 next_obs, rewards, dones, infos, action = self.env_step(action, action_extra)
 
-            if 'fatigue_data' in infos:
-                fatigue_data = infos['fatigue_data']
-                for _data in fatigue_data:
-                    fatigue_data_list.append(_data)
 
-            if self.use_prediction_net:
-                if self.step_num_sfl >= self.cost_num_warmup_steps:
-                    if self.step_num_sfl % self.update_frequency_sfl == 0:
-                        self.set_train()
-                        loss, loss_compare = self.update_cost_func()
-                        if self.use_wandb:
-                            wandb.log({
-                                    'SuperviseTrain/step': self.step_num_sfl,
-                                    "SuperviseTrain/loss": torch.sqrt(loss).item(),
-                                    "SuperviseTrain/loss_compare": torch.sqrt(loss_compare).item(),
-                                    "SuperviseTrain/buffer_size": self.costfunc_buffer.total_num(),
-                                })
-                        time_now = datetime.now().strftime("_%d-%H-%M-%S")   
-                        print("supervise traning loss:{}，".format(loss.mean().item()) + " time_now:{}".format(time_now))
-                self.step_num_sfl += 1
-            #debug
-            # if self.costfunc_buffer.total_num() == 3:
-            #     batch_data = self.costfunc_buffer.sample(3)
-            #     data.stack_from_array(batch_data, device=self._device)
             assert self.num_agents == 1, ('only support num_agents == 1')
-            if infos['overwork']:
-                self.current_overworks += 1
-            self.temp_current_lengths += 1
-            all_done_indices = dones.nonzero(as_tuple=False)
-            done_indices = all_done_indices[::self.num_agents]
 
-            # no_timeouts = self.temp_current_lengths <= self.horizon_length
-            # dones = dones * no_timeouts
-
-            # obs_copy = {}
-            # infos_copy = {}
-            # for key, value in obs.items():
-            #     obs_copy[key] = value.copy()
-            # for key, value in infos.items():
-            #     infos_copy[key] = value.copy()
-            # action_cpu = action.squeeze().cpu()
-            # rewards_cpu = rewards.squeeze().cpu()
-            # dones_cpu = dones.squeeze().cpu()
-            if not self.config['use_fatigue_mask']:
-                cost_value = infos['cost_value']
-                rewards -= cost_value
-            temporary_buffer.append((copy.deepcopy(obs), copy.deepcopy(action), copy.deepcopy(rewards), copy.deepcopy(dones), copy.deepcopy(infos)))
             done_flag = copy.deepcopy(dones) 
             if done_flag[0]:
-                # assert len(fatigue_data_list)>0, "no fatigue data"
-                if len(fatigue_data_list) > 0:
-                    EpLossCompare, dict_loss_pf_filter, dict_loss_kf_filter, dict_loss_ekf_filter = self.get_fatigue_related_predtion_loss(fatigue_data_list)
-
-                    print_info = infos['print_info']
-                    # print(print_info + " | warm_up:{},".format(random_exploration) + " use_cost_func:{}".format(self.step_num_sfl > self.use_cost_num_steps))
-                    print(print_info + " | Warm_up:{},".format(random_exploration) + " Comp_loss:{:.3}".format(EpLossCompare) + \
-                        " Fat_predict_loss:{:.3}".format(dict_loss_pf_filter['EpFilterPredictLoss'])  + \
-                            " Fat_coe_accu:{:.3}".format(dict_loss_pf_filter['FilterFatigueCoeAccu']) + " Rec_coe_accu:{:.3}".format(dict_loss_pf_filter['FilterRecoverCoeAccu']))
-                else:
-                    print(infos['print_info'])
-                if self.use_wandb:
-                    wandb.log({
-                            'SuperviseTrain/step': self.step_num_sfl,
-                            "SuperviseTrain/EpOverCost": self.current_overworks,
-                        })
-                    _num_worker, _num_robot = infos['num_worker'], infos['num_robot']
-                    if infos['env_length'] < infos['max_env_len']-1 and infos['progress'] == 1:
-                        task_success = True
-                    else: 
-                        task_success = False
-                    self.progress_avgs[_num_worker-1][_num_robot-1].update(torch.tensor([task_success], dtype=torch.float32, device=self._device))
-                    self.env_len_avgs[_num_worker-1][_num_robot-1].update(torch.tensor([infos['env_length']], dtype=torch.float32, device=self._device))
-                    wandb.log({f'Avg_progress/{_num_worker}_{_num_robot}': self.progress_avgs[_num_worker-1][_num_robot-1].get_mean()})
-                    wandb.log({f'Avg_env_len/{_num_worker}_{_num_robot}': self.env_len_avgs[_num_worker-1][_num_robot-1].get_mean()})
-
+                print(infos['print_info'])
                 next_obs = self.env_reset(num_worker=num_worker, num_robot=num_robot)
             not_dones = 1.0 - done_flag.float()
             self.temp_current_lengths = self.temp_current_lengths * not_dones
             self.current_overworks = self.current_overworks * not_dones
             self.obs = next_obs.copy()
-            reward_extra = -0.01
-            repeat_times = 1
-            if done_flag[0]:
-                _,_,_,_,_infos = temporary_buffer[-1]
-                goal_finished = _infos['env_length'] < _infos['max_env_len']-1 and _infos['progress'] == 1
-                # if self.current_overworks > 0:
-                #     reward_extra += -0.03
-                if goal_finished:
-                    num_worker, num_robot = infos['num_worker'], infos['num_robot']
-                    if self.env_len_avgs[num_worker-1][num_robot-1].__len__() > 0:
-                        reward_extra += 0.05*(self.env_len_avgs[num_worker-1][num_robot-1].get_mean() - _infos['env_length'])/self.env_len_avgs[num_worker-1][num_robot-1].get_mean()
-                        repeat_times = 10
-                else:
-                    reward_extra += -0.05
-                    if len(temporary_buffer) > 100:
-                        reward_extra *= 0.2
-
-                # print("reward_extra:{}, env_len:{}".format(reward_extra, _infos['env_length']))
-                if not random_exploration or goal_finished:
-                    #when doing random exploration, when want find solution for each setting
-                    break
+           
         return temporary_buffer, reward_extra, repeat_times
     
     def evaluate_epoch(self, test=False, reset_n_worker=None, reset_n_robot=None):

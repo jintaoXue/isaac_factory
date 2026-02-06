@@ -61,6 +61,8 @@ class TaskManager(object):
     def reset(self, acti_num_charc, acti_num_agv):
 
         assert not ((acti_num_charc is None) ^ (acti_num_agv is None)), "warning"
+        acti_num_agv = 0
+        acti_num_charc = 0
         if self._test:
             if acti_num_charc is None:
                 acti_num_agv = self.acti_num_agv
