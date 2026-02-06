@@ -92,7 +92,7 @@ class HcEnv(HcEnvBase):
                 # update buffers at sim dt
                 # self.scene.update(dt=self.physics_dt)
 
-            if (self.task_mask[1:].count_nonzero() == 0 and self.reset_buf[0] == 0):
+            if False and(self.task_mask[1:].count_nonzero() == 0 and self.reset_buf[0] == 0):
                 # self.get_rule_based_action()
                 self.task_manager_step(actions=torch.zeros([1], dtype=torch.int32))
             else:
@@ -139,6 +139,14 @@ class HcEnv(HcEnvBase):
         articulation_pose_arm_and_base = self.num02_weldingRobot_part02_robot_arm_and_base.get_joint_positions()
         articulation_pose_mobile_base_for_material = self.num02_weldingRobot_part04_mobile_base_for_material.get_joint_positions()
         
+        articulation_pose_arm_and_base[:,0] = 3.2
+        articulation_pose_arm_and_base[:,1] = -1.5
+        articulation_pose_arm_and_base[:,2] = -0.3
+        articulation_pose_arm_and_base[:,3] = 0.1
+        articulation_pose_arm_and_base[:,4] = 0.2
+        articulation_pose_arm_and_base[:,5] = 0.0
+
+        self.num02_weldingRobot_part02_robot_arm_and_base.set_joint_positions(articulation_pose_arm_and_base)
         return
 
     def num03_rollerbedCNCPipeIntersectionCuttingMachine_step(self):

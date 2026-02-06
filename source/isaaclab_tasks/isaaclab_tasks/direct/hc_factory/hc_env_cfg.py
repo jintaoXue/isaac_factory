@@ -30,26 +30,9 @@ high_level_task_rev_dic = {v: k for k, v in high_level_task_dic.items()}
 
 @configclass
 class HcViewerCfg(ViewerCfg):
-    #view cutting machine
-    # # self.camera_position = [-30, 0.99, 3.8]
-    # # self.camera_target = [0, 0.99, 3]
-    
-    # # view welding station left
-    # # self.camera_position = [-5, 5, 25]
-    # # self.camera_target = [-20, 5, 3]
-    # # view welding station right
-    # self.camera_position = [-45, 5, 20]
-    # self.camera_target = [-28, 5, 3]
-
-    # # view of all
-    # self.camera_position = [-18, 14, 50]
-    # self.camera_target = [-18, 5, 3]
-    # eye: tuple[float, float, float] = (-18, 14, 50)
-    # """Initial camera position (in m). Default is (7.5, 7.5, 7.5)."""
-    # lookat: tuple[float, float, float] = (-18, 5, 3)
-    # view of grippers
-    eye: tuple[float, float, float] = (-18, 14, 50)
-    lookat: tuple[float, float, float] = (-18, 5, 3)
+    #num02_weldingRobot
+    eye: tuple[float, float, float] = (23.5, 12, 15)
+    lookat: tuple[float, float, float] = (23.5, 17, 0.5)
 
 @configclass
 class HcEnvCfg(DirectRLEnvCfg):
@@ -58,7 +41,7 @@ class HcEnvCfg(DirectRLEnvCfg):
     decimation = 1
     # simulation
     sim: SimulationCfg = SimulationCfg(dt=1 / 120, render_interval=decimation)
-    sim_step_interval = 5000
+    sim_step_interval = 1
     # viewer
     viewer: HcViewerCfg = HcViewerCfg()
     #dynamic env len settings, for human 1-3 x robot 1-3, <= 1500
@@ -115,3 +98,12 @@ class BoxCapacity:
     hoop = 2
     bending_tube = 2
     product = 1
+
+########### key_articulation_pos_dic ###########
+########### key_articulation_pos_dic ###########
+########### key_articulation_pos_dic ###########
+
+joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base = {
+    #joint 1: track_platform, joint 2: arm01_base, joint 3: arm02_base, joint 4: arm03_base, joint 5: arm04_base, joint 6: welding_torch
+    "working_pose": [3.2, -1.5, -0.3, 0.1, 0.2, 0.0],
+}
