@@ -46,6 +46,25 @@ parser.add_argument(
 )
 parser.add_argument("--num_particles", type=int, default=500, help="Number of particles for the particle filter.")
 parser.add_argument("--measure_noise_sigma", type=float, default=0.00005, help="Noise sigma for the measure noise.")
+parser.add_argument(
+    "--active_livestream",
+    action="store_true",
+    default=False,
+    help="Activate livestreaming.",
+)
+parser.add_argument(
+    "--livestream_public_ip",
+    type=str,
+    default=None,
+    help="Public IP for Isaac Sim livestream (sets --/app/livestream/publicEndpointAddress). Use with --livestream 2.",
+)
+parser.add_argument(
+    "--livestream_port",
+    type=int,
+    default=49100,
+    help="Port for Isaac Sim livestream (sets --/app/livestream/port).",
+)
+
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
@@ -53,6 +72,22 @@ args_cli, hydra_args = parser.parse_known_args()
 # always enable cameras to record video
 if args_cli.video:
     args_cli.enable_cameras = True
+
+if getattr(args_cli, "active_livestream", False):
+    args_cli.livestream = 2
+    # Inject livestream public endpoint and port into extra_args (for isaac-sim.streaming.sh style options)
+    if getattr(args_cli, "livestream_public_ip", None):
+        os.environ["PUBLIC_IP"] = args_cli.livestream_public_ip
+        port = getattr(args_cli, "livestream_port", 49100)
+        extra_args = (
+            f"--/app/livestream/publicEndpointAddress={args_cli.livestream_public_ip} "
+            f"--/app/livestream/port={port}"
+        )
+        args_cli._livestream_args = (getattr(args_cli, "_livestream_args", None) or "").strip()
+        if args_cli._livestream_args:
+            args_cli._livestream_args += " " + extra_args
+        else:
+            args_cli._livestream_args = extra_args
 
 # clear out sys.argv for Hydra
 sys.argv = [sys.argv[0]] + hydra_args
