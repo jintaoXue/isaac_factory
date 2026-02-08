@@ -111,6 +111,10 @@ run_test_15() {
 }
 
 
+run_test_16() {
+    #live stream
+    python train.py --task HRTPaHC-v1 --algo rl_filter --headless --active_livestream --livestream_public_ip 10.68.217.239 --livestream_port 49100 ${DEVICE_ARG}
+}
 # 单个训练
 if [ "$SINGLE_TEST" = true ]; then
     case $GROUP in
