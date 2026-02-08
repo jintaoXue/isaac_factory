@@ -9,7 +9,7 @@
 
 import argparse
 import sys
-
+import os
 from isaaclab.app import AppLauncher
 import setproctitle
 

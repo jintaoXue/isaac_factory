@@ -2,10 +2,10 @@
 
 # 检查命令行参数
 if [ $# -eq 0 ]; then
-    echo "用法: $0 [A|B|1-15] [cuda:N]"
+    echo "用法: $0 [A|B|1-16] [cuda:N]"
     echo "  A: 运行A组训练 (1-5)"
     echo "  B: 运行B组训练 (6-10)"
-    echo "  1-15: 运行单个训练序号"
+    echo "  1-16: 运行单个训练序号"
     echo "  cuda:N: 可选，指定CUDA设备，默认cuda:0"
     exit 1
 fi
@@ -16,13 +16,13 @@ DEVICE_ARG="--device ${DEVICE}"
 echo "使用设备: ${DEVICE}"
 
 # 检查是否为数字（1-14）
-if [[ "$GROUP" =~ ^([1-9]|1[0-5])$ ]]; then
+if [[ "$GROUP" =~ ^([1-9]|1[0-6])$ ]]; then
     echo "运行单个训练序号: $GROUP"
     SINGLE_TEST=true
 else
     if [ "$GROUP" != "A" ] && [ "$GROUP" != "B" ]; then
-        echo "错误: 参数必须是 A、B 或 1-15 中的数字"
-        echo "用法: $0 [A|B|1-15] [cuda:N]"
+        echo "错误: 参数必须是 A、B 或 1-16 中的数字"
+        echo "用法: $0 [A|B|1-16] [cuda:N]"
         exit 1
     fi
     SINGLE_TEST=false
@@ -133,6 +133,7 @@ if [ "$SINGLE_TEST" = true ]; then
         13) run_test_13 ;;
         14) run_test_14 ;;
         15) run_test_15 ;;
+        16) run_test_16 ;;
         *) echo "错误: 无效的训练序号 $GROUP" ;;
     esac
     echo "训练 $GROUP 完成！"
