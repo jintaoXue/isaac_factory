@@ -110,3 +110,15 @@ joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base = {
     "moving_time_stage_2": 10,
     "moving_time_stage_3": 10,
 }
+
+joint_pos_dic_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station = {
+    #joint 1: rotation axis
+    "working_pose": [0.0],
+
+}
+
+joint_pos_dic_num04_laserCuttingMachine = {
+    #joint 1: part02_mobile_base
+    "working_pose": [-3.5],
+
+}

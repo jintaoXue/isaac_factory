@@ -132,12 +132,12 @@ class HcEnv(HcEnvBase):
         return
     
     def num01_rotaryPipeAutomaticWeldingMachine_step(self):
-        articulation_pose_part_01_station = self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station.get_joint_positions()
-        articulation_pose_part_02_station = self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station.get_joint_positions()
+        articulation_num01_part_01_station = self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station.get_joint_positions()
+        articulation_num01_part_02_station = self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station.get_joint_positions()
         
 
-        self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station.set_joint_positions(articulation_pose_part_01_station)
-        self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station.set_joint_positions(articulation_pose_part_02_station)
+        self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station.set_joint_positions(articulation_num01_part_01_station)
+        self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station.set_joint_positions(articulation_num01_part_02_station)
         return
 
     def num02_weldingRobot_step(self):
@@ -156,12 +156,18 @@ class HcEnv(HcEnvBase):
         return
 
     def num03_rollerbedCNCPipeIntersectionCuttingMachine_step(self):
+        articulation_num03_part01_station = self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station.get_joint_positions()
+        articulation_num03_part05_cutting_machine = self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine.get_joint_positions()
+        articulation_num03_part01_station[:,0] = 0.0
         
-
+        self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station.set_joint_positions(articulation_num03_part01_station)
+        self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine.set_joint_positions(articulation_num03_part05_cutting_machine)
         return
 
     def num04_laserCuttingMachine_step(self):
-
+        articulation_num04 = self.num04_laserCuttingMachine.get_joint_positions()
+        articulation_num04[:,0] = -3.5
+        self.num04_laserCuttingMachine.set_joint_positions(articulation_num04)
         return
 
     def num05_groovingMachineLarge_step(self):
