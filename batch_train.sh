@@ -16,7 +16,7 @@ DEVICE_ARG="--device ${DEVICE}"
 echo "使用设备: ${DEVICE}"
 
 # 检查是否为数字（1-14）
-if [[ "$GROUP" =~ ^([1-9]|1[0-6])$ ]]; then
+if [[ "$GROUP" =~ ^([1-9]|1[0-7])$ ]]; then
     echo "运行单个训练序号: $GROUP"
     SINGLE_TEST=true
 else
@@ -115,6 +115,12 @@ run_test_16() {
     #live stream
     python train.py --task HRTPaHC-v1 --algo rl_filter --headless --active_livestream --livestream_public_ip 10.68.217.239 --livestream_port 49100 ${DEVICE_ARG}
 }
+
+run_test_17() {
+    #test
+    python train.py --task HRTPaHC-v1 --algo rl_filter ${DEVICE_ARG}
+}
+
 # 单个训练
 if [ "$SINGLE_TEST" = true ]; then
     case $GROUP in
@@ -134,6 +140,7 @@ if [ "$SINGLE_TEST" = true ]; then
         14) run_test_14 ;;
         15) run_test_15 ;;
         16) run_test_16 ;;
+        17) run_test_17 ;;
         *) echo "错误: 无效的训练序号 $GROUP" ;;
     esac
     echo "训练 $GROUP 完成！"

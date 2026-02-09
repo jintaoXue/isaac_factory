@@ -132,7 +132,12 @@ class HcEnv(HcEnvBase):
         return
     
     def num01_rotaryPipeAutomaticWeldingMachine_step(self):
+        articulation_pose_part_01_station = self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station.get_joint_positions()
+        articulation_pose_part_02_station = self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station.get_joint_positions()
+        
 
+        self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station.set_joint_positions(articulation_pose_part_01_station)
+        self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station.set_joint_positions(articulation_pose_part_02_station)
         return
 
     def num02_weldingRobot_step(self):
@@ -151,6 +156,7 @@ class HcEnv(HcEnvBase):
         return
 
     def num03_rollerbedCNCPipeIntersectionCuttingMachine_step(self):
+        
 
         return
 
