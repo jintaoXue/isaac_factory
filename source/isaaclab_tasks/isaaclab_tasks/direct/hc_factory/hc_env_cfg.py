@@ -112,7 +112,7 @@ joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base = {
 }
 
 joint_pos_dic_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station = {
-    #joint 1: rotation axis
+    #joint 1: rotation_axis
     "working_pose": [0.0],
 
 }

@@ -171,15 +171,30 @@ class HcEnv(HcEnvBase):
         return
 
     def num05_groovingMachineLarge_step(self):
+        # test_velocity_part02_large_mobile_base = self.num05_groovingMachineLarge_part02_large_mobile_base.get_joint_velocities()
+        # test_velocity_part02_large_mobile_base[:,0] = 0.0
+        # self.num05_groovingMachineLarge_part02_large_mobile_base.set_joint_velocities(test_velocity_part02_large_mobile_base)
+
+        articulation_num05_part01_large_fixed_base = self.num05_groovingMachineLarge_part01_large_fixed_base.get_joint_positions()
+        articulation_num05_part02_large_mobile_base = self.num05_groovingMachineLarge_part02_large_mobile_base.get_joint_positions()
+        articulation_num05_part01_large_fixed_base[:,0] = -0.2
+        articulation_num05_part01_large_fixed_base[:,1] = 0.0
+        articulation_num05_part02_large_mobile_base[:,0] = -5.0 #test
+        self.num05_groovingMachineLarge_part01_large_fixed_base.set_joint_positions(articulation_num05_part01_large_fixed_base)
+        self.num05_groovingMachineLarge_part02_large_mobile_base.set_joint_positions(articulation_num05_part02_large_mobile_base)
 
         return
 
     def num06_groovingMachineSmall_step(self):
-
+        articulation_num06 = self.num06_groovingMachineSmall.get_joint_positions()
+        # articulation_num06[:,0] = 0.0
+        self.num06_groovingMachineSmall.set_joint_positions(articulation_num06)
         return
 
     def num07_highPressureFoamingMachine_step(self):
-
+        articulation_num07 = self.num07_highPressureFoamingMachine.get_joint_positions()
+        articulation_num07[:,0] = -0.7
+        self.num07_highPressureFoamingMachine.set_joint_positions(articulation_num07)
         return
 
     def get_observations(self) -> dict:
