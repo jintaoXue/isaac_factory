@@ -114,7 +114,11 @@ class MovingPose:
         self.start_pose = start_pose
         self.end_pose = end_pose
         self.time = time
-        self.step_time = 1/time
+        self.step_time = 0
 
     def get_next_pose(self):
-        return self.start_pose + (self.end_pose - self.start_pose) * self.step_time
+        self.step_time += 1
+        return self.start_pose + (self.end_pose - self.start_pose) * self.step_time / self.time
+
+    def is_done(self):
+        return self.step_time >= self.time
