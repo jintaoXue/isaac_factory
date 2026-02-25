@@ -137,7 +137,7 @@ class HcEnv(HcEnvBase):
         return
 
     def num02_weldingRobot_step(self):
-        
+
         articulation_pose_arm_and_base = self.num02_weldingRobot_part02_robot_arm_and_base.get_joint_positions()
 
         reset2working = True
@@ -158,7 +158,7 @@ class HcEnv(HcEnvBase):
                 next_pose = target_pose
 
         articulation_pose_mobile_base_for_material = self.num02_weldingRobot_part04_mobile_base_for_material.get_joint_positions()
-        articulation_pose_mobile_base_for_material[:,0] = 2
+        articulation_pose_mobile_base_for_material[:,0] = -2
 
         self.num02_weldingRobot_part02_robot_arm_and_base.set_joint_positions(next_pose)
         self.num02_weldingRobot_part04_mobile_base_for_material.set_joint_positions(articulation_pose_mobile_base_for_material)
