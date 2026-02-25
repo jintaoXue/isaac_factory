@@ -106,7 +106,7 @@ class BoxCapacity:
 joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base = {
     #joint 1: track_platform, joint 2: arm01_base, joint 3: arm02_base, joint 4: arm03_base, joint 5: arm04_base, joint 6: welding_torch
     "working_pose": [3.2, -1.5, -0.3, 0.1, 0.2, 0.0],
-    "moving_pose_time": 10,  
+    "moving_pose_time": 100,  
 }
 
 class MovingPose:
