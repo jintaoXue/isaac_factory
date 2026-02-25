@@ -43,7 +43,7 @@ from omni.usd import get_world_transform_matrix
 from ...utils import quaternion  
 import numpy as np
 import torch.nn.functional as Fun
-from .hc_env_cfg import joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base
+from .hc_env_cfg import joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base, MovingPose
 
 MAX_FLOAT = 3.40282347e38
 # import numpy as np
@@ -139,13 +139,27 @@ class HcEnv(HcEnvBase):
     def num02_weldingRobot_step(self):
         articulation_pose_arm_and_base = self.num02_weldingRobot_part02_robot_arm_and_base.get_joint_positions()
 
+        reset2working = True
         target_pose : list[float] = joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base["working_pose"]
-        articulation_pose_arm_and_base = torch.tensor(target_pose, device=self.device).unsqueeze(0)
+        target_pose = torch.tensor(target_pose, device=self.device).unsqueeze(0)
+        if reset2working:
+            if self.moving_pose_num02_weldingRobot_part02_robot_arm_and_base is None:
+                self.moving_pose_num02_weldingRobot_part02_robot_arm_and_base = MovingPose(
+                    start_pose = articulation_pose_arm_and_base,
+                    end_pose = target_pose,
+                    time=joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base["moving_pose_time"],
+                )
+            if not self.moving_pose_num02_weldingRobot_part02_robot_arm_and_base.is_done():
+                next_pose = self.moving_pose_num02_weldingRobot_part02_robot_arm_and_base.get_next_pose()
+            else:
+                self.moving_pose_num02_weldingRobot_part02_robot_arm_and_base = None
+                reset2working = False
+                next_pose = target_pose
 
         articulation_pose_mobile_base_for_material = self.num02_weldingRobot_part04_mobile_base_for_material.get_joint_positions()
         articulation_pose_mobile_base_for_material[:,0] = 2
 
-        self.num02_weldingRobot_part02_robot_arm_and_base.set_joint_positions(articulation_pose_arm_and_base)
+        self.num02_weldingRobot_part02_robot_arm_and_base.set_joint_positions(next_pose)
         self.num02_weldingRobot_part04_mobile_base_for_material.set_joint_positions(articulation_pose_mobile_base_for_material)
 
         return

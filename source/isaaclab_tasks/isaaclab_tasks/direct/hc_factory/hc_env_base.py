@@ -34,6 +34,8 @@ from .hc_env_task_manager import Materials, TaskManager
 from .hc_map_route import MapRoute
 from abc import abstractmethod
 import numpy as np
+from .hc_env_cfg import joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base, MovingPose
+
 
 class HcEnvBase(DirectRLEnv):
     cfg: HcEnvCfg
@@ -397,7 +399,8 @@ class HcEnvBase(DirectRLEnv):
             name="num02_weldingRobot_part02_robot_arm_and_base",
             reset_xform_properties=False,
         )
-
+        self.moving_pose_num02_weldingRobot_part02_robot_arm_and_base : MovingPose = None
+        
         self.num02_weldingRobot_part04_mobile_base_for_material = Articulation(
             prim_paths_expr="/World/envs/.*/obj/HC_factory/num02_weldingRobot/part04_mobile_base_for_material",
             name="num02_weldingRobot_part04_mobile_base_for_material",
@@ -542,4 +545,3 @@ class HcEnvBase(DirectRLEnv):
     @abstractmethod
     def get_observations(self) -> dict:
         return
-    
