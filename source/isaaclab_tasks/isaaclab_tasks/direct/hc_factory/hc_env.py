@@ -43,7 +43,28 @@ from omni.usd import get_world_transform_matrix
 from ...utils import quaternion  
 import numpy as np
 import torch.nn.functional as Fun
-from .hc_env_cfg import joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base, MovingPose
+from .hc_env_cfg import (
+    joint_pos_dic_num01_rotaryPipeAutomaticWeldingMachine_part_01_station,
+    joint_pos_dic_num01_rotaryPipeAutomaticWeldingMachine_part_02_station,
+
+    joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base,
+    joint_pos_dic_num02_weldingRobot_part04_mobile_base_for_material,
+
+    joint_pos_dic_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station,
+    joint_pos_dic_num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine,
+
+    joint_pos_dic_num04_laserCuttingMachine,
+
+    joint_pos_dic_num05_groovingMachineLarge_part01_large_fixed_base,
+    joint_pos_dic_num05_groovingMachineLarge_part02_large_mobile_base,
+
+    joint_pos_dic_num06_groovingMachineSmall_part03_small_mobile_base,
+    joint_pos_dic_num06_groovingMachineSmall_part02_small_mobile_handle,
+
+    joint_pos_dic_num07_highPressureFoamingMachine,
+
+    MovingPose,
+)
 
 MAX_FLOAT = 3.40282347e38
 # import numpy as np
@@ -133,7 +154,13 @@ class HcEnv(HcEnvBase):
         return
     
     def num01_rotaryPipeAutomaticWeldingMachine_step(self):
+        articulation_num01_part_01_station = self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station.get_joint_positions()
+        # articulation_num01_part_02_station = self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station.get_joint_positions()
+        
 
+        self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station.set_joint_positions(articulation_num01_part_01_station)
+        # self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station.set_joint_positions(articulation_num01_part_02_station)
+        # pose = self.num01_rotaryPipeAutomaticWeldingMachine.get_joint_positions()
         return
 
     def num02_weldingRobot_step(self):
@@ -166,23 +193,138 @@ class HcEnv(HcEnvBase):
         return
 
     def num03_rollerbedCNCPipeIntersectionCuttingMachine_step(self):
+        articulation_num03_part01_station = self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station.get_joint_positions()
+        articulation_num03_part05_cutting_machine = self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine.get_joint_positions()
 
+        reset2working = True
+        target_pose : list[float] = joint_pos_dic_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station["working_pose"]
+        target_pose = torch.tensor(target_pose, device=self.device).unsqueeze(0)
+        if reset2working:
+            if self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station is None:
+                self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station = MovingPose(
+                    start_pose = articulation_num03_part01_station,
+                    end_pose = target_pose,
+                    time=joint_pos_dic_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station["moving_pose_time"],
+                )
+            if not self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station.is_done():
+                next_pose = self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station.get_next_pose()
+            else:
+                self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station = None
+                reset2working = False
+                next_pose = target_pose
+
+        self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station.set_joint_positions(next_pose) #not used
         return
 
     def num04_laserCuttingMachine_step(self):
+        articulation_num04 = self.num04_laserCuttingMachine.get_joint_positions()
 
+        reset2working = True
+        target_pose : list[float] = joint_pos_dic_num04_laserCuttingMachine["working_pose"]
+        target_pose = torch.tensor(target_pose, device=self.device).unsqueeze(0)
+        if reset2working:
+            if self.moving_pose_num04_laserCuttingMachine is None:
+                self.moving_pose_num04_laserCuttingMachine = MovingPose(
+                    start_pose = articulation_num04,
+                    end_pose = target_pose,
+                    time=joint_pos_dic_num04_laserCuttingMachine["moving_pose_time"],
+                )
+            if not self.moving_pose_num04_laserCuttingMachine.is_done():
+                next_pose = self.moving_pose_num04_laserCuttingMachine.get_next_pose()
+            else:
+                self.moving_pose_num04_laserCuttingMachine = None
+                reset2working = False
+                next_pose = target_pose
+
+        self.num04_laserCuttingMachine.set_joint_positions(next_pose)
         return
 
     def num05_groovingMachineLarge_step(self):
 
+        articulation_num05_part01_large_fixed_base = self.num05_groovingMachineLarge_part01_large_fixed_base.get_joint_positions()
+        articulation_num05_part02_large_mobile_base = self.num05_groovingMachineLarge_part02_large_mobile_base.get_joint_positions()
+
+        reset2working = True
+
+        target_pose_part01: list[float] = joint_pos_dic_num05_groovingMachineLarge_part01_large_fixed_base["working_pose"]
+        target_pose_part01 = torch.tensor(target_pose_part01, device=self.device).unsqueeze(0)
+
+        target_pose_part02: list[float] = joint_pos_dic_num05_groovingMachineLarge_part02_large_mobile_base["working_pose"]
+        target_pose_part02 = torch.tensor(target_pose_part02, device=self.device).unsqueeze(0)
+
+        if reset2working:
+            if self.moving_pose_num05_groovingMachineLarge_part01_large_fixed_base is None:
+                self.moving_pose_num05_groovingMachineLarge_part01_large_fixed_base = MovingPose(
+                    start_pose=articulation_num05_part01_large_fixed_base,
+                    end_pose=target_pose_part01,
+                    time=joint_pos_dic_num05_groovingMachineLarge_part01_large_fixed_base["moving_pose_time"],
+                )
+            if self.moving_pose_num05_groovingMachineLarge_part02_large_mobile_base is None:
+                self.moving_pose_num05_groovingMachineLarge_part02_large_mobile_base = MovingPose(
+                    start_pose=articulation_num05_part02_large_mobile_base,
+                    end_pose=target_pose_part02,
+                    time=joint_pos_dic_num05_groovingMachineLarge_part02_large_mobile_base["moving_pose_time"],
+                )
+            if not self.moving_pose_num05_groovingMachineLarge_part01_large_fixed_base.is_done() or not self.moving_pose_num05_groovingMachineLarge_part02_large_mobile_base.is_done():
+                next_pose_part01 = self.moving_pose_num05_groovingMachineLarge_part01_large_fixed_base.get_next_pose()
+                next_pose_part02 = self.moving_pose_num05_groovingMachineLarge_part02_large_mobile_base.get_next_pose()
+            else:
+                self.moving_pose_num05_groovingMachineLarge_part01_large_fixed_base = None
+                self.moving_pose_num05_groovingMachineLarge_part02_large_mobile_base = None
+                reset2working = False
+                next_pose_part01 = target_pose_part01
+                next_pose_part02 = target_pose_part02
+
+        self.num05_groovingMachineLarge_part01_large_fixed_base.set_joint_positions(next_pose_part01)
+        self.num05_groovingMachineLarge_part02_large_mobile_base.set_joint_positions(next_pose_part02)
+
         return
 
     def num06_groovingMachineSmall_step(self):
+        articulation_num06_part03_small_mobile_base = self.num06_groovingMachineSmall_part03_small_mobile_base.get_joint_positions()
 
+        articulation_num06_part02_small_mobile_handle = self.num06_groovingMachineSmall_part02_small_mobile_handle.get_joint_positions()
+        articulation_num06_part02_small_mobile_handle[:,0] = 0.0
+        self.num06_groovingMachineSmall_part02_small_mobile_handle.set_joint_positions(articulation_num06_part02_small_mobile_handle)
+
+        reset2working = True
+        target_pose : list[float] = joint_pos_dic_num06_groovingMachineSmall_part03_small_mobile_base["working_pose"]
+        target_pose = torch.tensor(target_pose, device=self.device).unsqueeze(0)
+        if reset2working:
+            if self.moving_pose_num06_groovingMachineSmall_part03_small_mobile_base is None:
+                self.moving_pose_num06_groovingMachineSmall_part03_small_mobile_base = MovingPose(
+                    start_pose = articulation_num06_part03_small_mobile_base,
+                    end_pose = target_pose,
+                    time=joint_pos_dic_num06_groovingMachineSmall_part03_small_mobile_base["moving_pose_time"],
+                )
+            if not self.moving_pose_num06_groovingMachineSmall_part03_small_mobile_base.is_done():
+                next_pose = self.moving_pose_num06_groovingMachineSmall_part03_small_mobile_base.get_next_pose()
+            else:
+                self.moving_pose_num06_groovingMachineSmall_part03_small_mobile_base = None
+                reset2working = False
+                next_pose = target_pose
+        self.num06_groovingMachineSmall_part03_small_mobile_base.set_joint_positions(next_pose)
         return
 
     def num07_highPressureFoamingMachine_step(self):
-
+        articulation_num07 = self.num07_highPressureFoamingMachine.get_joint_positions()
+        reset2working = True
+        target_pose : list[float] = joint_pos_dic_num07_highPressureFoamingMachine["working_pose"]
+        target_pose = torch.tensor(target_pose, device=self.device).unsqueeze(0)
+        if reset2working:
+            if self.moving_pose_num07_highPressureFoamingMachine is None:
+                self.moving_pose_num07_highPressureFoamingMachine = MovingPose(
+                    start_pose = articulation_num07,
+                    end_pose = target_pose,
+                    time=joint_pos_dic_num07_highPressureFoamingMachine["moving_pose_time"],
+                )
+            if not self.moving_pose_num07_highPressureFoamingMachine.is_done():
+                next_pose = self.moving_pose_num07_highPressureFoamingMachine.get_next_pose()
+            else:
+                self.moving_pose_num07_highPressureFoamingMachine = None
+                reset2working = False
+                next_pose = target_pose
+        self.num07_highPressureFoamingMachine.set_joint_positions(next_pose)
         return
 
     def get_observations(self) -> dict:

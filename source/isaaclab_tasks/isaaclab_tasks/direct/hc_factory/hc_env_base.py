@@ -393,6 +393,8 @@ class HcEnvBase(DirectRLEnv):
             name="num01_rotaryPipeAutomaticWeldingMachine_part_02_station",
             reset_xform_properties=False,
         )
+        self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_01_station : MovingPose = None
+        self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_02_station : MovingPose = None
 
         self.num02_weldingRobot_part02_robot_arm_and_base = Articulation(
             prim_paths_expr="/World/envs/.*/obj/HC_factory/num02_weldingRobot/part02_robot_arm_and_base",
@@ -400,52 +402,68 @@ class HcEnvBase(DirectRLEnv):
             reset_xform_properties=False,
         )
         self.moving_pose_num02_weldingRobot_part02_robot_arm_and_base : MovingPose = None
-        
+
         self.num02_weldingRobot_part04_mobile_base_for_material = Articulation(
             prim_paths_expr="/World/envs/.*/obj/HC_factory/num02_weldingRobot/part04_mobile_base_for_material",
             name="num02_weldingRobot_part04_mobile_base_for_material",
             reset_xform_properties=False,
         )
-        
+        self.moving_pose_num02_weldingRobot_part04_mobile_base_for_material : MovingPose = None
+
         self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station = Articulation(
             prim_paths_expr="/World/envs/.*/obj/HC_factory/num03_rollerbedCNCPipeIntersectionCuttingMachine/part01_station",
             name="num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station",
             reset_xform_properties=False,
         )
-        
+        self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station : MovingPose = None
+
         self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine = Articulation(
             prim_paths_expr="/World/envs/.*/obj/HC_factory/num03_rollerbedCNCPipeIntersectionCuttingMachine/part05_cutting_machine",
             name="num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine",
             reset_xform_properties=False,
         )
+        self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine : MovingPose = None
 
         self.num04_laserCuttingMachine = Articulation(
             prim_paths_expr="/World/envs/.*/obj/HC_factory/num04_laserCuttingMachine",
             name="num04_laserCuttingMachine",
             reset_xform_properties=False,
         )
+        self.moving_pose_num04_laserCuttingMachine : MovingPose = None
 
         self.num05_groovingMachineLarge_part01_large_fixed_base = Articulation(
             prim_paths_expr="/World/envs/.*/obj/HC_factory/num05_groovingMachineLarge/part01_large_fixed_base",
             name="num05_groovingMachineLarge_part01_large_fixed_base",
             reset_xform_properties=False,
         )
+        self.moving_pose_num05_groovingMachineLarge_part01_large_fixed_base : MovingPose = None
 
         self.num05_groovingMachineLarge_part02_large_mobile_base = Articulation(
             prim_paths_expr="/World/envs/.*/obj/HC_factory/num05_groovingMachineLarge/part02_large_mobile_base",
             name="num05_groovingMachineLarge_part02_large_mobile_base",
             reset_xform_properties=False,
         )
-        self.num06_groovingMachineSmall = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num06_groovingMachineSmall",
-            name="num06_groovingMachineSmall",
+        self.moving_pose_num05_groovingMachineLarge_part02_large_mobile_base : MovingPose = None
+
+        self.num06_groovingMachineSmall_part03_small_mobile_base = Articulation(
+            prim_paths_expr="/World/envs/.*/obj/HC_factory/num06_groovingMachineSmall/part03_small_mobile_base",
+            name="num06_groovingMachineSmall_part03_small_mobile_base",
             reset_xform_properties=False,
         )
+        self.num06_groovingMachineSmall_part02_small_mobile_handle = Articulation(
+            prim_paths_expr="/World/envs/.*/obj/HC_factory/num06_groovingMachineSmall/part02_small_mobile_handle",
+            name="num06_groovingMachineSmall_part02_small_mobile_handle",
+            reset_xform_properties=False,
+        )
+        self.moving_pose_num06_groovingMachineSmall_part02_small_mobile_handle : MovingPose = None
+        self.moving_pose_num06_groovingMachineSmall_part03_small_mobile_base : MovingPose = None
+
         self.num07_highPressureFoamingMachine = Articulation(
             prim_paths_expr="/World/envs/.*/obj/HC_factory/num07_highPressureFoamingMachine",
             name="num07_highPressureFoamingMachine",
             reset_xform_properties=False,
         )
+        self.moving_pose_num07_highPressureFoamingMachine : MovingPose = None
 
         # self.obj_part_7_manipulator = RigidPrim(
         #     prim_paths_expr="/World/envs/.*/obj/part7/manipulator2/robotiq_arg2f_base_link", name="obj_part_7_manipulator", reset_xform_properties=False
