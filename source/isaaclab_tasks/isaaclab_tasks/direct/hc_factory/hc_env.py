@@ -155,12 +155,43 @@ class HcEnv(HcEnvBase):
     
     def num01_rotaryPipeAutomaticWeldingMachine_step(self):
         articulation_num01_part_01_station = self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station.get_joint_positions()
-        # articulation_num01_part_02_station = self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station.get_joint_positions()
-        
+        articulation_num01_part_02_station = self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station.get_joint_positions()
 
-        self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station.set_joint_positions(articulation_num01_part_01_station)
-        # self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station.set_joint_positions(articulation_num01_part_02_station)
-        # pose = self.num01_rotaryPipeAutomaticWeldingMachine.get_joint_positions()
+        reset2working_part01 = True
+        reset2working_part02 = True
+        target_pose_part01 : list[float] = joint_pos_dic_num01_rotaryPipeAutomaticWeldingMachine_part_01_station["working_pose"]
+        target_pose_part02 : list[float] = joint_pos_dic_num01_rotaryPipeAutomaticWeldingMachine_part_02_station["working_pose"]
+        target_pose_part01 = torch.tensor(target_pose_part01, device=self.device).unsqueeze(0)
+        target_pose_part02 = torch.tensor(target_pose_part02, device=self.device).unsqueeze(0)
+        if reset2working_part01:
+            if self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_01_station is None:
+                self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_01_station = MovingPose(
+                    start_pose = articulation_num01_part_01_station,
+                    end_pose = target_pose_part01,
+                    time=joint_pos_dic_num01_rotaryPipeAutomaticWeldingMachine_part_01_station["moving_pose_time"],
+                )
+            if not self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_01_station.is_done():
+                next_pose_part01 = self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_01_station.get_next_pose()
+            else:
+                self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_01_station = None
+                reset2working_part01 = False
+                next_pose_part01 = target_pose_part01
+        if reset2working_part02:
+            if self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_02_station is None:
+                self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_02_station = MovingPose(
+                    start_pose = articulation_num01_part_02_station,
+                    end_pose = target_pose_part02,
+                    time=joint_pos_dic_num01_rotaryPipeAutomaticWeldingMachine_part_02_station["moving_pose_time"],
+                )
+            if not self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_02_station.is_done():
+                next_pose_part02 = self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_02_station.get_next_pose()
+            else:
+                self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_02_station = None
+                reset2working_part02 = False
+                next_pose_part02 = target_pose_part02
+
+        self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station.set_joint_positions(next_pose_part01)
+        self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station.set_joint_positions(next_pose_part02)
         return
 
     def num02_weldingRobot_step(self):
@@ -185,7 +216,7 @@ class HcEnv(HcEnvBase):
                 next_pose = target_pose
 
         articulation_pose_mobile_base_for_material = self.num02_weldingRobot_part04_mobile_base_for_material.get_joint_positions()
-        articulation_pose_mobile_base_for_material[:,0] = -2
+        # articulation_pose_mobile_base_for_material[:,0] = -2
 
         self.num02_weldingRobot_part02_robot_arm_and_base.set_joint_positions(next_pose)
         self.num02_weldingRobot_part04_mobile_base_for_material.set_joint_positions(articulation_pose_mobile_base_for_material)

@@ -38,9 +38,9 @@ class HcViewerCfg(ViewerCfg):
     eye: tuple[float, float, float] = (43.5, 12, 25)
     lookat: tuple[float, float, float] = (43.5, 17, 0.5)
 
-    #num05
-    eye: tuple[float, float, float] = (0, 12, 25)
-    lookat: tuple[float, float, float] = (0, 17, 0.5)
+    # #num05
+    # eye: tuple[float, float, float] = (0, 12, 25)
+    # lookat: tuple[float, float, float] = (0, 17, 0.5)
 
 @configclass
 class HcEnvCfg(DirectRLEnvCfg):
@@ -112,13 +112,13 @@ class BoxCapacity:
 ########### key_articulation_pos_dic ###########
 
 joint_pos_dic_num01_rotaryPipeAutomaticWeldingMachine_part_01_station = {
-    "working_pose": [0.0],
+    "working_pose": [0.0, 2.0],
     "moving_pose_time": 100,  
 }
 
 joint_pos_dic_num01_rotaryPipeAutomaticWeldingMachine_part_02_station = {
-    "working_pose": [0.0],
-    "moving_pose_time": 100,  
+    "working_pose": [0.0, 0.5],
+    "moving_pose_time": 50,  
 }
 
 joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base = {

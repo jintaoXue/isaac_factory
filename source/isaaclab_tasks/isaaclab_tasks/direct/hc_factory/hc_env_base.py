@@ -384,12 +384,12 @@ class HcEnvBase(DirectRLEnv):
 
     def _set_up_machine(self):
         self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num01_rotaryPipeAutomaticWeldingMachine/part_01_station",
+            prim_paths_expr="/World/envs/.*/obj/HC_factory/num01_rotaryPipeAutomaticWeldingMachine/part_01_station/track_for_mobile_base",
             name="num01_rotaryPipeAutomaticWeldingMachine_part_01_station",
             reset_xform_properties=False,
         )
         self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num01_rotaryPipeAutomaticWeldingMachine/part_02_station",
+            prim_paths_expr="/World/envs/.*/obj/HC_factory/num01_rotaryPipeAutomaticWeldingMachine/part_02_station/track_for_mobile_base_001",
             name="num01_rotaryPipeAutomaticWeldingMachine_part_02_station",
             reset_xform_properties=False,
         )
