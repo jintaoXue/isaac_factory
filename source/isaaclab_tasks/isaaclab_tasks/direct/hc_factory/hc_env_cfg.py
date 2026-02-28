@@ -35,12 +35,16 @@ class HcViewerCfg(ViewerCfg):
     # lookat: tuple[float, float, float] = (23.5, 17, 0.5)
     
     #num01
-    eye: tuple[float, float, float] = (43.5, 12, 25)
-    lookat: tuple[float, float, float] = (43.5, 17, 0.5)
+    # eye: tuple[float, float, float] = (43.5, 12, 25)
+    # lookat: tuple[float, float, float] = (43.5, 17, 0.5)
 
     # #num05
     # eye: tuple[float, float, float] = (0, 12, 25)
     # lookat: tuple[float, float, float] = (0, 17, 0.5)
+
+    #num03
+    eye: tuple[float, float, float] = (10, 12, 25)
+    lookat: tuple[float, float, float] = (10, 17, 0.5)
 
 @configclass
 class HcEnvCfg(DirectRLEnvCfg):
@@ -133,12 +137,12 @@ joint_pos_dic_num02_weldingRobot_part04_mobile_base_for_material = {
 }
 
 joint_pos_dic_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station = {
-    "working_pose": [10.0],
+    "working_pose": [1.0],
     "moving_pose_time": 100,  
 }
 
 joint_pos_dic_num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine = {
-    "working_pose": [0.0,10.0],
+    "working_pose": [-2.0, 0.3, 0.5],
     "moving_pose_time": 100,  
 }
 
@@ -157,13 +161,13 @@ joint_pos_dic_num05_groovingMachineLarge_part02_large_mobile_base = {
     "moving_pose_time": 100,  
 }
 
-joint_pos_dic_num06_groovingMachineSmall_part03_small_mobile_base = {
-    "working_pose": [-1.0],
+joint_pos_dic_num06_groovingMachineSmall_part01_small_fixed_base = {
+    "working_pose": [-0.3, -0.5],
     "moving_pose_time": 100,  
 }
 
 joint_pos_dic_num06_groovingMachineSmall_part02_small_mobile_handle = {
-    "working_pose": [0.0],
+    "working_pose": [-0.3, -0.5],
     "moving_pose_time": 100,  
 }
 

@@ -445,18 +445,19 @@ class HcEnvBase(DirectRLEnv):
         )
         self.moving_pose_num05_groovingMachineLarge_part02_large_mobile_base : MovingPose = None
 
-        self.num06_groovingMachineSmall_part03_small_mobile_base = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num06_groovingMachineSmall/part03_small_mobile_base",
-            name="num06_groovingMachineSmall_part03_small_mobile_base",
+        self.num06_groovingMachineSmall_part01_small_fixed_base = Articulation(
+            prim_paths_expr="/World/envs/.*/obj/HC_factory/num06_groovingMachineSmall/part01_small_fixed_base",
+            name="num06_groovingMachineSmall_part01_small_fixed_base",
             reset_xform_properties=False,
         )
+        self.moving_pose_num06_groovingMachineSmall_part01_small_fixed_base : MovingPose = None
+
         self.num06_groovingMachineSmall_part02_small_mobile_handle = Articulation(
             prim_paths_expr="/World/envs/.*/obj/HC_factory/num06_groovingMachineSmall/part02_small_mobile_handle",
             name="num06_groovingMachineSmall_part02_small_mobile_handle",
             reset_xform_properties=False,
         )
         self.moving_pose_num06_groovingMachineSmall_part02_small_mobile_handle : MovingPose = None
-        self.moving_pose_num06_groovingMachineSmall_part03_small_mobile_base : MovingPose = None
 
         self.num07_highPressureFoamingMachine = Articulation(
             prim_paths_expr="/World/envs/.*/obj/HC_factory/num07_highPressureFoamingMachine",
