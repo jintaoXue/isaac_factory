@@ -63,6 +63,8 @@ from .hc_env_cfg import (
 
     joint_pos_dic_num07_highPressureFoamingMachine,
 
+    joint_pos_dic_num08_gantry,
+
     MovingPose,
 )
 
@@ -92,7 +94,7 @@ class HcEnv(HcEnvBase):
             self.num05_groovingMachineLarge_step()
             self.num06_groovingMachineSmall_step()
             self.num07_highPressureFoamingMachine_step()
-
+            self.num08_gantry_step()
             self.done_update()
             self.update_task_mask()
 
@@ -394,6 +396,27 @@ class HcEnv(HcEnvBase):
                 reset2working = False
                 next_pose = target_pose
         self.num07_highPressureFoamingMachine.set_joint_positions(next_pose)
+        return
+
+    def num08_gantry_step(self):
+        articulation_num08 = self.num08_gantry.get_joint_positions()
+        reset2working = True
+        target_pose : list[float] = joint_pos_dic_num08_gantry["working_pose"]
+        target_pose = torch.tensor(target_pose, device=self.device).unsqueeze(0)
+        if reset2working:
+            if self.moving_pose_num08_gantry is None:
+                self.moving_pose_num08_gantry = MovingPose(
+                    start_pose = articulation_num08,
+                    end_pose = target_pose,
+                    time=joint_pos_dic_num08_gantry["moving_pose_time"],
+                )
+            if not self.moving_pose_num08_gantry.is_done():
+                next_pose = self.moving_pose_num08_gantry.get_next_pose()
+            else:
+                self.moving_pose_num08_gantry = None
+                reset2working = False
+                next_pose = target_pose
+        self.num08_gantry.set_joint_positions(next_pose)
         return
 
     def get_observations(self) -> dict:

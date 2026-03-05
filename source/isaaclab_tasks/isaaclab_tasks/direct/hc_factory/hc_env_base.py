@@ -466,6 +466,12 @@ class HcEnvBase(DirectRLEnv):
         )
         self.moving_pose_num07_highPressureFoamingMachine : MovingPose = None
 
+        self.num08_gantry = Articulation(
+            prim_paths_expr="/World/envs/.*/obj/HC_factory/num08_gantry/side_frame_A",
+            name="num08_gantry/side_frame_A",
+            reset_xform_properties=False,
+        )
+        self.moving_pose_num08_gantry : MovingPose = None
         # self.obj_part_7_manipulator = RigidPrim(
         #     prim_paths_expr="/World/envs/.*/obj/part7/manipulator2/robotiq_arg2f_base_link", name="obj_part_7_manipulator", reset_xform_properties=False
         # )

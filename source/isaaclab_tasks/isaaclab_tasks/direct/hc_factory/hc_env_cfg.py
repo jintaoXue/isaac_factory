@@ -46,6 +46,14 @@ class HcViewerCfg(ViewerCfg):
     eye: tuple[float, float, float] = (10, 12, 25)
     lookat: tuple[float, float, float] = (10, 17, 0.5)
 
+    #half factory
+    eye: tuple[float, float, float] = (23.5, 2, 40)
+    lookat: tuple[float, float, float] = (23.5, 10, 0.5)
+
+    #num08 gantry
+    eye: tuple[float, float, float] = (0, 10, 100)
+    lookat: tuple[float, float, float] = (0, 2, 0.5)
+
 @configclass
 class HcEnvCfg(DirectRLEnvCfg):
 
@@ -173,6 +181,12 @@ joint_pos_dic_num06_groovingMachineSmall_part02_small_mobile_handle = {
 
 joint_pos_dic_num07_highPressureFoamingMachine = {
     "working_pose": [-0.7],
+    "moving_pose_time": 100,  
+}
+
+joint_pos_dic_num08_gantry = {
+    # [A1, B1, A2, B2] A1,A2 is one side of the gantry (num05-num07), B1,B2 is the other side of the gantry (close to welding robot num01-num04)
+    "working_pose": [10.0, 10.0, 0, 0], 
     "moving_pose_time": 100,  
 }
 
