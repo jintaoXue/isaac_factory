@@ -4,6 +4,7 @@
 #
 # 用法示例（在仓库根目录执行）：
 #   bash map_data/map_tools.sh edit-points
+#   bash map_data/map_tools.sh edit-points-robot
 #   bash map_data/map_tools.sh gen-paths
 #   bash map_data/map_tools.sh view-paths
 #   bash map_data/map_tools.sh overlay-points
@@ -21,12 +22,16 @@ MAP_DIR="$(cd "$(dirname "$0")" && pwd)"
 # 使用当前环境中的 python3（由你自己在 shell/conda 里控制）
 PYTHON_BIN="python3"
 
-# 可以根据需要自行修改下面这几个默认路径/参数
+# 可以根据需要自行修改下面这几个默认路径/参数（人行）
 MAP_IMG="${MAP_DIR}/occupancy_map_asset.png"
 POINTS_JSON="${MAP_DIR}/map_points_human.json"
 PATHS_JSON="${MAP_DIR}/map_paths_human.json"
 OVERLAY_IMG_WITH_POINTS="${MAP_DIR}/occupancy_map_with_points.png"
 DEFAULT_INTERP_STEP="5.0"
+
+# 机器人 AGV 路径编辑默认路径
+MAP_IMG_ROBOT="${MAP_DIR}/occupancy_map_hall_asset.png"
+POINTS_JSON_ROBOT="${MAP_DIR}/map_points_robot.json"
 
 cmd="${1:-}"
 shift || true
@@ -37,6 +42,36 @@ case "${cmd}" in
     "${PYTHON_BIN}" "${MAP_DIR}/map_points_generation.py" \
       --map "${MAP_IMG}" \
       --out "${POINTS_JSON}" \
+      "$@"
+    ;;
+
+  edit-points-robot)
+    # 交互式编辑/标注机器人 AGV 路网点（使用 hall 占据图）
+    "${PYTHON_BIN}" "${MAP_DIR}/map_points_generation.py" \
+      --map "${MAP_IMG_ROBOT}" \
+      --out "${POINTS_JSON_ROBOT}" \
+      "$@"
+    ;;
+
+  edit-map-hall)
+    # 交互式编辑 hall 占据图（画笔/橡皮擦：白=可通行，黑=占据）
+    # 默认保存为 occupancy_map4robot.png（可通过 --out 手动覆盖）
+    "${PYTHON_BIN}" "${MAP_DIR}/map_image_editor.py" \
+      --map "${MAP_IMG_ROBOT}" \
+      --out "${MAP_DIR}/occupancy_map4robot.png" \
+      "$@"
+    ;;
+
+  edit-map)
+    # 交互式编辑任意占据图（用法：bash map_data/map_tools.sh edit-map <png路径> [--out ...]）
+    map_in="${1:-}"
+    if [[ -z "${map_in}" ]]; then
+      echo "用法: bash map_data/map_tools.sh edit-map <png路径> [额外参数...]" >&2
+      exit 2
+    fi
+    shift || true
+    "${PYTHON_BIN}" "${MAP_DIR}/map_image_editor.py" \
+      --map "${map_in}" \
       "$@"
     ;;
 
@@ -74,6 +109,10 @@ case "${cmd}" in
 
 子命令：
   edit-points     交互式编辑/标注路网点，保存到 ${POINTS_JSON}
+  edit-points-robot
+                  交互式编辑/标注机器人 AGV 路网点，保存到 ${POINTS_JSON_ROBOT}，使用 ${MAP_IMG_ROBOT}
+  edit-map-hall   交互式编辑 hall 占据图（画笔/橡皮擦：白=可通行，黑=占据），默认保存为 occupancy_map4robot.png
+  edit-map        交互式编辑任意占据图（画笔/橡皮擦：白=可通行，黑=占据）
   gen-paths       预计算所有点对最短路并保存到 ${PATHS_JSON}，同时生成插值后的 [x,y,yaw] samples
   view-paths      打开查看器，显示地图和所有点编号，在终端输入起终点 id 高亮路径并打印插值耗时
   overlay-points  将路网点叠加到占据图上，生成 ${OVERLAY_IMG_WITH_POINTS}

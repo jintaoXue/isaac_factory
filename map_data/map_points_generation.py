@@ -82,6 +82,32 @@ def _load_points(path: Path) -> list[dict[str, Any]]:
         return out2
 
 
+def _try_fullscreen(fig: plt.Figure) -> None:
+    """尽可能将 matplotlib 窗口全屏显示（best-effort）。"""
+    try:
+        manager = fig.canvas.manager  # type: ignore[attr-defined]
+    except Exception:
+        return
+
+    # 常见后端（Qt / Tk / WX 等）的窗口对象
+    for attr in ("window", "canvas", "frame"):
+        win = getattr(manager, attr, None)
+        if win is None:
+            continue
+        if hasattr(win, "showMaximized"):
+            try:
+                win.showMaximized()
+                return
+            except Exception:
+                pass
+
+    # 退而求其次：使用 matplotlib 自带的 full_screen_toggle
+    try:
+        manager.full_screen_toggle()  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+
 def _export_overlay_image(
     *,
     map_path: Path,
@@ -195,6 +221,9 @@ class RoadmapPointEditor:
             fontsize=10,
             bbox={"facecolor": "white", "alpha": 0.7, "edgecolor": "none"},
         )
+
+        # 默认尽量全屏显示窗口
+        _try_fullscreen(self._fig)
 
         self._fig.canvas.mpl_connect("button_press_event", self._on_click)
         self._fig.canvas.mpl_connect("key_press_event", self._on_key)
