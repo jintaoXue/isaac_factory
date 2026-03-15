@@ -4,11 +4,16 @@
 #
 # 用法示例（在仓库根目录执行）：
 #   bash map_data/map_tools.sh edit-points
-#   bash map_data/map_tools.sh edit-points-robot
 #   bash map_data/map_tools.sh gen-paths
 #   bash map_data/map_tools.sh view-paths
 #   bash map_data/map_tools.sh overlay-points
-#
+
+# bash map_data/map_tools.sh edit-map-hall
+# bash map_data/map_tools.sh edit-map4robot
+# bash map_data/map_tools.sh edit-points-robot
+# bash map_data/map_tools.sh gen-paths-robot
+# bash map_data/map_tools.sh view-paths-robot
+
 # 所有子命令都可以在后面追加额外参数，这些参数会原样传给对应的 python 脚本：
 #   bash map_data/map_tools.sh gen-paths --interp-step 3.0
 #
@@ -58,6 +63,14 @@ case "${cmd}" in
     # 默认保存为 occupancy_map4robot.png（可通过 --out 手动覆盖）
     "${PYTHON_BIN}" "${MAP_DIR}/map_image_editor.py" \
       --map "${MAP_IMG_ROBOT}" \
+      --out "${MAP_DIR}/occupancy_map4robot.png" \
+      "$@"
+    ;;
+
+  edit-map4robot)
+    # 直接编辑 occupancy_map4robot.png 本身（细调/修补现有机器人占据图）
+    "${PYTHON_BIN}" "${MAP_DIR}/map_image_editor.py" \
+      --map "${MAP_DIR}/occupancy_map4robot.png" \
       --out "${MAP_DIR}/occupancy_map4robot.png" \
       "$@"
     ;;
@@ -112,6 +125,7 @@ case "${cmd}" in
   edit-points-robot
                   交互式编辑/标注机器人 AGV 路网点，保存到 ${POINTS_JSON_ROBOT}，使用 ${MAP_IMG_ROBOT}
   edit-map-hall   交互式编辑 hall 占据图（画笔/橡皮擦：白=可通行，黑=占据），默认保存为 occupancy_map4robot.png
+  edit-map4robot  在现有 occupancy_map4robot.png 上直接编辑（细调/修补），默认覆盖该文件
   edit-map        交互式编辑任意占据图（画笔/橡皮擦：白=可通行，黑=占据）
   gen-paths       预计算所有点对最短路并保存到 ${PATHS_JSON}，同时生成插值后的 [x,y,yaw] samples
   view-paths      打开查看器，显示地图和所有点编号，在终端输入起终点 id 高亮路径并打印插值耗时
