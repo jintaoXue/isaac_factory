@@ -74,7 +74,7 @@ class HcEnvCfg(DirectRLEnvCfg):
     observation_space = 2
     state_space = 2    
     #asset path, include machine, human, robot
-    asset_path = os.path.expanduser("~") + "/work/Dataset/HC_data/final_for_isaac/HC_import.usd"
+    asset_path = os.path.expanduser("~") + "/work/Dataset/HC_data/final_for_isaac/HC_import_0323.usd"
     # asset_path = os.path.expanduser("~") + "/work/Dataset/3D_model/all.usd"
     occupancy_map_path = os.path.expanduser("~") + "/work/Dataset/3D_model/occupancy_map.png"
     route_character_file_path = os.path.expanduser("~") + "/work/Dataset/3D_model/routes_character.pkl"
@@ -186,7 +186,7 @@ joint_pos_dic_num07_highPressureFoamingMachine = {
 
 joint_pos_dic_num08_gantry = {
     # [A1, B1, A2, B2] A1,A2 is one side of the gantry (num05-num07), B1,B2 is the other side of the gantry (close to welding robot num01-num04)
-    "working_pose": [10.0, 10.0, 0, 0], 
+    "working_pose": [10.0, 10.0], 
     "moving_pose_time": 100,  
 }
 

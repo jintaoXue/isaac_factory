@@ -5,3 +5,8 @@ Factory production environment by Isaac Sim
 Built on [NVIDIA Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/index.html) and [NVIDIA Isaac Sim](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html)
 
 # Asset Description
+
+# Product process
+
+水喉
+

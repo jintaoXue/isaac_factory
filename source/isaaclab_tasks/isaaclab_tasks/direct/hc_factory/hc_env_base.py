@@ -467,7 +467,7 @@ class HcEnvBase(DirectRLEnv):
         self.moving_pose_num07_highPressureFoamingMachine : MovingPose = None
 
         self.num08_gantry = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num08_gantry/side_frame_A",
+            prim_paths_expr="/World/envs/.*/obj/HC_factory/num08_gantry_group/gantry_01",
             name="num08_gantry/side_frame_A",
             reset_xform_properties=False,
         )
