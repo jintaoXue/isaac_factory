@@ -3,7 +3,7 @@
 # 一键运行本目录下的地图 / 路网相关脚本，方便测试与可视化。
 #
 # 用法示例（在仓库根目录执行）：
-#   bash map_data/map_tools.sh edit-points
+#   bash map_data/map_tools.sh add-points-human
 #   bash map_data/map_tools.sh gen-paths
 #   bash map_data/map_tools.sh view-paths
 #   bash map_data/map_tools.sh overlay-points
@@ -28,25 +28,26 @@ MAP_DIR="$(cd "$(dirname "$0")" && pwd)"
 PYTHON_BIN="python3"
 
 # 可以根据需要自行修改下面这几个默认路径/参数（人行）
-MAP_IMG="${MAP_DIR}/occupancy_map_asset.png"
-POINTS_JSON="${MAP_DIR}/map_points_human.json"
-PATHS_JSON="${MAP_DIR}/map_paths_human.json"
-OVERLAY_IMG_WITH_POINTS="${MAP_DIR}/occupancy_map_with_points.png"
+MAP_IMG_HUMAN="${MAP_DIR}/occupancy_map4human.png"
+POINTS_JSON_HUMAN="${MAP_DIR}/map_points_human.json"
+PATHS_JSON_HUMAN="${MAP_DIR}/map_paths_human.json"
+OVERLAY_IMG_WITH_POINTS_HUMAN="${MAP_DIR}/map_with_points_human.png"
 DEFAULT_INTERP_STEP="5.0"
 
 # 机器人 AGV 路径编辑默认路径
-MAP_IMG_ROBOT="${MAP_DIR}/occupancy_map_hall_asset.png"
+MAP_IMG_ROBOT="${MAP_DIR}/occupancy_map4robot.png"
 POINTS_JSON_ROBOT="${MAP_DIR}/map_points_robot.json"
 
 cmd="${1:-}"
 shift || true
 
 case "${cmd}" in
-  edit-points)
+  add-points-human)
     # 交互式编辑/标注路网点
     "${PYTHON_BIN}" "${MAP_DIR}/map_points_generation.py" \
-      --map "${MAP_IMG}" \
-      --out "${POINTS_JSON}" \
+      --map "${MAP_IMG_HUMAN}" \
+      --out "${POINTS_JSON_HUMAN}" \
+      --overlay-out "${OVERLAY_IMG_WITH_POINTS_HUMAN}" \
       "$@"
     ;;
 
@@ -91,9 +92,9 @@ case "${cmd}" in
   gen-paths)
     # 基于占据图 + 路网点，预计算所有点对最短路，并保存插值后的 [x,y,yaw] samples
     "${PYTHON_BIN}" "${MAP_DIR}/map_paths_generation.py" \
-      --map "${MAP_IMG}" \
-      --points "${POINTS_JSON}" \
-      --out "${PATHS_JSON}" \
+      --map "${MAP_IMG_HUMAN}" \
+      --points "${POINTS_JSON_HUMAN}" \
+      --out "${PATHS_JSON_HUMAN}" \
       --interp-step "${DEFAULT_INTERP_STEP}" \
       "$@"
     ;;
@@ -101,18 +102,18 @@ case "${cmd}" in
   view-paths)
     # 打开查看器：显示地图 + 所有点编号，终端输入起终点 id 高亮路径并打印插值时间
     "${PYTHON_BIN}" "${MAP_DIR}/map_paths_viewer.py" \
-      --paths "${PATHS_JSON}" \
+      --paths "${PATHS_JSON_HUMAN}" \
       "$@"
     ;;
 
   overlay-points)
     # 将当前路网点叠加到占据图上，生成一张带点的地图图片
     "${PYTHON_BIN}" "${MAP_DIR}/map_points_generation.py" \
-      --map "${MAP_IMG}" \
-      --out "${POINTS_JSON}" \
-      --overlay-map "${MAP_IMG}" \
-      --overlay-points "${POINTS_JSON}" \
-      --overlay-out "${OVERLAY_IMG_WITH_POINTS}" \
+      --map "${MAP_IMG_HUMAN}" \
+      --out "${POINTS_JSON_HUMAN}" \
+      --overlay-map "${MAP_IMG_HUMAN}" \
+      --overlay-points "${POINTS_JSON_HUMAN}" \
+      --overlay-out "${OVERLAY_IMG_WITH_POINTS_HUMAN}" \
       "$@"
     ;;
 
@@ -121,15 +122,16 @@ case "${cmd}" in
 用法: bash map_data/map_tools.sh <子命令> [额外参数...]
 
 子命令：
-  edit-points     交互式编辑/标注路网点，保存到 ${POINTS_JSON}
+  add-points-human
+                  交互式编辑/标注路网点，保存到 ${POINTS_JSON_HUMAN}，使用 ${MAP_IMG_HUMAN}
   edit-points-robot
                   交互式编辑/标注机器人 AGV 路网点，保存到 ${POINTS_JSON_ROBOT}，使用 ${MAP_IMG_ROBOT}
   edit-map-hall   交互式编辑 hall 占据图（画笔/橡皮擦：白=可通行，黑=占据），默认保存为 occupancy_map4robot.png
   edit-map4robot  在现有 occupancy_map4robot.png 上直接编辑（细调/修补），默认覆盖该文件
   edit-map        交互式编辑任意占据图（画笔/橡皮擦：白=可通行，黑=占据）
-  gen-paths       预计算所有点对最短路并保存到 ${PATHS_JSON}，同时生成插值后的 [x,y,yaw] samples
+  gen-paths       预计算所有点对最短路并保存到 ${PATHS_JSON_HUMAN}，同时生成插值后的 [x,y,yaw] samples
   view-paths      打开查看器，显示地图和所有点编号，在终端输入起终点 id 高亮路径并打印插值耗时
-  overlay-points  将路网点叠加到占据图上，生成 ${OVERLAY_IMG_WITH_POINTS}
+  overlay-points  将路网点叠加到占据图上，生成 ${OVERLAY_IMG_WITH_POINTS_HUMAN}
 
 所有子命令都支持在后面追加原生 python 参数，例如：
   bash map_data/map_tools.sh gen-paths --interp-step 3.0

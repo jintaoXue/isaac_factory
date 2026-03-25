@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.patches as patches
 
 
 RoadmapFormat = Literal["json", "csv"]
@@ -194,6 +195,20 @@ class EditorConfig:
     marker_size: float = 30.0
     show_labels: bool = True
     delete_radius_px: float = 12.0
+    # If set, after the user clicks `s` to save points, export a "map + points" overlay image.
+    # This is useful when calling the tool from `map_tools.sh add-points-human`.
+    overlay_out_path: Path | None = None
+    overlay_map_path: Path | None = None
+    overlay_radius_px: int = 4
+    overlay_draw_labels: bool = True
+
+    # ===== Box-sprinkle (mouse drag) =====
+    # Left mouse drag draws a rectangle; releasing the mouse will sprinkle points inside it.
+    box_drag_threshold_px: float = 3.0  # 小拖拽视为单点
+    sprinkle_spacing_px: float = 40.0  # 点密度 ~= 框面积 / spacing^2
+    sprinkle_max_points: int = 2000
+    sprinkle_min_dist_px: float = 0.0  # 0 表示不做最小距离约束
+    sprinkle_seed: int | None = None  # 可选：复现撒点结果
 
 
 class RoadmapPointEditor:
@@ -206,11 +221,15 @@ class RoadmapPointEditor:
             self.points = _load_points(cfg.load_path)
 
         self._fig, self._ax = plt.subplots()
-        self._ax.set_title("路网点编辑器（点击添加，按 h 查看快捷键）")
+        self._ax.set_title("路网点编辑器（左键画框撒点，右键删除最近点，按 h 查看快捷键）")
         self._ax.imshow(self.img)
         self._ax.set_aspect("equal")
         self._scatter = None
         self._labels: list[Any] = []
+        self._box_rect: Any | None = None
+        self._dragging_box: bool = False
+        self._box_start_xy: tuple[float, float] | None = None
+        self._box_last_xy: tuple[float, float] | None = None
         self._info_text = self._ax.text(
             0.01,
             0.99,
@@ -227,9 +246,153 @@ class RoadmapPointEditor:
 
         self._fig.canvas.mpl_connect("button_press_event", self._on_click)
         self._fig.canvas.mpl_connect("key_press_event", self._on_key)
+        self._fig.canvas.mpl_connect("motion_notify_event", self._on_motion)
+        self._fig.canvas.mpl_connect("button_release_event", self._on_release)
 
         self._render()
         self._update_info()
+
+    def _start_box(self, x: float, y: float) -> None:
+        self._dragging_box = True
+        self._box_start_xy = (x, y)
+        self._box_last_xy = (x, y)
+
+        if self._box_rect is None:
+            self._box_rect = patches.Rectangle(
+                (x, y),
+                0.1,
+                0.1,
+                linewidth=1.5,
+                edgecolor="cyan",
+                facecolor="cyan",
+                alpha=0.2,
+                zorder=5,
+            )
+            self._ax.add_patch(self._box_rect)
+        else:
+            self._box_rect.set_visible(True)
+            self._box_rect.set_xy((x, y))
+            self._box_rect.set_width(0.1)
+            self._box_rect.set_height(0.1)
+
+        self._fig.canvas.draw_idle()
+
+    def _update_box(self, x: float, y: float) -> None:
+        if not self._dragging_box or self._box_start_xy is None:
+            return
+        x0, y0 = self._box_start_xy
+        self._box_last_xy = (x, y)
+
+        x_min = min(x0, x)
+        x_max = max(x0, x)
+        y_min = min(y0, y)
+        y_max = max(y0, y)
+
+        if self._box_rect is None:
+            return
+        self._box_rect.set_xy((x_min, y_min))
+        self._box_rect.set_width(max(x_max - x_min, 0.1))
+        self._box_rect.set_height(max(y_max - y_min, 0.1))
+        self._fig.canvas.draw_idle()
+
+    def _finish_box(self, x: float, y: float) -> None:
+        if not self._dragging_box:
+            return
+        self._dragging_box = False
+
+        if self._box_rect is not None:
+            try:
+                self._box_rect.set_visible(False)
+            except Exception:
+                pass
+
+        if self._box_start_xy is None:
+            return
+
+        x0, y0 = self._box_start_xy
+        dx = abs(x - x0)
+        dy = abs(y - y0)
+        threshold = float(self.cfg.box_drag_threshold_px)
+        if dx <= threshold and dy <= threshold:
+            # Treat as a single click.
+            self._add_point(x0, y0)
+            return
+
+        self._sprinkle_points_in_box(x0, y0, x, y, dx=dx, dy=dy)
+
+    def _sprinkle_points_in_box(
+        self,
+        x0: float,
+        y0: float,
+        x1: float,
+        y1: float,
+        *,
+        dx: float,
+        dy: float,
+    ) -> None:
+        h, w = int(self.img.shape[0]), int(self.img.shape[1])
+        if h <= 1 or w <= 1:
+            self._update_info("图像尺寸过小，无法撒点")
+            return
+
+        x_min = float(max(0.0, min(x0, x1)))
+        x_max = float(min(w - 1.0, max(x0, x1)))
+        y_min = float(max(0.0, min(y0, y1)))
+        y_max = float(min(h - 1.0, max(y0, y1)))
+
+        if x_max - x_min <= 0.5 or y_max - y_min <= 0.5:
+            self._update_info("框太小，已忽略撒点")
+            return
+
+        width = x_max - x_min
+        height = y_max - y_min
+        spacing = max(float(self.cfg.sprinkle_spacing_px), 1e-6)
+        area = width * height
+
+        n_est = int(area / (spacing * spacing))
+        n_target = max(1, n_est)
+        n_target = min(n_target, int(self.cfg.sprinkle_max_points))
+
+        min_dist_px = float(self.cfg.sprinkle_min_dist_px)
+        min_dist2 = min_dist_px * min_dist_px
+
+        rng = np.random.default_rng(self.cfg.sprinkle_seed)
+
+        if self.points:
+            coords_all = np.array([(float(p["x"]), float(p["y"])) for p in self.points], dtype=np.float32)
+        else:
+            coords_all = np.empty((0, 2), dtype=np.float32)
+
+        accepted: list[tuple[float, float]] = []
+        attempts = 0
+        max_attempts = max(50, n_target * 20)
+        while len(accepted) < n_target and attempts < max_attempts:
+            attempts += 1
+            x = float(rng.uniform(x_min, x_max))
+            y = float(rng.uniform(y_min, y_max))
+
+            if min_dist2 > 0.0 and coords_all.shape[0] > 0:
+                d2 = (coords_all[:, 0] - x) ** 2 + (coords_all[:, 1] - y) ** 2
+                if float(d2.min()) < min_dist2:
+                    continue
+
+            accepted.append((x, y))
+            if coords_all.shape[0] == 0:
+                coords_all = np.array([[x, y]], dtype=np.float32)
+            else:
+                coords_all = np.vstack([coords_all, np.array([[x, y]], dtype=np.float32)])
+
+        if len(accepted) == 0:
+            self._update_info("撒点失败（可能密度/最小间距约束过强）")
+            return
+
+        start_id = self._next_id()
+        for k, (x, y) in enumerate(accepted):
+            self.points.append({"id": start_id + k, "x": float(x), "y": float(y)})
+
+        self._render()
+        extra = f"（已生成 {len(accepted)}/{n_target} 点）" if len(accepted) != n_target else ""
+        self._update_info(f"框内撒点：{len(accepted)} 点，dx={dx:.1f}, dy={dy:.1f}{extra}")
 
     def _update_info(self, extra: str | None = None) -> None:
         n = len(self.points)
@@ -322,9 +485,27 @@ class RoadmapPointEditor:
         )
         self._update_info(f"已保存: {self.cfg.out_path}（点数 {len(self.points)}）")
 
+        # Optional: export overlay image after saving.
+        if self.cfg.overlay_out_path is not None:
+            try:
+                _export_overlay_image(
+                    map_path=self.cfg.overlay_map_path or self.cfg.map_path,
+                    points_path=self.cfg.out_path,
+                    out_image_path=self.cfg.overlay_out_path,
+                    radius_px=int(self.cfg.overlay_radius_px),
+                    draw_labels=bool(self.cfg.overlay_draw_labels),
+                )
+                print(f"[INFO] 已导出叠加图到: {self.cfg.overlay_out_path}")
+                # Keep UI message short to avoid flicker
+                self._update_info(
+                    f"已保存: {self.cfg.out_path}（点数 {len(self.points)}）\n已导出叠加图: {self.cfg.overlay_out_path}"
+                )
+            except Exception as e:
+                print(f"[WARN] 叠加图导出失败（仍已保存点文件）: {e}")
+
     def _print_help(self) -> None:
         help_msg = (
-            "鼠标左键: 添加点\n"
+            "鼠标左键: 按下拖拽画框撒点（小拖拽视为单点）\n"
             "鼠标右键: 删除最近点（需在阈值内）\n"
             "u: 撤销（删除最后一个点）\n"
             "d: 删除鼠标附近最近点\n"
@@ -343,9 +524,35 @@ class RoadmapPointEditor:
             return
         x, y = float(event.xdata), float(event.ydata)
         if event.button == 1:
-            self._add_point(x, y)
-        elif event.button == 3:
+            # Start box drag; the final behavior is decided on mouse release.
+            self._start_box(x, y)
+            return
+        if event.button == 3:
+            # Cancel any current box drag and delete nearest point.
+            if self._dragging_box:
+                self._dragging_box = False
             self._delete_nearest(x, y)
+            return
+
+    def _on_motion(self, event) -> None:
+        if not self._dragging_box:
+            return
+        if event.inaxes != self._ax:
+            return
+        if event.xdata is None or event.ydata is None:
+            return
+        self._update_box(float(event.xdata), float(event.ydata))
+
+    def _on_release(self, event) -> None:
+        if event.inaxes != self._ax:
+            return
+        if not self._dragging_box:
+            return
+        if event.button != 1:
+            return
+        if event.xdata is None or event.ydata is None:
+            return
+        self._finish_box(float(event.xdata), float(event.ydata))
 
     def _on_key(self, event) -> None:
         key = (event.key or "").lower()
@@ -399,7 +606,7 @@ class RoadmapPointEditor:
 
 def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="根据占据栅格图交互式生成路网点（鼠标点选添加/删除，保存为 JSON 或 CSV）"
+        description="根据占据栅格图交互式生成路网点（左键画框撒点/右键删除，保存为 JSON 或 CSV）"
     )
     p.add_argument(
         "--map",
@@ -422,6 +629,17 @@ def _build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--marker-size", type=float, default=30.0, help="点的显示大小（matplotlib scatter size）")
     p.add_argument("--no-labels", action="store_true", help="不显示点序号")
     p.add_argument("--delete-radius", type=float, default=12.0, help="删除最近点的半径阈值（像素）")
+
+    p.add_argument("--box-drag-threshold", type=float, default=3.0, help="画框时的最小拖拽距离(px)，否则视为单点")
+    p.add_argument(
+        "--sprinkle-spacing",
+        type=float,
+        default=40.0,
+        help="撒点密度：点数约=框面积/spacing^2（像素，越小越密）",
+    )
+    p.add_argument("--sprinkle-max-points", type=int, default=2000, help="框内最多生成点数")
+    p.add_argument("--sprinkle-min-dist", type=float, default=0.0, help="新点之间最小距离(px)，0=不限制")
+    p.add_argument("--sprinkle-seed", type=int, default=None, help="随机种子（可选，便于复现）")
 
     p.add_argument(
         "--overlay-map",
@@ -449,19 +667,20 @@ def _build_argparser() -> argparse.ArgumentParser:
 def main() -> None:
     args = _build_argparser().parse_args()
 
-    # 导出叠加图模式：只要用户提供了 --overlay-out，就直接导出并退出
-    if args.overlay_out is not None:
-        overlay_map = Path(args.overlay_map).expanduser() if args.overlay_map else Path(args.map).expanduser()
-        if args.overlay_points:
-            overlay_points = Path(args.overlay_points).expanduser()
-        elif args.load:
-            overlay_points = Path(args.load).expanduser()
-        else:
-            overlay_points = Path(args.out).expanduser()
+    # 两种模式：
+    # 1) "导出叠加图并退出"：当用户显式提供了 --overlay-points 时，认为是无交互导出需求。
+    # 2) "交互编辑 + 保存后导出叠加图"：当提供 --overlay-out 但不提供 --overlay-points 时
+    #    时，认为调用方（例如 map_tools.sh add-points-human）希望编辑时也自动生成 overlay。
+    overlay_out_path = Path(args.overlay_out).expanduser() if args.overlay_out else None
+    overlay_map_path = Path(args.overlay_map).expanduser() if args.overlay_map else None
+    export_only = args.overlay_out is not None and args.overlay_points is not None
+    if export_only:
+        overlay_map = overlay_map_path or Path(args.map).expanduser()
+        overlay_points = Path(args.overlay_points).expanduser()  # type: ignore[arg-type]
         _export_overlay_image(
             map_path=overlay_map,
             points_path=overlay_points,
-            out_image_path=Path(args.overlay_out).expanduser(),
+            out_image_path=overlay_out_path,  # type: ignore[arg-type]
             radius_px=int(args.overlay_radius),
             draw_labels=not bool(args.overlay_no_labels),
         )
@@ -474,6 +693,15 @@ def main() -> None:
         marker_size=float(args.marker_size),
         show_labels=not bool(args.no_labels),
         delete_radius_px=float(args.delete_radius),
+        overlay_out_path=overlay_out_path,
+        overlay_map_path=overlay_map_path,
+        overlay_radius_px=int(args.overlay_radius),
+        overlay_draw_labels=not bool(args.overlay_no_labels),
+        box_drag_threshold_px=float(args.box_drag_threshold),
+        sprinkle_spacing_px=float(args.sprinkle_spacing),
+        sprinkle_max_points=int(args.sprinkle_max_points),
+        sprinkle_min_dist_px=float(args.sprinkle_min_dist),
+        sprinkle_seed=args.sprinkle_seed,
     )
     editor = RoadmapPointEditor(cfg)
     editor.show()
