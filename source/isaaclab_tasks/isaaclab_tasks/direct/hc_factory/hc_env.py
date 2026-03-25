@@ -63,7 +63,7 @@ from .hc_env_cfg import (
 
     joint_pos_dic_num07_highPressureFoamingMachine,
 
-    joint_pos_dic_num08_gantry,
+    joint_pos_dic_num08_gantry_group,
 
     MovingPose,
 )
@@ -94,7 +94,7 @@ class HcEnv(HcEnvBase):
             self.num05_groovingMachineLarge_step()
             self.num06_groovingMachineSmall_step()
             self.num07_highPressureFoamingMachine_step()
-            self.num08_gantry_step()
+            self.num08_gantry_group_step()
             self.done_update()
             self.update_task_mask()
 
@@ -134,6 +134,39 @@ class HcEnv(HcEnvBase):
         self.extras['action_info'] = task
         self.caculate_metric_action(actions)
         return actions
+
+    def _update_moving_pose(
+        self,
+        *,
+        moving_pose_attr: str,
+        start_pose: torch.Tensor,
+        end_pose: torch.Tensor,
+        moving_pose_time: float,
+    ) -> Tuple[torch.Tensor, bool]:
+        """通用 helper：在 reset2working 为 True 时推进 MovingPose。
+
+        返回：
+          - next_pose: 本步要设置的关节姿态
+          - reset2working: 若 MovingPose 已完成，则置 False（用于保持与原逻辑一致）
+        """
+        moving_pose = getattr(self, moving_pose_attr)
+        next_pose = end_pose
+
+        if moving_pose is None:
+            moving_pose = MovingPose(
+                start_pose=start_pose,
+                end_pose=end_pose,
+                time=moving_pose_time,
+            )
+            setattr(self, moving_pose_attr, moving_pose)
+
+        if not moving_pose.is_done():
+            next_pose = moving_pose.get_next_pose()
+        else:
+            setattr(self, moving_pose_attr, None)
+            next_pose = end_pose
+
+        return next_pose
 
     def task_manager_step(self, actions, action_extra=None):
         self.task_manager.step()
@@ -398,25 +431,22 @@ class HcEnv(HcEnvBase):
         self.num07_highPressureFoamingMachine.set_joint_positions(next_pose)
         return
 
-    def num08_gantry_step(self):
-        articulation_num08 = self.num08_gantry.get_joint_positions()
-        reset2working = True
-        target_pose : list[float] = joint_pos_dic_num08_gantry["working_pose"]
-        target_pose = torch.tensor(target_pose, device=self.device).unsqueeze(0)
-        if reset2working:
-            if self.moving_pose_num08_gantry is None:
-                self.moving_pose_num08_gantry = MovingPose(
-                    start_pose = articulation_num08,
-                    end_pose = target_pose,
-                    time=joint_pos_dic_num08_gantry["moving_pose_time"],
-                )
-            if not self.moving_pose_num08_gantry.is_done():
-                next_pose = self.moving_pose_num08_gantry.get_next_pose()
-            else:
-                self.moving_pose_num08_gantry = None
-                reset2working = False
-                next_pose = target_pose
-        self.num08_gantry.set_joint_positions(next_pose)
+    def num08_gantry_group_step(self):
+        articulation_num08_gantry_group = self.num08_gantry_group.get_joint_positions()
+
+
+        target_pose_gantry_group : list[float] = joint_pos_dic_num08_gantry_group["working_pose"]
+        target_pose_gantry_group = torch.tensor(target_pose_gantry_group, device=self.device).unsqueeze(0)
+        # target_pose = torch.tensor(target_pose, device=self.device).unsqueeze(0)
+        next_pose_gantry_group = self._update_moving_pose(
+            moving_pose_attr="moving_pose_num08_gantry_group",
+            start_pose=articulation_num08_gantry_group,
+            end_pose=target_pose_gantry_group,
+            moving_pose_time=joint_pos_dic_num08_gantry_group["moving_pose_time"],
+        )
+
+        self.num08_gantry_group.set_joint_positions(next_pose_gantry_group)
+
         return
 
     def get_observations(self) -> dict:

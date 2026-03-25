@@ -74,7 +74,7 @@ class HcEnvCfg(DirectRLEnvCfg):
     observation_space = 2
     state_space = 2    
     #asset path, include machine, human, robot
-    asset_path = os.path.expanduser("~") + "/work/Dataset/HC_data/final_for_isaac/HC_import_0323.usd"
+    asset_path = os.path.expanduser("~") + "/work/Dataset/HC_data/final_for_isaac/HC_import.usd"
     # asset_path = os.path.expanduser("~") + "/work/Dataset/3D_model/all.usd"
     occupancy_map_path = os.path.expanduser("~") + "/work/Dataset/3D_model/occupancy_map.png"
     route_character_file_path = os.path.expanduser("~") + "/work/Dataset/3D_model/routes_character.pkl"
@@ -184,9 +184,9 @@ joint_pos_dic_num07_highPressureFoamingMachine = {
     "moving_pose_time": 100,  
 }
 
-joint_pos_dic_num08_gantry = {
+joint_pos_dic_num08_gantry_group = {
     # [A1, B1, A2, B2] A1,A2 is one side of the gantry (num05-num07), B1,B2 is the other side of the gantry (close to welding robot num01-num04)
-    "working_pose": [10.0, 10.0], 
+    "working_pose": [10.0, 10.0, 10.0, 10.0, 5.0, -5.0, 5.0, -5.0],
     "moving_pose_time": 100,  
 }
 
@@ -202,4 +202,5 @@ class MovingPose:
         return self.start_pose + (self.end_pose - self.start_pose) * self.step_time / self.time
 
     def is_done(self):
-        return self.step_time >= self.time
+        dis = torch.norm(self.start_pose - self.end_pose)
+        return dis < 0.01 or self.step_time >= self.time 

@@ -466,12 +466,31 @@ class HcEnvBase(DirectRLEnv):
         )
         self.moving_pose_num07_highPressureFoamingMachine : MovingPose = None
 
-        self.num08_gantry = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num08_gantry_group/gantry_01",
-            name="num08_gantry/side_frame_A",
+        self.num08_gantry_group = Articulation(
+            prim_paths_expr="/World/envs/.*/obj/HC_factory/num08_gantry_group/gantry_00",
+            name="num08_gantry_group",
             reset_xform_properties=False,
         )
-        self.moving_pose_num08_gantry : MovingPose = None
+        self.moving_pose_num08_gantry_group : MovingPose = None
+        # self.num08_gantry_01 = Articulation(
+        #     prim_paths_expr="/World/envs/.*/obj/HC_factory/num08_gantry_group/gantry_01",
+        #     name="num08_gantry_01",
+        #     reset_xform_properties=False,
+        # )
+        # self.moving_pose_num08_gantry_01 : MovingPose = None
+
+        # self.num08_gantry_02 = Articulation(
+        #     prim_paths_expr="/World/envs/.*/obj/HC_factory/num08_gantry_group/gantry_02",
+        #     name="num08_gantry_02",
+        #     reset_xform_properties=False,
+        # )
+        # self.moving_pose_num08_gantry_02 : MovingPose = None
+        # self.num08_gantry_03 = Articulation(
+        #     prim_paths_expr="/World/envs/.*/obj/HC_factory/num08_gantry_group/gantry_03",
+        #     name="num08_gantry_03",
+        #     reset_xform_properties=False,
+        # )
+        # self.moving_pose_num08_gantry_03 : MovingPose = None
         # self.obj_part_7_manipulator = RigidPrim(
         #     prim_paths_expr="/World/envs/.*/obj/part7/manipulator2/robotiq_arg2f_base_link", name="obj_part_7_manipulator", reset_xform_properties=False
         # )
