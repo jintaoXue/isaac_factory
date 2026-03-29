@@ -7,6 +7,13 @@ import torch
 from ...utils import quaternion
 from .human_fatigue_model import Characters
 from .hc_env_cfg import HcEnvCfg, BoxCapacity
+from .hc_task_cfg import (
+    TaskConfig, HumanConfig, AgvConfig, BoxConfig,
+    MaterialConfig, MachineConfig, TimingConfig,
+    get_task_name, get_task_id, get_human_state_name,
+    get_agv_state_name, get_material_state_name,
+    get_machine_operation_time
+)
 import copy
 
 def random_zero_index(data):
@@ -38,51 +45,41 @@ def find_closest_pose(pose_dic, ego_pose, in_dis=5):
     return key
 
 class TaskManager(object):
+    """DEMO版本 - 简化的任务管理器，只管理机器任务"""
     def __init__(self, character_list, agv_list, box_list, cuda_device, env_cfg, train_cfg) -> None:
         self.cuda_device = cuda_device
-        self.characters = Characters(character_list=character_list, env_cfg=env_cfg, train_cfg=train_cfg)
-        self.agvs = Agvs(agv_list = agv_list, env_cfg=env_cfg, train_cfg=train_cfg)
-        self.boxs = TransBoxs(box_list=box_list, env_cfg=env_cfg)
-        self.task_dic =  {-1:'none', 0: 'hoop_preparing', 1:'bending_tube_preparing', 2:'hoop_loading_inner', 3:'bending_tube_loading_inner', 4:'hoop_loading_outer', 
-                          5:'bending_tube_loading_outer', 6:'cutting_cube', 7:'collect_product', 8:'placing_product'}
+        
+        # DEMO: 保留类定义但不初始化（因为不使用）
+        # self.characters = Characters(character_list=character_list, env_cfg=env_cfg, train_cfg=train_cfg)
+        # self.agvs = Agvs(agv_list = agv_list, env_cfg=env_cfg, train_cfg=train_cfg)
+        # self.boxs = TransBoxs(box_list=box_list, env_cfg=env_cfg)
+        
+        # 使用集中配置的任务字典
+        self.task_dic = TaskConfig.TASK_DICT
+        self.task_dic_inverse = TaskConfig.TASK_DICT_INVERSE
+        
         self.task_in_set = set()
         self.task_in_dic = {}
-        # self.task_mask = torch.zeros(len(self.task_dic), device=cuda_device)
-        self.task_dic_inverse = {value: key for key, value in self.task_dic.items()}
         self.cfg = env_cfg
         self._test = train_cfg['test']
-        if self._test:
-           self._eval_times = train_cfg['test_times']
-           self.acti_num_agv = train_cfg['acti_agv']
-           self.acti_num_charc = train_cfg['acti_charc']
+        
+        # DEMO: 简化状态管理
+        self.current_task = None  # 当前执行的任务
+        self.task_state = 'idle'  # idle, running, completed
         self.obs = None
         return
     
-    def reset(self, acti_num_charc, acti_num_agv):
-
-        assert not ((acti_num_charc is None) ^ (acti_num_agv is None)), "warning"
-        acti_num_agv = 0
-        acti_num_charc = 0
-        if self._test:
-            if acti_num_charc is None:
-                acti_num_agv = self.acti_num_agv
-                acti_num_charc = self.acti_num_charc
-        elif acti_num_charc is None:
-            acti_num_agv =  np.random.randint(1, self.cfg.n_max_robot+1)
-            acti_num_charc = np.random.randint(1, self.cfg.n_max_human+1)
-            '''gantt chart'''
-            # acti_num_agv =  2
-            # acti_num_charc = 2
-        self.ini_worker_pose = self.characters.reset(acti_num_charc)
-        self.ini_agv_pose = self.agvs.reset(acti_num_agv)
-        self.ini_box_pose = self.boxs.reset(acti_num_agv)
+    def reset(self, acti_num_charc=None, acti_num_agv=None):
+        """DEMO版本 - 简化的重置"""
+        # DEMO: 不需要工人和AGV
+        # self.ini_worker_pose = self.characters.reset(acti_num_charc)
+        # self.ini_agv_pose = self.agvs.reset(acti_num_agv)
+        # self.ini_box_pose = self.boxs.reset(acti_num_agv)
+        
         self.task_in_set = set()
         self.task_in_dic = {}
-        #fatigue datetype: 'task': {'phy_fatigue': torch.tensor([0.]), 'psy_fatigue': torch.tensor([0.]), 'state': {}}
-        self.fatigue_data = {}
-        self.fatigue_data_list = []
-        # self.task_mask = torch.zeros(len(self.task_dic), device=self.cuda_device)
-        # self.task_mask[0] = 1
+        self.current_task = None
+        self.task_state = 'idle'
 
     def find_closest_pose(self, pose_dic, ego_pose, in_dis=5):
         dis = np.inf
@@ -98,6 +95,16 @@ class TaskManager(object):
         return key
 
     def assign_task(self, task):
+        """DEMO版本 - 简化的任务分配，直接分配给机器"""
+        if task == 'pipe_production':
+            self.current_task = task
+            self.task_state = 'running'
+            self.task_in_set.add(task)
+            return True
+        return False
+    
+    def assign_task_old(self, task):
+        """原版本 - 保留但不使用"""
         
         charac_idx = self.characters.assign_task(task, random = False)
         if task in self.characters.task_range:
@@ -207,24 +214,11 @@ class TaskManager(object):
 
     
 class Materials(object):
-
-    def __init__(self, cube_list : list, hoop_list : list, bending_tube_list : list, upper_tube_list: list, product_list : list) -> None:
-
-        self.cube_list = cube_list
-        self.upper_tube_list = upper_tube_list
-        self.hoop_list = hoop_list
-        self.bending_tube_list = bending_tube_list
-        self.product_list = product_list
-
-        self.cube_state_dic = {-1:"done", 0:"wait", 1:"in_list", 2:"conveying", 3:"conveyed", 4:"cutting", 5:"cut_done", 6:"pick_up_place_cut", 
-                                   7:"placed_station_inner", 8:"placed_station_outer", 9:"welding_left", 10:"welding_right", 11:"welding_upper",
-                                   12:"process_done", 13:"pick_up_place_product"}
-        self.hoop_state_dic = {-1:"done", 0:"wait", 1:"in_box", 2:"on_table", 3:"in_list", 4:"loading", 5:"loaded"}
-        self.bending_tube_state_dic = {-1:"done", 0:"wait", 1:"in_box",  2:"on_table", 3:"in_list", 4:"loading", 5:"loaded"}
-        self.upper_tube_state_dic = {}
-        self.product_state_dic = {0:"waitng", 1:'collected', 2:"placed"}
-        self.hoop_state_dic = {0:"wait", 1:"in_box", 2:"on_table"}
-        self.bending_tube_state_dic = {0:"wait", 1:"in_box", 2:"on_table"}
+    """DEMO版本 - 简化的材料类，暂时不使用"""
+    
+    def __init__(self, cube_list=None, hoop_list=None, bending_tube_list=None, upper_tube_list=None, product_list=None) -> None:
+        # DEMO: 保留类定义但简化实现
+        pass
 
         self.initial_hoop_pose = []
         self.initial_bending_tube_pose = []
@@ -367,6 +361,13 @@ class Materials(object):
 
 
 class Agvs(object):
+    """DEMO版本 - 简化的AGV类，暂时不使用"""
+    def __init__(self, agv_list=None, env_cfg=None, train_cfg=None):
+        # DEMO: 保留类定义但简化实现
+        pass
+
+class Agvs_old(object):
+    """原版本 - 保留但不使用"""
 
     def __init__(self, agv_list, env_cfg : HcEnvCfg, train_cfg) -> None:
         self.agv_list = agv_list
@@ -569,6 +570,13 @@ class Agvs(object):
 
 
 class TransBoxs(object):
+    """DEMO版本 - 简化的运输箱类，暂时不使用"""
+    def __init__(self, box_list=None, env_cfg=None):
+        # DEMO: 保留类定义但简化实现
+        pass
+
+class TransBoxs_old(object):
+    """原版本 - 保留但不使用"""
 
     def __init__(self, box_list, env_cfg : HcEnvCfg) -> None:
         self.box_list = box_list

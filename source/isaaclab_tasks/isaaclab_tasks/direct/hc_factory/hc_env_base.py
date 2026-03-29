@@ -32,9 +32,17 @@ from isaacsim.core.api.world import World
 
 from .hc_env_task_manager import Materials, TaskManager
 from .hc_map_route import MapRoute
+from .hc_env_cfg import joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base, MovingPose
+
+# 引入集中配置
+from .hc_task_cfg import (
+    TaskConfig, HumanConfig, AgvConfig, BoxConfig,
+    MaterialConfig, MachineConfig, TimingConfig,
+    get_task_name, get_machine_operation_time
+)
+
 from abc import abstractmethod
 import numpy as np
-from .hc_env_cfg import joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base, MovingPose
 
 
 class HcEnvBase(DirectRLEnv):
@@ -47,47 +55,59 @@ class HcEnvBase(DirectRLEnv):
         self.env_rule_based_exploration = cfg.train_cfg['params']['config']['env_rule_based_exploration']
         
     def _setup_scene(self):
+        """DEMO版本 - 简化的场景设置"""
         assert self.scene.num_envs == 1, "Temporary only support num_envs == 1"
         assert self.cfg._valid_train_cfg()
         self.cuda_device = torch.device(self.cfg.cuda_device_str)
+        
         for i in range(self.scene.num_envs):
             sub_env_path = f"/World/envs/env_{i}"
-            # the usd file already has a ground plane
+            # 加载USD文件
             add_reference_to_stage(usd_path = self.cfg.asset_path, prim_path = sub_env_path + "/obj")
         
-        # for debug, visualize only prims 
-        # stage_utils.print_stage_prim_paths()
-        '''test settings'''
+        # DEMO: 不需要测试设置
         self._test = self.cfg.train_cfg['params']['config']['test']
-        if self._test:
-            # np.random.seed(self.cfg.train_cfg['params']['seed'])
-            np.random.seed(1)
-            self.set_up_test_setting(self.cfg.train_cfg['params']['config'])
+        # if self._test:
+        #     np.random.seed(1)
+        #     self.set_up_test_setting(self.cfg.train_cfg['params']['config'])
+        
         self.train_env_len_settings = self.cfg.train_env_len_setting
         
-        cube_list, hoop_list, bending_tube_list, upper_tube_list, product_list = [],[],[],[],[]
-        for i in range(self.cfg.n_max_product):
-            cube, hoop, bending_tube, upper_tube, product = self.set_up_material(num=i)
-            cube_list.append(cube)
-            hoop_list.append(hoop)
-            bending_tube_list.append(bending_tube)
-            upper_tube_list.append(upper_tube)
-            product_list.append(product)
-        #materials states, machine state
-        self._set_up_machine()
-        self.materials : Materials = Materials(cube_list=cube_list, hoop_list=hoop_list, bending_tube_list=bending_tube_list, upper_tube_list=upper_tube_list, product_list = product_list)
-        '''for humans workers (characters), robots (agv+boxs) and task manager'''
-        character_list =self.set_up_human(num=self.cfg.n_max_human)
-        agv_list, box_list = self.set_up_robot(num=self.cfg.n_max_robot)
-        self.task_manager : TaskManager = TaskManager(character_list, agv_list, box_list, self.cuda_device, self.cfg, self.cfg.train_cfg['params']['config'])
-        map_route = MapRoute(self.cfg)
-        self.task_manager.characters.routes_dic, self.task_manager.agvs.routes_dic = map_route.load_pre_def_routes()
-        self.task_manager.boxs.routes_dic = self.task_manager.agvs.routes_dic
-
-        # # clone and replicate
-        # self.scene.clone_environments(copy_from_source=False)
+        # DEMO: 不需要材料
+        # cube_list, hoop_list, bending_tube_list, upper_tube_list, product_list = [],[],[],[],[]
+        # for i in range(self.cfg.n_max_product):
+        #     cube, hoop, bending_tube, upper_tube, product = self.set_up_material(num=i)
+        #     cube_list.append(cube)
+        #     hoop_list.append(hoop)
+        #     bending_tube_list.append(bending_tube)
+        #     upper_tube_list.append(upper_tube)
+        #     product_list.append(product)
         
-        # add lights
+        # 设置机器（只设置num03）
+        self._set_up_machine()
+        
+        # DEMO: 简化的材料类（空实现）
+        self.materials : Materials = Materials()
+        
+        # DEMO: 不需要人类和AGV
+        # character_list =self.set_up_human(num=self.cfg.n_max_human)
+        # agv_list, box_list = self.set_up_robot(num=self.cfg.n_max_robot)
+        character_list = []
+        agv_list = []
+        box_list = []
+        
+        # 任务管理器
+        self.task_manager : TaskManager = TaskManager(
+            character_list, agv_list, box_list, 
+            self.cuda_device, self.cfg, self.cfg.train_cfg['params']['config']
+        )
+        
+        # DEMO: 不需要路径规划
+        # map_route = MapRoute(self.cfg)
+        # self.task_manager.characters.routes_dic, self.task_manager.agvs.routes_dic = map_route.load_pre_def_routes()
+        # self.task_manager.boxs.routes_dic = self.task_manager.agvs.routes_dic
+        
+        # 添加灯光
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
 
