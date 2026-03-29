@@ -23,10 +23,10 @@ from isaaclab.utils import configclass
 import os
 from .....isaaclab.isaaclab.envs.common import ViewerCfg
 
-# 引入集中任务配置
-from .hc_task_cfg import TaskConfig
-high_level_task_dic = TaskConfig.TASK_DICT
-high_level_task_rev_dic = TaskConfig.TASK_DICT_INVERSE
+#high_level_task
+high_level_task_dic =  {-1:'none', 0: 'hoop_preparing', 1:'bending_tube_preparing', 2:'hoop_loading_inner', 3:'bending_tube_loading_inner', 4:'hoop_loading_outer', 
+                5:'bending_tube_loading_outer', 6:'cutting_cube', 7:'collect_product', 8:'placing_product'}
+high_level_task_rev_dic = {v: k for k, v in high_level_task_dic.items()}
 
 @configclass
 class HcViewerCfg(ViewerCfg):

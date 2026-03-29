@@ -72,59 +72,67 @@ MAX_FLOAT = 3.40282347e38
 # import numpy as np
 
 class HcEnv(HcEnvBase):
-    """DEMO版本 - 简化的环境，只运行num03机器"""
             
     def step(self, action: torch.Tensor | None, action_extra = None
         ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Step buffers. Refresh tensors. Compute observations and reward. Reset environments."""
-        # DEMO: 简化版本的step
-        # if self.env_rule_based_exploration:
-        #     action = self.get_rule_based_action() if self.episode_length_buf[0] > 0 else action
-        
+        # process actions debug TODO
+        if self.env_rule_based_exploration:
+            action = self.get_rule_based_action() if self.episode_length_buf[0] > 0 else action
         self.task_manager_step(action, action_extra)
         self._pre_physics_step(action)
-        
+        ###TODO only support single env training
+        # action_mask
         while True:
             self.reset_step()
             self.episode_length_buf[:] += 1
-            
-            # DEMO: 只运行需要的步骤
-            # self.material_step()  # 不需要材料
-            # self.num01_rotaryPipeAutomaticWeldingMachine_step()  # 不需要num01
-            # self.num02_weldingRobot_step()  # 不需要num02
-            self.num03_rollerbedCNCPipeIntersectionCuttingMachine_step()  # 只运行num03
-            # self.num04_laserCuttingMachine_step()  # 不需要num04
-            # self.num05_groovingMachineLarge_step()  # 不需要num05
-            # self.num06_groovingMachineSmall_step()  # 不需要num06
-            # self.num07_highPressureFoamingMachine_step()  # 不需要num07
-            # self.num08_gantry_group_step()  # 不需要num08
-            
+            self.material_step()
+            self.num01_rotaryPipeAutomaticWeldingMachine_step()
+            self.num02_weldingRobot_step()
+            self.num03_rollerbedCNCPipeIntersectionCuttingMachine_step()
+            self.num04_laserCuttingMachine_step()
+            self.num05_groovingMachineLarge_step()
+            self.num06_groovingMachineSmall_step()
+            self.num07_highPressureFoamingMachine_step()
+            self.num08_gantry_group_step()
             self.done_update()
-            # self.update_task_mask()  # DEMO: 暂时不需要task mask
+            self.update_task_mask()
 
             # check if we need to do rendering within the physics loop
+            # note: checked here once to avoid multiple checks within the loop
             is_rendering = self.sim.has_gui() or self.sim.has_rtx_sensors()
             # perform physics stepping
             for _ in range(self.cfg.decimation):
                 self._sim_step_counter += 1
+                # self.scene.write_data_to_sim()
+                # simulate
                 if self._sim_step_counter % self.cfg.sim_step_interval == 0:
                     self.sim.step(render=False)
+                # render between steps only if the GUI or an RTX sensor needs it
+                # note: we assume the render interval to be the shortest accepted rendering interval.
+                #    If a camera needs rendering at a faster frequency, this will lead to unexpected behavior.
                 if self._sim_step_counter % self.cfg.sim.render_interval == 0 and is_rendering:
                     self.sim.render()
+                # update buffers at sim dt
+                # self.scene.update(dt=self.physics_dt)
 
-            # DEMO: 简化观察和奖励
-            obs = self.get_observations()
-            self.task_manager.obs = obs
-            break
+            if False and(self.task_mask[1:].count_nonzero() == 0 and self.reset_buf[0] == 0):
+                # self.get_rule_based_action()
+                self.task_manager_step(actions=torch.zeros([1], dtype=torch.int32))
+            else:
+                # self.calculate_metrics()
+                obs = self.get_observations()
+                self.task_manager.obs = obs
+                # self.get_fatigue_data()
+                break
 
         return obs, self.reward_buf, self.reset_buf, self.extras, action
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
-        """DEMO版本 - 简化的前置步骤"""
         task_id = actions[0] - 1
-        task = get_task_name(task_id.item())  # 使用配置中的辅助函数
+        task = self.task_manager.task_dic[task_id.item()]
         self.extras['action_info'] = task
-        # self.caculate_metric_action(actions)  # DEMO: 暂时不需要
+        self.caculate_metric_action(actions)
         return actions
 
     def _update_moving_pose(
@@ -292,26 +300,7 @@ class HcEnv(HcEnvBase):
         self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine.set_joint_positions(next_pose_part05)
         return
 
-    # DEMO: 以下机器暂时不需要，已注释
-    # def num04_laserCuttingMachine_step(self):
-    #     ... 原代码保留 ...
-    #     return
-    
-    # def num05_groovingMachineLarge_step(self):
-    #     ... 原代码保留 ...
-    #     return
-    
-    # def num06_groovingMachineSmall_step(self):
-    #     ... 原代码保留 ...
-    #     return
-    
-    # def num07_highPressureFoamingMachine_step(self):
-    #     ... 原代码保留 ...
-    #     return
-    
-    # def num08_gantry_group_step(self):
-    #     ... 原代码保留 ...
-    #     return
+    def num04_laserCuttingMachine_step(self):
         articulation_num04 = self.num04_laserCuttingMachine.get_joint_positions()
 
         reset2working = True
