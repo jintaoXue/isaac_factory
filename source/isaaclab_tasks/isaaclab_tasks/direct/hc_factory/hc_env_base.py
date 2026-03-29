@@ -31,6 +31,7 @@ from isaacsim.core.prims import RigidPrim, Articulation
 from isaacsim.core.api.world import World
 
 from .hc_env_task_manager import Materials, TaskManager
+from .hc_task_cfg import TaskConfig
 from .hc_map_route import MapRoute
 from abc import abstractmethod
 import numpy as np
@@ -76,13 +77,12 @@ class HcEnvBase(DirectRLEnv):
         #materials states, machine state
         self._set_up_machine()
         self.materials : Materials = Materials(cube_list=cube_list, hoop_list=hoop_list, bending_tube_list=bending_tube_list, upper_tube_list=upper_tube_list, product_list = product_list)
-        '''for humans workers (characters), robots (agv+boxs) and task manager'''
+        '''for humans workers (characters), robots (agv) and task manager'''
         character_list =self.set_up_human(num=self.cfg.n_max_human)
-        agv_list, box_list = self.set_up_robot(num=self.cfg.n_max_robot)
-        self.task_manager : TaskManager = TaskManager(character_list, agv_list, box_list, self.cuda_device, self.cfg, self.cfg.train_cfg['params']['config'])
+        agv_list, _ = self.set_up_robot(num=self.cfg.n_max_robot)
+        self.task_manager : TaskManager = TaskManager(character_list, agv_list, self.cuda_device, self.cfg, self.cfg.train_cfg['params']['config'])
         map_route = MapRoute(self.cfg)
         self.task_manager.characters.routes_dic, self.task_manager.agvs.routes_dic = map_route.load_pre_def_routes()
-        self.task_manager.boxs.routes_dic = self.task_manager.agvs.routes_dic
 
         # # clone and replicate
         # self.scene.clone_environments(copy_from_source=False)
@@ -159,7 +159,7 @@ class HcEnvBase(DirectRLEnv):
             name = 'traning ' if not self.evaluate else 'evaluate '
             if self.env_rule_based_exploration:
                 name = 'rule_based' + name
-            name += " worker:{}, agv&box:{}, env_len:{}, max_env_len:{}, finished:{}, over_work:{}".format(self.task_manager.characters.acti_num_charc, 
+            name += " worker:{}, agv:{}, env_len:{}, max_env_len:{}, finished:{}, over_work:{}".format(self.task_manager.characters.acti_num_charc,
                                                     self.task_manager.agvs.acti_num_agv, self.episode_length_buf[0], self.dynamic_episode_len, task_finished, self.have_over_work)
             self.extras['print_info'] = name
             # print(name+" worker:{}, agv&box:{}, env_len:{}, max_env_len:{}, finished:{}, over_work:{}".format(self.task_manager.characters.acti_num_charc, 
@@ -233,7 +233,6 @@ class HcEnvBase(DirectRLEnv):
         if self._test:
             self.extras['worker_initial_pose'] = self.task_manager.ini_worker_pose
             self.extras['robot_initial_pose'] = self.task_manager.ini_agv_pose
-            self.extras['box_initial_pose'] = self.task_manager.ini_box_pose
         # self.reward_test_list.append(self.reward_buf[0].clone())
         return
     
@@ -259,57 +258,20 @@ class HcEnvBase(DirectRLEnv):
             del self.extras['fatigue_data']
 
     def get_task_mask(self):
-
         task_mask = torch.zeros(len(self.task_manager.task_dic))
-        worker, agv, box = self.check_task_lacking_entity()
-        have_wab = worker and agv and box
-        have_w = worker
-        have_ab = agv and box
-        if have_wab and self.state_depot_hoop == 0 and 'hoop_preparing' not in self.task_manager.task_in_dic.keys() and self.materials.hoop_states.count(0) > 0:
-            task_mask[1] = 1
-        if have_wab and self.state_depot_bending_tube == 0 and 'bending_tube_preparing' not in self.task_manager.task_in_dic.keys() and self.materials.bending_tube_states.count(0) > 0:
-            task_mask[2] = 1
-        if have_w and self.station_state_inner_left == 0 and 'hoop_loading_inner' not in self.task_manager.task_in_dic.keys() and self.materials.hoop_states.count(2)>0: #loading
-            task_mask[3] = 1
-        if have_w and self.station_state_inner_right == 0 and 'bending_tube_loading_inner' not in self.task_manager.task_in_dic.keys() and self.materials.bending_tube_states.count(2)>0: 
-            task_mask[4] = 1
-        if have_w and self.station_state_outer_left == 0 and 'hoop_loading_outer' not in self.task_manager.task_in_dic.keys() and self.materials.hoop_states.count(2)>0: #loading
-            task_mask[5] = 1
-        if have_w and self.station_state_outer_right == 0 and 'bending_tube_loading_outer' not in self.task_manager.task_in_dic.keys() and self.materials.bending_tube_states.count(2)>0: 
-            task_mask[6] = 1
-        if have_w and self.cutting_machine_state == 1 and 'cutting_cube' not in self.task_manager.task_in_dic.keys(): #cuttting cube
-            task_mask[7] = 1
-        #when material 处于准备好的状态，要么边线库有，要么正在被加工。如果没有准备好，那么不可能执行collect product的任务
-        #English: only when material is ready for propcessing (at depot, loaded, processing, processed), the collect product mission is activate 
-        if self.materials.have_collecting_product_req() and have_ab and (self.materials.produce_product_req() == True) and 'collect_product' not in self.task_manager.task_in_dic.keys():
-            task_mask[8] = 1
-        if have_w and 'collect_product' in self.task_manager.task_in_dic.keys() and self.task_manager.boxs.product_collecting_idx >=0 and \
-                len(self.task_manager.boxs.product_idx_list[self.task_manager.boxs.product_collecting_idx])>0 and \
-                'placing_product' not in self.task_manager.task_in_dic.keys() and self.gripper_inner_task not in range (4, 8):
-            task_mask[9] = 1
-            if self.task_manager.boxs.acti_num_box > 1 and len(self.task_manager.boxs.product_idx_list[self.task_manager.boxs.product_collecting_idx])<self.task_manager.boxs.capacity.product and self.materials.have_collecting_product_req():
-                task_mask[9] = 0
-        # if self.task_manager.characters.acti_num_charc == 1:
-        if True:
-            #fix bug
-            is_last_hoop = sum([_state<=2 and _state >= -1 for _state in self.materials.hoop_states]) == 1
-            #make sure the last one hoop is loaded in the same station including the cube waiting for welding
-            if is_last_hoop and (task_mask[3] or task_mask[5]):
-                if self.materials.outer_cube_processing_index == -1 or self.materials.cube_states[self.materials.outer_cube_processing_index] in range(9, 14):
-                    task_mask[5] = 0
-                if self.materials.inner_cube_processing_index == -1 or self.materials.cube_states[self.materials.inner_cube_processing_index] in range(9, 14):
-                    task_mask[3] = 0
-            
-            is_last_bending_tube = sum([_state<=2 and _state >= -1 for _state in self.materials.bending_tube_states]) == 1
-            #make sure the last one bending tube is loaded in the same station including the cube waiting for welding
-            if is_last_bending_tube and (task_mask[4] or task_mask[6]):
-                if self.materials.outer_cube_processing_index == -1 or self.materials.cube_states[self.materials.outer_cube_processing_index] in range(10, 14):
-                    task_mask[6] = 0
-                if self.materials.inner_cube_processing_index == -1 or self.materials.cube_states[self.materials.inner_cube_processing_index] in range(10, 14):
-                    task_mask[4] = 0
-
-        task_mask[0] = 1
-        return task_mask
+        vals = list(self.task_manager.task_dic.values())
+        # modified: 与 hc_task_cfg.TaskConfig 一致时仅开放 none + pipe_production
+        if vals == list(TaskConfig.TASK_DICT.values()):
+            idx_none = vals.index("none")
+            if "pipe_production" in vals:
+                idx_pp = vals.index("pipe_production")
+                if "pipe_production" not in self.task_manager.task_in_dic:
+                    task_mask[idx_pp] = 1
+            task_mask[idx_none] = 1
+            return task_mask
+        raise RuntimeError(
+            "task_dic 与 TaskConfig 不一致；请在 hc_task_cfg 扩展任务后同步实现 get_task_mask"
+        )
 
     def get_fatigue_mask(self):
         # fatigue_mask = torch.zeros(len(self.task_manager.task_dic), device=self.cuda_device)
@@ -324,33 +286,15 @@ class HcEnvBase(DirectRLEnv):
     
     def get_task_mask_dic(self, task_mask):
         available_task_dic = {}
-        if task_mask[0] == 1:
-            available_task_dic['none'] = -1
-        if task_mask[1] == 1:
-            available_task_dic['hoop_preparing'] = 0
-        if task_mask[2] == 1:
-            available_task_dic['bending_tube_preparing'] = 1
-        if task_mask[3] == 1:
-            available_task_dic['hoop_loading_inner'] = 2
-        if task_mask[4] == 1: 
-            available_task_dic['bending_tube_loading_inner'] = 3
-        if task_mask[5] == 1:
-            available_task_dic['hoop_loading_outer'] = 4
-        if task_mask[6] == 1: 
-            available_task_dic['bending_tube_loading_outer'] = 5
-        if task_mask[7] == 1:
-            available_task_dic['cutting_cube'] = 6
-        if task_mask[8] == 1:
-            available_task_dic['collect_product'] = 7
-        if task_mask[9] == 1:
-            available_task_dic['placing_product'] = 8
+        for i, (tid, name) in enumerate(self.task_manager.task_dic.items()):
+            if i < len(task_mask) and task_mask[i] == 1:
+                available_task_dic[name] = tid
         return available_task_dic
 
     def check_task_lacking_entity(self):
         worker = [a*b for a,b in zip(self.task_manager.characters.states,self.task_manager.characters.tasks)].count(0)
         agv = [a*b for a,b in zip(self.task_manager.agvs.states,self.task_manager.agvs.tasks)].count(0)
-        box = [a*b for a,b in zip(self.task_manager.boxs.states,self.task_manager.boxs.tasks)].count(0)
-        return worker>0, agv>0, box>0
+        return worker>0, agv>0, True
 
     def set_up_test_setting(self, train_sub_cfg):
         self.test_env_max_length = train_sub_cfg['test_env_max_length']
@@ -571,9 +515,14 @@ class HcEnvBase(DirectRLEnv):
     
         gant_path = os.getcwd() + '/figs/gantt/gantt_data_D3QN.pkl'
         dic = {}   
-        dic['initial'] = [self.task_manager.ini_worker_pose ,self.task_manager.ini_agv_pose, self.task_manager.ini_box_pose]
+        dic['initial'] = [self.task_manager.ini_worker_pose, self.task_manager.ini_agv_pose]
         dic['worker'] = []
-        dic['worker_tasks_dic'] = set(self.task_manager.characters.fatigue_list[0].task_human_subtasks_dic.keys())
+        if self.task_manager.characters.acti_num_charc > 0:
+            dic['worker_tasks_dic'] = set(
+                self.task_manager.characters.fatigue_list[0].task_human_subtasks_dic.keys()
+            )
+        else:
+            dic['worker_tasks_dic'] = set()
         dic['agv'] = []
         dic['agv_tasks_dic'] = self.task_manager.agvs.task_range
         dic['agv_tasks_dic'].add('none')
