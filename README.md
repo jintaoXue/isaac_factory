@@ -10,6 +10,9 @@ Built on [NVIDIA Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/index.html
 
 水喉
 
+#3.31 
 
 map x bound 55.02995, -55.0706
 map y bound 76.16652, -6.10027
+
+TODO：图像像素和坐标需要进行映射，等代码跑起来了再check
