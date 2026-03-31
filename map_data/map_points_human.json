@@ -1,5 +1,5 @@
 {
-  "map_path": "/home/xue/work/isaac_factory/map_data/occupancy_map4human.png",
+  "map_path": "~/work/isaac_factory/map_data/occupancy_map4human.png",
   "image_shape": [
     1645,
     2202,

@@ -10,6 +10,7 @@ from typing import Any, Literal
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.patches as patches
+import os
 
 
 RoadmapFormat = Literal["json", "csv"]
@@ -175,6 +176,19 @@ def _export_overlay_image(
     plt.close(fig)
 
 
+def _path_to_tilde(path_str: str | None) -> str | None:
+    """将位于当前用户 HOME 下的绝对路径收敛为 ~/...，便于跨机器复用 JSON。"""
+    if not path_str:
+        return path_str
+    try:
+        home = os.path.expanduser("~").rstrip("/")
+        if path_str.startswith(home + "/"):
+            return "~" + path_str[len(home) :]
+    except Exception:
+        pass
+    return path_str
+
+
 def _save_points(
     path: Path,
     *,
@@ -187,7 +201,7 @@ def _save_points(
 
     if fmt == "json":
         payload: dict[str, Any] = {
-            "map_path": map_path,
+            "map_path": _path_to_tilde(map_path),
             "image_shape": list(image_shape) if image_shape is not None else None,
             "points": points,
         }

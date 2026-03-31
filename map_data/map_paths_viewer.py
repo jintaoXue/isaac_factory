@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 """
-基于 map_paths_human.json + 占据图，对 **已有的预计算路径** 做插值测试和可视化。
+基于 map_routes_human.json + 占据图，对 **已有的预计算路径** 做插值测试和可视化。
 
 特点：
-- 不再在线做 Dijkstra，只读取 map_paths_human.json 里预存的 paths[src][dst]
+- 不再在线做 Dijkstra，只读取 map_routes_human.json 里预存的 paths[src][dst]
 - 使用 map_points_human.json 做路径插值，生成 [x, y, yaw] 序列并统计耗时
 - 显示两幅图，并且两个窗口默认尽量全屏：
   1) 原始占据图（建议用 occupancy_map_with_points.png），叠加所有路网点和当前路径
@@ -16,7 +16,7 @@ import json
 import math
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, TypedDict, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -30,7 +30,7 @@ def _load_image(path: Path) -> np.ndarray:
 
 
 def load_paths(paths_file: Path) -> Tuple[Dict[str, Dict[str, Dict[str, object]]], Dict[str, object]]:
-    """读取 map_paths_human.json，返回预计算路径表 paths 及元信息。"""
+    """读取 map_routes_human.json，返回预计算路径表 paths 及元信息。"""
     data: Dict[str, object] = json.loads(paths_file.read_text(encoding="utf-8"))
     paths = data.get("paths")
     if not isinstance(paths, dict):
@@ -50,6 +50,21 @@ def load_points(points_file: Path) -> Tuple[Dict[int, Tuple[float, float]], List
         id_to_xy[pid] = (x, y)
         ids.append(pid)
     return id_to_xy, ids
+
+
+class ViewerConfig(TypedDict, total=False):
+    points_path: str
+    map_path: str
+    routes_path: str
+
+
+def load_config(config_path: Path) -> ViewerConfig:
+    if not config_path.exists():
+        return {}
+    data = json.loads(config_path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return {}
+    return cast(ViewerConfig, data)
 
 
 def _try_fullscreen(fig: plt.Figure) -> None:
@@ -79,14 +94,34 @@ def _try_fullscreen(fig: plt.Figure) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="基于 map_paths_human.json 的预计算路径，对任意两点做插值并可视化（双窗口）。"
+        description="基于 map_routes_human.json 的预计算路径，对任意两点做插值并可视化（双窗口）。"
     )
-    parser.add_argument("--paths", required=True, type=str, help="预计算路径 JSON 文件，例如 map_paths_human.json")
+    parser.add_argument(
+        "--config",
+        required=False,
+        type=str,
+        default=str(Path(__file__).with_name("config.json")),
+        help="可选：配置文件（json），参考 map_data/config.json，包含 routes_path/points_path/map_path",
+    )
+    parser.add_argument(
+        "--paths",
+        required=False,
+        type=str,
+        default=None,
+        help="预计算路径 JSON 文件（若不传则优先使用 --config 里的 routes_path）",
+    )
     parser.add_argument(
         "--map",
         required=False,
         type=str,
         help="用于显示的底图，例如 occupancy_map_with_points.png；不填则尝试使用 JSON 中的 map_path。",
+    )
+    parser.add_argument(
+        "--points",
+        required=False,
+        type=str,
+        default=None,
+        help="可选：路网点文件（json），不填则优先使用 --config 的 points_path，再尝试 routes/meta 推断",
     )
     parser.add_argument("--src", type=int, default=None, help="起点节点 id")
     parser.add_argument("--dst", type=int, default=None, help="终点节点 id")
@@ -98,29 +133,42 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    paths_file = Path(args.paths).expanduser()
+    cfg = load_config(Path(args.config).expanduser())
+    routes_path = args.paths or cfg.get("routes_path")
+    if not routes_path:
+        raise ValueError("未提供 --paths，且 config.json 中未配置 routes_path。")
+    paths_file = Path(routes_path).expanduser()
     paths, meta = load_paths(paths_file)
 
-    # 底图：优先使用命令行传入的 occupancy_map_with_points，否则回退到 JSON 中的 map_path
+    # 底图：优先 --map，其次 config.map_path，最后回退到 routes/meta 里的 map_path
+    map_path: Path | None = None
     if args.map:
         map_path = Path(args.map).expanduser()
+    elif cfg.get("map_path"):
+        map_path = Path(cfg["map_path"]).expanduser()
     else:
         map_path_str = meta.get("map_path")
-        if not isinstance(map_path_str, str):
-            raise ValueError("既未通过 --map 指定底图，也未在 JSON 中找到有效的 map_path。")
-        map_path = Path(map_path_str).expanduser()
+        if isinstance(map_path_str, str):
+            map_path = Path(map_path_str).expanduser()
+    if map_path is None:
+        raise ValueError("未能确定底图路径：请传 --map 或在 config.json/meta 中提供 map_path。")
 
     img = _load_image(map_path)
 
     # 推断 points 文件路径（仅为了获得坐标）
     id_to_xy: Dict[int, Tuple[float, float]] = {}
     all_point_ids: List[int] = []
-    points_path_str = meta.get("points_path")
-    points_candidate = None
-    if isinstance(points_path_str, str):
-        points_candidate = Path(points_path_str).expanduser()
-    elif "paths_" in paths_file.name:
-        points_candidate = paths_file.with_name(paths_file.name.replace("paths_", "points_", 1))
+    points_candidate: Path | None = None
+    if args.points:
+        points_candidate = Path(args.points).expanduser()
+    elif cfg.get("points_path"):
+        points_candidate = Path(cfg["points_path"]).expanduser()
+    else:
+        points_path_str = meta.get("points_path")
+        if isinstance(points_path_str, str):
+            points_candidate = Path(points_path_str).expanduser()
+        elif "paths_" in paths_file.name:
+            points_candidate = paths_file.with_name(paths_file.name.replace("paths_", "points_", 1))
 
     if points_candidate is not None and points_candidate.exists():
         id_to_xy, all_point_ids = load_points(points_candidate)

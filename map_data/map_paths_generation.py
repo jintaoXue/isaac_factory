@@ -17,7 +17,7 @@ from __future__ import annotations
   python3 map_data/roadmap_process.py \\
       --map map_data/occupancy_map_asset.png \\
       --points map_data/roadmap_points_human.json \\
-      --out map_data/roadmap_paths_human.json
+      --out map_data/roadmap_routes_human.json
 """
 
 import argparse
@@ -26,6 +26,7 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
+import os
 
 import heapq
 
@@ -302,7 +303,7 @@ def main() -> None:
         "--out",
         required=True,
         type=str,
-        help="输出最短路 JSON 文件路径，例如 map_data/roadmap_paths_human.json",
+        help="输出最短路 JSON 文件路径，例如 map_data/roadmap_routes_human.json",
     )
     parser.add_argument(
         "--obstacle-threshold",
@@ -378,9 +379,17 @@ def main() -> None:
     print("[INFO] 预计算所有点对的最短路径（Dijkstra all-pairs，仅保存节点序列与最短距离）...")
     all_paths = precompute_all_pairs_shortest_paths(graph)
 
+    def _path_to_tilde(p: Path) -> str:
+        """将位于当前用户 HOME 下的绝对路径收敛为 ~/...，便于跨机器复用 JSON。"""
+        s = str(p)
+        home = os.path.expanduser("~").rstrip("/")
+        if s.startswith(home + "/"):
+            return "~" + s[len(home) :]
+        return s
+
     result = {
-        "map_path": str(map_path),
-        "points_path": str(points_path),
+        "map_path": _path_to_tilde(map_path),
+        "points_path": _path_to_tilde(points_path),
         "num_nodes": len(graph),
         "num_edges": len(edges),
         "obstacle_threshold": float(args.obstacle_threshold),
