@@ -3,6 +3,7 @@
 # 一键运行本目录下的地图 / 路网相关脚本，方便测试与可视化。
 #
 # 用法示例（在仓库根目录执行）：
+#   bash map_data/map_tools.sh generate-points-human
 #   bash map_data/map_tools.sh add-points-human
 #   bash map_data/map_tools.sh gen-paths
 #   bash map_data/map_tools.sh view-paths
@@ -42,11 +43,33 @@ cmd="${1:-}"
 shift || true
 
 case "${cmd}" in
-  add-points-human)
-    # 交互式编辑/标注路网点
+  generate-points-human)
+    # 从零开始生成路网点（不加载旧点）
+    # 为避免误覆盖：如果已存在 points 文件，先自动备份一份再开始新建
+    if [[ -f "${POINTS_JSON_HUMAN}" ]]; then
+      ts="$(date +%Y%m%d_%H%M%S)"
+      cp -f "${POINTS_JSON_HUMAN}" "${POINTS_JSON_HUMAN}.bak.${ts}"
+      echo "[INFO] 已备份旧点文件到: ${POINTS_JSON_HUMAN}.bak.${ts}" >&2
+    fi
     "${PYTHON_BIN}" "${MAP_DIR}/map_points_generation.py" \
       --map "${MAP_IMG_HUMAN}" \
       --out "${POINTS_JSON_HUMAN}" \
+      --overlay-out "${OVERLAY_IMG_WITH_POINTS_HUMAN}" \
+      "$@"
+    ;;
+
+  add-points-human)
+    # 交互式编辑路网点：
+    # - 若已存在 points 文件，则先加载后再允许“添加/删除”
+    # - 保存仍覆盖写回到同一个 points 文件
+    load_args=()
+    if [[ -f "${POINTS_JSON_HUMAN}" ]]; then
+      load_args+=( --load "${POINTS_JSON_HUMAN}" )
+    fi
+    "${PYTHON_BIN}" "${MAP_DIR}/map_points_generation.py" \
+      --map "${MAP_IMG_HUMAN}" \
+      --out "${POINTS_JSON_HUMAN}" \
+      "${load_args[@]}" \
       --overlay-out "${OVERLAY_IMG_WITH_POINTS_HUMAN}" \
       "$@"
     ;;
@@ -122,6 +145,8 @@ case "${cmd}" in
 用法: bash map_data/map_tools.sh <子命令> [额外参数...]
 
 子命令：
+  generate-points-human
+                  从零开始新建路网点（不加载旧点）；若已存在点文件会自动备份为 .bak.<时间戳>
   add-points-human
                   交互式编辑/标注路网点，保存到 ${POINTS_JSON_HUMAN}，使用 ${MAP_IMG_HUMAN}
   edit-points-robot

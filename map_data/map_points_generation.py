@@ -123,6 +123,19 @@ def _export_overlay_image(
     if _PIL_AVAILABLE:
         img = Image.open(map_path).convert("RGBA")  # type: ignore[union-attr]
         draw = ImageDraw.Draw(img)  # type: ignore[union-attr]
+        # 让编号可读：字号随 radius 自动放大
+        try:
+            from PIL import ImageFont  # type: ignore
+
+            font_size = max(10, int(radius_px * 1.8))
+            try:
+                # 尽量使用系统字体（更接近你屏幕的可读性）
+                font = ImageFont.truetype("DejaVuSans.ttf", font_size)
+            except Exception:
+                font = ImageFont.load_default()
+        except Exception:
+            font = None
+
         for idx, p in enumerate(points):
             x = float(p["x"])
             y = float(p["y"])
@@ -131,7 +144,8 @@ def _export_overlay_image(
             draw.ellipse(bbox, fill=(255, 0, 0, 255), outline=(255, 255, 255, 255), width=1)
             if draw_labels:
                 # 默认字体即可；避免依赖外部字体文件
-                draw.text((x + r + 2, y - r - 2), str(idx), fill=(255, 255, 0, 255))
+                # 数字颜色改为蓝色
+                draw.text((x + r + 2, y - r - 2), str(idx), fill=(0, 102, 255, 255), font=font)
         img.save(out_image_path)
         return
 
@@ -147,13 +161,14 @@ def _export_overlay_image(
     ys = [p["y"] for p in points]
     ax.scatter(xs, ys, s=(radius_px * radius_px * 6), c="red", edgecolors="white", linewidths=0.8)
     if draw_labels:
+        fontsize = max(10, int(radius_px * 0.9))
         for idx, p in enumerate(points):
             ax.text(
                 float(p["x"]) + radius_px + 2,
                 float(p["y"]) - radius_px - 2,
                 str(idx),
-                color="yellow",
-                fontsize=9,
+                color="#0066ff",
+                fontsize=fontsize,
                 bbox={"facecolor": "black", "alpha": 0.35, "edgecolor": "none", "pad": 0.8},
             )
     fig.savefig(out_image_path, dpi=dpi)
@@ -363,24 +378,53 @@ class RoadmapPointEditor:
         else:
             coords_all = np.empty((0, 2), dtype=np.float32)
 
-        accepted: list[tuple[float, float]] = []
-        attempts = 0
-        max_attempts = max(50, n_target * 20)
-        while len(accepted) < n_target and attempts < max_attempts:
-            attempts += 1
-            x = float(rng.uniform(x_min, x_max))
-            y = float(rng.uniform(y_min, y_max))
+        # 直接做“均匀分布”：按网格等间隔生成点（jitter=0）。
+        # 若点数估计过大，则通过选择更合理的 nx/ny（由 n_target 推导的期望网格间距）来避免“1D 下采样破坏二维均匀性”。
+        # 采样顺序从拖拽的起点顶点开始，沿着 x/y 两个方向等间隔“向两边”铺开（只影响生成顺序，不影响空间格点位置）。
+        jitter_ratio = 0.0
+        if n_target <= 0:
+            n_target = 1
+        d_desired = float(np.sqrt(area / n_target))  # 期望网格间距（越大越稀）
+        d_desired = max(d_desired, 1e-6)
 
-            if min_dist2 > 0.0 and coords_all.shape[0] > 0:
-                d2 = (coords_all[:, 0] - x) ** 2 + (coords_all[:, 1] - y) ** 2
+        nx = max(1, int(np.ceil(width / d_desired)))
+        ny = max(1, int(np.ceil(height / d_desired)))
+
+        x_step = width / nx
+        y_step = height / ny
+
+        # 生成顺序：从 (x0, y0) 所在的矩形顶点开始
+        ix_iter = range(nx) if x0 <= x1 else range(nx - 1, -1, -1)
+        iy_iter = range(ny) if y0 <= y1 else range(ny - 1, -1, -1)
+
+        candidates: list[tuple[float, float]] = []
+        for ix in ix_iter:
+            for iy in iy_iter:
+                cx = x_min + (ix + 0.5) * x_step
+                cy = y_min + (iy + 0.5) * y_step
+                # jitter_ratio=0 时不会引入随机性；保留变量便于将来调参
+                jx = (rng.uniform(-1.0, 1.0) * jitter_ratio * x_step) if jitter_ratio > 0.0 else 0.0
+                jy = (rng.uniform(-1.0, 1.0) * jitter_ratio * y_step) if jitter_ratio > 0.0 else 0.0
+                px = float(np.clip(cx + jx, x_min, x_max))
+                py = float(np.clip(cy + jy, y_min, y_max))
+                candidates.append((px, py))
+
+        accepted: list[tuple[float, float]] = []
+        if min_dist2 <= 0.0 or coords_all.shape[0] == 0:
+            accepted = candidates
+        else:
+            # 在网格均匀候选上执行最小距离过滤；不做随机拒绝采样，避免破坏均匀性
+            for (px, py) in candidates:
+                d2 = (coords_all[:, 0] - px) ** 2 + (coords_all[:, 1] - py) ** 2
                 if float(d2.min()) < min_dist2:
                     continue
-
-            accepted.append((x, y))
-            if coords_all.shape[0] == 0:
-                coords_all = np.array([[x, y]], dtype=np.float32)
-            else:
-                coords_all = np.vstack([coords_all, np.array([[x, y]], dtype=np.float32)])
+                accepted.append((px, py))
+                if coords_all.shape[0] == 0:
+                    coords_all = np.array([[px, py]], dtype=np.float32)
+                else:
+                    coords_all = np.vstack([coords_all, np.array([[px, py]], dtype=np.float32)])
+                if len(accepted) >= n_target:
+                    break
 
         if len(accepted) == 0:
             self._update_info("撒点失败（可能密度/最小间距约束过强）")
@@ -440,7 +484,7 @@ class RoadmapPointEditor:
                         float(p["x"]) + 4.0,
                         float(p["y"]) - 4.0,
                         str(i),
-                        color="yellow",
+                        color="#0066ff",
                         fontsize=9,
                         zorder=4,
                         bbox={"facecolor": "black", "alpha": 0.35, "edgecolor": "none", "pad": 0.8},

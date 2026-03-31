@@ -10,3 +10,6 @@ Built on [NVIDIA Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/index.html
 
 水喉
 
+
+map x bound 55.02995, -55.0706
+map y bound 76.16652, -6.10027

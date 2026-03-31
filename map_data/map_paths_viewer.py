@@ -157,7 +157,8 @@ def main() -> None:
         ax_main.scatter(xs_all, ys_all, s=15, c="cyan", edgecolors="black", linewidths=0.3, alpha=0.9)
         for pid in all_point_ids:
             x, y = id_to_xy[pid]
-            ax_main.text(x + 3, y + 3, str(pid), color="yellow", fontsize=6)
+            # 点编号改用蓝色，与 overlay 图保持一致
+            ax_main.text(x + 3, y + 3, str(pid), color="#0066ff", fontsize=6)
     else:
         print("[WARN] 没有节点坐标信息，窗口中不会显示点和编号。")
 
