@@ -123,74 +123,7 @@ class BoxCapacity:
 ########### key_articulation_pos_dic ###########
 ########### key_articulation_pos_dic ###########
 
-joint_pos_dic_num01_rotaryPipeAutomaticWeldingMachine_part_01_station = {
-    "working_pose": [0.0, 2.0],
-    "moving_pose_time": 100,  
-}
-
-joint_pos_dic_num01_rotaryPipeAutomaticWeldingMachine_part_02_station = {
-    "working_pose": [0.0, 0.5],
-    "moving_pose_time": 50,  
-}
-
-joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base = {
-    #joint 1: track_platform, joint 2: arm01_base, joint 3: arm02_base, joint 4: arm03_base, joint 5: arm04_base, joint 6: welding_torch
-    "working_pose": [3.2, -1.5, -0.3, 0.1, 0.2, 0.0],
-    "moving_pose_time": 100,  
-}
-
-joint_pos_dic_num02_weldingRobot_part04_mobile_base_for_material = {
-    "working_pose": [-2.0],
-    "moving_pose_time": 100,  
-}
-
-joint_pos_dic_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station = {
-    "working_pose": [1.0],
-    "moving_pose_time": 100,  
-}
-
-joint_pos_dic_num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine = {
-    "working_pose": [-2.0, 0.3, 0.5],
-    "moving_pose_time": 100,  
-}
-
-joint_pos_dic_num04_laserCuttingMachine = {
-    "working_pose": [-3.5],
-    "moving_pose_time": 100,  
-}
-
-joint_pos_dic_num05_groovingMachineLarge_part01_large_fixed_base = {
-    "working_pose": [-0.2, 0.0],
-    "moving_pose_time": 100,  
-}
-
-joint_pos_dic_num05_groovingMachineLarge_part02_large_mobile_base = {
-    "working_pose": [-1.0],
-    "moving_pose_time": 100,  
-}
-
-joint_pos_dic_num06_groovingMachineSmall_part01_small_fixed_base = {
-    "working_pose": [-0.3, -0.5],
-    "moving_pose_time": 100,  
-}
-
-joint_pos_dic_num06_groovingMachineSmall_part02_small_mobile_handle = {
-    "working_pose": [-0.3, -0.5],
-    "moving_pose_time": 100,  
-}
-
-joint_pos_dic_num07_highPressureFoamingMachine = {
-    "working_pose": [-0.7],
-    "moving_pose_time": 100,  
-}
-
-joint_pos_dic_num08_gantry_group = {
-    # [A1, B1, A2, B2] A1,A2 is one side of the gantry (num05-num07), B1,B2 is the other side of the gantry (close to welding robot num01-num04)
-    "working_pose": [10.0, 10.0, 10.0, 10.0, 5.0, -5.0, 5.0, -5.0],
-    "moving_pose_time": 100,  
-}
-
-class MovingPose:
+class PoseAnimation:
     def __init__(self, start_pose: torch.Tensor, end_pose: torch.Tensor, time: int):
         self.start_pose = start_pose
         self.end_pose = end_pose
@@ -204,3 +137,7 @@ class MovingPose:
     def is_done(self):
         dis = torch.norm(self.start_pose - self.end_pose)
         return dis < 0.01 or self.step_time >= self.time 
+
+
+
+

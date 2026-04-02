@@ -203,7 +203,7 @@ class HcEnv(HcEnvBase):
                 self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_01_station = MovingPose(
                     start_pose = articulation_num01_part_01_station,
                     end_pose = target_pose_part01,
-                    time=joint_pos_dic_num01_rotaryPipeAutomaticWeldingMachine_part_01_station["moving_pose_time"],
+                    time=joint_pos_dic_num01_rotaryPipeAutomaticWeldingMachine_part_01_station["animation_time"],
                 )
             if not self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_01_station.is_done():
                 next_pose_part01 = self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_01_station.get_next_pose()
@@ -216,7 +216,7 @@ class HcEnv(HcEnvBase):
                 self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_02_station = MovingPose(
                     start_pose = articulation_num01_part_02_station,
                     end_pose = target_pose_part02,
-                    time=joint_pos_dic_num01_rotaryPipeAutomaticWeldingMachine_part_02_station["moving_pose_time"],
+                    time=joint_pos_dic_num01_rotaryPipeAutomaticWeldingMachine_part_02_station["animation_time"],
                 )
             if not self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_02_station.is_done():
                 next_pose_part02 = self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_02_station.get_next_pose()
@@ -241,7 +241,7 @@ class HcEnv(HcEnvBase):
                 self.moving_pose_num02_weldingRobot_part02_robot_arm_and_base = MovingPose(
                     start_pose = articulation_pose_arm_and_base,
                     end_pose = target_pose,
-                    time=joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base["moving_pose_time"],
+                    time=joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base["animation_time"],
                 )
             if not self.moving_pose_num02_weldingRobot_part02_robot_arm_and_base.is_done():
                 next_pose = self.moving_pose_num02_weldingRobot_part02_robot_arm_and_base.get_next_pose()
@@ -274,7 +274,7 @@ class HcEnv(HcEnvBase):
                 self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station = MovingPose(
                     start_pose = articulation_num03_part01_station,
                     end_pose = target_pose_part01,
-                    time=joint_pos_dic_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station["moving_pose_time"],
+                    time=joint_pos_dic_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station["animation_time"],
                 )
             if not self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station.is_done():
                 next_pose_part01 = self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station.get_next_pose()
@@ -287,7 +287,7 @@ class HcEnv(HcEnvBase):
                 self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine = MovingPose(
                     start_pose = articulation_num03_part05_cutting_machine,
                     end_pose = target_pose_part05,
-                    time=joint_pos_dic_num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine["moving_pose_time"],
+                    time=joint_pos_dic_num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine["animation_time"],
                 )
             if not self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine.is_done():
                 next_pose_part05 = self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine.get_next_pose()
@@ -311,7 +311,7 @@ class HcEnv(HcEnvBase):
                 self.moving_pose_num04_laserCuttingMachine = MovingPose(
                     start_pose = articulation_num04,
                     end_pose = target_pose,
-                    time=joint_pos_dic_num04_laserCuttingMachine["moving_pose_time"],
+                    time=joint_pos_dic_num04_laserCuttingMachine["animation_time"],
                 )
             if not self.moving_pose_num04_laserCuttingMachine.is_done():
                 next_pose = self.moving_pose_num04_laserCuttingMachine.get_next_pose()
@@ -341,13 +341,13 @@ class HcEnv(HcEnvBase):
                 self.moving_pose_num05_groovingMachineLarge_part01_large_fixed_base = MovingPose(
                     start_pose=articulation_num05_part01_large_fixed_base,
                     end_pose=target_pose_part01,
-                    time=joint_pos_dic_num05_groovingMachineLarge_part01_large_fixed_base["moving_pose_time"],
+                    time=joint_pos_dic_num05_groovingMachineLarge_part01_large_fixed_base["animation_time"],
                 )
             if self.moving_pose_num05_groovingMachineLarge_part02_large_mobile_base is None:
                 self.moving_pose_num05_groovingMachineLarge_part02_large_mobile_base = MovingPose(
                     start_pose=articulation_num05_part02_large_mobile_base,
                     end_pose=target_pose_part02,
-                    time=joint_pos_dic_num05_groovingMachineLarge_part02_large_mobile_base["moving_pose_time"],
+                    time=joint_pos_dic_num05_groovingMachineLarge_part02_large_mobile_base["animation_time"],
                 )
             if not self.moving_pose_num05_groovingMachineLarge_part01_large_fixed_base.is_done() or not self.moving_pose_num05_groovingMachineLarge_part02_large_mobile_base.is_done():
                 next_pose_part01 = self.moving_pose_num05_groovingMachineLarge_part01_large_fixed_base.get_next_pose()
@@ -382,7 +382,7 @@ class HcEnv(HcEnvBase):
                 self.moving_pose_num06_groovingMachineSmall_part01_small_fixed_base = MovingPose(
                     start_pose=articulation_num06_part01_small_fixed_base,
                     end_pose=target_pose_part01,
-                    time=joint_pos_dic_num06_groovingMachineSmall_part01_small_fixed_base["moving_pose_time"],
+                    time=joint_pos_dic_num06_groovingMachineSmall_part01_small_fixed_base["animation_time"],
                 )
             if not self.moving_pose_num06_groovingMachineSmall_part01_small_fixed_base.is_done():
                 next_pose_part01 = self.moving_pose_num06_groovingMachineSmall_part01_small_fixed_base.get_next_pose()
@@ -396,7 +396,7 @@ class HcEnv(HcEnvBase):
                 self.moving_pose_num06_groovingMachineSmall_part02_small_mobile_handle = MovingPose(
                     start_pose=articulation_num06_part02_small_mobile_handle,
                     end_pose=target_pose_part02,
-                    time=joint_pos_dic_num06_groovingMachineSmall_part02_small_mobile_handle["moving_pose_time"],
+                    time=joint_pos_dic_num06_groovingMachineSmall_part02_small_mobile_handle["animation_time"],
                 )
             if not self.moving_pose_num06_groovingMachineSmall_part02_small_mobile_handle.is_done():
                 next_pose_part02 = self.moving_pose_num06_groovingMachineSmall_part02_small_mobile_handle.get_next_pose()
@@ -420,7 +420,7 @@ class HcEnv(HcEnvBase):
                 self.moving_pose_num07_highPressureFoamingMachine = MovingPose(
                     start_pose = articulation_num07,
                     end_pose = target_pose,
-                    time=joint_pos_dic_num07_highPressureFoamingMachine["moving_pose_time"],
+                    time=joint_pos_dic_num07_highPressureFoamingMachine["animation_time"],
                 )
             if not self.moving_pose_num07_highPressureFoamingMachine.is_done():
                 next_pose = self.moving_pose_num07_highPressureFoamingMachine.get_next_pose()
@@ -442,7 +442,7 @@ class HcEnv(HcEnvBase):
             moving_pose_attr="moving_pose_num08_gantry_group",
             start_pose=articulation_num08_gantry_group,
             end_pose=target_pose_gantry_group,
-            moving_pose_time=joint_pos_dic_num08_gantry_group["moving_pose_time"],
+            moving_pose_time=joint_pos_dic_num08_gantry_group["animation_time"],
         )
 
         self.num08_gantry_group.set_joint_positions(next_pose_gantry_group)
