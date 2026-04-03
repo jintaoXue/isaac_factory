@@ -30,3 +30,4 @@ map_routes_robot.json
 
 map的machine related work id
 还有storage area
+带标记注释的地图

@@ -8,6 +8,7 @@ cfg_machines = {
             "prim_paths_expr": "/World/envs/.*/obj/HC_factory/num01_rotaryPipeAutomaticWeldingMachine/part_01_station/track_for_mobile_base",
             "joint_positions_working": [0.0, 2.0],
             "animation_time": 100,
+            "human_working_areas_ids": [],
         },
         "num01_rotaryPipeAutomaticWeldingMachine_part_02_station": {
             "prim_paths_expr": "/World/envs/.*/obj/HC_factory/num01_rotaryPipeAutomaticWeldingMachine/part_02_station/track_for_mobile_base_001",
