@@ -18,3 +18,8 @@ map y bound 76.16652, -6.10027
 TODO：1. 图像像素和坐标需要进行映射，等代码跑起来了再check
       2. Vector Env 加速训练
       3. 定义逻辑接口
+
+The corresponding large map data files are located in the following directory:
+"~/work/Dataset/HC_data/map_data"
+map_routes_human.json
+map_routes_robot.json
