@@ -21,6 +21,16 @@ from typing import Dict, List, Tuple, TypedDict, cast
 import matplotlib.pyplot as plt
 import numpy as np
 
+from map_coordinate_utils import (
+    COORDINATE_FRAME_ISAAC,
+    CoordinateMapping,
+    load_config_file,
+    load_mapping_from_config_dict,
+    load_mapping_from_embedded_points_json,
+    read_coordinate_frame_from_points_json,
+    resolve_for_robot_flag,
+)
+
 
 def _load_image(path: Path) -> np.ndarray:
     img = plt.imread(str(path))
@@ -38,8 +48,15 @@ def load_paths(paths_file: Path) -> Tuple[Dict[str, Dict[str, Dict[str, object]]
     return paths, data
 
 
-def load_points(points_file: Path) -> Tuple[Dict[int, Tuple[float, float]], List[int]]:
+def load_points(
+    points_file: Path,
+    mapping: CoordinateMapping | None,
+) -> Tuple[Dict[int, Tuple[float, float]], List[int]]:
+    """返回用于叠 PNG 显示的像素坐标（若文件为 Isaac 坐标则先变换）。"""
     pts_data = json.loads(points_file.read_text(encoding="utf-8"))
+    if mapping is None:
+        mapping = load_mapping_from_embedded_points_json(pts_data)
+    frame = read_coordinate_frame_from_points_json(pts_data)
     pts = pts_data.get("points", pts_data)
     id_to_xy: Dict[int, Tuple[float, float]] = {}
     ids: List[int] = []
@@ -47,9 +64,32 @@ def load_points(points_file: Path) -> Tuple[Dict[int, Tuple[float, float]], List
         pid = int(p["id"])
         x = float(p["x"])
         y = float(p["y"])
+        if frame == COORDINATE_FRAME_ISAAC:
+            if mapping is None:
+                raise ValueError(
+                    f"路网点为 Isaac 坐标，需要 config 映射或 JSON 内嵌角点：{points_file}"
+                )
+            x, y = mapping.isaac_xy_to_image(x, y)
         id_to_xy[pid] = (x, y)
         ids.append(pid)
     return id_to_xy, ids
+
+
+def _edge_sample_xy_for_map(
+    s: Dict[str, object],
+    routes_frame: str | None,
+    mapping: CoordinateMapping | None,
+) -> tuple[float, float] | None:
+    try:
+        x_s = float(s["x"])
+        y_s = float(s["y"])
+    except Exception:
+        return None
+    if routes_frame == COORDINATE_FRAME_ISAAC:
+        if mapping is None:
+            return None
+        return mapping.isaac_xy_to_image(x_s, y_s)
+    return x_s, y_s
 
 
 class ViewerConfig(TypedDict, total=False):
@@ -129,7 +169,7 @@ def main() -> None:
         "--interp-step",
         type=float,
         default=5.0,
-        help="路径插值的步长（像素），越小越密集，默认 5 像素",
+        help="（历史参数）预计算 routes 时沿边的像素步长；拼接仍使用 JSON 内 samples",
     )
     args = parser.parse_args()
 
@@ -139,6 +179,11 @@ def main() -> None:
         raise ValueError("未提供 --paths，且 config.json 中未配置 routes_path。")
     paths_file = Path(routes_path).expanduser()
     paths, meta = load_paths(paths_file)
+    routes_frame = meta.get("coordinate_frame")
+    if not isinstance(routes_frame, str):
+        routes_frame = None
+
+    cfg_data = load_config_file(Path(args.config).expanduser())
 
     # 底图：优先 --map，其次 config.map_path，最后回退到 routes/meta 里的 map_path
     map_path: Path | None = None
@@ -152,6 +197,16 @@ def main() -> None:
             map_path = Path(map_path_str).expanduser()
     if map_path is None:
         raise ValueError("未能确定底图路径：请传 --map 或在 config.json/meta 中提供 map_path。")
+
+    for_robot = resolve_for_robot_flag(cfg_data, map_path)
+    coord_mapping = load_mapping_from_config_dict(cfg_data, for_robot=for_robot)
+    if routes_frame == COORDINATE_FRAME_ISAAC and coord_mapping is None:
+        coord_mapping = load_mapping_from_embedded_points_json(meta)
+    if routes_frame == COORDINATE_FRAME_ISAAC and coord_mapping is None:
+        print(
+            "[WARN] routes 为 Isaac 坐标但未找到映射，路径/点可能无法在图上对齐；"
+            "请检查 config.json 或 routes JSON 内嵌角点。"
+        )
 
     img = _load_image(map_path)
 
@@ -171,7 +226,7 @@ def main() -> None:
             points_candidate = paths_file.with_name(paths_file.name.replace("paths_", "points_", 1))
 
     if points_candidate is not None and points_candidate.exists():
-        id_to_xy, all_point_ids = load_points(points_candidate)
+        id_to_xy, all_point_ids = load_points(points_candidate, coord_mapping)
     else:
         print(f"[WARN] 未找到对应的 points 文件: {points_candidate}")
 
@@ -199,6 +254,48 @@ def main() -> None:
     ax_main.set_aspect("equal")
     _try_fullscreen(fig_main)
 
+    def _add_dual_axes(ax) -> None:
+        if coord_mapping is None:
+            return
+        m = coord_mapping
+
+        # secondary axis 的转换函数可能收到 numpy 数组；这里用向量化公式避免标量强转报错
+        du_den = float(m.du_den)
+        dv_den = float(m.dv_den)
+
+        def px_to_sim_x(x_px):
+            x_px_arr = np.asarray(x_px, dtype=float)
+            if abs(du_den) < 1e-12:
+                return np.full_like(x_px_arr, float(m.x_at_u0), dtype=float)
+            return float(m.x_at_u0) + (x_px_arr - float(m.u0)) * (float(m.x_at_u1) - float(m.x_at_u0)) / du_den
+
+        def sim_to_px_x(x_sim):
+            x_sim_arr = np.asarray(x_sim, dtype=float)
+            sx = float(m.dxd_u)
+            if abs(sx) < 1e-12:
+                return np.full_like(x_sim_arr, float(m.u0), dtype=float)
+            return float(m.u0) + (x_sim_arr - float(m.x_at_u0)) / sx
+
+        def px_to_sim_y(y_px):
+            y_px_arr = np.asarray(y_px, dtype=float)
+            if abs(dv_den) < 1e-12:
+                return np.full_like(y_px_arr, float(m.y_at_v0), dtype=float)
+            return float(m.y_at_v0) + (y_px_arr - float(m.v0)) * (float(m.y_at_v1) - float(m.y_at_v0)) / dv_den
+
+        def sim_to_px_y(y_sim):
+            y_sim_arr = np.asarray(y_sim, dtype=float)
+            sy = float(m.dyd_v)
+            if abs(sy) < 1e-12:
+                return np.full_like(y_sim_arr, float(m.v0), dtype=float)
+            return float(m.v0) + (y_sim_arr - float(m.y_at_v0)) / sy
+
+        secx = ax.secondary_xaxis("top", functions=(px_to_sim_x, sim_to_px_x))
+        secy = ax.secondary_yaxis("right", functions=(px_to_sim_y, sim_to_px_y))
+        secx.set_xlabel("Isaac Sim X")
+        secy.set_ylabel("Isaac Sim Y")
+
+    _add_dual_axes(ax_main)
+
     if id_to_xy:
         xs_all = [id_to_xy[i][0] for i in all_point_ids]
         ys_all = [id_to_xy[i][1] for i in all_point_ids]
@@ -217,6 +314,7 @@ def main() -> None:
     ax_zoom.set_aspect("equal")
     ax_zoom.set_title("Zoomed path view")
     _try_fullscreen(fig_zoom)
+    _add_dual_axes(ax_zoom)
 
     current_line_main = None
 
@@ -237,8 +335,9 @@ def main() -> None:
         node_ids = [int(n) for n in node_ids_raw]
         path_cost = float(path_info.get("cost", 0.0))
 
+        cost_unit = "Sim" if routes_frame == COORDINATE_FRAME_ISAAC else "px"
         print(
-            f"[INFO] {src} -> {dst} | 预计算最短路长度={path_cost:.2f} | 节点数={len(node_ids)}"
+            f"[INFO] {src} -> {dst} | 预计算最短路长度={path_cost:.2f} ({cost_unit}) | 节点数={len(node_ids)}"
         )
 
         if not id_to_xy:
@@ -285,9 +384,11 @@ def main() -> None:
             for j, s in enumerate(iterable):
                 if not first_seg and j == 0:
                     continue
+                xy_m = _edge_sample_xy_for_map(s, routes_frame, coord_mapping)
+                if xy_m is None:
+                    continue
+                x_s, y_s = xy_m
                 try:
-                    x_s = float(s["x"])
-                    y_s = float(s["y"])
                     yaw_s = float(s.get("yaw", 0.0))
                 except Exception:
                     continue
@@ -315,15 +416,24 @@ def main() -> None:
             if dists.size > 0:
                 avg_step = float(dists.mean())
 
+        step_unit = "Sim 单位" if routes_frame == COORDINATE_FRAME_ISAAC else "像素"
         print(
             f"[TIME] 拼接路径耗时: {elapsed_ms:.3f} ms | 路径点数: {len(xs_interp)} "
-            f"| 平均间距约: {avg_step:.1f} 像素"
+            f"| 平均间距约: {avg_step:.1f} ({step_unit})"
         )
         if xs_interp and ys_interp and yaws_interp:
-            print(
-                f"[DEBUG] 首点 [x,y,yaw]: "
-                f"{xs_interp[0]:.1f}, {ys_interp[0]:.1f}, {yaws_interp[0]:.3f} rad"
-            )
+            if coord_mapping is not None:
+                # xs_interp/ys_interp 是用于叠图的像素坐标；同时打印对应 Sim 坐标
+                x0_px, y0_px = xs_interp[0], ys_interp[0]
+                x0_sim, y0_sim = coord_mapping.image_xy_to_isaac(x0_px, y0_px)
+                print(
+                    f"[DEBUG] 首点 px=({x0_px:.1f},{y0_px:.1f}) | sim=({x0_sim:.3f},{y0_sim:.3f}) | yaw={yaws_interp[0]:.3f} rad"
+                )
+            else:
+                print(
+                    f"[DEBUG] 首点 [x,y,yaw]: "
+                    f"{xs_interp[0]:.1f}, {ys_interp[0]:.1f}, {yaws_interp[0]:.3f} rad"
+                )
 
         # ===== 仅用于可视化的降采样（保留首尾点） =====
         if len(xs_interp) > 2:
@@ -352,6 +462,7 @@ def main() -> None:
         ax_zoom.clear()
         ax_zoom.set_facecolor("white")
         ax_zoom.set_aspect("equal")
+        _add_dual_axes(ax_zoom)
 
         # 使用路径上的路网点坐标，而不是插值点
         if node_ids and id_to_xy:

@@ -12,6 +12,17 @@ import numpy as np
 import matplotlib.patches as patches
 import os
 
+from map_coordinate_utils import (
+    COORDINATE_FRAME_IMAGE,
+    COORDINATE_FRAME_ISAAC,
+    CoordinateMapping,
+    load_config_file,
+    load_mapping_from_config_dict,
+    load_mapping_from_embedded_points_json,
+    read_coordinate_frame_from_points_json,
+    resolve_for_robot_flag,
+)
+
 
 RoadmapFormat = Literal["json", "csv"]
 
@@ -42,10 +53,13 @@ def _load_image(path: Path) -> np.ndarray:
     return img
 
 
-def _load_points(path: Path) -> list[dict[str, Any]]:
+def _load_points(path: Path, mapping: CoordinateMapping | None = None) -> list[dict[str, Any]]:
     fmt = _infer_format(path)
     if fmt == "json":
         data = json.loads(path.read_text(encoding="utf-8"))
+        if mapping is None:
+            mapping = load_mapping_from_embedded_points_json(data)
+        frame = read_coordinate_frame_from_points_json(data)
         pts = data.get("points", data)
         if not isinstance(pts, list):
             raise ValueError("JSON 路网文件格式不正确：需要 list 或包含 points:list")
@@ -60,7 +74,15 @@ def _load_points(path: Path) -> list[dict[str, Any]]:
                 pid = i
             else:
                 raise ValueError(f"JSON 点格式不正确（index={i}）: {p!r}")
-            out.append({"id": int(pid), "x": float(x), "y": float(y)})
+            xf, yf = float(x), float(y)
+            if frame == COORDINATE_FRAME_ISAAC:
+                if mapping is None:
+                    raise ValueError(
+                        f"文件为 Isaac 坐标但未提供映射（请用 --config 指向含 png/isaac 角点的 config.json，"
+                        f"或在该 JSON 中内嵌 png_image_coordinates / isaac_sim_coordinates）：{path}"
+                    )
+                xf, yf = mapping.isaac_xy_to_image(xf, yf)
+            out.append({"id": int(pid), "x": xf, "y": yf})
         return out
 
     # csv
@@ -117,9 +139,10 @@ def _export_overlay_image(
     out_image_path: Path,
     radius_px: int = 4,
     draw_labels: bool = True,
+    coord_mapping: CoordinateMapping | None = None,
 ) -> None:
     out_image_path.parent.mkdir(parents=True, exist_ok=True)
-    points = _load_points(points_path)
+    points = _load_points(points_path, coord_mapping)
 
     if _PIL_AVAILABLE:
         img = Image.open(map_path).convert("RGBA")  # type: ignore[union-attr]
@@ -195,16 +218,35 @@ def _save_points(
     points: list[dict[str, Any]],
     map_path: str | None,
     image_shape: tuple[int, ...] | None,
+    coord_mapping: CoordinateMapping | None,
+    coord_bounds: dict[str, Any] | None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fmt = _infer_format(path)
 
     if fmt == "json":
+        if coord_mapping is not None:
+            out_pts: list[dict[str, Any]] = []
+            for p in points:
+                ix, iy = coord_mapping.image_xy_to_isaac(float(p["x"]), float(p["y"]))
+                out_pts.append({"id": int(p["id"]), "x": float(ix), "y": float(iy)})
+            save_points = out_pts
+            coord_frame = COORDINATE_FRAME_ISAAC
+        else:
+            save_points = points
+            coord_frame = COORDINATE_FRAME_IMAGE
+
         payload: dict[str, Any] = {
+            "coordinate_frame": coord_frame,
             "map_path": _path_to_tilde(map_path),
             "image_shape": list(image_shape) if image_shape is not None else None,
-            "points": points,
+            "points": save_points,
         }
+        if coord_frame == COORDINATE_FRAME_ISAAC and coord_bounds:
+            if isinstance(coord_bounds.get("png_image_coordinates"), dict):
+                payload["png_image_coordinates"] = coord_bounds["png_image_coordinates"]
+            if isinstance(coord_bounds.get("isaac_sim_coordinates"), dict):
+                payload["isaac_sim_coordinates"] = coord_bounds["isaac_sim_coordinates"]
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return
 
@@ -213,7 +255,11 @@ def _save_points(
         writer = csv.DictWriter(f, fieldnames=["id", "x", "y"])
         writer.writeheader()
         for p in points:
-            writer.writerow({"id": int(p["id"]), "x": float(p["x"]), "y": float(p["y"])})
+            if coord_mapping is not None:
+                sx, sy = coord_mapping.image_xy_to_isaac(float(p["x"]), float(p["y"]))
+                writer.writerow({"id": int(p["id"]), "x": float(sx), "y": float(sy)})
+            else:
+                writer.writerow({"id": int(p["id"]), "x": float(p["x"]), "y": float(p["y"])})
 
 
 @dataclass
@@ -221,6 +267,8 @@ class EditorConfig:
     map_path: Path
     out_path: Path
     load_path: Path | None = None
+    coord_mapping: CoordinateMapping | None = None
+    coord_bounds: dict[str, Any] | None = None
     marker_size: float = 30.0
     show_labels: bool = True
     delete_radius_px: float = 12.0
@@ -247,12 +295,13 @@ class RoadmapPointEditor:
 
         self.points: list[dict[str, Any]] = []
         if cfg.load_path is not None and cfg.load_path.exists():
-            self.points = _load_points(cfg.load_path)
+            self.points = _load_points(cfg.load_path, cfg.coord_mapping)
 
         self._fig, self._ax = plt.subplots()
         self._ax.set_title("路网点编辑器（左键画框撒点，右键删除最近点，按 h 查看快捷键）")
         self._ax.imshow(self.img)
         self._ax.set_aspect("equal")
+        self._add_dual_axes_if_available()
         self._scatter = None
         self._labels: list[Any] = []
         self._box_rect: Any | None = None
@@ -280,6 +329,55 @@ class RoadmapPointEditor:
 
         self._render()
         self._update_info()
+
+    def _add_dual_axes_if_available(self) -> None:
+        """在像素坐标轴基础上增加 Sim 坐标的上/右刻度轴（若有映射）。"""
+        if self.cfg.coord_mapping is None:
+            return
+
+        m = self.cfg.coord_mapping
+
+        # secondary axis 的转换函数可能收到 numpy 数组；这里用向量化公式避免标量强转报错
+        du_den = float(m.du_den)
+        dv_den = float(m.dv_den)
+
+        def px_to_sim_x(x_px):
+            x_px_arr = np.asarray(x_px, dtype=float)
+            if abs(du_den) < 1e-12:
+                return np.full_like(x_px_arr, float(m.x_at_u0), dtype=float)
+            return float(m.x_at_u0) + (x_px_arr - float(m.u0)) * (float(m.x_at_u1) - float(m.x_at_u0)) / du_den
+
+        def sim_to_px_x(x_sim):
+            x_sim_arr = np.asarray(x_sim, dtype=float)
+            sx = float(m.dxd_u)
+            if abs(sx) < 1e-12:
+                return np.full_like(x_sim_arr, float(m.u0), dtype=float)
+            return float(m.u0) + (x_sim_arr - float(m.x_at_u0)) / sx
+
+        def px_to_sim_y(y_px):
+            y_px_arr = np.asarray(y_px, dtype=float)
+            if abs(dv_den) < 1e-12:
+                return np.full_like(y_px_arr, float(m.y_at_v0), dtype=float)
+            return float(m.y_at_v0) + (y_px_arr - float(m.v0)) * (float(m.y_at_v1) - float(m.y_at_v0)) / dv_den
+
+        def sim_to_px_y(y_sim):
+            y_sim_arr = np.asarray(y_sim, dtype=float)
+            sy = float(m.dyd_v)
+            if abs(sy) < 1e-12:
+                return np.full_like(y_sim_arr, float(m.v0), dtype=float)
+            return float(m.v0) + (y_sim_arr - float(m.y_at_v0)) / sy
+
+        secx = self._ax.secondary_xaxis("top", functions=(px_to_sim_x, sim_to_px_x))
+        secy = self._ax.secondary_yaxis("right", functions=(px_to_sim_y, sim_to_px_y))
+        secx.set_xlabel("Isaac Sim X")
+        secy.set_ylabel("Isaac Sim Y")
+
+    def _fmt_dual_xy(self, x_img: float, y_img: float) -> str:
+        """用于 UI/终端信息：同时显示像素坐标与 Isaac Sim 坐标（若可用）。"""
+        if self.cfg.coord_mapping is None:
+            return f"px=({x_img:.1f}, {y_img:.1f})"
+        x_sim, y_sim = self.cfg.coord_mapping.image_xy_to_isaac(float(x_img), float(y_img))
+        return f"px=({x_img:.1f}, {y_img:.1f}) | sim=({x_sim:.3f}, {y_sim:.3f})"
 
     def _start_box(self, x: float, y: float) -> None:
         self._dragging_box = True
@@ -454,7 +552,8 @@ class RoadmapPointEditor:
 
     def _update_info(self, extra: str | None = None) -> None:
         n = len(self.points)
-        msg = f"点数: {n} | 输出: {self.cfg.out_path.name}"
+        frame = COORDINATE_FRAME_ISAAC if self.cfg.coord_mapping is not None else COORDINATE_FRAME_IMAGE
+        msg = f"点数: {n} | 输出: {self.cfg.out_path.name} | 坐标系: {frame}"
         if self.cfg.load_path is not None:
             msg += f" | 载入: {self.cfg.load_path.name}"
         msg += " | h:帮助"
@@ -514,7 +613,7 @@ class RoadmapPointEditor:
     def _add_point(self, x: float, y: float) -> None:
         self.points.append({"id": self._next_id(), "x": float(x), "y": float(y)})
         self._render()
-        self._update_info(f"已添加点: x={x:.1f}, y={y:.1f}")
+        self._update_info(f"已添加点: {self._fmt_dual_xy(x, y)}")
 
     def _nearest_index(self, x: float, y: float) -> tuple[int | None, float]:
         if not self.points:
@@ -532,7 +631,9 @@ class RoadmapPointEditor:
             return
         p = self.points.pop(idx)
         self._render()
-        self._update_info(f"已删除点(index={idx}, id={p['id']}): x={p['x']:.1f}, y={p['y']:.1f}")
+        self._update_info(
+            f"已删除点(index={idx}, id={p['id']}): {self._fmt_dual_xy(float(p['x']), float(p['y']))}"
+        )
 
     def _save(self) -> None:
         _save_points(
@@ -540,6 +641,8 @@ class RoadmapPointEditor:
             points=self.points,
             map_path=str(self.cfg.map_path),
             image_shape=tuple(self.img.shape) if isinstance(self.img, np.ndarray) else None,
+            coord_mapping=self.cfg.coord_mapping,
+            coord_bounds=self.cfg.coord_bounds,
         )
         self._update_info(f"已保存: {self.cfg.out_path}（点数 {len(self.points)}）")
 
@@ -552,6 +655,7 @@ class RoadmapPointEditor:
                     out_image_path=self.cfg.overlay_out_path,
                     radius_px=int(self.cfg.overlay_radius_px),
                     draw_labels=bool(self.cfg.overlay_draw_labels),
+                    coord_mapping=self.cfg.coord_mapping,
                 )
                 print(f"[INFO] 已导出叠加图到: {self.cfg.overlay_out_path}")
                 # Keep UI message short to avoid flicker
@@ -600,6 +704,10 @@ class RoadmapPointEditor:
         if event.xdata is None or event.ydata is None:
             return
         self._update_box(float(event.xdata), float(event.ydata))
+
+        # 轻量级显示当前鼠标位置（双坐标系）
+        x, y = float(event.xdata), float(event.ydata)
+        self._update_info(f"鼠标: {self._fmt_dual_xy(x, y)}")
 
     def _on_release(self, event) -> None:
         if event.inaxes != self._ax:
@@ -654,7 +762,7 @@ class RoadmapPointEditor:
             if not self.cfg.load_path.exists():
                 self._update_info(f"载入文件不存在: {self.cfg.load_path}")
                 return
-            self.points = _load_points(self.cfg.load_path)
+            self.points = _load_points(self.cfg.load_path, self.cfg.coord_mapping)
             self._render()
             self._update_info(f"已重新加载: {self.cfg.load_path}（点数 {len(self.points)}）")
 
@@ -665,6 +773,12 @@ class RoadmapPointEditor:
 def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="根据占据栅格图交互式生成路网点（左键画框撒点/右键删除，保存为 JSON 或 CSV）"
+    )
+    p.add_argument(
+        "--config",
+        default=None,
+        type=str,
+        help="可选：map_data/config.json；若含 png/isaac 角点则保存为 Isaac Sim 坐标并写入内嵌角点",
     )
     p.add_argument(
         "--map",
@@ -732,6 +846,36 @@ def main() -> None:
     overlay_out_path = Path(args.overlay_out).expanduser() if args.overlay_out else None
     overlay_map_path = Path(args.overlay_map).expanduser() if args.overlay_map else None
     export_only = args.overlay_out is not None and args.overlay_points is not None
+    cfg_path = (
+        Path(args.config).expanduser()
+        if args.config
+        else Path(__file__).resolve().with_name("config.json")
+    )
+    cfg_json = load_config_file(cfg_path)
+    map_expanded = Path(args.map).expanduser()
+    for_robot = resolve_for_robot_flag(cfg_json, map_expanded)
+    coord_mapping = load_mapping_from_config_dict(cfg_json, for_robot=for_robot)
+    coord_bounds: dict[str, Any] | None = None
+    if coord_mapping is not None:
+        used_robot_block = for_robot and isinstance(
+            cfg_json.get("png_image_coordinates_robot"), dict
+        )
+        png_k = (
+            "png_image_coordinates_robot" if used_robot_block else "png_image_coordinates"
+        )
+        sim_k = (
+            "isaac_sim_coordinates_robot" if used_robot_block else "isaac_sim_coordinates"
+        )
+        coord_bounds = {}
+        if isinstance(cfg_json.get(png_k), dict):
+            coord_bounds["png_image_coordinates"] = cfg_json[png_k]
+        if isinstance(cfg_json.get(sim_k), dict):
+            coord_bounds["isaac_sim_coordinates"] = cfg_json[sim_k]
+    else:
+        print(
+            "[WARN] 未从 config 加载 png/isaac 映射：路网点将保存为 PNG 像素坐标（coordinate_frame=png_image）。"
+        )
+
     if export_only:
         overlay_map = overlay_map_path or Path(args.map).expanduser()
         overlay_points = Path(args.overlay_points).expanduser()  # type: ignore[arg-type]
@@ -741,6 +885,7 @@ def main() -> None:
             out_image_path=overlay_out_path,  # type: ignore[arg-type]
             radius_px=int(args.overlay_radius),
             draw_labels=not bool(args.overlay_no_labels),
+            coord_mapping=coord_mapping,
         )
         return
 
@@ -748,6 +893,8 @@ def main() -> None:
         map_path=Path(args.map).expanduser(),
         out_path=Path(args.out).expanduser(),
         load_path=Path(args.load).expanduser() if args.load else None,
+        coord_mapping=coord_mapping,
+        coord_bounds=coord_bounds,
         marker_size=float(args.marker_size),
         show_labels=not bool(args.no_labels),
         delete_radius_px=float(args.delete_radius),

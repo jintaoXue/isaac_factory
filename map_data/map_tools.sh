@@ -15,6 +15,11 @@
 # bash map_data/map_tools.sh gen-routes-robot
 # bash map_data/map_tools.sh view-routes-robot
 
+# 坐标批量转换（用于“旧版像素 JSON”迁移到 Isaac Sim 坐标系）：
+# - 读取 config.json 中的 points_path / routes_path（以及 *_robot）
+# - 将 JSON 内的 (x,y) 从 PNG 像素坐标转换为 Isaac Sim 坐标，并写入 coordinate_frame=isaac_sim
+# 示例（仓库根目录执行）：
+#   bash map_data/map_tools.sh trans-json-coordinates map_data/config.json --in-place
 # 所有子命令都可以在后面追加额外参数，这些参数会原样传给对应的 python 脚本：
 #   bash map_data/map_tools.sh gen-routes --interp-step 3.0
 #
@@ -39,7 +44,7 @@ DEFAULT_INTERP_STEP="5.0"
 MAP_IMG_ROBOT="${MAP_DIR}/occupancy_map4robot.png"
 POINTS_JSON_ROBOT="${MAP_DIR}/map_points_robot.json"
 ROUTES_JSON_ROBOT="~/work/Dataset/HC_data/map_data/map_routes_robot.json"
-OVERLAY_IMG_WITH_POINTS_ROBOT="~/work/Dataset/HC_data/map_data/map_points_robot.json"
+OVERLAY_IMG_WITH_POINTS_ROBOT="${MAP_DIR}/map_with_points_robot.png"
 
 cmd="${1:-}"
 shift || true
@@ -113,7 +118,7 @@ case "${cmd}" in
     "${PYTHON_BIN}" "${MAP_DIR}/map_paths_generation.py" \
       --map "${MAP_IMG_HUMAN}" \
       --points "${POINTS_JSON_HUMAN}" \
-      --out "${PATHS_JSON_HUMAN}" \
+      --out "${ROUTES_JSON_HUMAN}" \
       --interp-step "${DEFAULT_INTERP_STEP}" \
       "$@"
     ;;
@@ -156,6 +161,23 @@ case "${cmd}" in
       "$@"
     ;;
 
+  trans-json-coordinates)
+    # 批量将 points/routes JSON 从 PNG 像素坐标转换为 Isaac Sim 坐标（基于 config.json 角点映射）
+    # 用法示例：
+    #   bash map_data/map_tools.sh trans-json-coordinates map_data/config.json --in-place
+    #   bash map_data/map_tools.sh trans-json-coordinates map_data/config.json --out-dir map_data/converted
+    cfg_path="${1:-}"
+    if [[ -z "${cfg_path}" ]]; then
+      echo "缺少 config.json 路径。用法：" >&2
+      echo "  bash map_data/map_tools.sh trans-json-coordinates map_data/config.json [--in-place | --out-dir DIR]" >&2
+      exit 2
+    fi
+    shift || true
+    "${PYTHON_BIN}" "${MAP_DIR}/trans_json_coordinates.py" \
+      --config "${cfg_path}" \
+      "$@"
+    ;;
+
   ""|-h|--help|help)
     cat <<EOF
 用法: bash map_data/map_tools.sh <子命令> [额外参数...]
@@ -172,11 +194,13 @@ case "${cmd}" in
   edit-map-hall   交互式编辑 hall 占据图（画笔/橡皮擦：白=可通行，黑=占据），默认保存为 occupancy_map4robot.png
   edit-map4robot  在现有 occupancy_map4robot.png 上直接编辑（细调/修补），默认覆盖该文件
   edit-map        交互式编辑任意占据图（画笔/橡皮擦：白=可通行，黑=占据）
-  gen-routes      预计算人行 routes 并保存到 ${PATHS_JSON_HUMAN}（含 [x,y,yaw] samples）
+  gen-routes      预计算人行 routes 并保存到 ${ROUTES_JSON_HUMAN}（含 [x,y,yaw] samples）
   gen-routes-robot 预计算机器人 routes 并保存到 ${ROUTES_JSON_ROBOT}（含 [x,y,yaw] samples）
   view-routes     打开查看器（默认读 config.json），显示地图和所有点编号，在终端输入起终点 id 高亮路径并打印插值耗时
   view-routes-robot 打开机器人 routes 查看器（默认使用 ${ROUTES_JSON_ROBOT} / ${POINTS_JSON_ROBOT} / ${MAP_IMG_ROBOT}）
   overlay-points  将路网点叠加到占据图上，生成 ${OVERLAY_IMG_WITH_POINTS_HUMAN}
+  trans-json-coordinates
+                  批量将 config.json 中列出的 points/routes 从 PNG 像素坐标转换为 Isaac Sim 坐标（用于旧数据迁移）
 
 所有子命令都支持在后面追加原生 python 参数，例如：
   bash map_data/map_tools.sh gen-routes --interp-step 3.0

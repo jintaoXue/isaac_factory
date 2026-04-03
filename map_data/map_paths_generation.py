@@ -33,6 +33,16 @@ import heapq
 import matplotlib.pyplot as plt
 import numpy as np
 
+from map_coordinate_utils import (
+    COORDINATE_FRAME_ISAAC,
+    CoordinateMapping,
+    load_config_file,
+    load_mapping_from_config_dict,
+    read_coordinate_frame_from_points_json,
+    resolve_for_robot_flag,
+    world_edge_length,
+)
+
 
 @dataclass
 class RoadmapPoint:
@@ -55,11 +65,19 @@ def load_occupancy_image(path: Path) -> np.ndarray:
     return img.astype(np.float32)
 
 
-def load_points(path: Path) -> List[RoadmapPoint]:
+def load_points(
+    path: Path,
+    mapping: CoordinateMapping | None,
+) -> Tuple[List[RoadmapPoint], str]:
+    """
+    读取路网点；若 JSON 为 Isaac 坐标且提供 mapping，则转为 PNG 像素坐标供占据图使用。
+    返回 (像素坐标路网点, 原始文件中的 coordinate_frame)。
+    """
     data = json.loads(path.read_text(encoding="utf-8"))
     pts = data.get("points", data)
     if not isinstance(pts, list):
         raise ValueError("路网点 JSON 格式不正确：需要 list 或包含 points:list")
+    frame = read_coordinate_frame_from_points_json(data)
     out: List[RoadmapPoint] = []
     for i, p in enumerate(pts):
         if not isinstance(p, dict):
@@ -67,8 +85,14 @@ def load_points(path: Path) -> List[RoadmapPoint]:
         pid = p.get("id", i)
         x = float(p["x"])
         y = float(p["y"])
+        if frame == COORDINATE_FRAME_ISAAC:
+            if mapping is None:
+                raise ValueError(
+                    "路网点为 isaac_sim 坐标，但未提供坐标映射（请传 --config 且包含 png/isaac 角点）。"
+                )
+            x, y = mapping.isaac_xy_to_image(x, y)
         out.append(RoadmapPoint(int(pid), x, y))
-    return out
+    return out, frame
 
 
 def build_occupancy_mask(gray_img: np.ndarray, obstacle_threshold: float = 0.4) -> np.ndarray:
@@ -123,6 +147,7 @@ def build_graph(
     k_neighbors: int = 8,
     max_neighbor_dist: float = 250.0,
     safety_margin: int = 1,
+    mapping: CoordinateMapping | None = None,
 ) -> Dict[int, List[Tuple[int, float]]]:
     """
     基于“最近邻 + 碰撞检测”构建无向图。
@@ -155,9 +180,14 @@ def build_graph(
             p2 = (float(coords[j, 0]), float(coords[j, 1]))
             if not is_segment_collision_free(p1, p2, occ, safety_margin=safety_margin):
                 continue
-            # 无碰撞，则添加双向边
-            graph[pid_i].append((pid_j, d))
-            graph[pid_j].append((pid_i, d))
+            # 无碰撞，则添加双向边；若存在 Sim 映射，Dijkstra 边权使用 Sim 平面欧氏距离
+            w = (
+                world_edge_length(mapping, p1[0], p1[1], p2[0], p2[1])
+                if mapping is not None
+                else d
+            )
+            graph[pid_i].append((pid_j, w))
+            graph[pid_j].append((pid_i, w))
             neighbors_added += 1
 
     return graph
@@ -167,6 +197,7 @@ def build_edge_list(
     points: List[RoadmapPoint],
     graph: Dict[int, List[Tuple[int, float]]],
     edge_interp_step: float | None = None,
+    mapping: CoordinateMapping | None = None,
 ) -> List[Dict[str, Any]]:
     """将邻接表压缩为无向边列表，只记录必要的相邻路网点之间的路径。
 
@@ -193,10 +224,15 @@ def build_edge_list(
             x1, y1 = points_by_id[v]
             dx = x1 - x0
             dy = y1 - y0
-            length = math.hypot(dx, dy)
-            if length <= 1e-6:
+            length_px = math.hypot(dx, dy)
+            if length_px <= 1e-6:
                 continue
-            yaw = math.atan2(dy, dx)
+            if mapping is not None:
+                length = world_edge_length(mapping, x0, y0, x1, y1)
+                yaw = mapping.yaw_image_delta_to_isaac(dx, dy)
+            else:
+                length = length_px
+                yaw = math.atan2(dy, dx)
             edge_entry: Dict[str, Any] = {
                 "u": int(u),
                 "v": int(v),
@@ -207,15 +243,23 @@ def build_edge_list(
             # 如指定 edge_interp_step，则为这条“最短边”（两个路网点之间）预先生成插值路径
             if edge_interp_step is not None and edge_interp_step > 0.0:
                 step = float(edge_interp_step)
-                n_steps = max(1, int(length / step))
+                n_steps = max(1, int(length_px / step))
                 samples: List[Dict[str, float]] = []
                 for k in range(n_steps):
                     t = k / n_steps
                     sx = x0 + dx * t
                     sy = y0 + dy * t
-                    samples.append({"x": float(sx), "y": float(sy), "yaw": float(yaw)})
+                    if mapping is not None:
+                        ix, iy = mapping.image_xy_to_isaac(sx, sy)
+                        samples.append({"x": float(ix), "y": float(iy), "yaw": float(yaw)})
+                    else:
+                        samples.append({"x": float(sx), "y": float(sy), "yaw": float(yaw)})
                 # 确保终点也包含在 samples 中
-                samples.append({"x": float(x1), "y": float(y1), "yaw": float(yaw)})
+                if mapping is not None:
+                    ex, ey = mapping.image_xy_to_isaac(x1, y1)
+                    samples.append({"x": float(ex), "y": float(ey), "yaw": float(yaw)})
+                else:
+                    samples.append({"x": float(x1), "y": float(y1), "yaw": float(yaw)})
                 edge_entry["samples"] = samples
 
             edges.append(edge_entry)
@@ -288,6 +332,13 @@ def main() -> None:
         description="根据占据图和路网点预计算所有点对之间的最短路径，并保存到 JSON 文件。"
     )
     parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="可选：map_data/config.json（含 png_image_coordinates / isaac_sim_coordinates），"
+        "用于输出 Isaac Sim 坐标及 Sim 距离权重的最短路；默认与脚本同目录的 config.json",
+    )
+    parser.add_argument(
         "--map",
         required=True,
         type=str,
@@ -341,12 +392,25 @@ def main() -> None:
     points_path = Path(args.points).expanduser()
     out_path = Path(args.out).expanduser()
 
+    cfg_path = (
+        Path(args.config).expanduser()
+        if args.config
+        else Path(__file__).resolve().with_name("config.json")
+    )
+    cfg_data = load_config_file(cfg_path)
+    for_robot = resolve_for_robot_flag(cfg_data, map_path)
+    mapping = load_mapping_from_config_dict(cfg_data, for_robot=for_robot)
+    if mapping is None:
+        print(
+            "[WARN] 未从 config 加载到 png/isaac 坐标映射：将使用像素坐标输出（与旧版一致）。"
+        )
+
     print(f"[INFO] 读取占据图: {map_path}")
     gray = load_occupancy_image(map_path)
     occ = build_occupancy_mask(gray, obstacle_threshold=float(args.obstacle_threshold))
 
     print(f"[INFO] 读取路网点: {points_path}")
-    points = load_points(points_path)
+    points, _points_frame = load_points(points_path, mapping)
     print(f"[INFO] 路网点数量: {len(points)}")
 
     print("[INFO] 构建图（邻接关系 + 碰撞检测）...")
@@ -356,6 +420,7 @@ def main() -> None:
         k_neighbors=int(args.k_neighbors),
         max_neighbor_dist=float(args.max_neighbor_dist),
         safety_margin=int(args.safety_margin),
+        mapping=mapping,
     )
 
     # 简单统计一下每个点的度数
@@ -369,10 +434,10 @@ def main() -> None:
     print("[INFO] 压缩存储相邻路网点之间的边信息（无向图，每条边只记录一次）...")
     edge_interp_step = float(args.interp_step)
     if edge_interp_step <= 0.0:
-        edges = build_edge_list(points, graph, edge_interp_step=None)
+        edges = build_edge_list(points, graph, edge_interp_step=None, mapping=mapping)
         print("[INFO] 未为边生成插值 samples（interp-step<=0）。")
     else:
-        edges = build_edge_list(points, graph, edge_interp_step=edge_interp_step)
+        edges = build_edge_list(points, graph, edge_interp_step=edge_interp_step, mapping=mapping)
         print(f"[INFO] 为每条边预生成插值 samples，步长={edge_interp_step:.2f} 像素。")
     print(f"[INFO] 边数量: {len(edges)}")
 
@@ -387,7 +452,9 @@ def main() -> None:
             return "~" + s[len(home) :]
         return s
 
-    result = {
+    coord_frame = COORDINATE_FRAME_ISAAC if mapping is not None else "png_image"
+    result: Dict[str, Any] = {
+        "coordinate_frame": coord_frame,
         "map_path": _path_to_tilde(map_path),
         "points_path": _path_to_tilde(points_path),
         "num_nodes": len(graph),
@@ -399,6 +466,23 @@ def main() -> None:
         "edges": edges,
         "paths": all_paths,
     }
+    if mapping is not None:
+        result["path_cost_units"] = "isaac_sim_euclidean"
+        used_robot_block = for_robot and isinstance(
+            cfg_data.get("png_image_coordinates_robot"), dict
+        )
+        png_k = (
+            "png_image_coordinates_robot" if used_robot_block else "png_image_coordinates"
+        )
+        sim_k = (
+            "isaac_sim_coordinates_robot" if used_robot_block else "isaac_sim_coordinates"
+        )
+        if isinstance(cfg_data.get(png_k), dict):
+            result["png_image_coordinates"] = cfg_data[png_k]
+        if isinstance(cfg_data.get(sim_k), dict):
+            result["isaac_sim_coordinates"] = cfg_data[sim_k]
+    else:
+        result["path_cost_units"] = "png_pixels"
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
