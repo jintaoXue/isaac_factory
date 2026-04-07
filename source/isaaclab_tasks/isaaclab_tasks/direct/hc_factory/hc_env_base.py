@@ -34,15 +34,16 @@ import torch
 
 class HcEnvBase(DirectRLEnv):
     cfg_env_base: HcEnvCfg
-    cfg_machines: dict = cfg_machines
-    cfg_products_process: dict = cfg_products_process
-    cfg_material_registration_infos: dict = cfg_material_registration_infos
     def __init__(self, cfg: HcEnvCfg, render_mode: str | None = None, **kwargs):
-        super().__init__(cfg, render_mode, **kwargs)
-
+        self.cfg_env_base = cfg
+        self.cfg_machines = cfg_machines
+        self.cfg_products_process = cfg_products_process
+        self.cfg_material_registration_infos = cfg_material_registration_infos
         self.cuda_device = torch.device(self.cfg_env_base.cuda_device_str)
-        self.reward_buf = torch.zeros(self.num_envs, dtype=torch.float32, device=self.sim.device)
         self.env_rule_based_exploration = cfg.train_cfg['params']['config']['env_rule_based_exploration']
+        super().__init__(cfg, render_mode, **kwargs)
+        self.reward_buf = torch.zeros(self.num_envs, dtype=torch.float32, device=self.sim.device)
+
         
     def _setup_scene(self):
         assert self.scene.num_envs == 2, "Temporary testing num_envs == 2"
