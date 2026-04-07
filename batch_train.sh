@@ -107,7 +107,7 @@ run_test_14() {
 
 run_test_15() {
     echo "运行训练 15: HcFactory + PF-CD3Q"
-    python train.py --task HRTPaHC-v1 --algo rl_filter --headless --wandb_activate --use_fatigue_mask ${DEVICE_ARG}
+    python train.py --task HRTPaHC-v1 --algo rl_filter --headless --wandb_activate --use_fatigue_mask ${DEVICE_ARG} --num_envs 2
 }
 
 

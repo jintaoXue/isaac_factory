@@ -108,7 +108,7 @@ from source.isaaclab_rl.isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnv
 from rl_games.common import env_configurations, vecenv
 from rl_games.common.algo_observer import IsaacAlgoObserver
 from rl_games.torch_runner import Runner
-from source.algo.safe_rl import ppolag_filter_dis, rl_filter, ppo_dis, dqn, cpo_filter, rl_filter_mlp, rl_filter_selfattn, rl_filter_no_noisy, rl_filter_no_dueling
+from source.algo.safe_rl import rl_filter, rule_based
 
 from isaaclab.envs import (
     DirectMARLEnv,
@@ -124,10 +124,9 @@ from isaaclab.utils.io import dump_pickle, dump_yaml
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils.hydra import hydra_task_config
 import wandb
-# from source.isaaclab_tasks.isaaclab_tasks.direct import human_robot_task_allocation
-# from source.isaaclab_tasks.isaaclab_tasks.direct.human_robot_task_allocation.rl_games_env import RlGamesGpuEnvHRTA
+
 from source.isaaclab_tasks.isaaclab_tasks.direct.ergonomic_hrta.eg_hrta_env_cfg import HRTaskAllocEnvCfg
-from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.hc_env_cfg import HcEnvCfg
+from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.cfgs.hc_env_cfg import HcEnvCfg
 
 @hydra_task_config(args_cli.task, args_cli.algo)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: dict):
@@ -268,21 +267,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     agent_cfg["params"]["config"]["num_actors"] = env.unwrapped.num_envs
     # create runner from rl-games
     runner = Runner(IsaacAlgoObserver())
-    # runner.algo_factory.register_builder('rainbow', lambda **kwargs: rainbow.RainbowAgent(**kwargs))
     runner.algo_factory.register_builder('rl_filter', lambda **kwargs: rl_filter.SafeRlFilterAgent(**kwargs))
-    runner.algo_factory.register_builder('ppolag_filter_dis', lambda **kwargs: ppolag_filter_dis.SafeRlFilterAgentPPO(**kwargs))
-    runner.algo_factory.register_builder('ppo_dis', lambda **kwargs: ppo_dis.SafeRlFilterAgentPPO(**kwargs))
-    runner.algo_factory.register_builder('dqn', lambda **kwargs: dqn.DqnAgent(**kwargs))
-    runner.algo_factory.register_builder('cpo_filter', lambda **kwargs: cpo_filter.SafeRlFilterAgentCPO(**kwargs))
-    runner.algo_factory.register_builder('rl_filter_mlp', lambda **kwargs: rl_filter_mlp.SafeRlFilterAgentMLP(**kwargs))
-    runner.algo_factory.register_builder('rl_filter_selfattn', lambda **kwargs: rl_filter_selfattn.SafeRlFilterAgentSelfAttention(**kwargs))
-    runner.algo_factory.register_builder('rl_filter_no_noisy', lambda **kwargs: rl_filter_no_noisy.SafeRlFilterAgentNoNoisy(**kwargs))
-    runner.algo_factory.register_builder('rl_filter_no_dueling', lambda **kwargs: rl_filter_no_dueling.SafeRlFilterAgentNoDueling(**kwargs))
-    # runner.algo_factory.register_builder('rainbownoe', lambda **kwargs: rainbownoe.RainbownoeAgent(**kwargs))
-    # runner.algo_factory.register_builder('rainbowepsilon', lambda **kwargs: rainbowepsilon.RainbowepsilonAgent(**kwargs))
-    # runner.algo_factory.register_builder('epsilon_noisy', lambda **kwargs: epsilon_noisy.EpsilonNoisyAgent(**kwargs))
-    # runner.algo_factory.register_builder('no_dueling', lambda **kwargs: no_dueling.NoduelAgent(**kwargs))
-    # runner.algo_factory.register_builder('edqn', lambda **kwargs: edqn.RainbowepsilonAgent(**kwargs))
+    runner.algo_factory.register_builder('rule_based', lambda **kwargs: rule_based.RuleBasedAgent(**kwargs))
 
     runner.load(agent_cfg)
     # reset the agent and env

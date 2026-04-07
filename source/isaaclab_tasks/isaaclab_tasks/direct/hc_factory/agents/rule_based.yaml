@@ -1,7 +1,7 @@
 params:
   seed: 42
   algo:
-    name: ppo_dis
+    name: rule_based
   
   # environment wrapper clipping, not used
   env:
@@ -12,8 +12,8 @@ params:
 
   config:
 
-    name: HRTA_direct
-    env_name: rlgpu_HRTA
+    name: HcFactory
+    env_name: rlgpu_HcFactory
     device: 'cuda:0'
     device_name: 'cuda:0'
     time_str: "None"
@@ -57,7 +57,7 @@ params:
     max_num_worker: 3
     max_num_robot: 3
     # test_one:
-    acti_agv: 2
+    acti_agv: 1
     acti_charc: 1
     test_times: 10
     test_env_max_length: 2500
@@ -65,13 +65,14 @@ params:
     wandb_activate: False
     # wandb_group: ''
     # wandb_name: ''
-    wandb_project: 'HRTA'
+    wandb_project: 'HcFactory'
     time_str: 'None'
 
     # load_checkpoint: False
     load_dir: ''
     load_name: ''
     gantt_chart_data: False
+    
     # load_dir: /FactoryTaskAllocationMiC2024-10-24_15-30-51/nn
     # load_name: /FactoryTaskAllocationMiC_ep_14079_rew_8.060657.pth
 

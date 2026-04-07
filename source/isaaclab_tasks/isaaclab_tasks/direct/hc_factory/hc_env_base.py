@@ -5,12 +5,6 @@
 
 from __future__ import annotations
 
-import math
-import torch
-from collections.abc import Sequence
-
-from isaaclab_assets.robots.cartpole import CARTPOLE_CFG
-
 import isaaclab.sim as sim_utils
 # from isaaclab.assets import Articulation, ArticulationCfg
 from isaaclab.envs import DirectRLEnv, DirectRLEnvCfg
@@ -19,9 +13,6 @@ from isaaclab.sim import SimulationCfg
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils import configclass
 from isaaclab.utils.math import sample_uniform
-
-from .hc_env_cfg import HcEnvCfg     
-
 # from isaacsim.core.utils.nucleus import get_assets_root_path
 from isaacsim.core.utils.prims import delete_prim, get_prim_at_path, set_prim_visibility
 import isaacsim.core.utils.stage as stage_utils
@@ -30,43 +21,52 @@ from isaacsim.core.utils.stage import get_current_stage
 from isaacsim.core.prims import RigidPrim, Articulation
 from isaacsim.core.api.world import World
 
-from .hc_env_task_manager import Materials, TaskManager
-from .hc_map_route import MapRoute
+
+from .cfgs.hc_env_cfg import HcEnvCfg 
 from abc import abstractmethod
 import numpy as np
-from .hc_env_cfg import joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base, MovingPose
+from .cfgs.hc_env_cfg import PoseAnimation
+from .cfgs.cfg_material_product import cfg_products_process, cfg_material_registration_infos
+from .cfgs.cfg_machine import cfg_machines
+
+import torch
 
 
 class HcEnvBase(DirectRLEnv):
-    cfg: HcEnvCfg
-
+    cfg_env_base: HcEnvCfg
+    cfg_machines: dict = cfg_machines
+    cfg_products_process: dict = cfg_products_process
+    cfg_material_registration_infos: dict = cfg_material_registration_infos
     def __init__(self, cfg: HcEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
+        self.cuda_device = torch.device(self.cfg_env_base.cuda_device_str)
         self.reward_buf = torch.zeros(self.num_envs, dtype=torch.float32, device=self.sim.device)
         self.env_rule_based_exploration = cfg.train_cfg['params']['config']['env_rule_based_exploration']
         
     def _setup_scene(self):
-        assert self.scene.num_envs == 1, "Temporary only support num_envs == 1"
-        assert self.cfg._valid_train_cfg()
-        self.cuda_device = torch.device(self.cfg.cuda_device_str)
+        assert self.scene.num_envs == 2, "Temporary testing num_envs == 2"
+        assert self.cfg_env_base._valid_train_cfg()
+
         for i in range(self.scene.num_envs):
             sub_env_path = f"/World/envs/env_{i}"
             # the usd file already has a ground plane
-            add_reference_to_stage(usd_path = self.cfg.asset_path, prim_path = sub_env_path + "/obj")
-        
+            add_reference_to_stage(usd_path = self.cfg_env_base.asset_path, prim_path = sub_env_path + "/obj")
         # for debug, visualize only prims 
         # stage_utils.print_stage_prim_paths()
         '''test settings'''
-        self._test = self.cfg.train_cfg['params']['config']['test']
+        #TODO:全库固定随机种子，训练和test要分开
+        self._test = self.cfg_env_base.train_cfg['params']['config']['test']
         if self._test:
-            # np.random.seed(self.cfg.train_cfg['params']['seed'])
+            # np.random.seed(self.cfg_env_base.train_cfg['params']['seed'])
             np.random.seed(1)
-            self.set_up_test_setting(self.cfg.train_cfg['params']['config'])
-        self.train_env_len_settings = self.cfg.train_env_len_setting
-        
+            self.set_up_test_setting(self.cfg_env_base.train_cfg['params']['config'])
+        self.train_env_len_settings = self.cfg_env_base.train_env_len_setting
+        self._set_up_machine()
+        self._set_up_material()
+
         cube_list, hoop_list, bending_tube_list, upper_tube_list, product_list = [],[],[],[],[]
-        for i in range(self.cfg.n_max_product):
+        for i in range(self.cfg_env_base.n_max_product):
             cube, hoop, bending_tube, upper_tube, product = self.set_up_material(num=i)
             cube_list.append(cube)
             hoop_list.append(hoop)
@@ -74,13 +74,12 @@ class HcEnvBase(DirectRLEnv):
             upper_tube_list.append(upper_tube)
             product_list.append(product)
         #materials states, machine state
-        self._set_up_machine()
         self.materials : Materials = Materials(cube_list=cube_list, hoop_list=hoop_list, bending_tube_list=bending_tube_list, upper_tube_list=upper_tube_list, product_list = product_list)
         '''for humans workers (characters), robots (agv+boxs) and task manager'''
-        character_list =self.set_up_human(num=self.cfg.n_max_human)
-        agv_list, box_list = self.set_up_robot(num=self.cfg.n_max_robot)
-        self.task_manager : TaskManager = TaskManager(character_list, agv_list, box_list, self.cuda_device, self.cfg, self.cfg.train_cfg['params']['config'])
-        map_route = MapRoute(self.cfg)
+        character_list =self.set_up_human(num=self.cfg_env_base.n_max_human)
+        agv_list, box_list = self.set_up_robot(num=self.cfg_env_base.n_max_robot)
+        self.task_manager : TaskManager = TaskManager(character_list, agv_list, box_list, self.cuda_device, self.cfg_env_base, self.cfg_env_base.train_cfg['params']['config'])
+        map_route = MapRoute(self.cfg_env_base)
         self.task_manager.characters.routes_dic, self.task_manager.agvs.routes_dic = map_route.load_pre_def_routes()
         self.task_manager.boxs.routes_dic = self.task_manager.agvs.routes_dic
 
@@ -173,7 +172,7 @@ class HcEnvBase(DirectRLEnv):
         # if self.episode_length_buf[0] >= 700:
         #     a = 1
         self.task_mask = self.get_task_mask()
-        if self.cfg.train_cfg['params']['config']['use_fatigue_mask']:
+        if self.cfg_env_base.train_cfg['params']['config']['use_fatigue_mask']:
             self.fatigue_mask = self.get_fatigue_mask()
             self.task_mask = self.task_mask * self.fatigue_mask
         self.available_task_dic = self.get_task_mask_dic(self.task_mask)
@@ -372,10 +371,10 @@ class HcEnvBase(DirectRLEnv):
         #     self.gantt_agv = []
     
     def reset_worker_random_time(self):
-        self.temp_random_time = np.random.uniform(0,self.cfg.human_time_random)
+        self.temp_random_time = np.random.uniform(0,self.cfg_env_base.human_time_random)
     
     def reset_machine_random_time(self):
-        self.machine_random_time = np.random.uniform(0,self.cfg.machine_time_random)
+        self.machine_random_time = np.random.uniform(0,self.cfg_env_base.machine_time_random)
     
     def reset_machine_state(self):
         #TODO
@@ -383,119 +382,67 @@ class HcEnvBase(DirectRLEnv):
         return
 
     def _set_up_machine(self):
-        self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num01_rotaryPipeAutomaticWeldingMachine/part_01_station/track_for_mobile_base",
-            name="num01_rotaryPipeAutomaticWeldingMachine_part_01_station",
-            reset_xform_properties=False,
-        )
-        self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num01_rotaryPipeAutomaticWeldingMachine/part_02_station/track_for_mobile_base_001",
-            name="num01_rotaryPipeAutomaticWeldingMachine_part_02_station",
-            reset_xform_properties=False,
-        )
-        self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_01_station : MovingPose = None
-        self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_02_station : MovingPose = None
 
-        self.num02_weldingRobot_part02_robot_arm_and_base = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num02_weldingRobot/part02_robot_arm_and_base",
-            name="num02_weldingRobot_part02_robot_arm_and_base",
-            reset_xform_properties=False,
-        )
-        self.moving_pose_num02_weldingRobot_part02_robot_arm_and_base : MovingPose = None
+        combined = self.cfg_machines.get("registeration_infos_combined")
+        # ===== 显式声明（更直观：一眼能看到有哪些对象会挂到 self 上）=====
+        # 这些名称来自 cfg_machine.py 的 registeration_infos_combined keys
+        self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station = None
+        self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_01_station: PoseAnimation = None
+        self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station = None
+        self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_02_station: PoseAnimation = None
 
-        self.num02_weldingRobot_part04_mobile_base_for_material = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num02_weldingRobot/part04_mobile_base_for_material",
-            name="num02_weldingRobot_part04_mobile_base_for_material",
-            reset_xform_properties=False,
-        )
-        self.moving_pose_num02_weldingRobot_part04_mobile_base_for_material : MovingPose = None
+        self.num02_weldingRobot_part02_robot_arm_and_base = None
+        self.moving_pose_num02_weldingRobot_part02_robot_arm_and_base: PoseAnimation = None
+        self.num02_weldingRobot_part04_mobile_base_for_material = None
+        self.moving_pose_num02_weldingRobot_part04_mobile_base_for_material: PoseAnimation = None
 
-        self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num03_rollerbedCNCPipeIntersectionCuttingMachine/part01_station",
-            name="num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station",
-            reset_xform_properties=False,
-        )
-        self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station : MovingPose = None
+        self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station = None
+        self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station: PoseAnimation = None
+        self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine = None
+        self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine: PoseAnimation = None
 
-        self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num03_rollerbedCNCPipeIntersectionCuttingMachine/part05_cutting_machine",
-            name="num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine",
-            reset_xform_properties=False,
-        )
-        self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine : MovingPose = None
+        self.num04_laserCuttingMachine = None
+        self.moving_pose_num04_laserCuttingMachine: PoseAnimation = None
 
-        self.num04_laserCuttingMachine = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num04_laserCuttingMachine",
-            name="num04_laserCuttingMachine",
-            reset_xform_properties=False,
-        )
-        self.moving_pose_num04_laserCuttingMachine : MovingPose = None
+        self.num05_groovingMachineLarge_part01_large_fixed_base = None
+        self.moving_pose_num05_groovingMachineLarge_part01_large_fixed_base: PoseAnimation = None
+        self.num05_groovingMachineLarge_part02_large_mobile_base = None
+        self.moving_pose_num05_groovingMachineLarge_part02_large_mobile_base: PoseAnimation = None
 
-        self.num05_groovingMachineLarge_part01_large_fixed_base = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num05_groovingMachineLarge/part01_large_fixed_base",
-            name="num05_groovingMachineLarge_part01_large_fixed_base",
-            reset_xform_properties=False,
-        )
-        self.moving_pose_num05_groovingMachineLarge_part01_large_fixed_base : MovingPose = None
+        self.num06_groovingMachineSmall_part01_small_fixed_base = None
+        self.moving_pose_num06_groovingMachineSmall_part01_small_fixed_base: PoseAnimation = None
+        self.num06_groovingMachineSmall_part02_small_mobile_handle = None
+        self.moving_pose_num06_groovingMachineSmall_part02_small_mobile_handle: PoseAnimation = None
 
-        self.num05_groovingMachineLarge_part02_large_mobile_base = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num05_groovingMachineLarge/part02_large_mobile_base",
-            name="num05_groovingMachineLarge_part02_large_mobile_base",
-            reset_xform_properties=False,
-        )
-        self.moving_pose_num05_groovingMachineLarge_part02_large_mobile_base : MovingPose = None
+        self.num07_highPressureFoamingMachine = None
+        self.moving_pose_num07_highPressureFoamingMachine: PoseAnimation = None
 
-        self.num06_groovingMachineSmall_part01_small_fixed_base = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num06_groovingMachineSmall/part01_small_fixed_base",
-            name="num06_groovingMachineSmall_part01_small_fixed_base",
-            reset_xform_properties=False,
-        )
-        self.moving_pose_num06_groovingMachineSmall_part01_small_fixed_base : MovingPose = None
+        self.num08_gantry_group = None
+        self.moving_pose_num08_gantry_group: PoseAnimation = None
 
-        self.num06_groovingMachineSmall_part02_small_mobile_handle = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num06_groovingMachineSmall/part02_small_mobile_handle",
-            name="num06_groovingMachineSmall_part02_small_mobile_handle",
-            reset_xform_properties=False,
-        )
-        self.moving_pose_num06_groovingMachineSmall_part02_small_mobile_handle : MovingPose = None
+        self.num09_workbench = None
+        self.moving_pose_num09_workbench: PoseAnimation = None
 
-        self.num07_highPressureFoamingMachine = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num07_highPressureFoamingMachine",
-            name="num07_highPressureFoamingMachine",
-            reset_xform_properties=False,
-        )
-        self.moving_pose_num07_highPressureFoamingMachine : MovingPose = None
-
-        self.num08_gantry_group = Articulation(
-            prim_paths_expr="/World/envs/.*/obj/HC_factory/num08_gantry_group/gantry_00",
-            name="num08_gantry_group",
-            reset_xform_properties=False,
-        )
-        self.moving_pose_num08_gantry_group : MovingPose = None
-        # self.num08_gantry_01 = Articulation(
-        #     prim_paths_expr="/World/envs/.*/obj/HC_factory/num08_gantry_group/gantry_01",
-        #     name="num08_gantry_01",
-        #     reset_xform_properties=False,
-        # )
-        # self.moving_pose_num08_gantry_01 : MovingPose = None
-
-        # self.num08_gantry_02 = Articulation(
-        #     prim_paths_expr="/World/envs/.*/obj/HC_factory/num08_gantry_group/gantry_02",
-        #     name="num08_gantry_02",
-        #     reset_xform_properties=False,
-        # )
-        # self.moving_pose_num08_gantry_02 : MovingPose = None
-        # self.num08_gantry_03 = Articulation(
-        #     prim_paths_expr="/World/envs/.*/obj/HC_factory/num08_gantry_group/gantry_03",
-        #     name="num08_gantry_03",
-        #     reset_xform_properties=False,
-        # )
-        # self.moving_pose_num08_gantry_03 : MovingPose = None
-        # self.obj_part_7_manipulator = RigidPrim(
-        #     prim_paths_expr="/World/envs/.*/obj/part7/manipulator2/robotiq_arg2f_base_link", name="obj_part_7_manipulator", reset_xform_properties=False
-        # )
+        # 再根据配置创建 Articulation
+        for obj_name, info in combined.items():
+            articulation = Articulation(
+                prim_paths_expr=info["prim_paths_expr"],
+                name=obj_name,
+                reset_xform_properties=bool(info.get("reset_xform_properties", False)),
+            )
+            setattr(self, obj_name, articulation)
 
 
+    def _set_up_material(self):
+        registeration_infos = self.cfg_material_registration_infos.get("registeration_infos")
+        
+        for obj_name, info in combined.items():
+            articulation = RigidPrim(
+                prim_paths_expr=info["prim_paths_expr"],
+                name=obj_name,
+                reset_xform_properties=bool(info.get("reset_xform_properties", False)),
+            )
+            setattr(self, obj_name, articulation)
 
     def set_up_material(self, num):
         #TODO

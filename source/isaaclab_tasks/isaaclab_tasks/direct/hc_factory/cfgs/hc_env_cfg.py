@@ -21,12 +21,9 @@ from isaaclab.utils import configclass
 # from isaaclab.utils.math import sample_uniform
 # from .....isaaclab_assets.isaaclab_assets.robots import production_assets
 import os
-from .....isaaclab.isaaclab.envs.common import ViewerCfg
+# from .......isaaclab.isaaclab.envs.common import ViewerCfg
+from isaaclab.envs.common import ViewerCfg
 
-#high_level_task
-high_level_task_dic =  {-1:'none', 0: 'hoop_preparing', 1:'bending_tube_preparing', 2:'hoop_loading_inner', 3:'bending_tube_loading_inner', 4:'hoop_loading_outer', 
-                5:'bending_tube_loading_outer', 6:'cutting_cube', 7:'collect_product', 8:'placing_product'}
-high_level_task_rev_dic = {v: k for k, v in high_level_task_dic.items()}
 
 @configclass
 class HcViewerCfg(ViewerCfg):
@@ -83,32 +80,12 @@ class HcEnvCfg(DirectRLEnvCfg):
     n_max_human = 0
     n_max_robot = 0
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=1, env_spacing=4.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=3, env_spacing=100.0, replicate_physics=True)
     # cuda decive
     cuda_device_str = "cuda:0"
     #train_cfg will be update when running train.py
     train_cfg = None
-    cutting_machine_oper_len = 25
-    welding_once_time = 25
-    human_loading_time = 8
-    human_putting_time = 5
-    machine_time_random = 3
-    human_time_random = 2
-    # machine_time_random = 0
-    # human_time_random = 0
-    # box_capacity = 4
-    # box_capacity_hoop = 4
-    # box_capacity_bending_tube = 2
-    # box_capacity_product = 1
-    #fatigue
-    ftg_thresh_phy = 0.95
-    ftg_thresh_psy = 0.8
-    hyper_param_time = 0.3
-    # if not use fatigue mask, set False
-    use_partial_filter = True
-    measure_noise_mu = 0.0
-    measure_noise_sigma = 0.00005
-    num_particles = 500
+
 
     def _valid_train_cfg(self):
         #update train_cfg when running train.py

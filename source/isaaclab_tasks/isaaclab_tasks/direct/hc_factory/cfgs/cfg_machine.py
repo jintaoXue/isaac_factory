@@ -1,12 +1,15 @@
 
 
 cfg_machines = {
+    "registeration_infos_combined": {},
+
     "num01_rotaryPipeAutomaticWeldingMachine": {
         "registration_type": "articulation",
         "num_workstations": 2,
         "num_registration_parts": 2,
         "registeration_infos": {
             "num01_rotaryPipeAutomaticWeldingMachine_part_01_station": {
+                #prim_paths_expr is the path in .usd file
                 "prim_paths_expr": "/World/envs/.*/obj/HC_factory/num01_rotaryPipeAutomaticWeldingMachine/part_01_station/track_for_mobile_base",
                 "joint_positions_working": [0.0, 2.0],
                 "animation_time": 100,
@@ -181,3 +184,23 @@ cfg_machines = {
     # "num08_gantry_02": {"prim_paths_expr": "...", "reset_xform_properties": False},
     # "num08_gantry_03": {"prim_paths_expr": "...", "reset_xform_properties": False},
 }
+
+# 将所有机器的 registeration_infos 合并为一个字典，便于全局查找/索引。
+# key: registration part 名称（例如 num01_..._station / num09_workbench）
+# value: 对应的 registration info dict
+_combined: dict = {}
+for _machine_name, _machine_cfg in cfg_machines.items():
+    if _machine_name == "registeration_infos_combined":
+        continue
+    if not isinstance(_machine_cfg, dict):
+        continue
+    _infos = _machine_cfg.get("registeration_infos")
+    if not isinstance(_infos, dict):
+        continue
+    for _k, _v in _infos.items():
+        if _k in _combined:
+            raise ValueError(f"重复的 registeration_infos key: {_k}")
+        _combined[_k] = _v
+
+cfg_machines["registeration_infos_combined"] = _combined
+

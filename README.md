@@ -32,3 +32,13 @@ map的machine related work id
 gantry的停靠位置ids，以及Articulation和实际global位置的关系
 还有storage area
 带标记注释的地图
+
+
+全库固定随机种子，训练和test要分开
+hc_env_base里面要修改:
+        if self._test:
+            # np.random.seed(self.cfg_env_base.train_cfg['params']['seed'])
+            np.random.seed(1)
+
+如果是vector_env, 所有的物体，需要先设定好target_pose,然后最后用 apply step
+还要设计好state的combine和切片

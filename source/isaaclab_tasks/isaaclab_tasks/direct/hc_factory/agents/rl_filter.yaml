@@ -12,8 +12,8 @@ params:
 
   config:
 
-    name: HRTA_direct
-    env_name: rlgpu_HRTA
+    name: HcFactory
+    env_name: rlgpu_HcFactory
     device: 'cuda:0'
     device_name: 'cuda:0'
     time_str: "None"
@@ -65,7 +65,7 @@ params:
     wandb_activate: False
     # wandb_group: ''
     # wandb_name: ''
-    wandb_project: 'HRTA'
+    wandb_project: 'HcFactory'
     time_str: 'None'
 
     # load_checkpoint: False

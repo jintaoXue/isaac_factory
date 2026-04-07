@@ -31,10 +31,6 @@
 Inherits nut-bolt environment class and abstract task class (not enforced). Can be executed with
 PYTHON_PATH omniisaacgymenvs/scripts/rlgames_train.py task=FactoryTaskNutBoltPick
 """
-import torch
-from typing import Tuple
-from .hc_env_base import HcEnvBase
-from .hc_map_route import world_pose_to_navigation_pose
 from isaacsim.core.prims import RigidPrim
 import omni.physx.scripts.utils as physxUtils
 from pxr import Gf, Sdf, Usd, UsdPhysics, UsdGeom, PhysxSchema
@@ -43,30 +39,9 @@ from omni.usd import get_world_transform_matrix
 from ...utils import quaternion  
 import numpy as np
 import torch.nn.functional as Fun
-from .hc_env_cfg import (
-    joint_pos_dic_num01_rotaryPipeAutomaticWeldingMachine_part_01_station,
-    joint_pos_dic_num01_rotaryPipeAutomaticWeldingMachine_part_02_station,
-
-    joint_pos_dic_num02_weldingRobot_part02_robot_arm_and_base,
-    joint_pos_dic_num02_weldingRobot_part04_mobile_base_for_material,
-
-    joint_pos_dic_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station,
-    joint_pos_dic_num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine,
-
-    joint_pos_dic_num04_laserCuttingMachine,
-
-    joint_pos_dic_num05_groovingMachineLarge_part01_large_fixed_base,
-    joint_pos_dic_num05_groovingMachineLarge_part02_large_mobile_base,
-
-    joint_pos_dic_num06_groovingMachineSmall_part01_small_fixed_base,
-    joint_pos_dic_num06_groovingMachineSmall_part02_small_mobile_handle,
-
-    joint_pos_dic_num07_highPressureFoamingMachine,
-
-    joint_pos_dic_num08_gantry_group,
-
-    MovingPose,
-)
+import torch
+from typing import Tuple
+from .hc_env_base import HcEnvBase
 
 MAX_FLOAT = 3.40282347e38
 # import numpy as np

@@ -21,7 +21,8 @@ gym.register(
     entry_point=f"{__name__}.hc_env:HcEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.hc_env_cfg:HcEnvCfg",
+        "env_cfg_entry_point": f"{__name__}.cfgs.hc_env_cfg:HcEnvCfg",
+        "rule_based": f"{agents.__name__}:rule_based.yaml",
         "rl_filter": f"{agents.__name__}:rl_filter.yaml",
         "ppo_dis": f"{agents.__name__}:ppo_dis.yaml",
         "ppolag_filter_dis": f"{agents.__name__}:ppolag_filter_dis.yaml",
