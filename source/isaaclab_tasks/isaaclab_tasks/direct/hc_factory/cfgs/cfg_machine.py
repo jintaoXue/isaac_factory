@@ -169,9 +169,10 @@ cfg_machines = {
                 "prim_paths_expr": "/World/envs/.*/obj/HC_factory/num09_workbench",
                 "joint_positions_working": [0.0],
                 "animation_time": 100,
-                "human_working_areas_ids": [],
-                "agv_parking_areas_ids": [],
-                "gantry_parking_areas_ids": [],
+                # [station_00, station_01]
+                "human_working_areas_ids": [45, 49],
+                "agv_parking_areas_ids": [10],
+                "gantry_parking_areas_ids": [10],
             },
         },
     },
