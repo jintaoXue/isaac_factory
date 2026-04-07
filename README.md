@@ -42,3 +42,4 @@ hc_env_base里面要修改:
 
 如果是vector_env, 所有的物体，需要先设定好target_pose,然后最后用 apply step
 还要设计好state的combine和切片
+machines我觉得设计成单独类比较好

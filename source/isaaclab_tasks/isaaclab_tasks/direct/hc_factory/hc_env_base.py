@@ -436,6 +436,7 @@ class HcEnvBase(DirectRLEnv):
     def _set_up_material(self):
         registeration_infos = self.cfg_material_registration_infos.get("registeration_infos")
         
+        self.material_mana
         for obj_name, info in combined.items():
             articulation = RigidPrim(
                 prim_paths_expr=info["prim_paths_expr"],
