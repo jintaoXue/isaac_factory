@@ -29,5 +29,6 @@ map_routes_human.json
 map_routes_robot.json
 
 map的machine related work id
+gantry的停靠位置ids，以及Articulation和实际global位置的关系
 还有storage area
 带标记注释的地图
