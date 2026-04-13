@@ -1,4 +1,4 @@
-cfg_products_process= {
+CfgProductProcess= {
     "product_water_pipe": {
         "product_id": 00,
         "related_materials": {
@@ -100,7 +100,7 @@ cfg_products_process= {
     }
 }
 
-cfg_material_registration_infos = {
+CfgMaterialRegistrationInfos = {
     "registeration_type": "rigid_prim",
     "registeration_infos": {
         "product_water_pipe": 5, #0-3

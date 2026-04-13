@@ -22,33 +22,32 @@ from isaacsim.core.prims import RigidPrim, Articulation
 from isaacsim.core.api.world import World
 
 
-from .cfgs.hc_env_cfg import HcVectorEnvCfg, HcSingleEnvCfg
-from .hc_single_env_base import HcSingleEnvBase
-from abc import abstractmethod
-import numpy as np
-from .cfgs.hc_env_cfg import PoseAnimation
-from .cfgs.cfg_material_product import cfg_products_process, cfg_material_registration_infos
-from .cfgs.cfg_machine import cfg_machines
+from .cfgs.hc_env_cfg import HcVectorEnvCfg
+# from abc import abstractmethod
+# import numpy as np
+# from .cfgs.hc_env_cfg import PoseAnimation
+from .cfgs.cfg_material_product import CfgProductProcess, CfgMaterialRegistrationInfos
+from .cfgs.cfg_machine import CfgMachines
 
 import torch
 
 
-class HcSingleEnv(HcSingleEnvBase):
-    cfg_env_base: HcEnvCfg
-    def __init__(self, cfg: HcEnvCfg, render_mode: str | None = None, **kwargs):
-        self.cfg_env_base = cfg
-        self.cfg_machines = cfg_machines
-        self.cfg_products_process = cfg_products_process
-        self.cfg_material_registration_infos = cfg_material_registration_infos
-        self.cuda_device = torch.device(self.cfg_env_base.cuda_device_str)
-        self.env_rule_based_exploration = cfg.train_cfg['params']['config']['env_rule_based_exploration']
-        super().__init__(cfg, render_mode, **kwargs)
-        self.reward_buf = torch.zeros(self.num_envs, dtype=torch.float32, device=self.sim.device)
+class HcSingleEnvBase():
+    def __init__(self, env_id: int, cfg_vector_env: HcVectorEnvCfg):
+        self.env_id : int = env_id
+        self.env_id_str : str = f"env_{env_id}"
+        self.cfg_vector_env : HcVectorEnvCfg = cfg_vector_env
+        self.cfg_machines : CfgMachines = CfgMachines
+        self.cfg_products_process = CfgProductProcess
+        self.cfg_material_registration_infos = CfgMaterialRegistrationInfos
+        self.cuda_device = torch.device(self.cfg_vector_env.cuda_device_str)
+        self.cfg_vector_env._valid_train_cfg()
+        self.env_rule_based_exploration = self.cfg_vector_env.train_cfg['params']['config']['env_rule_based_exploration']
+        self.reward_buf = torch.zeros(1, dtype=torch.float32, device=self.sim.device)
+        self.setup_one_env()
 
         
-    def _setup_scene(self):
-        assert self.num_envs == 2, "Temporary testing num_envs == 2"
-        assert self.cfg_env_base._valid_train_cfg()
+    def setup_one_env(self):
 
         for i in range(self.num_envs):
             sub_env_path = f"/World/envs/env_{i}"

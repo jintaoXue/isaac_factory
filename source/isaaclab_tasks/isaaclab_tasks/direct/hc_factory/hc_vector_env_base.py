@@ -22,7 +22,7 @@ from isaacsim.core.prims import RigidPrim, Articulation
 from isaacsim.core.api.world import World
 
 
-from .cfgs.hc_env_cfg import HcVectorEnvCfg 
+from .cfgs.hc_env_cfg import HcVectorEnvCfg, HcSingleEnvCfg
 from abc import abstractmethod
 import numpy as np
 from .cfgs.hc_env_cfg import PoseAnimation
@@ -43,7 +43,10 @@ class HcVectorEnvBase(DirectRLEnv):
         self.env_rule_based_exploration = cfg.train_cfg['params']['config']['env_rule_based_exploration']
         super().__init__(cfg, render_mode, **kwargs)
         self.reward_buf = torch.zeros(self.num_envs, dtype=torch.float32, device=self.sim.device)
-        
+    
+    def setup_one_env(self, env_id: int):
+        pass
+
     def _setup_scene(self):
         assert self.num_envs == 2, "Temporary testing num_envs == 2"
         assert self.cfg_env_base._valid_train_cfg()
