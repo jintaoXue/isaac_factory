@@ -103,6 +103,6 @@ cfg_products_process= {
 cfg_material_registration_infos = {
     "registeration_type": "rigid_prim",
     "registeration_infos": {
-        "product_water_pipe": 4, #0-3
+        "product_water_pipe": 5, #0-3
     }
 }

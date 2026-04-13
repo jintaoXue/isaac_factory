@@ -30,7 +30,6 @@ cfg_machines = {
             },
         },
     },
-
     "num02_weldingRobot": {
         "registration_type": "articulation",
         "num_workstations": 1,
