@@ -18,7 +18,7 @@ from . import agents
 gym.register(
     order_enforce=False,
     id="HRTPaHC-v1",
-    entry_point=f"{__name__}.hc_env:HcEnv",
+    entry_point=f"{__name__}.hc_vector_env:HcVectorEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.cfgs.hc_env_cfg:HcEnvCfg",

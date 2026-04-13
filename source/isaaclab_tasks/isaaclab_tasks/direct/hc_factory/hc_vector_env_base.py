@@ -22,7 +22,7 @@ from isaacsim.core.prims import RigidPrim, Articulation
 from isaacsim.core.api.world import World
 
 
-from .cfgs.hc_env_cfg import HcEnvCfg 
+from .cfgs.hc_env_cfg import HcVectorEnvCfg 
 from abc import abstractmethod
 import numpy as np
 from .cfgs.hc_env_cfg import PoseAnimation
@@ -32,9 +32,9 @@ from .cfgs.cfg_machine import cfg_machines
 import torch
 
 
-class HcEnvBase(DirectRLEnv):
-    cfg_env_base: HcEnvCfg
-    def __init__(self, cfg: HcEnvCfg, render_mode: str | None = None, **kwargs):
+class HcVectorEnvBase(DirectRLEnv):
+    cfg_env_base: HcVectorEnvCfg
+    def __init__(self, cfg: HcVectorEnvCfg, render_mode: str | None = None, **kwargs):
         self.cfg_env_base = cfg
         self.cfg_machines = cfg_machines
         self.cfg_products_process = cfg_products_process
@@ -43,13 +43,12 @@ class HcEnvBase(DirectRLEnv):
         self.env_rule_based_exploration = cfg.train_cfg['params']['config']['env_rule_based_exploration']
         super().__init__(cfg, render_mode, **kwargs)
         self.reward_buf = torch.zeros(self.num_envs, dtype=torch.float32, device=self.sim.device)
-
         
     def _setup_scene(self):
-        assert self.scene.num_envs == 2, "Temporary testing num_envs == 2"
+        assert self.num_envs == 2, "Temporary testing num_envs == 2"
         assert self.cfg_env_base._valid_train_cfg()
 
-        for i in range(self.scene.num_envs):
+        for i in range(self.num_envs):
             sub_env_path = f"/World/envs/env_{i}"
             # the usd file already has a ground plane
             add_reference_to_stage(usd_path = self.cfg_env_base.asset_path, prim_path = sub_env_path + "/obj")

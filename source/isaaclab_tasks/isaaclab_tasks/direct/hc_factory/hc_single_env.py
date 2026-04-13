@@ -1,0 +1,540 @@
+    # Copyright (c) 2022-2025, The Isaac Lab Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+from __future__ import annotations
+
+import isaaclab.sim as sim_utils
+# from isaaclab.assets import Articulation, ArticulationCfg
+from isaaclab.envs import DirectRLEnv, DirectRLEnvCfg
+from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sim import SimulationCfg
+from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
+from isaaclab.utils import configclass
+from isaaclab.utils.math import sample_uniform
+# from isaacsim.core.utils.nucleus import get_assets_root_path
+from isaacsim.core.utils.prims import delete_prim, get_prim_at_path, set_prim_visibility
+import isaacsim.core.utils.stage as stage_utils
+from isaacsim.core.utils.stage import add_reference_to_stage
+from isaacsim.core.utils.stage import get_current_stage
+from isaacsim.core.prims import RigidPrim, Articulation
+from isaacsim.core.api.world import World
+
+
+from .cfgs.hc_env_cfg import HcVectorEnvCfg, HcSingleEnvCfg
+from abc import abstractmethod
+import numpy as np
+from .cfgs.hc_env_cfg import PoseAnimation
+from .cfgs.cfg_material_product import cfg_products_process, cfg_material_registration_infos
+from .cfgs.cfg_machine import cfg_machines
+
+import torch
+
+
+class HcEnvBase():
+    cfg_env_base: HcEnvCfg
+    def __init__(self, cfg: HcEnvCfg, render_mode: str | None = None, **kwargs):
+        self.cfg_env_base = cfg
+        self.cfg_machines = cfg_machines
+        self.cfg_products_process = cfg_products_process
+        self.cfg_material_registration_infos = cfg_material_registration_infos
+        self.cuda_device = torch.device(self.cfg_env_base.cuda_device_str)
+        self.env_rule_based_exploration = cfg.train_cfg['params']['config']['env_rule_based_exploration']
+        super().__init__(cfg, render_mode, **kwargs)
+        self.reward_buf = torch.zeros(self.num_envs, dtype=torch.float32, device=self.sim.device)
+
+        
+    def _setup_scene(self):
+        assert self.num_envs == 2, "Temporary testing num_envs == 2"
+        assert self.cfg_env_base._valid_train_cfg()
+
+        for i in range(self.num_envs):
+            sub_env_path = f"/World/envs/env_{i}"
+            # the usd file already has a ground plane
+            add_reference_to_stage(usd_path = self.cfg_env_base.asset_path, prim_path = sub_env_path + "/obj")
+        # for debug, visualize only prims 
+        # stage_utils.print_stage_prim_paths()
+        '''test settings'''
+        #TODO:全库固定随机种子，训练和test要分开
+        self._test = self.cfg_env_base.train_cfg['params']['config']['test']
+        if self._test:
+            # np.random.seed(self.cfg_env_base.train_cfg['params']['seed'])
+            np.random.seed(1)
+            self.set_up_test_setting(self.cfg_env_base.train_cfg['params']['config'])
+        self.train_env_len_settings = self.cfg_env_base.train_env_len_setting
+        self._set_up_machine()
+        self._set_up_material()
+
+        cube_list, hoop_list, bending_tube_list, upper_tube_list, product_list = [],[],[],[],[]
+        for i in range(self.cfg_env_base.n_max_product):
+            cube, hoop, bending_tube, upper_tube, product = self.set_up_material(num=i)
+            cube_list.append(cube)
+            hoop_list.append(hoop)
+            bending_tube_list.append(bending_tube)
+            upper_tube_list.append(upper_tube)
+            product_list.append(product)
+        #materials states, machine state
+        self.materials : Materials = Materials(cube_list=cube_list, hoop_list=hoop_list, bending_tube_list=bending_tube_list, upper_tube_list=upper_tube_list, product_list = product_list)
+        '''for humans workers (characters), robots (agv+boxs) and task manager'''
+        character_list =self.set_up_human(num=self.cfg_env_base.n_max_human)
+        agv_list, box_list = self.set_up_robot(num=self.cfg_env_base.n_max_robot)
+        self.task_manager : TaskManager = TaskManager(character_list, agv_list, box_list, self.cuda_device, self.cfg_env_base, self.cfg_env_base.train_cfg['params']['config'])
+        map_route = MapRoute(self.cfg_env_base)
+        self.task_manager.characters.routes_dic, self.task_manager.agvs.routes_dic = map_route.load_pre_def_routes()
+        self.task_manager.boxs.routes_dic = self.task_manager.agvs.routes_dic
+
+        # # clone and replicate
+        # self.scene.clone_environments(copy_from_source=False)
+        
+        # add lights
+        light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
+        light_cfg.func("/World/Light", light_cfg)
+
+    def reset(self, num_worker=None, num_robot=None, evaluate=False):
+        """Resets the task and applies default zero actions to recompute observations and states."""
+        # now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # print(f"[{now}] Running RL reset")
+
+        self.reset_buf[0] = 1
+        self.reset_step(num_worker=num_worker, num_robot=num_robot, evaluate=evaluate)
+        actions = torch.zeros((self.num_envs, 1), device=self.cuda_device)
+        obs_dict, _, _, _, _ = self.step(actions)
+
+        return obs_dict
+    
+    def reset_step(self, num_worker=None, num_robot=None, evaluate=False):
+        env_id = 0
+        if self.reset_buf[env_id] == 1:
+            self.reset_buf[env_id] = 0
+            self.episode_length_buf[env_id] = 0
+            self.reset_step_helper(acti_num_char=num_worker, acti_num_robot=num_robot, evaluate=evaluate)
+        return
+
+
+    def reset_step_helper(self, acti_num_char=None, acti_num_robot=None, evaluate=False) -> None:
+        # acti_num_char = 2
+        # acti_num_robot = 1
+        #TODO
+        if self._test:
+            if self._test_all_settings:
+                self.test_all_idx += 1
+                if self.test_all_idx in range(0, len(self.test_settings_list)):
+                    acti_num_char, acti_num_robot = self.test_settings_list[self.test_all_idx]
+                # self.test_all_idx += 1 
+            self.task_manager.reset(acti_num_char, acti_num_robot)
+            self.dynamic_episode_len = self.test_env_max_length
+        else:
+            # assert acti_num_char is None, "wrong training setting"
+            self.task_manager.reset(acti_num_char, acti_num_robot)
+            self.dynamic_episode_len = self.train_env_len_settings[self.task_manager.characters.acti_num_charc-1][self.task_manager.agvs.acti_num_agv-1]
+        self.evaluate = evaluate
+        self.have_over_work = False
+        self.reset_worker_random_time()
+        self.reset_machine_random_time()
+        self.materials.reset()
+        self.reset_machine_state()
+        self.update_task_mask()
+        self.task_manager.obs = self.get_observations()
+        self.scene.write_data_to_sim()
+        self.sim.forward()
+        if not self._test:
+            self.dynamic_episode_len = self.train_env_len_settings[self.task_manager.characters.acti_num_charc-1][self.task_manager.agvs.acti_num_agv-1]
+        return 
+    
+    def done_update(self):
+        """Assign environments for reset if successful or failed."""
+        # task_finished = self.materials.done()
+        task_finished = False
+        is_last_step = self.episode_length_buf[0] >= self.dynamic_episode_len - 1
+        #TODO for debug
+        # is_last_step = False
+        # If max episode length has been reached
+        if is_last_step or task_finished:
+            self.reset_buf[0] = 1
+            '''gantt chart'''
+            if self._test and self.gantt_chart_data:
+                self.save_gantt_chart() 
+            '''end'''
+            name = 'traning ' if not self.evaluate else 'evaluate '
+            if self.env_rule_based_exploration:
+                name = 'rule_based' + name
+            name += " worker:{}, agv&box:{}, env_len:{}, max_env_len:{}, finished:{}, over_work:{}".format(self.task_manager.characters.acti_num_charc, 
+                                                    self.task_manager.agvs.acti_num_agv, self.episode_length_buf[0], self.dynamic_episode_len, task_finished, self.have_over_work)
+            self.extras['print_info'] = name
+            # print(name+" worker:{}, agv&box:{}, env_len:{}, max_env_len:{}, finished:{}, over_work:{}".format(self.task_manager.characters.acti_num_charc, 
+            #                                         self.task_manager.agvs.acti_num_agv, self.episode_length_buf[0], self.dynamic_episode_len, task_finished, self.have_over_work))
+        else:
+            pass
+    
+    # def update_ergonomic
+
+    def update_task_mask(self):
+        # if self.episode_length_buf[0] >= 700:
+        #     a = 1
+        self.task_mask = self.get_task_mask()
+        if self.cfg_env_base.train_cfg['params']['config']['use_fatigue_mask']:
+            self.fatigue_mask = self.get_fatigue_mask()
+            self.task_mask = self.task_mask * self.fatigue_mask
+        self.available_task_dic = self.get_task_mask_dic(self.task_mask)
+
+    def get_rule_based_action(self):
+        _task_mask = self.task_mask
+        if _task_mask[1:].any():
+            _task_mask[0] = 0
+        return (_task_mask.argmax(0)).unsqueeze(0)
+        
+        
+    def caculate_metric_action(self, actions):
+        self.reward_action = None
+        task_id = actions[0] - 1
+        task = self.task_manager.task_dic[task_id.item()]
+        if task not in self.available_task_dic.keys():
+            self.reward_action = -0.1
+        elif task == 'none':
+            if self.task_mask[1:].count_nonzero() > 0:
+                self.reward_action = -0.1
+            else:
+                self.reward_action = 0.
+        else:
+            self.reward_action = 0.1
+
+    def calculate_metrics(self):
+        # task_finished = self.materials.done()
+        task_finished = False
+        is_last_step = self.episode_length_buf[0] >= self.dynamic_episode_len - 1
+        """Compute reward at current timestep."""
+        reward_time = (self.episode_length_buf[0] - self.pre_progress_step)*-0.002
+        progress = self.materials.progress()
+        if is_last_step: 
+            if task_finished:
+                rew_task = 0.6
+            else:
+                rew_task = -1.5 + self.materials.progress()
+        else:
+            if task_finished:
+                rew_task = 1
+            else:
+                rew_task = (progress - self.materials.pre_progress)*0.2
+
+        self.reward_buf[0] = self.reward_action + reward_time + rew_task
+        self.pre_progress_step = self.episode_length_buf[0].clone()
+        self.materials.pre_progress = progress
+        self.extras['progress'] = progress
+        self.extras['rew_action'] = self.reward_action
+        self.extras['env_length'] = self.episode_length_buf[0].clone().cpu().item()
+        self.extras['max_env_len'] = self.dynamic_episode_len
+        self.extras['time_step'] = f"{self.episode_length_buf[0].cpu()}"
+        self.extras['num_worker'] = self.task_manager.characters.acti_num_charc
+        self.extras['num_robot'] = self.task_manager.agvs.acti_num_agv
+        self.extras['human_move'] = self.task_manager.characters.get_sum_movement()
+        self.extras['agv_move'] = self.task_manager.agvs.get_sum_movement()
+        self.extras['cost_value'] = self.compute_cost_value()
+        if self._test:
+            self.extras['worker_initial_pose'] = self.task_manager.ini_worker_pose
+            self.extras['robot_initial_pose'] = self.task_manager.ini_agv_pose
+            self.extras['box_initial_pose'] = self.task_manager.ini_box_pose
+        # self.reward_test_list.append(self.reward_buf[0].clone())
+        return
+    
+    def compute_cost_value(self):
+        cost = 0.0
+        scale = 0.005
+        if self.task_manager.characters.have_overwork():
+            cost += 0.1
+        cost += self.task_manager.characters.compute_fatigue_cost()*scale
+        return cost
+        
+
+    def get_fatigue_data(self):
+        self.extras['overwork'] = self.task_manager.characters.have_overwork()
+        self.extras['overwork_phy_values'] = []
+        if self.extras['overwork']:
+            self.have_over_work = True
+            self.extras['overwork_phy_values'] = self.task_manager.characters.get_overwork_phy_values()
+        if len(self.task_manager.fatigue_data_list)>0:
+            self.extras['fatigue_data'] = self.task_manager.fatigue_data_list
+            self.task_manager.fatigue_data_list = []
+        elif 'fatigue_data' in self.extras:
+            del self.extras['fatigue_data']
+
+    def get_task_mask(self):
+
+        task_mask = torch.zeros(len(self.task_manager.task_dic))
+        worker, agv, box = self.check_task_lacking_entity()
+        have_wab = worker and agv and box
+        have_w = worker
+        have_ab = agv and box
+        if have_wab and self.state_depot_hoop == 0 and 'hoop_preparing' not in self.task_manager.task_in_dic.keys() and self.materials.hoop_states.count(0) > 0:
+            task_mask[1] = 1
+        if have_wab and self.state_depot_bending_tube == 0 and 'bending_tube_preparing' not in self.task_manager.task_in_dic.keys() and self.materials.bending_tube_states.count(0) > 0:
+            task_mask[2] = 1
+        if have_w and self.station_state_inner_left == 0 and 'hoop_loading_inner' not in self.task_manager.task_in_dic.keys() and self.materials.hoop_states.count(2)>0: #loading
+            task_mask[3] = 1
+        if have_w and self.station_state_inner_right == 0 and 'bending_tube_loading_inner' not in self.task_manager.task_in_dic.keys() and self.materials.bending_tube_states.count(2)>0: 
+            task_mask[4] = 1
+        if have_w and self.station_state_outer_left == 0 and 'hoop_loading_outer' not in self.task_manager.task_in_dic.keys() and self.materials.hoop_states.count(2)>0: #loading
+            task_mask[5] = 1
+        if have_w and self.station_state_outer_right == 0 and 'bending_tube_loading_outer' not in self.task_manager.task_in_dic.keys() and self.materials.bending_tube_states.count(2)>0: 
+            task_mask[6] = 1
+        if have_w and self.cutting_machine_state == 1 and 'cutting_cube' not in self.task_manager.task_in_dic.keys(): #cuttting cube
+            task_mask[7] = 1
+        #when material 处于准备好的状态，要么边线库有，要么正在被加工。如果没有准备好，那么不可能执行collect product的任务
+        #English: only when material is ready for propcessing (at depot, loaded, processing, processed), the collect product mission is activate 
+        if self.materials.have_collecting_product_req() and have_ab and (self.materials.produce_product_req() == True) and 'collect_product' not in self.task_manager.task_in_dic.keys():
+            task_mask[8] = 1
+        if have_w and 'collect_product' in self.task_manager.task_in_dic.keys() and self.task_manager.boxs.product_collecting_idx >=0 and \
+                len(self.task_manager.boxs.product_idx_list[self.task_manager.boxs.product_collecting_idx])>0 and \
+                'placing_product' not in self.task_manager.task_in_dic.keys() and self.gripper_inner_task not in range (4, 8):
+            task_mask[9] = 1
+            if self.task_manager.boxs.acti_num_box > 1 and len(self.task_manager.boxs.product_idx_list[self.task_manager.boxs.product_collecting_idx])<self.task_manager.boxs.capacity.product and self.materials.have_collecting_product_req():
+                task_mask[9] = 0
+        # if self.task_manager.characters.acti_num_charc == 1:
+        if True:
+            #fix bug
+            is_last_hoop = sum([_state<=2 and _state >= -1 for _state in self.materials.hoop_states]) == 1
+            #make sure the last one hoop is loaded in the same station including the cube waiting for welding
+            if is_last_hoop and (task_mask[3] or task_mask[5]):
+                if self.materials.outer_cube_processing_index == -1 or self.materials.cube_states[self.materials.outer_cube_processing_index] in range(9, 14):
+                    task_mask[5] = 0
+                if self.materials.inner_cube_processing_index == -1 or self.materials.cube_states[self.materials.inner_cube_processing_index] in range(9, 14):
+                    task_mask[3] = 0
+            
+            is_last_bending_tube = sum([_state<=2 and _state >= -1 for _state in self.materials.bending_tube_states]) == 1
+            #make sure the last one bending tube is loaded in the same station including the cube waiting for welding
+            if is_last_bending_tube and (task_mask[4] or task_mask[6]):
+                if self.materials.outer_cube_processing_index == -1 or self.materials.cube_states[self.materials.outer_cube_processing_index] in range(10, 14):
+                    task_mask[6] = 0
+                if self.materials.inner_cube_processing_index == -1 or self.materials.cube_states[self.materials.inner_cube_processing_index] in range(10, 14):
+                    task_mask[4] = 0
+
+        task_mask[0] = 1
+        return task_mask
+
+    def get_fatigue_mask(self):
+        # fatigue_mask = torch.zeros(len(self.task_manager.task_dic), device=self.cuda_device)
+        if self.task_manager.characters.acti_num_charc == 0:
+            return torch.zeros(len(self.task_manager.task_dic))
+        _masks = self.task_manager.characters.fatigue_task_masks
+        fatigue_mask = _masks[0]
+        for i in range(1, self.task_manager.characters.acti_num_charc):
+            fatigue_mask =  fatigue_mask | _masks[i]
+    
+        return fatigue_mask
+    
+    def get_task_mask_dic(self, task_mask):
+        available_task_dic = {}
+        if task_mask[0] == 1:
+            available_task_dic['none'] = -1
+        if task_mask[1] == 1:
+            available_task_dic['hoop_preparing'] = 0
+        if task_mask[2] == 1:
+            available_task_dic['bending_tube_preparing'] = 1
+        if task_mask[3] == 1:
+            available_task_dic['hoop_loading_inner'] = 2
+        if task_mask[4] == 1: 
+            available_task_dic['bending_tube_loading_inner'] = 3
+        if task_mask[5] == 1:
+            available_task_dic['hoop_loading_outer'] = 4
+        if task_mask[6] == 1: 
+            available_task_dic['bending_tube_loading_outer'] = 5
+        if task_mask[7] == 1:
+            available_task_dic['cutting_cube'] = 6
+        if task_mask[8] == 1:
+            available_task_dic['collect_product'] = 7
+        if task_mask[9] == 1:
+            available_task_dic['placing_product'] = 8
+        return available_task_dic
+
+    def check_task_lacking_entity(self):
+        worker = [a*b for a,b in zip(self.task_manager.characters.states,self.task_manager.characters.tasks)].count(0)
+        agv = [a*b for a,b in zip(self.task_manager.agvs.states,self.task_manager.agvs.tasks)].count(0)
+        box = [a*b for a,b in zip(self.task_manager.boxs.states,self.task_manager.boxs.tasks)].count(0)
+        return worker>0, agv>0, box>0
+
+    def set_up_test_setting(self, train_sub_cfg):
+        self.test_env_max_length = train_sub_cfg['test_env_max_length']
+        self._test_all_settings = train_sub_cfg['test_all_settings']
+        if self._test_all_settings:
+            self.test_all_idx = -1
+            self.test_settings_list = []
+            for w in range(train_sub_cfg["max_num_worker"]):
+                for r in range(train_sub_cfg["max_num_robot"]):
+                    for i in range(train_sub_cfg['test_times']):  
+                        self.test_settings_list.append((w+1,r+1))
+        '''test one setting, the task_manager class will handle'''
+        '''gantt chart'''
+        self.gantt_chart_data = train_sub_cfg['gantt_chart_data']
+        # if self.gantt_chart_data:
+        #     self.actions_list = []
+        #     self.time_frames = []
+        #     self.gantt_charc = []
+        #     self.gantt_agv = []
+    
+    def reset_worker_random_time(self):
+        self.temp_random_time = np.random.uniform(0,self.cfg_env_base.human_time_random)
+    
+    def reset_machine_random_time(self):
+        self.machine_random_time = np.random.uniform(0,self.cfg_env_base.machine_time_random)
+    
+    def reset_machine_state(self):
+        #TODO
+
+        return
+
+    def _set_up_machine(self):
+
+        combined = self.cfg_machines.get("registeration_infos_combined")
+        # ===== 显式声明（更直观：一眼能看到有哪些对象会挂到 self 上）=====
+        # 这些名称来自 cfg_machine.py 的 registeration_infos_combined keys
+        self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station = None
+        self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_01_station: PoseAnimation = None
+        self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station = None
+        self.moving_pose_num01_rotaryPipeAutomaticWeldingMachine_part_02_station: PoseAnimation = None
+
+        self.num02_weldingRobot_part02_robot_arm_and_base = None
+        self.moving_pose_num02_weldingRobot_part02_robot_arm_and_base: PoseAnimation = None
+        self.num02_weldingRobot_part04_mobile_base_for_material = None
+        self.moving_pose_num02_weldingRobot_part04_mobile_base_for_material: PoseAnimation = None
+
+        self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station = None
+        self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station: PoseAnimation = None
+        self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine = None
+        self.moving_pose_num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine: PoseAnimation = None
+
+        self.num04_laserCuttingMachine = None
+        self.moving_pose_num04_laserCuttingMachine: PoseAnimation = None
+
+        self.num05_groovingMachineLarge_part01_large_fixed_base = None
+        self.moving_pose_num05_groovingMachineLarge_part01_large_fixed_base: PoseAnimation = None
+        self.num05_groovingMachineLarge_part02_large_mobile_base = None
+        self.moving_pose_num05_groovingMachineLarge_part02_large_mobile_base: PoseAnimation = None
+
+        self.num06_groovingMachineSmall_part01_small_fixed_base = None
+        self.moving_pose_num06_groovingMachineSmall_part01_small_fixed_base: PoseAnimation = None
+        self.num06_groovingMachineSmall_part02_small_mobile_handle = None
+        self.moving_pose_num06_groovingMachineSmall_part02_small_mobile_handle: PoseAnimation = None
+
+        self.num07_highPressureFoamingMachine = None
+        self.moving_pose_num07_highPressureFoamingMachine: PoseAnimation = None
+
+        self.num08_gantry_group = None
+        self.moving_pose_num08_gantry_group: PoseAnimation = None
+
+        self.num09_workbench = None
+        self.moving_pose_num09_workbench: PoseAnimation = None
+
+        # 再根据配置创建 Articulation
+        for obj_name, info in combined.items():
+            articulation = Articulation(
+                prim_paths_expr=info["prim_paths_expr"],
+                name=obj_name,
+                reset_xform_properties=bool(info.get("reset_xform_properties", False)),
+            )
+            setattr(self, obj_name, articulation)
+
+
+    def _set_up_material(self):
+        registeration_infos = self.cfg_material_registration_infos.get("registeration_infos")
+        
+        self.material_mana
+        for obj_name, info in combined.items():
+            articulation = RigidPrim(
+                prim_paths_expr=info["prim_paths_expr"],
+                name=obj_name,
+                reset_xform_properties=bool(info.get("reset_xform_properties", False)),
+            )
+            setattr(self, obj_name, articulation)
+
+    def set_up_material(self, num):
+        #TODO
+        if num > 0:
+            _str = ("{}".format(num)).zfill(2)
+        else:
+            _str = "0"
+        materials_cube = RigidPrim(
+            prim_paths_expr="/World/envs/.*/obj/Materials/cubes/cube_"+_str,
+            name="cube_"+_str,
+            track_contact_forces=True,
+        )
+        materials_hoop = RigidPrim(
+            prim_paths_expr="/World/envs/.*/obj/Materials/hoops/hoop_"+_str,
+            name="hoop_"+_str,
+            track_contact_forces=True,
+        )
+        materials_bending_tube = RigidPrim(
+            prim_paths_expr="/World/envs/.*/obj/Materials/bending_tubes/bending_tube_"+_str,
+            name="bending_tube_"+_str,
+            track_contact_forces=True,
+        )
+        materials_upper_tube = RigidPrim(
+            prim_paths_expr="/World/envs/.*/obj/Materials/upper_tubes/upper_tube_"+_str,
+            name="upper_tube_"+_str,
+            track_contact_forces=True,
+        )
+        product = RigidPrim(
+            prim_paths_expr="/World/envs/.*/obj/Materials/products/product_"+_str,
+            name="product_"+_str,
+            track_contact_forces=True,
+        )
+        return materials_cube, materials_hoop, materials_bending_tube, materials_upper_tube, product
+
+    def set_up_human(self, num):
+
+        character_list = []
+        for i in range(1, num+1):
+
+            _str = ("{}".format(i)).zfill(2)
+            character = RigidPrim(
+                prim_paths_expr="/World/envs/.*/obj/Characters/male_adult_construction_"+_str,
+                name="character_{}".format(i+1),
+                track_contact_forces=True,
+            )
+            character_list.append(character)
+
+        return character_list 
+    
+    def set_up_robot(self, num):
+
+        box_list = []
+        robot_list = []
+        for i in range(1, num+1):
+            box = RigidPrim(
+                prim_paths_expr="/World/envs/.*/obj/AGVs/box_0{}".format(i),
+                name="box_{}".format(i),
+                track_contact_forces=True,
+            )
+            box_list.append(box)
+
+            agv = Articulation(
+                prim_paths_expr="/World/envs/.*/obj/AGVs/agv_0{}".format(i),
+                name="agv_{}".format(i),
+                reset_xform_properties=False,
+            )
+            robot_list.append(agv)
+        return robot_list, box_list 
+
+    def save_gantt_chart(self):
+        # plt.show()
+        import os, pickle
+    
+        gant_path = os.getcwd() + '/figs/gantt/gantt_data_D3QN.pkl'
+        dic = {}   
+        dic['initial'] = [self.task_manager.ini_worker_pose ,self.task_manager.ini_agv_pose, self.task_manager.ini_box_pose]
+        dic['worker'] = []
+        dic['worker_tasks_dic'] = set(self.task_manager.characters.fatigue_list[0].task_human_subtasks_dic.keys())
+        dic['agv'] = []
+        dic['agv_tasks_dic'] = self.task_manager.agvs.task_range
+        dic['agv_tasks_dic'].add('none')
+        for i in range(self.task_manager.characters.acti_num_charc):
+            #[('free', 'free', 'none', self.phy_fatigue, self.psy_fatigue, self.time_step)] #state, subtask, task, time_step
+            dic['worker'].append(self.task_manager.characters.fatigue_list[i].subtask_level_f_history)
+        for i in range(self.task_manager.agvs.acti_num_agv):
+            dic['agv'].append(self.task_manager.agvs.task_level_history[i])
+        with open(gant_path, 'wb') as f:
+            pickle.dump(dic, f)
+        return
+    
+    @abstractmethod
+    def get_observations(self) -> dict:
+        return

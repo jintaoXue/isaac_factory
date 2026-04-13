@@ -51,8 +51,45 @@ class HcViewerCfg(ViewerCfg):
     eye: tuple[float, float, float] = (0, 10, 100)
     lookat: tuple[float, float, float] = (0, 2, 0.5)
 
+
+
+
+
 @configclass
-class HcEnvCfg(DirectRLEnvCfg):
+class HcSingleEnvCfg(DirectRLEnvCfg):
+
+
+    train_env_len_setting = [[3500, 2000, 2000], [1800, 1500, 1500], [1800, 1400, 1400]]
+    #max_episode_length = max_episode_length_s / (self.cfg.sim.dt * self.cfg.decimation) = 25/(1/120 * 2) = 1500 steps
+    episode_length_s = 80.0 
+    action_space = 10
+    #The real state/observation_space is complicated, settiing 2 is only for initializing gym Env
+    observation_space = 2
+    state_space = 2    
+    #asset path, include machine, human, robot
+    asset_path = os.path.expanduser("~") + "/work/Dataset/HC_data/final_for_isaac/HC_import.usd"
+    # asset_path = os.path.expanduser("~") + "/work/Dataset/3D_model/all.usd"
+    occupancy_map_path = os.path.expanduser("~") + "/work/Dataset/3D_model/occupancy_map.png"
+    route_character_file_path = os.path.expanduser("~") + "/work/Dataset/3D_model/routes_character.pkl"
+    route_agv_file_path = os.path.expanduser("~") + "/work/Dataset/3D_model/routes_agv.pkl"
+    n_max_product = 0
+    n_max_human = 0
+    n_max_robot = 0
+    # scene
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=3, env_spacing=100.0, replicate_physics=True)
+    # cuda decive
+    cuda_device_str = "cuda:0"
+    #train_cfg will be update when running train.py
+    train_cfg = None
+
+
+    def _valid_train_cfg(self):
+        #update train_cfg when running train.py
+        return self.train_cfg != None
+
+
+@configclass
+class HcVectorEnvCfg(DirectRLEnvCfg):
 
     # env
     decimation = 1

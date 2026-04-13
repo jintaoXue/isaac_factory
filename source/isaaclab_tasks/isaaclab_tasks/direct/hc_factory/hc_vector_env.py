@@ -41,12 +41,12 @@ import numpy as np
 import torch.nn.functional as Fun
 import torch
 from typing import Tuple
-from .hc_env_base import HcEnvBase
+from .hc_vector_env_base import HcVectorEnvBase
 
 MAX_FLOAT = 3.40282347e38
 # import numpy as np
 
-class HcEnv(HcEnvBase):
+class HcVectorEnv(HcVectorEnvBase):
             
     def step(self, action: torch.Tensor | None, action_extra = None
         ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
