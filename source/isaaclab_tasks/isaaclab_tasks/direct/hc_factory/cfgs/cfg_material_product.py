@@ -1,38 +1,34 @@
 CfgProductProcess= {
     "product_water_pipe": {
         "product_id": 00,
-        "related_materials": {
-            "product_00_pipe": 1,
-            "product_00_flange": 1,
-            "product_00_elbow": 1,
-            #semi是指半成品
-            "product_00_semi": 1,
-            #maded product是指成品
-            "product_00_maded": 1,
-        },
-        #prim_paths_expr is the path in .usd file
         "meta_registeration_info": {
             # The asterisk (*) in the key denotes a placeholder for the product number. For example, "product_00_maded_00", "product_00_maded_01", etc., 
             # where the first "00" represents the product ID, and the second "*" represents the product number.
-            "product_00_maded_*": {
-                "prim_paths_expr": "/World/envs/.*/obj/HC_factory/product_water_pipe_group/products/product_*",
-                "name": "product_00_maded_*",
+            #prim_paths_expr is the path in .usd file
+            "product_00_pipe": {
+                "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/product_water_pipe_group/cubes/cube_{idx}",
+                "name": "product_00_pipe_{idx}",
+                "requried_number": 1,
             },
-            "product_00_semi_*": {
-                "prim_paths_expr": "/World/envs/.*/obj/HC_factory/product_water_pipe_group/products/semi_product_*",
-                "name": "product_00_semi_*",
+            "product_00_flange": {
+                "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/product_water_pipe_group/hoops/hoop_{idx}",
+                "name": "product_00_flange_{idx}",
+                "requried_number": 1,
             },
-            "product_00_pipe_*": {
-                "prim_paths_expr": "/World/envs/.*/obj/HC_factory/product_water_pipe_group/cubes/cube_*",
-                "name": "product_00_pipe_*",
+            "product_00_elbow": {
+                "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_{idx}",
+                "name": "product_00_elbow_{idx}",
+                "requried_number": 1,
             },
-            "product_00_flange_*": {
-                "prim_paths_expr": "/World/envs/.*/obj/HC_factory/product_water_pipe_group/hoops/hoop_*",
-                "name": "product_00_flange_*",
+            "product_00_semi": {
+                "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/product_water_pipe_group/products/semi_product_{idx}",
+                "name": "product_00_semi_{idx}",
+                "requried_number": 1,
             },
-            "product_00_elbow_*": {
-                "prim_paths_expr": "/World/envs/.*/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_*",
-                "name": "product_00_elbow_*",
+            "product_00_maded": {
+                "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/product_water_pipe_group/products/product_{idx}",
+                "name": "product_00_maded_{idx}",
+                "requried_number": 1,
             },
         },
         "material_states": {
@@ -100,9 +96,9 @@ CfgProductProcess= {
     }
 }
 
-CfgMaterialRegistrationInfos = {
+CfgProductionOrder = {
     "registeration_type": "rigid_prim",
     "registeration_infos": {
-        "product_water_pipe": 5, #0-3
+        "product_water_pipe": 5, #0-4
     }
 }

@@ -26,7 +26,7 @@ from .cfgs.hc_env_cfg import HcVectorEnvCfg
 # from abc import abstractmethod
 # import numpy as np
 # from .cfgs.hc_env_cfg import PoseAnimation
-from .cfgs.cfg_material_product import CfgProductProcess, CfgMaterialRegistrationInfos
+from .cfgs.cfg_material_product import CfgProductProcess, CfgProductionOrder
 from .cfgs.cfg_machine import CfgMachines
 
 import torch
@@ -40,7 +40,7 @@ class HcSingleEnvBase():
         self.cfg_vector_env : HcVectorEnvCfg = cfg_vector_env
         self.cfg_machines : CfgMachines = CfgMachines
         self.cfg_products_process = CfgProductProcess
-        self.cfg_material_registration_infos = CfgMaterialRegistrationInfos
+        self.cfg_production_order = CfgProductionOrder
         self.cuda_device = torch.device(self.cfg_vector_env.cuda_device_str)
         self.cfg_vector_env._valid_train_cfg()
         self.env_rule_based_exploration = self.cfg_vector_env.train_cfg['params']['config']['env_rule_based_exploration']
@@ -55,12 +55,6 @@ class HcSingleEnvBase():
     def _set_up_machine(self):
 
         combined = self.cfg_machines.get("registeration_infos_combined")
-        # ===== 显式声明（更直观：一眼能看到有哪些对象会挂到 self 上）=====
-        # 这些名称来自 cfg_machine.py 的 registeration_infos_combined keys
-        self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station = None
-        self.animation_num01_rotaryPipeAutomaticWeldingMachine_part_01_station: PoseAnimation = None
-        self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station = None
-        self.animation_num01_rotaryPipeAutomaticWeldingMachine_part_02_station: PoseAnimation = None
 
         self.num02_weldingRobot_part02_robot_arm_and_base = None
         self.animation_num02_weldingRobot_part02_robot_arm_and_base: PoseAnimation = None
@@ -110,37 +104,27 @@ class HcSingleEnvBase():
             ))
     
     def _set_up_material(self):
-        registeration_infos = self.cfg_material_registration_infos.get("registeration_infos")
-        for obj_name, info in registeration_infos.items():
-            rigid_prim = RigidPrim(
-                prim_paths_expr=info["prim_paths_expr"].format(i=self.env_id),
-                name=obj_name,
-                reset_xform_properties=bool(info.get("reset_xform_properties", False)),
-            )
-            setattr(self, obj_name, rigid_prim)
+        order = self.cfg_production_order["registeration_infos"]
 
+        self.material_prims = []
+        self.materials_list: list[dict] = []
 
-class PoseAnimation:
-    def __init__(self, start_pose: torch.Tensor, end_pose: torch.Tensor, time: int):
-        self.start_pose = start_pose
-        self.end_pose = end_pose
-        self.time = time
-        self.step_time = 0
-        self.done = False
+        for product, n_prod in order.items(): #product is the product name, n_prod is the number of products
 
-    def step_next_pose(self):
-        if self.done:
-            return self.end_pose
-        self.step_time += 1.0
-        self.step_time = min(self.step_time, self.time)
-        next_pose = self.start_pose + (self.end_pose - self.start_pose) * self.step_time / self.time
-        return next_pose
+            cfg = self.cfg_products_process.get(product)
+            need = cfg.get("related_materials", {})
+            metas = cfg.get("meta_registeration_info", {})
+            for meta_key, meta in metas.items():
 
-    def is_done(self):
-        dis = torch.norm(self.start_pose - self.end_pose)
-        return dis < 0.01
+                per = need.get(meta_key)
+                prim_tpl = meta.get("prim_paths_expr")
+                name_tpl = meta.get("name", meta_key)
+                if not isinstance(prim_tpl, str):
+                    continue
 
-    def reset(self, target_pose: torch.Tensor):
-        self.start_pose = self.end_pose
-        self.end_pose = target_pose
-        self.step_time = 0
+                for k in range(n_prod * per):
+                    s = str(k)
+                    prim = prim_tpl.format(i=self.env_id)
+                    name = s.format(idx=idx)
+                    self.material_prims.append(RigidPrim(prim_paths_expr=prim, name=name, reset_xform_properties=False))
+                    self.materials_list.append({"product": product, "meta_key": meta_key, "name": name, "prim_paths_expr": prim})

@@ -202,7 +202,7 @@ CfgMachines = {
 # key: registration part 名称（例如 num01_..._station / num09_workbench）
 # value: 对应的 registration info dict
 _combined: dict = {}
-for _machine_name, _machine_cfg in cfg_machines.items():
+for _machine_name, _machine_cfg in CfgMachines.items():
     if _machine_name == "registeration_infos_combined":
         continue
     if not isinstance(_machine_cfg, dict):
@@ -215,5 +215,5 @@ for _machine_name, _machine_cfg in cfg_machines.items():
             raise ValueError(f"重复的 registeration_infos key: {_k}")
         _combined[_k] = _v
 
-cfg_machines["registeration_infos_combined"] = _combined
+CfgMachines["registeration_infos_combined"] = _combined
 
