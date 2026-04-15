@@ -98,29 +98,8 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
         #update train_cfg when running train.py
         return self.train_cfg != None
 
-class BoxCapacity:
-    hoop = 2
-    bending_tube = 2
-    product = 1
 
-########### key_articulation_pos_dic ###########
-########### key_articulation_pos_dic ###########
-########### key_articulation_pos_dic ###########
 
-class PoseAnimation:
-    def __init__(self, start_pose: torch.Tensor, end_pose: torch.Tensor, time: int):
-        self.start_pose = start_pose
-        self.end_pose = end_pose
-        self.time = time
-        self.step_time = 0
-
-    def get_next_pose(self):
-        self.step_time += 1
-        return self.start_pose + (self.end_pose - self.start_pose) * self.step_time / self.time
-
-    def is_done(self):
-        dis = torch.norm(self.start_pose - self.end_pose)
-        return dis < 0.01 or self.step_time >= self.time 
 
 
 
