@@ -27,7 +27,7 @@ from .env_asset_cfg.hc_env_cfg import HcVectorEnvCfg
 # import numpy as np
 # from .cfgs.hc_env_cfg import PoseAnimation
 from .env_asset_cfg.cfg_material_product import CfgProductProcess, CfgProductionOrder
-from .env_asset_cfg.cfg_machine import CfgMachines
+from .env_asset_cfg.cfg_machine import CfgMachine
 from src.machine import num01_rotaryPipeAutomaticWeldingMachine, num02_weldingRobot, \
     num03_rollerbedCNCPipeIntersectionCuttingMachine, num04_laserCuttingMachine, num05_groovingMachineLarge, \
     num06_groovingMachineSmall, num07_highPressureFoamingMachine, num08_gantry_group, num09_workbench
@@ -41,7 +41,7 @@ class HcSingleEnvBase():
         self.env_id : int = env_id
         self.env_id_str : str = f"env_{env_id}"
         self.cfg_vector_env : HcVectorEnvCfg = cfg_vector_env
-        self.cfg_machines : CfgMachines = CfgMachines
+        self.cfg_machines : CfgMachine = CfgMachine
         self.cfg_products_process = CfgProductProcess
         self.cfg_production_order = CfgProductionOrder
         self.cuda_device = torch.device(self.cfg_vector_env.cuda_device_str)

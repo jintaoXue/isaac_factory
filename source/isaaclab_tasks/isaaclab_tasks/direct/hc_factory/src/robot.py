@@ -1,23 +1,23 @@
 from isaacsim.core.prims import RigidPrim
-from ..env_asset_cfg.cfg_human import CfgHuman, CfgHumanRegistrationInfos
+from ..env_asset_cfg.cfg_robot import CfgRobot, CfgRobotRegistrationInfos
 
 
-class HumanManager:
-    def __init__(self, cfg_human: dict, cfg_registration_infos: dict, env_id: int):
+class RobotManager:
+    def __init__(self, cfg_robot: dict, cfg_registration_infos: dict, env_id: int):
         self.env_id = env_id
-        self.cfg_human = cfg_human
+        self.cfg_robot = cfg_robot
         self.cfg_registration_infos = cfg_registration_infos
-        self.human_list: list[Human] = []
-        self._set_up_human_list()
+        self.robot_list: list[Robot] = []
+        self._set_up_robot_list()
 
-    def _set_up_human_list(self):
+    def _set_up_robot_list(self):
         for type_name, n in self.cfg_registration_infos.items():
             cls = globals()[type_name]
             for idx in range(n):
-                self.human_list.append(cls(idx, self.cfg_human[type_name], self.env_id))
+                self.robot_list.append(cls(idx, self.cfg_robot[type_name], self.env_id))
 
 
-class Human:
+class Robot:
     def __init__(self, idx: int, cfg: dict, env_id: int):
         self.idx = idx
         self.cfg = cfg
@@ -38,5 +38,5 @@ class Human:
         )
 
 
-def build_default_humans(env_id: int) -> HumanManager:
-    return HumanManager(CfgHuman, CfgHumanRegistrationInfos, env_id)
+def build_default_robots(env_id: int) -> RobotManager:
+    return RobotManager(CfgRobot, CfgRobotRegistrationInfos, env_id)

@@ -1,7 +1,8 @@
+
 CfgProductProcess= {
     "ProductWaterPipe": {
-        "product_id": 00,
-        "product_name": "ProductWaterPipe",
+        "type_id": 00,
+        "type_name": "ProductWaterPipe",
         "meta_registeration_info": {
             # The asterisk (*) in the key denotes a placeholder for the product number. For example, "product_00_maded_00", "product_00_maded_01", etc., 
             # where the first "00" represents the product ID, and the second "*" represents the product number.
@@ -98,6 +99,8 @@ CfgProductProcess= {
     }
 }
 
-CfgProductionOrder = {
-    "ProductWaterPipe": 5, #00-04
+CfgRegistrationInfos = {
+    
+    "ProductWaterPipe": 5, #idx: 00-04
+    
 }

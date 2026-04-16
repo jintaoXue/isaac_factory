@@ -94,6 +94,7 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     train_cfg = None
 
 
+
     def _valid_train_cfg(self):
         #update train_cfg when running train.py
         return self.train_cfg != None

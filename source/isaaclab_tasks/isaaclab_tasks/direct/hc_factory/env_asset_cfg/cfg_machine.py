@@ -1,6 +1,6 @@
 
 
-CfgMachines = {
+CfgMachine = {
     "num01_rotaryPipeAutomaticWeldingMachine": {
         "registration_type": "articulation",
         "num_workstations": 2,
