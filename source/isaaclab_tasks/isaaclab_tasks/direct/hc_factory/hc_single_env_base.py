@@ -31,6 +31,7 @@ from .env_asset_cfg.cfg_machine import CfgMachines
 from src.machine import num01_rotaryPipeAutomaticWeldingMachine, num02_weldingRobot, \
     num03_rollerbedCNCPipeIntersectionCuttingMachine, num04_laserCuttingMachine, num05_groovingMachineLarge, \
     num06_groovingMachineSmall, num07_highPressureFoamingMachine, num08_gantry_group, num09_workbench
+from .src.material import ProductMaterialManager
 import torch
 
 
@@ -52,7 +53,9 @@ class HcSingleEnvBase():
     def setup_one_env(self):
 
         self._set_up_machine()
-        self._set_up_material() 
+        self._set_up_material()
+        self._set_up_human()
+        self._set_up_robot()
 
     def _set_up_machine(self):
 
@@ -68,27 +71,11 @@ class HcSingleEnvBase():
         
     
     def _set_up_material(self):
-        order = self.cfg_production_order["registeration_infos"]
+        self.product_material_manager = ProductMaterialManager(cfg_product_process=self.cfg_products_process, cfg_production_order=self.cfg_production_order, env_id=self.env_id)
 
-        self.material_prims = []
-        self.materials_list: list[dict] = []
 
-        for product, n_prod in order.items(): #product is the product name, n_prod is the number of products
+    def _set_up_human(self):
+        self.human_manager = HumanManager(cfg_human=self.cfg_human, env_id=self.env_id)
 
-            cfg = self.cfg_products_process.get(product)
-            need = cfg.get("related_materials", {})
-            metas = cfg.get("meta_registeration_info", {})
-            for meta_key, meta in metas.items():
-
-                per = need.get(meta_key)
-                prim_tpl = meta.get("prim_paths_expr")
-                name_tpl = meta.get("name", meta_key)
-                if not isinstance(prim_tpl, str):
-                    continue
-
-                for k in range(n_prod * per):
-                    s = str(k)
-                    prim = prim_tpl.format(i=self.env_id)
-                    name = s.format(idx=idx)
-                    self.material_prims.append(RigidPrim(prim_paths_expr=prim, name=name, reset_xform_properties=False))
-                    self.materials_list.append({"product": product, "meta_key": meta_key, "name": name, "prim_paths_expr": prim})
+    def _set_up_robot(self):
+        self.robot_manager = RobotManager(cfg_robot=self.cfg_robot, env_id=self.env_id)

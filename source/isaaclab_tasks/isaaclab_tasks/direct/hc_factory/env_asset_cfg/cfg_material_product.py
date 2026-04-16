@@ -1,6 +1,7 @@
 CfgProductProcess= {
-    "product_water_pipe": {
+    "ProductWaterPipe": {
         "product_id": 00,
+        "product_name": "ProductWaterPipe",
         "meta_registeration_info": {
             # The asterisk (*) in the key denotes a placeholder for the product number. For example, "product_00_maded_00", "product_00_maded_01", etc., 
             # where the first "00" represents the product ID, and the second "*" represents the product number.
@@ -32,10 +33,11 @@ CfgProductProcess= {
             },
         },
         "material_states": {
-            "pipe": {"raw_pipe", "in_list", "conveying", "on_machine", "cutting", "cut_done", "integrated"},
-            "flange": {"raw_flange", "in_list", "conveying", "integrated"},
-            "elbow": {"raw_elbow", "in_list", "conveying", "integrated"},
-            "product_water_pipe": {"separated", "integrated"},
+            "product_00_pipe": {"raw_pipe", "in_list", "conveying", "on_machine", "cutting", "cut_done", "integrated"},
+            "product_00_flange": {"raw_flange", "in_list", "conveying", "integrated"},
+            "product_00_elbow": {"raw_elbow", "in_list", "conveying", "integrated"},
+            "product_00_semi": {"separated", "integrated"},
+            "product_00_maded": {"separated", "integrated"},
         },
         "num_process_steps": 7,
         "process_steps": {
@@ -97,8 +99,5 @@ CfgProductProcess= {
 }
 
 CfgProductionOrder = {
-    "registeration_type": "rigid_prim",
-    "registeration_infos": {
-        "product_water_pipe": 5, #0-4
-    }
+    "ProductWaterPipe": 5, #00-04
 }
