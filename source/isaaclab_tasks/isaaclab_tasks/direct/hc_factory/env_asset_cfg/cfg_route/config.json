@@ -1,0 +1,20 @@
+{
+    "map_path": "~/work/isaac_factory/source/map_data_generation/occupancy_map4human.png",
+    "points_path": "~/work/isaac_factory/source/map_data_generation/map_points_human.json",
+    "routes_path": "~/work/Dataset/HC_data/map_data/map_routes_human.json",
+    "map_path_robot": "~/work/isaac_factory/source/map_data_generation/occupancy_map4robot.png",
+    "points_path_robot": "~/work/isaac_factory/source/map_data_generation/map_points_robot.json",
+    "routes_path_robot": "~/work/Dataset/HC_data/map_data/map_routes_robot.json",
+    "png_image_coordinates": {
+        "top_left": [0, 0],
+        "bottom_right": [2202, 1645],
+        "x_bound": [0, 2202],
+        "y_bound": [0, 1645]
+    },
+    "isaac_sim_coordinates": {
+        "top_left": [55.02995, -6.10027],
+        "bottom_right": [-55.0706, 76.16652],
+        "x_bound": [55.02995, -55.0706],
+        "y_bound": [76.16652, -6.10027]
+    }
+}
