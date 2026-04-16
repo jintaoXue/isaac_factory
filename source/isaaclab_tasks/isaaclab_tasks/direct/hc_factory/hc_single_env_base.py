@@ -22,13 +22,15 @@ from isaacsim.core.prims import RigidPrim, Articulation
 from isaacsim.core.api.world import World
 
 
-from .cfgs.hc_env_cfg import HcVectorEnvCfg
+from .env_asset_cfg.hc_env_cfg import HcVectorEnvCfg
 # from abc import abstractmethod
 # import numpy as np
 # from .cfgs.hc_env_cfg import PoseAnimation
-from .cfgs.cfg_material_product import CfgProductProcess, CfgProductionOrder
-from .cfgs.cfg_machine import CfgMachines
-
+from .env_asset_cfg.cfg_material_product import CfgProductProcess, CfgProductionOrder
+from .env_asset_cfg.cfg_machine import CfgMachines
+from src.machine import num01_rotaryPipeAutomaticWeldingMachine, num02_weldingRobot, \
+    num03_rollerbedCNCPipeIntersectionCuttingMachine, num04_laserCuttingMachine, num05_groovingMachineLarge, \
+    num06_groovingMachineSmall, num07_highPressureFoamingMachine, num08_gantry_group, num09_workbench
 import torch
 
 
@@ -54,54 +56,16 @@ class HcSingleEnvBase():
 
     def _set_up_machine(self):
 
-        combined = self.cfg_machines.get("registeration_infos_combined")
-
-        self.num02_weldingRobot_part02_robot_arm_and_base = None
-        self.animation_num02_weldingRobot_part02_robot_arm_and_base: PoseAnimation = None
-        self.num02_weldingRobot_part04_mobile_base_for_material = None
-        self.animation_num02_weldingRobot_part04_mobile_base_for_material: PoseAnimation = None
-
-        self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station = None
-        self.animation_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station: PoseAnimation = None
-        self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine = None
-        self.animation_num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine: PoseAnimation = None
-
-        self.num04_laserCuttingMachine = None
-        self.animation_num04_laserCuttingMachine: PoseAnimation = None
-
-        self.num05_groovingMachineLarge_part01_large_fixed_base = None
-        self.animation_num05_groovingMachineLarge_part01_large_fixed_base: PoseAnimation = None
-        self.num05_groovingMachineLarge_part02_large_mobile_base = None
-        self.animation_num05_groovingMachineLarge_part02_large_mobile_base: PoseAnimation = None
-
-        self.num06_groovingMachineSmall_part01_small_fixed_base = None
-        self.animation_num06_groovingMachineSmall_part01_small_fixed_base: PoseAnimation = None
-        self.num06_groovingMachineSmall_part02_small_mobile_handle = None
-        self.animation_num06_groovingMachineSmall_part02_small_mobile_handle: PoseAnimation = None
-
-        self.num07_highPressureFoamingMachine = None
-        self.animation_num07_highPressureFoamingMachine: PoseAnimation = None
-
-        self.num08_gantry_group = None
-        self.animation_num08_gantry_group: PoseAnimation = None
-
-        self.num09_workbench = None
-        self.animation_num09_workbench: PoseAnimation = None
-
-        # 再根据配置创建 Articulation
-        for obj_name, info in combined.items():
-            articulation = Articulation(
-                prim_paths_expr=info["prim_paths_expr"].format(i=self.env_id),
-                name=obj_name,
-                reset_xform_properties=bool(info.get("reset_xform_properties", False)),
-            )
-            setattr(self, obj_name, articulation)
-
-            setattr(self, f"animation_{obj_name}", PoseAnimation(
-                start_pose=info["joint_positions_reset"],
-                end_pose=info["joint_positions_reset"],
-                time=info["animation_time"],
-            ))
+        self.num01_rotaryPipeAutomaticWeldingMachine = num01_rotaryPipeAutomaticWeldingMachine(env_id=self.env_id)
+        self.num02_weldingRobot = num02_weldingRobot(env_id=self.env_id)
+        self.num03_rollerbedCNCPipeIntersectionCuttingMachine = num03_rollerbedCNCPipeIntersectionCuttingMachine(env_id=self.env_id)
+        self.num04_laserCuttingMachine = num04_laserCuttingMachine(env_id=self.env_id)
+        self.num05_groovingMachineLarge = num05_groovingMachineLarge(env_id=self.env_id)
+        self.num06_groovingMachineSmall = num06_groovingMachineSmall(env_id=self.env_id)
+        self.num07_highPressureFoamingMachine = num07_highPressureFoamingMachine(env_id=self.env_id)
+        self.num08_gantry_group = num08_gantry_group(env_id=self.env_id)
+        self.num09_workbench = num09_workbench(env_id=self.env_id)
+        
     
     def _set_up_material(self):
         order = self.cfg_production_order["registeration_infos"]

@@ -129,37 +129,37 @@ from source.isaaclab_tasks.isaaclab_tasks.direct.ergonomic_hrta.eg_hrta_env_cfg 
 from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.cfgs.hc_env_cfg import HcEnvCfg
 
 @hydra_task_config(args_cli.task, args_cli.algo)
-def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: dict):
+def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo_cfg: dict):
 
     '''process name'''
     setproctitle.setproctitle("HcFactory")
     '''update args'''
     if args_cli.wandb_activate:
-        agent_cfg["params"]["config"]['wandb_activate'] = args_cli.wandb_activate
+        algo_cfg["params"]["config"]['wandb_activate'] = args_cli.wandb_activate
     if args_cli.test:
-        agent_cfg["params"]["config"]['test'] = args_cli.test
+        algo_cfg["params"]["config"]['test'] = args_cli.test
     if args_cli.test_times:
-        agent_cfg["params"]["config"]['test_times'] = args_cli.test_times
+        algo_cfg["params"]["config"]['test_times'] = args_cli.test_times
     if args_cli.test_all_settings:
-        agent_cfg["params"]["config"]['test_all_settings'] = args_cli.test_all_settings
+        algo_cfg["params"]["config"]['test_all_settings'] = args_cli.test_all_settings
     if args_cli.load_dir:
-        agent_cfg["params"]["config"]['load_dir'] = args_cli.load_dir
+        algo_cfg["params"]["config"]['load_dir'] = args_cli.load_dir
     if args_cli.load_name:
-        agent_cfg["params"]["config"]['load_name'] = args_cli.load_name
+        algo_cfg["params"]["config"]['load_name'] = args_cli.load_name
     if args_cli.wandb_project:
-        agent_cfg["params"]["config"]['wandb_project'] = args_cli.wandb_project
+        algo_cfg["params"]["config"]['wandb_project'] = args_cli.wandb_project
     if args_cli.use_fatigue_mask:
-        agent_cfg["params"]["config"]['use_fatigue_mask'] = args_cli.use_fatigue_mask
+        algo_cfg["params"]["config"]['use_fatigue_mask'] = args_cli.use_fatigue_mask
     if args_cli.other_filters:
-        agent_cfg["params"]["config"]['other_filters'] = args_cli.other_filters
+        algo_cfg["params"]["config"]['other_filters'] = args_cli.other_filters
     if args_cli.gantt_chart_data:
-        agent_cfg["params"]["config"]['gantt_chart_data'] = args_cli.gantt_chart_data
+        algo_cfg["params"]["config"]['gantt_chart_data'] = args_cli.gantt_chart_data
     """Train with RL-Games agent."""
     # override configurations with non-hydra CLI arguments
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
-    agent_cfg["params"]["config"]["device"] = args_cli.device if args_cli.device is not None else agent_cfg["params"]["config"]["device"]
-    agent_cfg["params"]["config"]["device_name"] = args_cli.device if args_cli.device is not None else agent_cfg["params"]["config"]["device_name"]
+    algo_cfg["params"]["config"]["device"] = args_cli.device if args_cli.device is not None else algo_cfg["params"]["config"]["device"]
+    algo_cfg["params"]["config"]["device_name"] = args_cli.device if args_cli.device is not None else algo_cfg["params"]["config"]["device_name"]
     env_cfg.cuda_device_str = args_cli.device if args_cli.device is not None else env_cfg.cuda_device_str
     if args_cli.ftg_thresh_phy is not None:
         env_cfg.ftg_thresh_phy = args_cli.ftg_thresh_phy
@@ -171,64 +171,64 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if args_cli.seed == -1:
         args_cli.seed = random.randint(0, 10000)
 
-    agent_cfg["params"]["seed"] = args_cli.seed if args_cli.seed is not None else agent_cfg["params"]["seed"]
-    agent_cfg["params"]["config"]["max_epochs"] = (
-        args_cli.max_iterations if args_cli.max_iterations is not None else agent_cfg["params"]["config"]["max_epochs"]
+    algo_cfg["params"]["seed"] = args_cli.seed if args_cli.seed is not None else algo_cfg["params"]["seed"]
+    algo_cfg["params"]["config"]["max_epochs"] = (
+        args_cli.max_iterations if args_cli.max_iterations is not None else algo_cfg["params"]["config"]["max_epochs"]
     )
     if args_cli.checkpoint is not None:
         resume_path = retrieve_file_path(args_cli.checkpoint)
-        agent_cfg["params"]["load_checkpoint"] = True
-        agent_cfg["params"]["load_path"] = resume_path
-        print(f"[INFO]: Loading model checkpoint from: {agent_cfg['params']['load_path']}")
+        algo_cfg["params"]["load_checkpoint"] = True
+        algo_cfg["params"]["load_path"] = resume_path
+        print(f"[INFO]: Loading model checkpoint from: {algo_cfg['params']['load_path']}")
     train_sigma = float(args_cli.sigma) if args_cli.sigma is not None else None
 
     # multi-gpu training config
     if args_cli.distributed:
-        agent_cfg["params"]["seed"] += app_launcher.global_rank
-        agent_cfg["params"]["config"]["device"] = f"cuda:{app_launcher.local_rank}"
-        agent_cfg["params"]["config"]["device_name"] = f"cuda:{app_launcher.local_rank}"
-        agent_cfg["params"]["config"]["multi_gpu"] = True
+        algo_cfg["params"]["seed"] += app_launcher.global_rank
+        algo_cfg["params"]["config"]["device"] = f"cuda:{app_launcher.local_rank}"
+        algo_cfg["params"]["config"]["device_name"] = f"cuda:{app_launcher.local_rank}"
+        algo_cfg["params"]["config"]["multi_gpu"] = True
         # update env config device
         env_cfg.sim.device = f"cuda:{app_launcher.local_rank}"
 
     # set the environment seed (after multi-gpu config for updated rank from agent seed)
     # note: certain randomizations occur in the environment initialization so we set the seed here
-    env_cfg.seed = agent_cfg["params"]["seed"]
+    env_cfg.seed = algo_cfg["params"]["seed"]
 
     # specify directory for logging experiments
-    log_root_path = os.path.join("logs", "rl_games", agent_cfg["params"]["config"]["name"])
+    log_root_path = os.path.join("logs", "rl_games", algo_cfg["params"]["config"]["name"])
     log_root_path = os.path.abspath(log_root_path)
     print(f"[INFO] Logging experiment in directory: {log_root_path}")
     # specify directory for logging runs
     time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    agent_cfg["params"]["config"]["time_str"] = time_str
-    log_dir = agent_cfg["params"]["config"].get("full_experiment_name", time_str)
+    algo_cfg["params"]["config"]["time_str"] = time_str
+    log_dir = algo_cfg["params"]["config"].get("full_experiment_name", time_str)
     
-    if agent_cfg["params"]["config"]["test"]:
-        if agent_cfg["params"]["config"]['env_rule_based_exploration']:
+    if algo_cfg["params"]["config"]["test"]:
+        if algo_cfg["params"]["config"]['env_rule_based_exploration']:
             log_dir = 'test_rule_'+ log_dir
         else:
-            log_dir= 'test'+ '_'.join(agent_cfg["params"]["config"]['load_name'].split('_')[1:3]) + '_' + agent_cfg["params"]["config"]['load_dir'][-22:-3] + '_' + log_dir
+            log_dir= 'test'+ '_'.join(algo_cfg["params"]["config"]['load_name'].split('_')[1:3]) + '_' + algo_cfg["params"]["config"]['load_dir'][-22:-3] + '_' + log_dir
     else:
-        log_dir = agent_cfg["params"]["algo"]["name"] + '_' + log_dir
+        log_dir = algo_cfg["params"]["algo"]["name"] + '_' + log_dir
     # set directory into agent config
     # logging directory path: <train_dir>/<full_experiment_name>
-    agent_cfg["params"]["config"]["train_dir"] = log_root_path
-    agent_cfg["params"]["config"]["full_experiment_name"] = log_dir
+    algo_cfg["params"]["config"]["train_dir"] = log_root_path
+    algo_cfg["params"]["config"]["full_experiment_name"] = log_dir
 
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_root_path, log_dir, "params", "env.yaml"), env_cfg)
-    dump_yaml(os.path.join(log_root_path, log_dir, "params", "agent.yaml"), agent_cfg)
+    dump_yaml(os.path.join(log_root_path, log_dir, "params", "agent.yaml"), algo_cfg)
     dump_pickle(os.path.join(log_root_path, log_dir, "params", "env.pkl"), env_cfg)
-    dump_pickle(os.path.join(log_root_path, log_dir, "params", "agent.pkl"), agent_cfg)
+    dump_pickle(os.path.join(log_root_path, log_dir, "params", "agent.pkl"), algo_cfg)
 
     # read configurations about the agent-training
-    rl_device = agent_cfg["params"]["config"]["device"]
-    clip_obs = agent_cfg["params"]["env"].get("clip_observations", math.inf)
-    clip_actions = agent_cfg["params"]["env"].get("clip_actions", math.inf)
+    rl_device = algo_cfg["params"]["config"]["device"]
+    clip_obs = algo_cfg["params"]["env"].get("clip_observations", math.inf)
+    clip_actions = algo_cfg["params"]["env"].get("clip_actions", math.inf)
 
     # create isaac environment
-    env_cfg.train_cfg = agent_cfg
+    env_cfg.train_cfg = algo_cfg
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
     # convert to single-agent instance if required by the RL algorithm
@@ -264,30 +264,30 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env_configurations.register("rlgpu_HRTA", {"vecenv_type": "RlgWrapperHRTA", "env_creator": lambda **kwargs: env})
 
     # set number of actors into agent config
-    agent_cfg["params"]["config"]["num_actors"] = env.unwrapped.num_envs
+    algo_cfg["params"]["config"]["num_actors"] = env.unwrapped.num_envs
     # create runner from rl-games
     runner = Runner(IsaacAlgoObserver())
     runner.algo_factory.register_builder('rl_filter', lambda **kwargs: rl_filter.SafeRlFilterAgent(**kwargs))
     runner.algo_factory.register_builder('rule_based', lambda **kwargs: rule_based.RuleBasedAgent(**kwargs))
 
-    runner.load(agent_cfg)
+    runner.load(algo_cfg)
     # reset the agent and env
     runner.reset()
-    if agent_cfg["params"]["config"]['wandb_activate']:
-        if agent_cfg["params"]["config"]["test"]:
+    if algo_cfg["params"]["config"]['wandb_activate']:
+        if algo_cfg["params"]["config"]["test"]:
             fatigue_str = f"ftg_{args_cli.ftg_thresh_phy}"
             num_particles_str = f"parti_{args_cli.num_particles}"
             measure_noise_sigma_str = f"noise_{args_cli.measure_noise_sigma}"
-            if agent_cfg["params"]["config"]['env_rule_based_exploration']:
+            if algo_cfg["params"]["config"]['env_rule_based_exploration']:
                 run_name = 'test_rule_'+ time_str
             else:
-                load_name = agent_cfg["params"]["config"]['load_name'].split('_')[-1][:-4] + '_' + agent_cfg["params"]["config"]['load_dir'][-22:-3]
-                run_name = f"test_{agent_cfg['params']['algo']['name']}_{load_name}" + '_' + fatigue_str + '_' + num_particles_str + '_' + measure_noise_sigma_str
+                load_name = algo_cfg["params"]["config"]['load_name'].split('_')[-1][:-4] + '_' + algo_cfg["params"]["config"]['load_dir'][-22:-3]
+                run_name = f"test_{algo_cfg['params']['algo']['name']}_{load_name}" + '_' + fatigue_str + '_' + num_particles_str + '_' + measure_noise_sigma_str
         else:
-            run_name = f"{agent_cfg['params']['algo']['name']}_{time_str}"
+            run_name = f"{algo_cfg['params']['algo']['name']}_{time_str}"
 
         wandb.init(
-            project=agent_cfg["params"]["config"]['wandb_project'],
+            project=algo_cfg["params"]["config"]['wandb_project'],
             group='',
             config=env_cfg.__dict__,
             sync_tensorboard=False,

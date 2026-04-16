@@ -1,10 +1,10 @@
 from isaacsim.core.prims import Articulation
-from ..cfgs.cfg_machine import CfgMachines
+from ..env_asset_cfg.cfg_machine import CfgMachines
 from .utils import PoseAnimation
 
 
 class Machine:
-    def __init__(self, name: str, cfg_machine: dict, env_id: int):
+    def __init__(self, name: str, cfg_machine: CfgMachines, env_id: int):
         self.env_id = env_id
         self.name = name
         self.registration_type = cfg_machine["registration_type"]
