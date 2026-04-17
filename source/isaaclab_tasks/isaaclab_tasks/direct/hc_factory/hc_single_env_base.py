@@ -28,9 +28,9 @@ from .env_asset_cfg.hc_env_cfg import HcVectorEnvCfg
 # from .cfgs.hc_env_cfg import PoseAnimation
 from .env_asset_cfg.cfg_material_product import CfgProductProcess, CfgProductionOrder
 from .env_asset_cfg.cfg_machine import CfgMachine
-from src.machine import num01_rotaryPipeAutomaticWeldingMachine, num02_weldingRobot, \
-    num03_rollerbedCNCPipeIntersectionCuttingMachine, num04_laserCuttingMachine, num05_groovingMachineLarge, \
-    num06_groovingMachineSmall, num07_highPressureFoamingMachine, num08_gantry_group, num09_workbench
+from src.machine import num00_rotaryPipeAutomaticWeldingMachine, num01_weldingRobot, \
+    num02_rollerbedCNCPipeIntersectionCuttingMachine, num03_laserCuttingMachine, num04_groovingMachineLarge, \
+    num05_groovingMachineSmall, num06_highPressureFoamingMachine, num07_gantry_group, num08_workbench
 from .src.material import ProductMaterialManager
 import torch
 
@@ -59,15 +59,15 @@ class HcSingleEnvBase():
 
     def _set_up_machine(self):
 
-        self.num01_rotaryPipeAutomaticWeldingMachine = num01_rotaryPipeAutomaticWeldingMachine(env_id=self.env_id)
-        self.num02_weldingRobot = num02_weldingRobot(env_id=self.env_id)
-        self.num03_rollerbedCNCPipeIntersectionCuttingMachine = num03_rollerbedCNCPipeIntersectionCuttingMachine(env_id=self.env_id)
-        self.num04_laserCuttingMachine = num04_laserCuttingMachine(env_id=self.env_id)
-        self.num05_groovingMachineLarge = num05_groovingMachineLarge(env_id=self.env_id)
-        self.num06_groovingMachineSmall = num06_groovingMachineSmall(env_id=self.env_id)
-        self.num07_highPressureFoamingMachine = num07_highPressureFoamingMachine(env_id=self.env_id)
-        self.num08_gantry_group = num08_gantry_group(env_id=self.env_id)
-        self.num09_workbench = num09_workbench(env_id=self.env_id)
+        self.num00_rotaryPipeAutomaticWeldingMachine = num00_rotaryPipeAutomaticWeldingMachine(env_id=self.env_id)
+        self.num01_weldingRobot = num01_weldingRobot(env_id=self.env_id)
+        self.num02_rollerbedCNCPipeIntersectionCuttingMachine = num02_rollerbedCNCPipeIntersectionCuttingMachine(env_id=self.env_id)
+        self.num03_laserCuttingMachine = num03_laserCuttingMachine(env_id=self.env_id)
+        self.num04_groovingMachineLarge = num04_groovingMachineLarge(env_id=self.env_id)
+        self.num05_groovingMachineSmall = num05_groovingMachineSmall(env_id=self.env_id)
+        self.num06_highPressureFoamingMachine = num06_highPressureFoamingMachine(env_id=self.env_id)
+        self.num07_gantry_group = num07_gantry_group(env_id=self.env_id)
+        self.num08_workbench = num08_workbench(env_id=self.env_id)
         
     
     def _set_up_material(self):

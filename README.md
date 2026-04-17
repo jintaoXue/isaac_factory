@@ -45,3 +45,9 @@ hc_env_base里面要修改:
 machines我觉得设计成单独类比较好
 
 ['/World/envs/env_0/obj/ConveyorBelt_A09_0_0/Belt']
+
+
+
+yellowbase05到10存在偏移，坐标不在中心
+
+robot 的路网点id最好和human是通用的，只是有些会有mask掉

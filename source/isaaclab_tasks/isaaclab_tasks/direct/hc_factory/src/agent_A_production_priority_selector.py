@@ -21,15 +21,15 @@ class MaterialManager:
             setattr(self, obj_name, rigid_prim)
 
 
-class num01_rotaryPipeAutomaticWeldingMachine(Material):
+class num00_rotaryPipeAutomaticWeldingMachine(Material):
 
     def __init__(self, env_id: int):        
-        super().__init__(name="num01_rotaryPipeAutomaticWeldingMachine", cfg_machine=CfgMachines["num01_rotaryPipeAutomaticWeldingMachine"], env_id=env_id)
+        super().__init__(name="num00_rotaryPipeAutomaticWeldingMachine", cfg_machine=CfgMachines["num00_rotaryPipeAutomaticWeldingMachine"], env_id=env_id)
         # ===== 显式声明（更直观：一眼能看到有哪些对象会挂到 self 上）=====
         # 这些名称来自 cfg_machine.py 的 registeration_infos_combined keys
-        self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station = None
-        self.animation_num01_rotaryPipeAutomaticWeldingMachine_part_01_station: PoseAnimation = None
-        self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station = None
-        self.animation_num01_rotaryPipeAutomaticWeldingMachine_part_02_station: PoseAnimation = None
+        self.num00_rotaryPipeAutomaticWeldingMachine_part_01_station = None
+        self.animation_num00_rotaryPipeAutomaticWeldingMachine_part_01_station: PoseAnimation = None
+        self.num00_rotaryPipeAutomaticWeldingMachine_part_02_station = None
+        self.animation_num00_rotaryPipeAutomaticWeldingMachine_part_02_station: PoseAnimation = None
         self._set_up_articulation()
 

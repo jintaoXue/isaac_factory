@@ -1,7 +1,7 @@
 
 CfgProductProcess= {
     "ProductWaterPipe": {
-        "type_id": 00,
+        "type_id": "00",
         "type_name": "ProductWaterPipe",
         "meta_registeration_info": {
             # The asterisk (*) in the key denotes a placeholder for the product number. For example, "product_00_maded_00", "product_00_maded_01", etc., 
@@ -43,21 +43,21 @@ CfgProductProcess= {
         "num_process_steps": 7,
         "process_steps": {
             "pipe_cutting": {
-                "machine": "num03_rollerbedCNCPipeIntersectionCuttingMachine",
+                "machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine",
                 "required_materials": {"pipe": 1},
                 "process_time": 100,
                 "gaussian_random_time": 10,
                 "material_state_sequence": ["on_machine", "cutting", "cut_done"],
             },
             "pipe_grooving": {
-                "machine": "num05_groovingMachineLarge",
+                "machine": "num04_groovingMachineLarge",
                 "required_materials": {"pipe": 1},
                 "process_time": 100,
                 "gaussian_random_time": 10,
                 "material_state_sequence": ["on_machine", "grooving", "grooved"],
             },
             "batch_spot_welding": {
-                "machine": "num09_workbench",
+                "machine": "num08_workbench",
                 "required_materials": {"pipe": 1, "flange": 1, "elbow": 1},
                 "process_time": 100,
                 "gaussian_random_time": 10,
@@ -65,7 +65,7 @@ CfgProductProcess= {
             },
             # This process step refers to "Argon arc welding root" (氩弧焊底焊 in Chinese)
             "arc_welding_root": {
-                "machine": "num02_weldingRobot",
+                "machine": "num01_weldingRobot",
                 "required_materials": {"product_water_pipe": 1},
                 "process_time": 100,
                 "gaussian_random_time": 10,
@@ -73,14 +73,14 @@ CfgProductProcess= {
             },
             # This process step refers to "MIG welding surface" (MIG焊面焊 in Chinese), MIG full name is Metal Inert Gas welding
             "MIG_welding_surface": {
-                "machine": "num01_rotaryPipeAutomaticWeldingMachine",
+                "machine": "num00_rotaryPipeAutomaticWeldingMachine",
                 "required_materials": {"product_water_pipe": 1},
                 "process_time": 100,
                 "gaussian_random_time": 10,
                 "material_state_sequence": ["on_machine", "welding_surface", "welded_surface"],
             },
             "paint_rust_proof": {
-                "machine": "num09_workbench",
+                "machine": "num08_workbench",
                 "required_materials": {"product_water_pipe": 1},
                 "process_time": 100,
                 "gaussian_random_time": 10,
@@ -88,7 +88,7 @@ CfgProductProcess= {
             },
             # 运存放区
             "product_to_storage": {
-                "machine": "num08_gantry_group",
+                "machine": "num07_gantry_group",
                 "alternative_robot": "AGV",
                 "required_materials": {"product_water_pipe": 1},
                 "process_time": 100,

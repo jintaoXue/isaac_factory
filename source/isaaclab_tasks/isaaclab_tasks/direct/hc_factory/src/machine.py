@@ -4,13 +4,14 @@ from .utils import PoseAnimation
 
 
 class Machine:
-    def __init__(self, name: str, cfg_machine: CfgMachine, env_id: int):
+    def __init__(self, cfg: dict, env_id: int):
         self.env_id = env_id
-        self.name = name
-        self.registration_type = cfg_machine["registration_type"]
-        self.num_workstations = cfg_machine["num_workstations"]
-        self.num_registration_parts = cfg_machine["num_registration_parts"]
-        self.registration_infos = cfg_machine["registration_infos"]
+        self.type_id = cfg["type_id"]
+        self.type_name = cfg["type_name"]
+        self.registration_type = cfg["registration_type"]
+        self.num_workstations = cfg["num_workstations"]
+        self.num_registration_parts = cfg["num_registration_parts"]
+        self.registration_infos = cfg["registration_infos"]
         
     def _set_up_articulation(self):
         for obj_name, info in self.registration_infos.items():
@@ -27,102 +28,102 @@ class Machine:
             ))
 
 
-class num01_rotaryPipeAutomaticWeldingMachine(Machine):
+class num00_rotaryPipeAutomaticWeldingMachine(Machine):
 
     def __init__(self, env_id: int):        
-        super().__init__(name="num01_rotaryPipeAutomaticWeldingMachine", cfg_machine=CfgMachine["num01_rotaryPipeAutomaticWeldingMachine"], env_id=env_id)
+        super().__init__(name="num00_rotaryPipeAutomaticWeldingMachine", cfg=CfgMachine["num00_rotaryPipeAutomaticWeldingMachine"], env_id=env_id)
         # ===== 显式声明（更直观：一眼能看到有哪些对象会挂到 self 上）=====
-        # 这些名称来自 cfg_machine.py 的 registeration_infos_combined keys
-        self.num01_rotaryPipeAutomaticWeldingMachine_part_01_station = None
-        self.animation_num01_rotaryPipeAutomaticWeldingMachine_part_01_station: PoseAnimation = None
-        self.num01_rotaryPipeAutomaticWeldingMachine_part_02_station = None
-        self.animation_num01_rotaryPipeAutomaticWeldingMachine_part_02_station: PoseAnimation = None
+        # 这些名称来自 cfg.py 的 registeration_infos_combined keys
+        self.num00_rotaryPipeAutomaticWeldingMachine_part_01_station = None
+        self.animation_num00_rotaryPipeAutomaticWeldingMachine_part_01_station: PoseAnimation = None
+        self.num00_rotaryPipeAutomaticWeldingMachine_part_02_station = None
+        self.animation_num00_rotaryPipeAutomaticWeldingMachine_part_02_station: PoseAnimation = None
         self._set_up_articulation()
 
 
-class num02_weldingRobot(Machine):
+class num01_weldingRobot(Machine):
 
     def __init__(self, env_id: int):
-        super().__init__(name="num02_weldingRobot", cfg_machine=CfgMachine["num02_weldingRobot"], env_id=env_id)
-        self.num02_weldingRobot_part02_robot_arm_and_base = None
-        self.animation_num02_weldingRobot_part02_robot_arm_and_base: PoseAnimation = None
-        self.num02_weldingRobot_part04_mobile_base_for_material = None
-        self.animation_num02_weldingRobot_part04_mobile_base_for_material: PoseAnimation = None
+        super().__init__(name="num01_weldingRobot", cfg=CfgMachine["num01_weldingRobot"], env_id=env_id)
+        self.num01_weldingRobot_part02_robot_arm_and_base = None
+        self.animation_num01_weldingRobot_part02_robot_arm_and_base: PoseAnimation = None
+        self.num01_weldingRobot_part04_mobile_base_for_material = None
+        self.animation_num01_weldingRobot_part04_mobile_base_for_material: PoseAnimation = None
         self._set_up_articulation()
 
 
-class num03_rollerbedCNCPipeIntersectionCuttingMachine(Machine):
-
-    def __init__(self, env_id: int):
-        super().__init__(
-            name="num03_rollerbedCNCPipeIntersectionCuttingMachine",
-            cfg_machine=CfgMachine["num03_rollerbedCNCPipeIntersectionCuttingMachine"],
-            env_id=env_id,
-        )
-        self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station = None
-        self.animation_num03_rollerbedCNCPipeIntersectionCuttingMachine_part01_station: PoseAnimation = None
-        self.num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine = None
-        self.animation_num03_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine: PoseAnimation = None
-        self._set_up_articulation()
-
-
-class num04_laserCuttingMachine(Machine):
-
-    def __init__(self, env_id: int):
-        super().__init__(name="num04_laserCuttingMachine", cfg_machine=CfgMachine["num04_laserCuttingMachine"], env_id=env_id)
-        self.num04_laserCuttingMachine = None
-        self.animation_num04_laserCuttingMachine: PoseAnimation = None
-        self._set_up_articulation()
-
-
-class num05_groovingMachineLarge(Machine):
-
-    def __init__(self, env_id: int):
-        super().__init__(name="num05_groovingMachineLarge", cfg_machine=CfgMachine["num05_groovingMachineLarge"], env_id=env_id)
-        self.num05_groovingMachineLarge_part01_large_fixed_base = None
-        self.animation_num05_groovingMachineLarge_part01_large_fixed_base: PoseAnimation = None
-        self.num05_groovingMachineLarge_part02_large_mobile_base = None
-        self.animation_num05_groovingMachineLarge_part02_large_mobile_base: PoseAnimation = None
-        self._set_up_articulation()
-
-
-class num06_groovingMachineSmall(Machine):
-
-    def __init__(self, env_id: int):
-        super().__init__(name="num06_groovingMachineSmall", cfg_machine=CfgMachine["num06_groovingMachineSmall"], env_id=env_id)
-        self.num06_groovingMachineSmall_part01_small_fixed_base = None
-        self.animation_num06_groovingMachineSmall_part01_small_fixed_base: PoseAnimation = None
-        self.num06_groovingMachineSmall_part02_small_mobile_handle = None
-        self.animation_num06_groovingMachineSmall_part02_small_mobile_handle: PoseAnimation = None
-        self._set_up_articulation()
-
-
-class num07_highPressureFoamingMachine(Machine):
+class num02_rollerbedCNCPipeIntersectionCuttingMachine(Machine):
 
     def __init__(self, env_id: int):
         super().__init__(
-            name="num07_highPressureFoamingMachine",
-            cfg_machine=CfgMachine["num07_highPressureFoamingMachine"],
+            name="num02_rollerbedCNCPipeIntersectionCuttingMachine",
+            cfg=CfgMachine["num02_rollerbedCNCPipeIntersectionCuttingMachine"],
             env_id=env_id,
         )
-        self.num07_highPressureFoamingMachine = None
-        self.animation_num07_highPressureFoamingMachine: PoseAnimation = None
+        self.num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station = None
+        self.animation_num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station: PoseAnimation = None
+        self.num02_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine = None
+        self.animation_num02_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine: PoseAnimation = None
         self._set_up_articulation()
 
 
-class num08_gantry_group(Machine):
+class num03_laserCuttingMachine(Machine):
 
     def __init__(self, env_id: int):
-        super().__init__(name="num08_gantry_group", cfg_machine=CfgMachine["num08_gantry_group"], env_id=env_id)
-        self.num08_gantry_group = None
-        self.animation_num08_gantry_group: PoseAnimation = None
+        super().__init__(name="num03_laserCuttingMachine", cfg=CfgMachine["num03_laserCuttingMachine"], env_id=env_id)
+        self.num03_laserCuttingMachine = None
+        self.animation_num03_laserCuttingMachine: PoseAnimation = None
         self._set_up_articulation()
 
 
-class num09_workbench(Machine):
+class num04_groovingMachineLarge(Machine):
 
     def __init__(self, env_id: int):
-        super().__init__(name="num09_workbench", cfg_machine=CfgMachine["num09_workbench"], env_id=env_id)
-        self.num09_workbench = None
-        self.animation_num09_workbench: PoseAnimation = None
+        super().__init__(name="num04_groovingMachineLarge", cfg=CfgMachine["num04_groovingMachineLarge"], env_id=env_id)
+        self.num04_groovingMachineLarge_part01_large_fixed_base = None
+        self.animation_num04_groovingMachineLarge_part01_large_fixed_base: PoseAnimation = None
+        self.num04_groovingMachineLarge_part02_large_mobile_base = None
+        self.animation_num04_groovingMachineLarge_part02_large_mobile_base: PoseAnimation = None
+        self._set_up_articulation()
+
+
+class num05_groovingMachineSmall(Machine):
+
+    def __init__(self, env_id: int):
+        super().__init__(name="num05_groovingMachineSmall", cfg=CfgMachine["num05_groovingMachineSmall"], env_id=env_id)
+        self.num05_groovingMachineSmall_part01_small_fixed_base = None
+        self.animation_num05_groovingMachineSmall_part01_small_fixed_base: PoseAnimation = None
+        self.num05_groovingMachineSmall_part02_small_mobile_handle = None
+        self.animation_num05_groovingMachineSmall_part02_small_mobile_handle: PoseAnimation = None
+        self._set_up_articulation()
+
+
+class num06_highPressureFoamingMachine(Machine):
+
+    def __init__(self, env_id: int):
+        super().__init__(
+            name="num06_highPressureFoamingMachine",
+            cfg=CfgMachine["num06_highPressureFoamingMachine"],
+            env_id=env_id,
+        )
+        self.num06_highPressureFoamingMachine = None
+        self.animation_num06_highPressureFoamingMachine: PoseAnimation = None
+        self._set_up_articulation()
+
+
+class num07_gantry_group(Machine):
+
+    def __init__(self, env_id: int):
+        super().__init__(name="num07_gantry_group", cfg=CfgMachine["num07_gantry_group"], env_id=env_id)
+        self.num07_gantry_group = None
+        self.animation_num07_gantry_group: PoseAnimation = None
+        self._set_up_articulation()
+
+
+class num08_workbench(Machine):
+
+    def __init__(self, env_id: int):
+        super().__init__(name="num08_workbench", cfg=CfgMachine["num08_workbench"], env_id=env_id)
+        self.num08_workbench = None
+        self.animation_num08_workbench: PoseAnimation = None
         self._set_up_articulation()
