@@ -82,10 +82,13 @@ case "${cmd}" in
     ;;
 
   generate-points-robot)
-    # 交互式编辑/标注机器人 AGV 路网点（使用 hall 占据图）
+    # robot points = human points 的子集（共用同一套 id），在 robot map 上手动 mask 掉一些点
     "${PYTHON_BIN}" "${MAP_DIR}/map_points_generation.py" \
       --map "${MAP_IMG_ROBOT}" \
       --out "${POINTS_JSON_ROBOT}" \
+      --load "${POINTS_JSON_HUMAN}" \
+      --delete-only \
+      --overlay-out "${OVERLAY_IMG_WITH_POINTS_ROBOT}" \
       "$@"
     ;;
 

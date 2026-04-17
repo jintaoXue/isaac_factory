@@ -160,7 +160,7 @@ def _export_overlay_image(
         except Exception:
             font = None
 
-        for idx, p in enumerate(points):
+        for p in points:
             x = float(p["x"])
             y = float(p["y"])
             r = int(radius_px)
@@ -169,7 +169,12 @@ def _export_overlay_image(
             if draw_labels:
                 # 默认字体即可；避免依赖外部字体文件
                 # 数字颜色改为蓝色
-                draw.text((x + r + 2, y - r - 2), str(idx), fill=(0, 102, 255, 255), font=font)
+                draw.text(
+                    (x + r + 2, y - r - 2),
+                    str(int(p.get("id", 0))),
+                    fill=(0, 102, 255, 255),
+                    font=font,
+                )
         img.save(out_image_path)
         return
 
@@ -186,11 +191,11 @@ def _export_overlay_image(
     ax.scatter(xs, ys, s=(radius_px * radius_px * 6), c="red", edgecolors="white", linewidths=0.8)
     if draw_labels:
         fontsize = max(10, int(radius_px * 0.9))
-        for idx, p in enumerate(points):
+        for p in points:
             ax.text(
                 float(p["x"]) + radius_px + 2,
                 float(p["y"]) - radius_px - 2,
-                str(idx),
+                str(int(p.get("id", 0))),
                 color="#0066ff",
                 fontsize=fontsize,
                 bbox={"facecolor": "black", "alpha": 0.35, "edgecolor": "none", "pad": 0.8},
@@ -272,6 +277,7 @@ class EditorConfig:
     marker_size: float = 30.0
     show_labels: bool = True
     delete_radius_px: float = 12.0
+    delete_only: bool = False
     # If set, after the user clicks `s` to save points, export a "map + points" overlay image.
     # This is useful when calling the tool from `map_tools.sh add-points-human`.
     overlay_out_path: Path | None = None
@@ -298,7 +304,10 @@ class RoadmapPointEditor:
             self.points = _load_points(cfg.load_path, cfg.coord_mapping)
 
         self._fig, self._ax = plt.subplots()
-        self._ax.set_title("路网点编辑器（左键画框撒点，右键删除最近点，按 h 查看快捷键）")
+        if cfg.delete_only:
+            self._ax.set_title("路网点编辑器（mask 模式：点击删除点，按 h 查看快捷键）")
+        else:
+            self._ax.set_title("路网点编辑器（左键画框撒点，右键删除最近点，按 h 查看快捷键）")
         self._ax.imshow(self.img)
         self._ax.set_aspect("equal")
         self._add_dual_axes_if_available()
@@ -442,10 +451,36 @@ class RoadmapPointEditor:
         threshold = float(self.cfg.box_drag_threshold_px)
         if dx <= threshold and dy <= threshold:
             # Treat as a single click.
-            self._add_point(x0, y0)
+            if self.cfg.delete_only:
+                self._delete_nearest(x0, y0)
+            else:
+                self._add_point(x0, y0)
+            return
+
+        if self.cfg.delete_only:
+            self._delete_points_in_box(x0, y0, x, y)
             return
 
         self._sprinkle_points_in_box(x0, y0, x, y, dx=dx, dy=dy)
+
+    def _delete_points_in_box(self, x0: float, y0: float, x1: float, y1: float) -> None:
+        if not self.points:
+            self._update_info("没有点可删除")
+            return
+        x_min = min(x0, x1)
+        x_max = max(x0, x1)
+        y_min = min(y0, y1)
+        y_max = max(y0, y1)
+
+        before = len(self.points)
+        self.points = [
+            p
+            for p in self.points
+            if not (x_min <= float(p["x"]) <= x_max and y_min <= float(p["y"]) <= y_max)
+        ]
+        removed = before - len(self.points)
+        self._render()
+        self._update_info(f"框选删除: {removed} 点")
 
     def _sprinkle_points_in_box(
         self,
@@ -666,17 +701,29 @@ class RoadmapPointEditor:
                 print(f"[WARN] 叠加图导出失败（仍已保存点文件）: {e}")
 
     def _print_help(self) -> None:
-        help_msg = (
-            "鼠标左键: 按下拖拽画框撒点（小拖拽视为单点）\n"
-            "鼠标右键: 删除最近点（需在阈值内）\n"
-            "u: 撤销（删除最后一个点）\n"
-            "d: 删除鼠标附近最近点\n"
-            "s: 保存到输出文件\n"
-            "l: 重新从 --load 文件加载（覆盖当前点）\n"
-            "c: 清空所有点\n"
-            "t: 切换显示序号\n"
-            "q 或 ESC: 退出（不自动保存）"
-        )
+        if self.cfg.delete_only:
+            help_msg = (
+                "鼠标左键: 拖拽画框，第二次左键点击结束并删除框内点（小拖拽视为单点删除）\n"
+                "鼠标右键: 删除最近点（需在阈值内）\n"
+                "u: 撤销（删除最后一个点）\n"
+                "d: 删除鼠标附近最近点\n"
+                "s: 保存到输出文件（并导出叠加图，如指定了 --overlay-out）\n"
+                "l: 重新从 --load 文件加载（覆盖当前点）\n"
+                "t: 切换显示序号\n"
+                "q 或 ESC: 退出（不自动保存）"
+            )
+        else:
+            help_msg = (
+                "鼠标左键: 按下拖拽画框撒点（小拖拽视为单点）\n"
+                "鼠标右键: 删除最近点（需在阈值内）\n"
+                "u: 撤销（删除最后一个点）\n"
+                "d: 删除鼠标附近最近点\n"
+                "s: 保存到输出文件\n"
+                "l: 重新从 --load 文件加载（覆盖当前点）\n"
+                "c: 清空所有点\n"
+                "t: 切换显示序号\n"
+                "q 或 ESC: 退出（不自动保存）"
+            )
         self._update_info(help_msg)
 
     def _on_click(self, event) -> None:
@@ -685,6 +732,18 @@ class RoadmapPointEditor:
         if event.xdata is None or event.ydata is None:
             return
         x, y = float(event.xdata), float(event.ydata)
+        if self.cfg.delete_only:
+            if event.button == 1:
+                # Click-to-finish box in delete-only mode:
+                # first left click starts the box, second left click finishes & deletes.
+                if self._dragging_box:
+                    self._finish_box(x, y)
+                else:
+                    self._start_box(x, y)
+                return
+            if event.button == 3:
+                self._delete_nearest(x, y)
+            return
         if event.button == 1:
             # Start box drag; the final behavior is decided on mouse release.
             self._start_box(x, y)
@@ -711,6 +770,8 @@ class RoadmapPointEditor:
 
     def _on_release(self, event) -> None:
         if event.inaxes != self._ax:
+            return
+        if self.cfg.delete_only:
             return
         if not self._dragging_box:
             return
@@ -801,6 +862,11 @@ def _build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--marker-size", type=float, default=30.0, help="点的显示大小（matplotlib scatter size）")
     p.add_argument("--no-labels", action="store_true", help="不显示点序号")
     p.add_argument("--delete-radius", type=float, default=12.0, help="删除最近点的半径阈值（像素）")
+    p.add_argument(
+        "--delete-only",
+        action="store_true",
+        help="仅用于 mask：加载 --load 的点并只允许删除（不允许新增/撒点）",
+    )
 
     p.add_argument("--box-drag-threshold", type=float, default=3.0, help="画框时的最小拖拽距离(px)，否则视为单点")
     p.add_argument(
@@ -898,6 +964,7 @@ def main() -> None:
         marker_size=float(args.marker_size),
         show_labels=not bool(args.no_labels),
         delete_radius_px=float(args.delete_radius),
+        delete_only=bool(args.delete_only),
         overlay_out_path=overlay_out_path,
         overlay_map_path=overlay_map_path,
         overlay_radius_px=int(args.overlay_radius),
