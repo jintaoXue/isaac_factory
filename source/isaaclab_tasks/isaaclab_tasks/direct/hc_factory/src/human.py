@@ -10,6 +10,14 @@ class HumanManager:
         self.human_list: list[Human] = []
         self._set_up_human_list()
 
+    def reset(self, env_state_action_dict: dict) -> dict:
+        env_state_action_dict["human_state"] = self
+        return env_state_action_dict
+
+    def step(self, env_state_action_dict: dict) -> dict:
+        env_state_action_dict["human_state"] = self
+        return env_state_action_dict
+
     def _set_up_human_list(self):
         for type_name, n in self.cfg_registration_infos.items():
             cls = globals()[type_name]

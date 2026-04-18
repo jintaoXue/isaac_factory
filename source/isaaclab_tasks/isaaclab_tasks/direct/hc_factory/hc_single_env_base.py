@@ -45,15 +45,42 @@ class HcSingleEnvBase():
         self.cfg_vector_env._valid_train_cfg()
         self.env_rule_based_exploration = self.cfg_vector_env.train_cfg['params']['config']['env_rule_based_exploration']
         self.reward_buf = torch.zeros(1, dtype=torch.float32, device=self.sim.device)
-        self.setup_one_env()
-        
-    def setup_one_env(self):
+        self.env_state_action_dict = {
+            "machine_state": None,
+            "material_state": None,
+            "human_state": None,
+            "robot_state": None,
+            "storage_state": None,
+            "route_state": None,
+        }
+        self.setup_env()
+        self.reset_env()
+    
+    def setup_env(self):
         self._set_up_machine()
         self._set_up_material()
         self._set_up_human()
         self._set_up_robot()
         self._set_up_storage()
         self._set_up_route()
+
+    def reset_env(self):
+        for m in self.iter_managers():
+            m.reset(self.env_state_action_dict)
+
+    def step_env(self, action: dict):
+        for m in self.iter_managers():
+            m.step(self.env_state_action_dict)
+
+    def iter_managers(self):
+        return (
+            self.machine_manager,
+            self.product_material_manager,
+            self.human_manager,
+            self.robot_manager,
+            self.storage_manager,
+            self.route_manager,
+        )
 
     def _set_up_machine(self):
         self.machine_manager = MachineManager(env_id=self.env_id)
@@ -72,3 +99,4 @@ class HcSingleEnvBase():
     
     def _set_up_route(self):
         self.route_manager = RouteManagerVectorEnv(env_id=self.env_id)
+    

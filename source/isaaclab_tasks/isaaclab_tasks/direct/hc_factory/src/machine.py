@@ -18,6 +18,14 @@ class MachineManager:
         self.num07_gantry_group = num07_gantry_group(env_id=self.env_id)
         self.num08_workbench = num08_workbench(env_id=self.env_id)
 
+    def reset(self, env_state_action_dict: dict) -> dict:
+        env_state_action_dict["machine_state"] = self
+        return env_state_action_dict
+
+    def step(self, env_state_action_dict: dict) -> dict:
+        env_state_action_dict["machine_state"] = self
+        return env_state_action_dict
+
 
 class Machine:
     def __init__(self, cfg: dict, env_id: int):

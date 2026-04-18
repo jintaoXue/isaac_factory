@@ -10,6 +10,14 @@ class ProductMaterialManager:
         self.material_batch_list = []
         self._set_up_material_batch_list()
 
+    def reset(self, env_state_action_dict: dict) -> dict:
+        env_state_action_dict["material_state"] = self
+        return env_state_action_dict
+
+    def step(self, env_state_action_dict: dict) -> dict:
+        env_state_action_dict["material_state"] = self
+        return env_state_action_dict
+
     def _set_up_material_batch_list(self):
         for material_batch_type_name, num_material_batch in self.cfg_registration_infos.items():
             for idx in range(num_material_batch):

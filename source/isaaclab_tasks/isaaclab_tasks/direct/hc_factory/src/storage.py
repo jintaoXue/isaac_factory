@@ -5,9 +5,18 @@ import json
 
 class StorageManager:
     def __init__(self, env_id: int):
+        self.env_id = env_id
         self.cfg_storage = CfgStorage
         self.storage_list = []
         self._set_up_storage_list()
+
+    def reset(self, env_state_action_dict: dict) -> dict:
+        env_state_action_dict["storage_state"] = self
+        return env_state_action_dict
+
+    def step(self, env_state_action_dict: dict) -> dict:
+        env_state_action_dict["storage_state"] = self
+        return env_state_action_dict
 
     def _set_up_storage_list(self):
         for type_name, n in self.cfg_storage.items():
@@ -32,14 +41,14 @@ class Storage:
         self.gantry_parking_areas_ids = cfg["gantry_parking_areas_ids"]
         self.env_id = env_id
 
-class BlackStorage:
+class BlackStorage(Storage):
     def __init__(self, idx: int, cfg: dict, env_id: int):
         super().__init__(idx, cfg, env_id)
 
-class YellowStorage:
+class YellowStorage(Storage):
     def __init__(self, idx: int, cfg: dict, env_id: int):
         super().__init__(idx, cfg, env_id)
 
-class GroundStorage:
+class GroundStorage(Storage):
     def __init__(self, idx: int, cfg: dict, env_id: int):
         super().__init__(idx, cfg, env_id)
