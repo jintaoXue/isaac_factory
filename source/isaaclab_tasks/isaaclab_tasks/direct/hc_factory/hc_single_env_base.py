@@ -48,7 +48,6 @@ class HcSingleEnvBase():
         self.setup_one_env()
         
     def setup_one_env(self):
-
         self._set_up_machine()
         self._set_up_material()
         self._set_up_human()
@@ -57,13 +56,10 @@ class HcSingleEnvBase():
         self._set_up_route()
 
     def _set_up_machine(self):
-
         self.machine_manager = MachineManager(env_id=self.env_id)
         
-    
     def _set_up_material(self):
         self.product_material_manager = ProductMaterialManager(env_id=self.env_id)
-
 
     def _set_up_human(self):
         self.human_manager = HumanManager(env_id=self.env_id)
