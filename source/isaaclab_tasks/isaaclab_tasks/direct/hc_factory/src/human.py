@@ -3,10 +3,10 @@ from ..env_asset_cfg.cfg_human import CfgHuman, CfgHumanRegistrationInfos
 
 
 class HumanManager:
-    def __init__(self, cfg_human: dict, cfg_registration_infos: dict, env_id: int):
+    def __init__(self, env_id: int):
         self.env_id = env_id
-        self.cfg_human = cfg_human
-        self.cfg_registration_infos = cfg_registration_infos
+        self.cfg_human = CfgHuman
+        self.cfg_registration_infos = CfgHumanRegistrationInfos
         self.human_list: list[Human] = []
         self._set_up_human_list()
 
@@ -37,6 +37,3 @@ class Human:
             reset_xform_properties=False,
         )
 
-
-def build_default_humans(env_id: int) -> HumanManager:
-    return HumanManager(CfgHuman, CfgHumanRegistrationInfos, env_id)

@@ -26,14 +26,11 @@ from .env_asset_cfg.hc_env_cfg import HcVectorEnvCfg
 # from abc import abstractmethod
 # import numpy as np
 # from .cfgs.hc_env_cfg import PoseAnimation
-from .env_asset_cfg.cfg_material_product import CfgProductProcess, CfgProductionOrder
-from .env_asset_cfg.cfg_machine import CfgMachine
-from src.machine import num00_rotaryPipeAutomaticWeldingMachine, num01_weldingRobot, \
-    num02_rollerbedCNCPipeIntersectionCuttingMachine, num03_laserCuttingMachine, num04_groovingMachineLarge, \
-    num05_groovingMachineSmall, num06_highPressureFoamingMachine, num07_gantry_group, num08_workbench
+from .src.machine import MachineManager
 from .src.material import ProductMaterialManager
 from .src.human import HumanManager
 from .src.robot import RobotManager
+from .src.storage import StorageManager
 from .src.route import RouteManagerVectorEnv
 import torch
 
@@ -44,9 +41,6 @@ class HcSingleEnvBase():
         self.env_id : int = env_id
         self.env_id_str : str = f"env_{env_id}"
         self.cfg_vector_env : HcVectorEnvCfg = cfg_vector_env
-        self.cfg_machines : CfgMachine = CfgMachine
-        self.cfg_products_process = CfgProductProcess
-        self.cfg_production_order = CfgProductionOrder
         self.cuda_device = torch.device(self.cfg_vector_env.cuda_device_str)
         self.cfg_vector_env._valid_train_cfg()
         self.env_rule_based_exploration = self.cfg_vector_env.train_cfg['params']['config']['env_rule_based_exploration']
@@ -59,30 +53,26 @@ class HcSingleEnvBase():
         self._set_up_material()
         self._set_up_human()
         self._set_up_robot()
+        self._set_up_storage()
         self._set_up_route()
 
     def _set_up_machine(self):
 
-        self.num00_rotaryPipeAutomaticWeldingMachine = num00_rotaryPipeAutomaticWeldingMachine(env_id=self.env_id)
-        self.num01_weldingRobot = num01_weldingRobot(env_id=self.env_id)
-        self.num02_rollerbedCNCPipeIntersectionCuttingMachine = num02_rollerbedCNCPipeIntersectionCuttingMachine(env_id=self.env_id)
-        self.num03_laserCuttingMachine = num03_laserCuttingMachine(env_id=self.env_id)
-        self.num04_groovingMachineLarge = num04_groovingMachineLarge(env_id=self.env_id)
-        self.num05_groovingMachineSmall = num05_groovingMachineSmall(env_id=self.env_id)
-        self.num06_highPressureFoamingMachine = num06_highPressureFoamingMachine(env_id=self.env_id)
-        self.num07_gantry_group = num07_gantry_group(env_id=self.env_id)
-        self.num08_workbench = num08_workbench(env_id=self.env_id)
+        self.machine_manager = MachineManager(env_id=self.env_id)
         
     
     def _set_up_material(self):
-        self.product_material_manager = ProductMaterialManager(cfg_product_process=self.cfg_products_process, cfg_production_order=self.cfg_production_order, env_id=self.env_id)
+        self.product_material_manager = ProductMaterialManager(env_id=self.env_id)
 
 
     def _set_up_human(self):
-        self.human_manager = HumanManager(cfg_human=self.cfg_human, env_id=self.env_id)
+        self.human_manager = HumanManager(env_id=self.env_id)
 
     def _set_up_robot(self):
-        self.robot_manager = RobotManager(cfg_robot=self.cfg_robot, env_id=self.env_id)
+        self.robot_manager = RobotManager(env_id=self.env_id)
 
+    def _set_up_storage(self):
+        self.storage_manager = StorageManager(env_id=self.env_id)
+    
     def _set_up_route(self):
-        self.route_manager = RouteManagerVectorEnv()
+        self.route_manager = RouteManagerVectorEnv(env_id=self.env_id)

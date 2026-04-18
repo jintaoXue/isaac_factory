@@ -3,6 +3,22 @@ from ..env_asset_cfg.cfg_machine import CfgMachine
 from .utils import PoseAnimation
 
 
+
+class MachineManager:
+    def __init__(self, env_id: int):
+        self.env_id = env_id
+        self.cfg_machine = CfgMachine
+        self.num00_rotaryPipeAutomaticWeldingMachine = num00_rotaryPipeAutomaticWeldingMachine(env_id=self.env_id)
+        self.num01_weldingRobot = num01_weldingRobot(env_id=self.env_id)
+        self.num02_rollerbedCNCPipeIntersectionCuttingMachine = num02_rollerbedCNCPipeIntersectionCuttingMachine(env_id=self.env_id)
+        self.num03_laserCuttingMachine = num03_laserCuttingMachine(env_id=self.env_id)
+        self.num04_groovingMachineLarge = num04_groovingMachineLarge(env_id=self.env_id)
+        self.num05_groovingMachineSmall = num05_groovingMachineSmall(env_id=self.env_id)
+        self.num06_highPressureFoamingMachine = num06_highPressureFoamingMachine(env_id=self.env_id)
+        self.num07_gantry_group = num07_gantry_group(env_id=self.env_id)
+        self.num08_workbench = num08_workbench(env_id=self.env_id)
+
+
 class Machine:
     def __init__(self, cfg: dict, env_id: int):
         self.env_id = env_id

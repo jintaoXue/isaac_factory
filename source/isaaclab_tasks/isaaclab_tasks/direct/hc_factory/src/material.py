@@ -3,10 +3,10 @@ from ..env_asset_cfg.cfg_material_product import CfgProductProcess, CfgRegistrat
 
 
 class ProductMaterialManager:
-    def __init__(self, cfg_product_process: CfgProductProcess, cfg_registration_infos: CfgRegistrationInfos, env_id: int):
+    def __init__(self, env_id: int):
         self.env_id = env_id
-        self.cfg_product_process = cfg_product_process
-        self.cfg_registration_infos = cfg_registration_infos
+        self.cfg_product_process = CfgProductProcess
+        self.cfg_registration_infos = CfgRegistrationInfos
         self.material_batch_list = []
         self._set_up_material_batch_list()
 

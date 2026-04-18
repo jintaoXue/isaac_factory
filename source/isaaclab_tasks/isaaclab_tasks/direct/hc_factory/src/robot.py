@@ -3,10 +3,10 @@ from ..env_asset_cfg.cfg_robot import CfgRobot, CfgRobotRegistrationInfos
 
 
 class RobotManager:
-    def __init__(self, cfg_robot: dict, cfg_registration_infos: dict, env_id: int):
+    def __init__(self, env_id: int):
         self.env_id = env_id
-        self.cfg_robot = cfg_robot
-        self.cfg_registration_infos = cfg_registration_infos
+        self.cfg_robot = CfgRobot
+        self.cfg_registration_infos = CfgRobotRegistrationInfos
         self.robot_list: list[Robot] = []
         self._set_up_robot_list()
 
@@ -36,7 +36,3 @@ class Robot:
             name=meta["name"].format(idx=self.idx),
             reset_xform_properties=False,
         )
-
-
-def build_default_robots(env_id: int) -> RobotManager:
-    return RobotManager(CfgRobot, CfgRobotRegistrationInfos, env_id)
