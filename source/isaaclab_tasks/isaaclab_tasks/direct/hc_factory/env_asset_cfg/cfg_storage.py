@@ -11,7 +11,7 @@ CfgStorage = {
         "capacity": 6,
         "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
         "human_working_areas_ids": [39],
-        "robot_parking_areas_ids": [9],
+        "robot_parking_areas_ids": [39],
         #same with human working areas ids
         "gantry_parking_areas_ids": [39],
     },
@@ -27,7 +27,7 @@ CfgStorage = {
         "capacity": 6,
         "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
         "human_working_areas_ids": [42],
-        "robot_parking_areas_ids": [13],
+        "robot_parking_areas_ids": [42],
         "gantry_parking_areas_ids": [42],
     },
 
@@ -42,7 +42,7 @@ CfgStorage = {
         "capacity": 6,
         "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
         "human_working_areas_ids": [53],
-        "robot_parking_areas_ids": [15],
+        "robot_parking_areas_ids": [54],
         "gantry_parking_areas_ids": [53],
     },
     
@@ -57,7 +57,7 @@ CfgStorage = {
         "capacity": 6,
         "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
         "human_working_areas_ids": [221],
-        "robot_parking_areas_ids": [9],
+        "robot_parking_areas_ids": [83],
         "gantry_parking_areas_ids": [221],
     },
     

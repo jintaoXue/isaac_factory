@@ -12,6 +12,9 @@ class Machine:
         self.num_workstations = cfg["num_workstations"]
         self.num_registration_parts = cfg["num_registration_parts"]
         self.registration_infos = cfg["registration_infos"]
+        self.human_working_areas_ids = cfg["human_working_areas_ids"]
+        self.robot_parking_areas_ids = cfg["robot_parking_areas_ids"]
+        self.gantry_parking_areas_ids = cfg["gantry_parking_areas_ids"]
         
     def _set_up_articulation(self):
         for obj_name, info in self.registration_infos.items():
