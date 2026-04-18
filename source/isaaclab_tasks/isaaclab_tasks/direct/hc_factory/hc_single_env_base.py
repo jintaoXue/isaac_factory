@@ -32,6 +32,9 @@ from src.machine import num00_rotaryPipeAutomaticWeldingMachine, num01_weldingRo
     num02_rollerbedCNCPipeIntersectionCuttingMachine, num03_laserCuttingMachine, num04_groovingMachineLarge, \
     num05_groovingMachineSmall, num06_highPressureFoamingMachine, num07_gantry_group, num08_workbench
 from .src.material import ProductMaterialManager
+from .src.human import HumanManager
+from .src.robot import RobotManager
+from .src.route import RouteManagerVectorEnv
 import torch
 
 
@@ -56,6 +59,7 @@ class HcSingleEnvBase():
         self._set_up_material()
         self._set_up_human()
         self._set_up_robot()
+        self._set_up_route()
 
     def _set_up_machine(self):
 
@@ -79,3 +83,6 @@ class HcSingleEnvBase():
 
     def _set_up_robot(self):
         self.robot_manager = RobotManager(cfg_robot=self.cfg_robot, env_id=self.env_id)
+
+    def _set_up_route(self):
+        self.route_manager = RouteManagerVectorEnv()

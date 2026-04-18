@@ -51,3 +51,4 @@ machines我觉得设计成单独类比较好
 yellowbase05到10存在偏移，坐标不在中心
 
 robot 的路网点id最好和human是通用的，只是有些会有mask掉
+然后route这块需要做precomputing
