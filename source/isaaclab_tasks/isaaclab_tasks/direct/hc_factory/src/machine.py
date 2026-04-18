@@ -1,4 +1,5 @@
 from isaacsim.core.prims import Articulation
+from abc import abstractmethod
 from ..env_asset_cfg.cfg_machine import CfgMachine
 from .utils import PoseAnimation
 
@@ -25,6 +26,19 @@ class MachineManager:
     def step(self, env_state_action_dict: dict) -> dict:
         env_state_action_dict["machine_state"] = self
         return env_state_action_dict
+    
+    def iter_machines(self):
+        return (
+            self.num00_rotaryPipeAutomaticWeldingMachine,
+            self.num01_weldingRobot,
+            self.num02_rollerbedCNCPipeIntersectionCuttingMachine,
+            self.num03_laserCuttingMachine,
+            self.num04_groovingMachineLarge,
+            self.num05_groovingMachineSmall,
+            self.num06_highPressureFoamingMachine,
+            self.num07_gantry_group,
+            self.num08_workbench,
+        )
 
 
 class Machine:
@@ -39,7 +53,7 @@ class Machine:
         self.human_working_areas_ids = cfg["human_working_areas_ids"]
         self.robot_parking_areas_ids = cfg["robot_parking_areas_ids"]
         self.gantry_parking_areas_ids = cfg["gantry_parking_areas_ids"]
-        
+        self.state_set = cfg["state_set"]
     def _set_up_articulation(self):
         for obj_name, info in self.registration_infos.items():
             articulation = Articulation(
@@ -53,7 +67,12 @@ class Machine:
                 end_pose=info["joint_positions_reset"],
                 time=info["animation_time"],
             ))
-
+    @abstractmethod
+    def reset(self, env_state_action_dict: dict) -> dict:
+        pass
+    @abstractmethod
+    def step(self, env_state_action_dict: dict) -> dict:
+        pass
 
 class num00_rotaryPipeAutomaticWeldingMachine(Machine):
 
@@ -66,6 +85,14 @@ class num00_rotaryPipeAutomaticWeldingMachine(Machine):
         self.num00_rotaryPipeAutomaticWeldingMachine_part_02_station = None
         self.animation_num00_rotaryPipeAutomaticWeldingMachine_part_02_station: PoseAnimation = None
         self._set_up_articulation()
+
+    def reset(self, env_state_action_dict: dict) -> dict:
+        self.state = "free"
+        return env_state_action_dict
+
+
+    def step(self, env_state_action_dict: dict) -> dict:
+        return env_state_action_dict
 
 
 class num01_weldingRobot(Machine):

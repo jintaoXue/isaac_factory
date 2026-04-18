@@ -7,6 +7,7 @@ CfgMachine = {
         "registration_type": "articulation",
         "num_workstations": 2,
         "num_registration_parts": 2,
+        "state_set": {"free", "moving_to_working", "working", "resetting"},
         "registeration_infos": {
             "num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
                 #prim_paths_expr is the path in .usd file
