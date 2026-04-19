@@ -3,8 +3,6 @@ from abc import abstractmethod
 from ..env_asset_cfg.cfg_machine import CfgMachine
 from .utils import PoseAnimation
 
-
-
 class MachineManager:
     def __init__(self, env_id: int):
         self.env_id = env_id
@@ -63,7 +61,7 @@ class Machine:
         for obj_name, info in self.registration_infos.items():
             articulation = Articulation(
                 prim_paths_expr=info["prim_paths_expr"].format(i=self.env_id),
-                name=obj_name,
+                name=f"env_{self.env_id}_{obj_name}",
                 reset_xform_properties=False,
             )
             setattr(self, obj_name, articulation)
