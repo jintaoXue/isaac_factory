@@ -12,7 +12,7 @@ class ProductMaterialManager:
         self._set_up_material_batch_list()
 
     def reset(self, env_state_action_dict: dict) -> dict:
-        for material_batch in self.iter_material_batches():
+        for material_batch in self.material_batch_list:
             material_batch.reset(env_state_action_dict)
         return env_state_action_dict
 
@@ -37,20 +37,22 @@ class MaterialBatch:
         self.type_name = cfg["type_name"]
         self.meta_registeration_info = cfg["meta_registeration_info"]
         self.env_id = env_id
+        self.reset_state = cfg["reset_state"]
+        self.state : dict = None
         self._set_up_rigid_prim()
 
     def _set_up_rigid_prim(self):
         for obj_name, info in self.meta_registeration_info.items():
             rigid_prim = RigidPrim(
-                prim_paths_expr=info["prim_paths_expr"].format(i=self.env_id, idx=self.idx_in_material_batch_list),
-                name=info["name"].format(idx=self.idx_in_material_batch_list),
+                prim_paths_expr=info["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx_in_material_batch_list:02d}"),
+                name=f"env_{self.env_id}_{info["name"].format(idx=f"{self.idx_in_material_batch_list:02d}")}",
                 reset_xform_properties=False,
             )
             setattr(self, obj_name, rigid_prim)
 
     def reset(self, env_state_action_dict: dict) -> dict:
         self.state : dict = self.reset_state.copy()
-        env_state_action_dict["state_material"][self.type_name] = self.state
+        env_state_action_dict["state_material"][f"{self.type_name}_{self.idx_in_material_batch_list:02d}"] = self.state
         return env_state_action_dict
 
     @abstractmethod
@@ -66,6 +68,6 @@ class ProductWaterPipe(MaterialBatch):
         self.product_00_semi : RigidPrim = None
         self.product_00_maded : RigidPrim = None
         super().__init__(idx, cfg, env_id)
-        
+
     def step(self, env_state_action_dict: dict) -> dict:
         return env_state_action_dict

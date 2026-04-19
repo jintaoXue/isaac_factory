@@ -11,9 +11,31 @@ CfgProductProcess= {
             "product_00_maded": {"separated", "integrated"},
         },
         "reset_state": {
-            "state": [0, 0, 0, 0, 0],
-            "current_pose": [None, None, None, None, None, None, None],
-            "target_pose": [None, None, None, None, None, None, None],
+            "product_00_pipe": {
+                "state": [0],
+                "current_pose": None,
+                "target_pose": None,
+            },
+            "product_00_flange": {
+                "state": [0],
+                "current_pose": None,
+                "target_pose": None,
+            },
+            "product_00_elbow": {
+                "state": [0],
+                "current_pose": None,
+                "target_pose": None,
+            },
+            "product_00_semi": {
+                "state": [0],
+                "current_pose": None,
+                "target_pose": None,
+            },
+            "product_00_maded": {
+                "state": [0],
+                "current_pose": None,
+                "target_pose": None,
+            },
         },
         "meta_registeration_info": {
             # The asterisk (*) in the key denotes a placeholder for the product number. For example, "product_00_maded_00", "product_00_maded_01", etc., 

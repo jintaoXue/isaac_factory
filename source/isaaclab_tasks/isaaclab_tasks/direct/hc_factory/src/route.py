@@ -9,6 +9,8 @@ class RouteManagerVectorEnv:
         self.cfg_route = CfgRoute
         self.routes_path_human = self.cfg_route["routes_path_human"]
         self.routes_path_robot = self.cfg_route["routes_path_robot"]
+        self.routes_human = json.load(open(self.routes_path_human))
+        self.routes_robot = json.load(open(self.routes_path_robot))
 
     def reset(self, env_state_action_dict: dict) -> dict:
         env_state_action_dict["route_state"] = self
