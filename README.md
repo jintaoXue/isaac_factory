@@ -54,3 +54,7 @@ robot 的路网点id最好和human是通用的，只是有些会有mask掉
 然后route这块需要做precomputing
 
 storage 的meta registration info 是否可以忽略
+
+#4.19 
+single env的step函数
+vector env的step concate apply change
