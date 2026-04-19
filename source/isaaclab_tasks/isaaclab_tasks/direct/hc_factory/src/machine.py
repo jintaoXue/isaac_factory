@@ -20,11 +20,13 @@ class MachineManager:
         self.num08_workbench = num08_workbench(env_id=self.env_id)
 
     def reset(self, env_state_action_dict: dict) -> dict:
-        env_state_action_dict["machine_state"] = self
+        for machine in self.iter_machines():
+            machine.reset(env_state_action_dict)
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
-        env_state_action_dict["machine_state"] = self
+        for machine in self.iter_machines():
+            machine.step(env_state_action_dict)
         return env_state_action_dict
     
     def iter_machines(self):
@@ -53,8 +55,11 @@ class Machine:
         self.human_working_areas_ids = cfg["human_working_areas_ids"]
         self.robot_parking_areas_ids = cfg["robot_parking_areas_ids"]
         self.gantry_parking_areas_ids = cfg["gantry_parking_areas_ids"]
-        self.state_set = cfg["state_set"]
-    def _set_up_articulation(self):
+        self.state_gallery = cfg["state_gallery"]
+        self.reset_state = cfg["reset_state"]
+        self.state : dict = None
+
+    def _set_up_articulation_animation(self):
         for obj_name, info in self.registration_infos.items():
             articulation = Articulation(
                 prim_paths_expr=info["prim_paths_expr"].format(i=self.env_id),
@@ -67,9 +72,12 @@ class Machine:
                 end_pose=info["joint_positions_reset"],
                 time=info["animation_time"],
             ))
-    @abstractmethod
+
     def reset(self, env_state_action_dict: dict) -> dict:
-        pass
+        self.state : dict = self.reset_state.copy()
+        env_state_action_dict["state_machine"][self.type_name] = self.state
+        return env_state_action_dict
+
     @abstractmethod
     def step(self, env_state_action_dict: dict) -> dict:
         pass
@@ -84,17 +92,7 @@ class num00_rotaryPipeAutomaticWeldingMachine(Machine):
         self.animation_num00_rotaryPipeAutomaticWeldingMachine_part_01_station: PoseAnimation = None
         self.num00_rotaryPipeAutomaticWeldingMachine_part_02_station = None
         self.animation_num00_rotaryPipeAutomaticWeldingMachine_part_02_station: PoseAnimation = None
-        self._set_up_articulation()
-
-    def reset(self, env_state_action_dict: dict) -> dict:
-        self.state_dict = {
-            01_station: "free",
-            02_station: "free",
-        }
-        self.animation_num00_rotaryPipeAutomaticWeldingMachine_part_01_station
-        self.animation_num00_rotaryPipeAutomaticWeldingMachine_part_02_station
-        return env_state_action_dict
-
+        self._set_up_articulation_animation()
 
     def step(self, env_state_action_dict: dict) -> dict:
         return env_state_action_dict
@@ -108,7 +106,7 @@ class num01_weldingRobot(Machine):
         self.animation_num01_weldingRobot_part02_robot_arm_and_base: PoseAnimation = None
         self.num01_weldingRobot_part04_mobile_base_for_material = None
         self.animation_num01_weldingRobot_part04_mobile_base_for_material: PoseAnimation = None
-        self._set_up_articulation()
+        self._set_up_articulation_animation()
 
 
 class num02_rollerbedCNCPipeIntersectionCuttingMachine(Machine):
@@ -123,7 +121,7 @@ class num02_rollerbedCNCPipeIntersectionCuttingMachine(Machine):
         self.animation_num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station: PoseAnimation = None
         self.num02_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine = None
         self.animation_num02_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine: PoseAnimation = None
-        self._set_up_articulation()
+        self._set_up_articulation_animation()
 
 
 class num03_laserCuttingMachine(Machine):
@@ -132,7 +130,7 @@ class num03_laserCuttingMachine(Machine):
         super().__init__(name="num03_laserCuttingMachine", cfg=CfgMachine["num03_laserCuttingMachine"], env_id=env_id)
         self.num03_laserCuttingMachine = None
         self.animation_num03_laserCuttingMachine: PoseAnimation = None
-        self._set_up_articulation()
+        self._set_up_articulation_animation()
 
 
 class num04_groovingMachineLarge(Machine):
@@ -143,7 +141,7 @@ class num04_groovingMachineLarge(Machine):
         self.animation_num04_groovingMachineLarge_part01_large_fixed_base: PoseAnimation = None
         self.num04_groovingMachineLarge_part02_large_mobile_base = None
         self.animation_num04_groovingMachineLarge_part02_large_mobile_base: PoseAnimation = None
-        self._set_up_articulation()
+        self._set_up_articulation_animation()
 
 
 class num05_groovingMachineSmall(Machine):
@@ -154,7 +152,7 @@ class num05_groovingMachineSmall(Machine):
         self.animation_num05_groovingMachineSmall_part01_small_fixed_base: PoseAnimation = None
         self.num05_groovingMachineSmall_part02_small_mobile_handle = None
         self.animation_num05_groovingMachineSmall_part02_small_mobile_handle: PoseAnimation = None
-        self._set_up_articulation()
+        self._set_up_articulation_animation()
 
 
 class num06_highPressureFoamingMachine(Machine):
@@ -167,7 +165,7 @@ class num06_highPressureFoamingMachine(Machine):
         )
         self.num06_highPressureFoamingMachine = None
         self.animation_num06_highPressureFoamingMachine: PoseAnimation = None
-        self._set_up_articulation()
+        self._set_up_articulation_animation()
 
 
 class num07_gantry_group(Machine):
@@ -176,7 +174,7 @@ class num07_gantry_group(Machine):
         super().__init__(name="num07_gantry_group", cfg=CfgMachine["num07_gantry_group"], env_id=env_id)
         self.num07_gantry_group = None
         self.animation_num07_gantry_group: PoseAnimation = None
-        self._set_up_articulation()
+        self._set_up_articulation_animation()
 
 
 class num08_workbench(Machine):
@@ -185,4 +183,4 @@ class num08_workbench(Machine):
         super().__init__(name="num08_workbench", cfg=CfgMachine["num08_workbench"], env_id=env_id)
         self.num08_workbench = None
         self.animation_num08_workbench: PoseAnimation = None
-        self._set_up_articulation()
+        self._set_up_articulation_animation()

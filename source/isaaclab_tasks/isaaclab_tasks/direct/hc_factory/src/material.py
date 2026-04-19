@@ -1,4 +1,5 @@
 from isaacsim.core.prims import RigidPrim
+from abc import abstractmethod
 from ..env_asset_cfg.cfg_material_product import CfgProductProcess, CfgRegistrationInfos
 
 
@@ -11,11 +12,13 @@ class ProductMaterialManager:
         self._set_up_material_batch_list()
 
     def reset(self, env_state_action_dict: dict) -> dict:
-        env_state_action_dict["material_state"] = self
+        for material_batch in self.iter_material_batches():
+            material_batch.reset(env_state_action_dict)
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
-        env_state_action_dict["material_state"] = self
+        for material_batch in self.iter_material_batches():
+            material_batch.step(env_state_action_dict)
         return env_state_action_dict
 
     def _set_up_material_batch_list(self):
@@ -45,6 +48,15 @@ class MaterialBatch:
             )
             setattr(self, obj_name, rigid_prim)
 
+    def reset(self, env_state_action_dict: dict) -> dict:
+        self.state : dict = self.reset_state.copy()
+        env_state_action_dict["state_material"][self.type_name] = self.state
+        return env_state_action_dict
+
+    @abstractmethod
+    def step(self, env_state_action_dict: dict) -> dict:
+        pass
+
 
 class ProductWaterPipe(MaterialBatch):
     def __init__(self, idx: int, cfg: dict, env_id: int):
@@ -54,3 +66,6 @@ class ProductWaterPipe(MaterialBatch):
         self.product_00_semi : RigidPrim = None
         self.product_00_maded : RigidPrim = None
         super().__init__(idx, cfg, env_id)
+        
+    def step(self, env_state_action_dict: dict) -> dict:
+        return env_state_action_dict

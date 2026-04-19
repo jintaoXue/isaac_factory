@@ -25,6 +25,17 @@ import os
 from isaaclab.envs.common import ViewerCfg
 
 
+
+single_env_state_action_dict_template : dict = {
+    "machine_state": {},
+    "material_state": {},
+    "human_state": {},
+    "robot_state": {},
+    "storage_state": {},
+    "route_state": {},
+}
+
+
 @configclass
 class HcViewerCfg(ViewerCfg):
     #num02_weldingRobot
@@ -98,8 +109,6 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     def _valid_train_cfg(self):
         #update train_cfg when running train.py
         return self.train_cfg != None
-
-
 
 
 

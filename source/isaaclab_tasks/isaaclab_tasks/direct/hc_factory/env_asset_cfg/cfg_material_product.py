@@ -3,6 +3,18 @@ CfgProductProcess= {
     "ProductWaterPipe": {
         "type_id": "00",
         "type_name": "ProductWaterPipe",
+        "state_gallery": {
+            "product_00_pipe": {"raw_pipe", "in_list", "conveying", "on_machine", "cutting", "cut_done", "integrated"},
+            "product_00_flange": {"raw_flange", "in_list", "conveying", "integrated"},
+            "product_00_elbow": {"raw_elbow", "in_list", "conveying", "integrated"},
+            "product_00_semi": {"separated", "integrated"},
+            "product_00_maded": {"separated", "integrated"},
+        },
+        "reset_state": {
+            "state": [0, 0, 0, 0, 0],
+            "current_pose": [None, None, None, None, None, None, None],
+            "target_pose": [None, None, None, None, None, None, None],
+        },
         "meta_registeration_info": {
             # The asterisk (*) in the key denotes a placeholder for the product number. For example, "product_00_maded_00", "product_00_maded_01", etc., 
             # where the first "00" represents the product ID, and the second "*" represents the product number.
@@ -32,13 +44,6 @@ CfgProductProcess= {
                 "name": "product_00_maded_{idx}",
                 "requried_number": 1,
             },
-        },
-        "material_states": {
-            "product_00_pipe": {"raw_pipe", "in_list", "conveying", "on_machine", "cutting", "cut_done", "integrated"},
-            "product_00_flange": {"raw_flange", "in_list", "conveying", "integrated"},
-            "product_00_elbow": {"raw_elbow", "in_list", "conveying", "integrated"},
-            "product_00_semi": {"separated", "integrated"},
-            "product_00_maded": {"separated", "integrated"},
         },
         "num_process_steps": 7,
         "process_steps": {

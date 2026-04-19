@@ -7,7 +7,12 @@ CfgMachine = {
         "registration_type": "articulation",
         "num_workstations": 2,
         "num_registration_parts": 2,
-        "state_set": {"free", "moving_to_working", "working", "resetting"},
+        "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
+        "reset_state": {
+            "state": [0, 0],
+            "current_pose": [[0.0, 0.0], [0.0, 0.0]],
+            "target_pose": [[0.0, 0.0], [0.0, 0.0]],
+        },
         "registeration_infos": {
             "num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
                 #prim_paths_expr is the path in .usd file
@@ -39,6 +44,12 @@ CfgMachine = {
         "registration_type": "articulation",
         "num_workstations": 1,
         "num_registration_parts": 2,
+        "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
+        "reset_state": {
+            "state": [0],
+            "current_pose": [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0]],
+            "target_pose": [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0]],
+        },
         "registeration_infos": {
             "num01_weldingRobot_part02_robot_arm_and_base": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num01_weldingRobot/part02_robot_arm_and_base",
@@ -64,6 +75,12 @@ CfgMachine = {
         "registration_type": "articulation",
         "num_workstations": 1,
         "num_registration_parts": 2,
+        "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
+        "reset_state": {
+            "state": [0],
+            "current_pose": [[0.0], [0.0, 0.0, 0.0]],
+            "target_pose": [[0.0], [0.0, 0.0, 0.0]],
+        },
         "registeration_infos": {
             "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num02_rollerbedCNCPipeIntersectionCuttingMachine/part01_station",
@@ -89,6 +106,12 @@ CfgMachine = {
         "registration_type": "articulation",
         "num_workstations": 1,
         "num_registration_parts": 1,
+        "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
+        "reset_state": {
+            "state": [0],
+            "current_pose": [[0.0]],
+            "target_pose": [[0.0]],
+        },
         "registeration_infos": {
             "num03_laserCuttingMachine": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num03_laserCuttingMachine",
@@ -108,6 +131,12 @@ CfgMachine = {
         "registration_type": "articulation",
         "num_workstations": 1,
         "num_registration_parts": 2,
+        "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
+        "reset_state": {
+            "state": [0],
+            "current_pose": [[0.0, 0.0], [0.0]],
+            "target_pose": [[0.0, 0.0], [0.0]],
+        },
         "registeration_infos": {
             "num04_groovingMachineLarge_part01_large_fixed_base": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num04_groovingMachineLarge/part01_large_fixed_base",
@@ -133,6 +162,12 @@ CfgMachine = {
         "registration_type": "articulation",
         "num_workstations": 1,
         "num_registration_parts": 2,
+        "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
+        "reset_state": {
+            "state": [0],
+            "current_pose": [[0.0, 0.0], [0.0, 0.0]],
+            "target_pose": [[0.0, 0.0], [0.0, 0.0]],
+        },
         "registeration_infos": {
             "num05_groovingMachineSmall_part01_small_fixed_base": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num05_groovingMachineSmall/part01_small_fixed_base",
@@ -158,6 +193,12 @@ CfgMachine = {
         "registration_type": "articulation",
         "num_workstations": 1,
         "num_registration_parts": 1,
+        "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
+        "reset_state": {
+            "state": [0],
+            "current_pose": [[0.0]],
+            "target_pose": [[0.0]],
+        },
         "registeration_infos": {
             "num06_highPressureFoamingMachine": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num06_highPressureFoamingMachine",
@@ -177,6 +218,12 @@ CfgMachine = {
         "registration_type": "articulation",
         "num_workstations": 4,
         "num_registration_parts": 1,
+        "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
+        "reset_state": {
+            "state": [0, 0, 0, 0],
+            "current_pose": [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
+            "target_pose": [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
+        },
         "registeration_infos": {
             "num07_gantry_group": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num07_gantry_group/gantry_00",
@@ -196,6 +243,12 @@ CfgMachine = {
         "registration_type": "articulation",
         "num_workstations": 2,
         "num_registration_parts": 1,
+        "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
+        "reset_state": {
+            "state": [0, 0],
+            "current_pose": [[0.0]],
+            "target_pose": [[0.0]],
+        },
         "registeration_infos": {
             "num08_workbench": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num08_workbench",

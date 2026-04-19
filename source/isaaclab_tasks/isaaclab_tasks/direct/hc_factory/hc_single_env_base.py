@@ -21,8 +21,7 @@ from isaacsim.core.utils.stage import get_current_stage
 from isaacsim.core.prims import RigidPrim, Articulation
 from isaacsim.core.api.world import World
 
-
-from .env_asset_cfg.hc_env_cfg import HcVectorEnvCfg
+import torch
 # from abc import abstractmethod
 # import numpy as np
 # from .cfgs.hc_env_cfg import PoseAnimation
@@ -32,7 +31,7 @@ from .src.human import HumanManager
 from .src.robot import RobotManager
 from .src.storage import StorageManager
 from .src.route import RouteManagerVectorEnv
-import torch
+from .env_asset_cfg.cfg_hc_env import single_env_state_action_dict_template, HcVectorEnvCfg
 
 
 
@@ -45,14 +44,7 @@ class HcSingleEnvBase():
         self.cfg_vector_env._valid_train_cfg()
         self.env_rule_based_exploration = self.cfg_vector_env.train_cfg['params']['config']['env_rule_based_exploration']
         self.reward_buf = torch.zeros(1, dtype=torch.float32, device=self.sim.device)
-        self.env_state_action_dict = {
-            "machine_state": None,
-            "material_state": None,
-            "human_state": None,
-            "robot_state": None,
-            "storage_state": None,
-            "route_state": None,
-        }
+        self.env_state_action_dict = single_env_state_action_dict_template
         self.setup_env()
         self.reset_env()
     
@@ -99,4 +91,5 @@ class HcSingleEnvBase():
     
     def _set_up_route(self):
         self.route_manager = RouteManagerVectorEnv(env_id=self.env_id)
-    
+
+
