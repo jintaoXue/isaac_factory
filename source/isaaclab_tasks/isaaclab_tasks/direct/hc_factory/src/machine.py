@@ -87,7 +87,12 @@ class num00_rotaryPipeAutomaticWeldingMachine(Machine):
         self._set_up_articulation()
 
     def reset(self, env_state_action_dict: dict) -> dict:
-        self.state = "free"
+        self.state_dict = {
+            01_station: "free",
+            02_station: "free",
+        }
+        self.animation_num00_rotaryPipeAutomaticWeldingMachine_part_01_station
+        self.animation_num00_rotaryPipeAutomaticWeldingMachine_part_02_station
         return env_state_action_dict
 
 
