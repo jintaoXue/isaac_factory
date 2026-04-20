@@ -26,7 +26,7 @@ from .env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
 from abc import abstractmethod
 import numpy as np
 import torch
-
+from .hc_single_env import HcSingleEnv
 
 class HcVectorEnvBase(DirectRLEnv):
     cfg_vector_env: HcVectorEnvCfg
@@ -38,7 +38,8 @@ class HcVectorEnvBase(DirectRLEnv):
         self.env_list = []
     
     def setup_one_env(self, env_id: int):
-        pass
+        single_env = HcSingleEnv(env_id=env_id, cuda_device_str=self.cfg_vector_env.cuda_device_str)
+        self.env_list.append(single_env)
 
     def _setup_scene(self):
         assert self.num_envs == 2, "Temporary testing num_envs == 2"
@@ -48,6 +49,7 @@ class HcVectorEnvBase(DirectRLEnv):
             sub_env_path = f"/World/envs/env_{i}"
             # the usd file already has a ground plane
             add_reference_to_stage(usd_path = self.cfg_vector_env.asset_path, prim_path = sub_env_path + "/obj")
+            self.setup_one_env(env_id=i)
         # for debug, visualize only prims 
         # stage_utils.print_stage_prim_paths()
 
