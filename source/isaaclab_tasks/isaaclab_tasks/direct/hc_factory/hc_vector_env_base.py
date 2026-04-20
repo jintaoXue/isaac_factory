@@ -50,15 +50,7 @@ class HcVectorEnvBase(DirectRLEnv):
             add_reference_to_stage(usd_path = self.cfg_vector_env.asset_path, prim_path = sub_env_path + "/obj")
         # for debug, visualize only prims 
         # stage_utils.print_stage_prim_paths()
-        '''test settings'''
-        #TODO:全库固定随机种子，训练和test要分开
-        self._test = self.cfg_vector_env.train_cfg['params']['config']['test']
-        if self._test:
-            # np.random.seed(self.cfg_vector_env.train_cfg['params']['seed'])
-            np.random.seed(1)
-            self.set_up_test_setting(self.cfg_vector_env.train_cfg['params']['config'])
-        self.train_env_len_settings = self.cfg_vector_env.train_env_len_setting
-        
+
         # add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
