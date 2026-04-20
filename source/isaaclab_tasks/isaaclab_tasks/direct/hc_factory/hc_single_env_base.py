@@ -36,14 +36,11 @@ from .env_asset_cfg.cfg_hc_env import single_env_state_action_dict_template, HcV
 
 
 class HcSingleEnvBase():
-    def __init__(self, env_id: int, cfg_vector_env: HcVectorEnvCfg):
+    def __init__(self, env_id: int, cuda_device_str: str):
         self.env_id : int = env_id
         self.env_id_str : str = f"env_{env_id}"
-        self.cfg_vector_env : HcVectorEnvCfg = cfg_vector_env
-        self.cuda_device = torch.device(self.cfg_vector_env.cuda_device_str)
-        self.cfg_vector_env._valid_train_cfg()
-        self.env_rule_based_exploration = self.cfg_vector_env.train_cfg['params']['config']['env_rule_based_exploration']
-        self.reward_buf = torch.zeros(1, dtype=torch.float32, device=self.sim.device)
+        self.cuda_device = torch.device(cuda_device_str)
+        self.reward_buf = torch.zeros(1, dtype=torch.float32, device=self.cuda_device)
         self.env_state_action_dict = single_env_state_action_dict_template
         self.setup_env()
         self.reset_env()
