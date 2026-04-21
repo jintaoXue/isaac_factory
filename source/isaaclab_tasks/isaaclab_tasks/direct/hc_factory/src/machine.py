@@ -65,7 +65,7 @@ class Machine:
             setattr(self, f"animation_{obj_name}", PoseAnimation(
                 start_pose=info["joint_positions_reset"],
                 end_pose=info["joint_positions_reset"],
-                time=info["animation_time"],
+                animation_time=info["animation_time"],
             ))
 
     def reset(self, env_state_action_dict: dict) -> dict:

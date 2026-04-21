@@ -13,7 +13,7 @@ params:
   config:
 
     name: HcFactory
-    env_name: rlgpu_HcFactory
+    env_name: rlgpu_HRTPA
     device: 'cuda:0'
     device_name: 'cuda:0'
     time_str: "None"

@@ -52,4 +52,24 @@ class HcVectorEnv(HcVectorEnvBase):
         super().__init__(cfg, render_mode, **kwargs)
             
  
-    
+    def step(self, action: torch.Tensor | None, action_extra = None
+        ) -> None:
+        """Step buffers. Refresh tensors. Compute observations and reward. Reset environments."""
+
+        is_rendering = self.sim.has_gui() or self.sim.has_rtx_sensors()
+        # perform physics stepping
+        for _ in range(self.cfg.decimation):
+            self._sim_step_counter += 1
+            # self.scene.write_data_to_sim()
+            # simulate
+            if self._sim_step_counter % self.cfg.sim_step_interval == 0:
+                self.sim.step(render=False)
+            # render between steps only if the GUI or an RTX sensor needs it
+            # note: we assume the render interval to be the shortest accepted rendering interval.
+            #    If a camera needs rendering at a faster frequency, this will lead to unexpected behavior.
+            if self._sim_step_counter % self.cfg.sim.render_interval == 0 and is_rendering:
+                self.sim.render()
+            # update buffers at sim dt
+            # self.scene.update(dt=self.physics_dt)
+
+        return

@@ -11,11 +11,11 @@ class StorageManager:
         self._set_up_storage_list()
 
     def reset(self, env_state_action_dict: dict) -> dict:
-        env_state_action_dict["storage_state"] = self
+        env_state_action_dict["state_storage"] = self
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
-        env_state_action_dict["storage_state"] = self
+        env_state_action_dict["state_storage"] = self
         return env_state_action_dict
 
     def _set_up_storage_list(self):
@@ -47,6 +47,8 @@ class Storage:
         self._set_up_rigid_prim()
 
     def _set_up_rigid_prim(self):
+        if self.class_name == "GroundStorage":
+            return
         meta = self.meta_registeration_info
         self.prim = RigidPrim(
             prim_paths_expr=meta["prim_paths_expr"].format(i=self.env_id),

@@ -57,3 +57,6 @@ class Human:
     def step(self, env_state_action_dict: dict) -> dict:
         return env_state_action_dict
 
+class NormalHuman(Human):
+    def __init__(self, idx: int, cfg: dict, env_id: int):
+        super().__init__(idx, cfg, env_id)

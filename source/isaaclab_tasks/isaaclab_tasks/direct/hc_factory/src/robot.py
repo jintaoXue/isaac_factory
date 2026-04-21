@@ -11,11 +11,11 @@ class RobotManager:
         self._set_up_robot_list()
 
     def reset(self, env_state_action_dict: dict) -> dict:
-        env_state_action_dict["robot_state"] = self
+        env_state_action_dict["state_robot"] = self
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
-        env_state_action_dict["robot_state"] = self
+        env_state_action_dict["state_robot"] = self
         return env_state_action_dict
 
     def _set_up_robot_list(self):
@@ -54,3 +54,8 @@ class Robot:
     
     def step(self, env_state_action_dict: dict) -> dict:
         return env_state_action_dict
+
+
+class AGV(Robot):
+    def __init__(self, idx: int, cfg: dict, env_id: int):
+        super().__init__(idx, cfg, env_id)

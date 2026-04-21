@@ -104,11 +104,11 @@ import os
 import random
 from datetime import datetime
 
-from source.isaaclab_rl.isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnvWrapper, RlGamesGpuEnvHRTA, RlGamesVecEnvWrapperHRTA 
+from source.isaaclab_rl.isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnvWrapper, RlGamesGpuEnvHRTPA, RlGamesVecEnvWrapperHRTPA 
 from rl_games.common import env_configurations, vecenv
 from rl_games.common.algo_observer import IsaacAlgoObserver
 from rl_games.torch_runner import Runner
-from source.algo.safe_rl import rl_filter, rule_based
+from source.algo.multiagent import rule_based
 
 from isaaclab.envs import (
     DirectMARLEnv,
@@ -248,7 +248,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
     # wrap around environment for rl-games
-    env = RlGamesVecEnvWrapperHRTA(env, rl_device, clip_obs, clip_actions)
+    env = RlGamesVecEnvWrapperHRTPA(env, rl_device, clip_obs, clip_actions)
     # env = RlGamesVecEnvWrapper(env, rl_device, clip_obs, clip_actions)
     
     # register the environment to rl-games registry
@@ -259,9 +259,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     env_configurations.register("rlgpu", {"vecenv_type": "IsaacRlgWrapper", "env_creator": lambda **kwargs: env})
     
     vecenv.register(
-        "RlgWrapperHRTA", lambda config_name, num_actors, **kwargs: RlGamesGpuEnvHRTA(config_name, num_actors, **kwargs)
+        "RlgWrapperHRTPA", lambda config_name, num_actors, **kwargs: RlGamesGpuEnvHRTPA(config_name, num_actors, **kwargs)
     )
-    env_configurations.register("rlgpu_HRTA", {"vecenv_type": "RlgWrapperHRTA", "env_creator": lambda **kwargs: env})
+    env_configurations.register("rlgpu_HRTPA", {"vecenv_type": "RlgWrapperHRTPA", "env_creator": lambda **kwargs: env})
 
     # set number of actors into agent config
     algo_cfg["params"]["config"]["num_actors"] = env.unwrapped.num_envs

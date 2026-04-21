@@ -22,6 +22,7 @@ from isaacsim.core.prims import RigidPrim, Articulation
 from isaacsim.core.api.world import World
 
 import torch
+import copy
 # from abc import abstractmethod
 # import numpy as np
 # from .cfgs.hc_env_cfg import PoseAnimation
@@ -41,9 +42,9 @@ class HcSingleEnvBase():
         self.env_id_str : str = f"env_{env_id}"
         self.cuda_device = torch.device(cuda_device_str)
         self.reward_buf = torch.zeros(1, dtype=torch.float32, device=self.cuda_device)
-        self.env_state_action_dict = single_env_state_action_dict_template
+        # 每个 env 持有独立的 state dict，避免多 env 共享引用导致状态串扰
+        self.env_state_action_dict = copy.deepcopy(single_env_state_action_dict_template)
         self.setup_env()
-        self.reset_env()
     
     def setup_env(self):
         self._set_up_machine()
@@ -56,6 +57,7 @@ class HcSingleEnvBase():
     def reset_env(self):
         for m in self.iter_managers():
             m.reset(self.env_state_action_dict)
+        return self.env_state_action_dict
 
     def step_env(self, action: dict):
         for m in self.iter_managers():

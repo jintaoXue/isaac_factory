@@ -116,7 +116,7 @@ CfgStorage = {
         },
     },
 
-    
+
     "YellowStorage": {
         "num_storage": 11,
         "storage_cfg_dict": {
@@ -125,7 +125,7 @@ CfgStorage = {
                 "type_name": "Yellow Storage 00, located opposite the num04_groovingMachineLarge machine",
                 "class_name": "YellowStorage",
                 "meta_registeration_info": {
-                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_black_base/yellow_base_00",
+                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_00",
                     "name": "yellow_storage_00",
                 }
                 ,
@@ -141,7 +141,7 @@ CfgStorage = {
                 "type_name": "Yellow Storage 01 adjacent to Yellow Storage_00 on the right side, located opposite the num04_groovingMachineLarge machine",
                 "class_name": "YellowStorage",
                 "meta_registeration_info": {
-                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_black_base/yellow_base_01",
+                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_01",
                     "name": "yellow_storage_01",
                 }
                 ,
@@ -157,7 +157,7 @@ CfgStorage = {
                 "type_name": "Yellow Storage 02 adjacent to Yellow Storage_01 on the right side, located opposite the num04_groovingMachineLarge machine",
                 "class_name": "YellowStorage",
                 "meta_registeration_info": {
-                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_black_base/yellow_base_02",
+                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_02",
                     "name": "yellow_storage_02",
                 }
                 ,
@@ -173,7 +173,7 @@ CfgStorage = {
                 "type_name": "Yellow Storage 03 adjacent to Yellow Storage_02 on the right side, located opposite the num04_groovingMachineLarge machine",
                 "class_name": "YellowStorage",
                 "meta_registeration_info": {
-                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_black_base/yellow_base_03",
+                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_03",
                     "name": "yellow_storage_03",
                 }
                 ,
@@ -189,7 +189,7 @@ CfgStorage = {
                 "type_name": "Yellow Storage 04 adjacent to Yellow Storage_03 on the right side, located opposite the num04_groovingMachineLarge machine",
                 "class_name": "YellowStorage",
                 "meta_registeration_info": {
-                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_black_base/yellow_base_04",
+                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_04",
                     "name": "yellow_storage_04",
                 }
                 ,
@@ -204,7 +204,7 @@ CfgStorage = {
                 "type_name": "Yellow Storage 05 adjacent to Black Storage_05 on the right side, located opposite the semiFinishedArea_02",
                 "class_name": "YellowStorage",
                 "meta_registeration_info": {
-                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_black_base/yellow_base_05",
+                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_05",
                     "name": "yellow_storage_05",
                 }
                 ,
@@ -219,7 +219,7 @@ CfgStorage = {
                 "type_name": "Yellow Storage 06 adjacent to Yellow Storage_05, located opposite the semiFinishedArea_02",
                 "class_name": "YellowStorage",
                 "meta_registeration_info": {
-                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_black_base/yellow_base_06",
+                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_06",
                     "name": "yellow_storage_06",
                 }
                 ,
@@ -234,7 +234,7 @@ CfgStorage = {
                 "type_name": "Yellow Storage 07 adjacent to Yellow Storage_06, located opposite the semiFinishedArea_02",
                 "class_name": "YellowStorage",
                 "meta_registeration_info": {
-                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_black_base/yellow_base_07",
+                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_07",
                     "name": "yellow_storage_07",
                 }
                 ,
@@ -249,7 +249,7 @@ CfgStorage = {
                 "type_name": "Yellow Storage 08 adjacent to Yellow Storage_07, located opposite the semiFinishedArea_02",
                 "class_name": "YellowStorage",
                 "meta_registeration_info": {
-                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_black_base/yellow_base_08",
+                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_08",
                     "name": "yellow_storage_08",
                 }
                 ,
@@ -264,7 +264,7 @@ CfgStorage = {
                 "type_name": "Yellow Storage 09 adjacent to Yellow Storage_08 located opposite the semiFinishedArea_02",
                 "class_name": "YellowStorage",
                 "meta_registeration_info": {
-                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_black_base/yellow_base_09",
+                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_09",
                     "name": "yellow_storage_09",
                 }
                 ,
@@ -279,7 +279,7 @@ CfgStorage = {
                 "type_name": "Yellow Storage 10 adjacent to Yellow Storage_09, located opposite the semiFinishedArea_02",
                 "class_name": "YellowStorage",
                 "meta_registeration_info": {
-                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_black_base/yellow_base_10",
+                    "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_10",
                     "name": "yellow_storage_10",
                 }
                 ,

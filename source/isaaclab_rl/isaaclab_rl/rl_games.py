@@ -350,7 +350,7 @@ class RlGamesGpuEnv(IVecEnv):
         return self.env.get_env_info()
 
 
-class RlGamesVecEnvWrapperHRTA(RlGamesVecEnvWrapper):
+class RlGamesVecEnvWrapperHRTPA(RlGamesVecEnvWrapper):
 
     def reset(self, num_worker=None, num_robot=None, evaluate=False):  # noqa: D102
         obs_dict = self.env.reset(num_worker, num_robot, evaluate)
@@ -360,7 +360,7 @@ class RlGamesVecEnvWrapperHRTA(RlGamesVecEnvWrapper):
     def step(self, actions, action_extra = None):  # noqa: D102
         return self.env.step(actions, action_extra)
 
-class RlGamesGpuEnvHRTA(RlGamesGpuEnv):
+class RlGamesGpuEnvHRTPA(RlGamesGpuEnv):
 
     def reset(self, num_worker=None, num_robot=None, evaluate=False):
         """Resets the task and applies default zero actions to recompute observations and states."""

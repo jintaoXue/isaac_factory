@@ -27,12 +27,12 @@ from isaaclab.envs.common import ViewerCfg
 
 
 single_env_state_action_dict_template : dict = {
-    "machine_state": {},
-    "material_state": {},
-    "human_state": {},
-    "robot_state": {},
-    "storage_state": {},
-    "route_state": {},
+    "state_machine": {},
+    "state_material": {},
+    "state_human": {},
+    "state_robot": {},
+    "state_storage": {},
+    "state_route": {},
 }
 
 
@@ -94,7 +94,7 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     n_max_human = 0
     n_max_robot = 0
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=3, env_spacing=100.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=3, env_spacing=120.0, replicate_physics=True)
     # cuda decive
     cuda_device_str = "cuda:0"
     #train_cfg will be update when running train.py
