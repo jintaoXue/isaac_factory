@@ -90,10 +90,6 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     state_space = 2    
     #asset path, include machine, human, robot
     asset_path = os.path.expanduser("~") + "/work/Dataset/HC_data/final_for_isaac/HC_import.usd"
-    # asset_path = os.path.expanduser("~") + "/work/Dataset/3D_model/all.usd"
-    occupancy_map_path = os.path.expanduser("~") + "/work/Dataset/3D_model/occupancy_map.png"
-    route_character_file_path = os.path.expanduser("~") + "/work/Dataset/3D_model/routes_character.pkl"
-    route_agv_file_path = os.path.expanduser("~") + "/work/Dataset/3D_model/routes_agv.pkl"
     n_max_product = 0
     n_max_human = 0
     n_max_robot = 0

@@ -45,7 +45,7 @@ class MaterialBatch:
         for obj_name, info in self.meta_registeration_info.items():
             rigid_prim = RigidPrim(
                 prim_paths_expr=info["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx_in_material_batch_list:02d}"),
-                name=f"env_{self.env_id}_{info["name"].format(idx=f"{self.idx_in_material_batch_list:02d}")}",
+                name=f"env_{self.env_id}_{info['name'].format(idx=f'{self.idx_in_material_batch_list:02d}')}",
                 reset_xform_properties=False,
             )
             setattr(self, obj_name, rigid_prim)

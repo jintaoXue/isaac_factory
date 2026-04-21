@@ -50,7 +50,7 @@ class Storage:
         meta = self.meta_registeration_info
         self.prim = RigidPrim(
             prim_paths_expr=meta["prim_paths_expr"].format(i=self.env_id),
-            name=f"env_{self.env_id}_{meta["name"]}",
+            name=f"env_{self.env_id}_{meta['name']}",
             reset_xform_properties=False,
         )
     def reset(self, env_state_action_dict: dict) -> dict:

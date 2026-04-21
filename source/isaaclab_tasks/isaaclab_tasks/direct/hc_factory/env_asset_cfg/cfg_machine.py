@@ -13,7 +13,7 @@ CfgMachine = {
             "current_pose": [[0.0, 0.0], [0.0, 0.0]],
             "target_pose": [[0.0, 0.0], [0.0, 0.0]],
         },
-        "registeration_infos": {
+        "registration_infos": {
             "num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
                 #prim_paths_expr is the path in .usd file
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num00_rotaryPipeAutomaticWeldingMachine/part_01_station/track_for_mobile_base",
@@ -50,7 +50,7 @@ CfgMachine = {
             "current_pose": [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0]],
             "target_pose": [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0]],
         },
-        "registeration_infos": {
+        "registration_infos": {
             "num01_weldingRobot_part02_robot_arm_and_base": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num01_weldingRobot/part02_robot_arm_and_base",
                 "joint_positions_working": [3.2, -1.5, -0.3, 0.1, 0.2, 0.0],
@@ -81,7 +81,7 @@ CfgMachine = {
             "current_pose": [[0.0], [0.0, 0.0, 0.0]],
             "target_pose": [[0.0], [0.0, 0.0, 0.0]],
         },
-        "registeration_infos": {
+        "registration_infos": {
             "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num02_rollerbedCNCPipeIntersectionCuttingMachine/part01_station",
                 "joint_positions_working": [1.0],
@@ -112,7 +112,7 @@ CfgMachine = {
             "current_pose": [[0.0]],
             "target_pose": [[0.0]],
         },
-        "registeration_infos": {
+        "registration_infos": {
             "num03_laserCuttingMachine": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num03_laserCuttingMachine",
                 "joint_positions_working": [-3.5],
@@ -137,7 +137,7 @@ CfgMachine = {
             "current_pose": [[0.0, 0.0], [0.0]],
             "target_pose": [[0.0, 0.0], [0.0]],
         },
-        "registeration_infos": {
+        "registration_infos": {
             "num04_groovingMachineLarge_part01_large_fixed_base": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num04_groovingMachineLarge/part01_large_fixed_base",
                 "joint_positions_working": [-0.2, 0.0],
@@ -168,7 +168,7 @@ CfgMachine = {
             "current_pose": [[0.0, 0.0], [0.0, 0.0]],
             "target_pose": [[0.0, 0.0], [0.0, 0.0]],
         },
-        "registeration_infos": {
+        "registration_infos": {
             "num05_groovingMachineSmall_part01_small_fixed_base": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num05_groovingMachineSmall/part01_small_fixed_base",
                 "joint_positions_working": [-0.3, -0.5],
@@ -199,7 +199,7 @@ CfgMachine = {
             "current_pose": [[0.0]],
             "target_pose": [[0.0]],
         },
-        "registeration_infos": {
+        "registration_infos": {
             "num06_highPressureFoamingMachine": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num06_highPressureFoamingMachine",
                 "joint_positions_working": [-0.7],
@@ -224,7 +224,7 @@ CfgMachine = {
             "current_pose": [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
             "target_pose": [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
         },
-        "registeration_infos": {
+        "registration_infos": {
             "num07_gantry_group": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num07_gantry_group/gantry_00",
                 "joint_positions_working": [10.0, 10.0, 10.0, 10.0, 5.0, -5.0, 5.0, -5.0],
@@ -249,7 +249,7 @@ CfgMachine = {
             "current_pose": [[0.0]],
             "target_pose": [[0.0]],
         },
-        "registeration_infos": {
+        "registration_infos": {
             "num08_workbench": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num08_workbench",
                 "joint_positions_working": [0.0],

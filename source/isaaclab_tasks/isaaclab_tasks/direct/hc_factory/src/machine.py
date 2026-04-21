@@ -50,9 +50,6 @@ class Machine:
         self.num_workstations = cfg["num_workstations"]
         self.num_registration_parts = cfg["num_registration_parts"]
         self.registration_infos = cfg["registration_infos"]
-        self.human_working_areas_ids = cfg["human_working_areas_ids"]
-        self.robot_parking_areas_ids = cfg["robot_parking_areas_ids"]
-        self.gantry_parking_areas_ids = cfg["gantry_parking_areas_ids"]
         self.state_gallery = cfg["state_gallery"]
         self.reset_state = cfg["reset_state"]
         self.state : dict = None
@@ -83,7 +80,7 @@ class Machine:
 class num00_rotaryPipeAutomaticWeldingMachine(Machine):
 
     def __init__(self, env_id: int):        
-        super().__init__(name="num00_rotaryPipeAutomaticWeldingMachine", cfg=CfgMachine["num00_rotaryPipeAutomaticWeldingMachine"], env_id=env_id)
+        super().__init__(cfg=CfgMachine["num00_rotaryPipeAutomaticWeldingMachine"], env_id=env_id)
         # ===== 显式声明（更直观：一眼能看到有哪些对象会挂到 self 上）=====
         # 这些名称来自 cfg.py 的 registeration_infos_combined keys
         self.num00_rotaryPipeAutomaticWeldingMachine_part_01_station = None
@@ -99,7 +96,7 @@ class num00_rotaryPipeAutomaticWeldingMachine(Machine):
 class num01_weldingRobot(Machine):
 
     def __init__(self, env_id: int):
-        super().__init__(name="num01_weldingRobot", cfg=CfgMachine["num01_weldingRobot"], env_id=env_id)
+        super().__init__(cfg=CfgMachine["num01_weldingRobot"], env_id=env_id)
         self.num01_weldingRobot_part02_robot_arm_and_base = None
         self.animation_num01_weldingRobot_part02_robot_arm_and_base: PoseAnimation = None
         self.num01_weldingRobot_part04_mobile_base_for_material = None
@@ -111,7 +108,6 @@ class num02_rollerbedCNCPipeIntersectionCuttingMachine(Machine):
 
     def __init__(self, env_id: int):
         super().__init__(
-            name="num02_rollerbedCNCPipeIntersectionCuttingMachine",
             cfg=CfgMachine["num02_rollerbedCNCPipeIntersectionCuttingMachine"],
             env_id=env_id,
         )
@@ -125,7 +121,7 @@ class num02_rollerbedCNCPipeIntersectionCuttingMachine(Machine):
 class num03_laserCuttingMachine(Machine):
 
     def __init__(self, env_id: int):
-        super().__init__(name="num03_laserCuttingMachine", cfg=CfgMachine["num03_laserCuttingMachine"], env_id=env_id)
+        super().__init__(cfg=CfgMachine["num03_laserCuttingMachine"], env_id=env_id)
         self.num03_laserCuttingMachine = None
         self.animation_num03_laserCuttingMachine: PoseAnimation = None
         self._set_up_articulation_animation()
@@ -134,7 +130,7 @@ class num03_laserCuttingMachine(Machine):
 class num04_groovingMachineLarge(Machine):
 
     def __init__(self, env_id: int):
-        super().__init__(name="num04_groovingMachineLarge", cfg=CfgMachine["num04_groovingMachineLarge"], env_id=env_id)
+        super().__init__(cfg=CfgMachine["num04_groovingMachineLarge"], env_id=env_id)
         self.num04_groovingMachineLarge_part01_large_fixed_base = None
         self.animation_num04_groovingMachineLarge_part01_large_fixed_base: PoseAnimation = None
         self.num04_groovingMachineLarge_part02_large_mobile_base = None
@@ -145,7 +141,7 @@ class num04_groovingMachineLarge(Machine):
 class num05_groovingMachineSmall(Machine):
 
     def __init__(self, env_id: int):
-        super().__init__(name="num05_groovingMachineSmall", cfg=CfgMachine["num05_groovingMachineSmall"], env_id=env_id)
+        super().__init__(cfg=CfgMachine["num05_groovingMachineSmall"], env_id=env_id)
         self.num05_groovingMachineSmall_part01_small_fixed_base = None
         self.animation_num05_groovingMachineSmall_part01_small_fixed_base: PoseAnimation = None
         self.num05_groovingMachineSmall_part02_small_mobile_handle = None
@@ -157,7 +153,6 @@ class num06_highPressureFoamingMachine(Machine):
 
     def __init__(self, env_id: int):
         super().__init__(
-            name="num06_highPressureFoamingMachine",
             cfg=CfgMachine["num06_highPressureFoamingMachine"],
             env_id=env_id,
         )
@@ -169,7 +164,7 @@ class num06_highPressureFoamingMachine(Machine):
 class num07_gantry_group(Machine):
 
     def __init__(self, env_id: int):
-        super().__init__(name="num07_gantry_group", cfg=CfgMachine["num07_gantry_group"], env_id=env_id)
+        super().__init__(cfg=CfgMachine["num07_gantry_group"], env_id=env_id)
         self.num07_gantry_group = None
         self.animation_num07_gantry_group: PoseAnimation = None
         self._set_up_articulation_animation()
@@ -178,7 +173,7 @@ class num07_gantry_group(Machine):
 class num08_workbench(Machine):
 
     def __init__(self, env_id: int):
-        super().__init__(name="num08_workbench", cfg=CfgMachine["num08_workbench"], env_id=env_id)
+        super().__init__(cfg=CfgMachine["num08_workbench"], env_id=env_id)
         self.num08_workbench = None
         self.animation_num08_workbench: PoseAnimation = None
         self._set_up_articulation_animation()

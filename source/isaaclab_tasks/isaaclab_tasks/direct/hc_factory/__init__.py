@@ -21,7 +21,7 @@ gym.register(
     entry_point=f"{__name__}.hc_vector_env:HcVectorEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.cfgs.hc_env_cfg:HcEnvCfg",
+        "env_cfg_entry_point": f"{__name__}.env_asset_cfg.cfg_hc_env:HcVectorEnvCfg",
         "rule_based": f"{algo_cfg.__name__}:rule_based.yaml",
         "rl_filter": f"{algo_cfg.__name__}:rl_filter.yaml",
     },

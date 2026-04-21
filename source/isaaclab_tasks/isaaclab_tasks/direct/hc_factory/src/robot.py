@@ -43,7 +43,7 @@ class Robot:
         meta = self.meta_registeration_info
         self.prim = RigidPrim(
             prim_paths_expr=meta["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}"),
-            name=meta["name"].format(idx=f"{self.idx:02d}"),
+            name=f"env_{self.env_id}_{meta['name'].format(idx=f'{self.idx:02d}')}",
             reset_xform_properties=False,
         ) 
 
