@@ -58,3 +58,7 @@ storage 的meta registration info 是否可以忽略
 #4.19 
 single env的step函数
 vector env的step concate apply change
+
+vec env: hc_vector_env_base.py
+self.scene.write_data_to_sim()
+self.scene.update(dt=self.physics_dt)

@@ -26,6 +26,7 @@ import copy
 # from abc import abstractmethod
 # import numpy as np
 # from .cfgs.hc_env_cfg import PoseAnimation
+from abc import abstractmethod
 from .src.machine import MachineManager
 from .src.material import ProductMaterialManager
 from .src.human import HumanManager
@@ -59,9 +60,9 @@ class HcSingleEnvBase():
             m.reset(self.env_state_action_dict)
         return self.env_state_action_dict
 
-    def step_env(self, action: dict):
-        for m in self.iter_managers():
-            m.step(self.env_state_action_dict)
+    @abstractmethod
+    def step_env_logic(self, action: dict | None = None, action_extra: dict | None = None) -> None:
+        pass
 
     def iter_managers(self):
         return (
