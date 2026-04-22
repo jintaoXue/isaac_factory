@@ -125,7 +125,6 @@ import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils.hydra import hydra_task_config
 import wandb
 
-from source.isaaclab_tasks.isaaclab_tasks.direct.ergonomic_hrta.eg_hrta_env_cfg import HRTaskAllocEnvCfg
 from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
 
 @hydra_task_config(args_cli.task, args_cli.algo)
