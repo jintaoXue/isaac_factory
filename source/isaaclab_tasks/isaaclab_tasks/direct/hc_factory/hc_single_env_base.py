@@ -45,24 +45,15 @@ class HcSingleEnvBase():
         self.reward_buf = torch.zeros(1, dtype=torch.float32, device=self.cuda_device)
         # 每个 env 持有独立的 state dict，避免多 env 共享引用导致状态串扰
         self.env_state_action_dict = copy.deepcopy(single_env_state_action_dict_template)
-        self.setup_env()
+        self.register_env_assets()
     
-    def setup_env(self):
-        self._set_up_machine()
-        self._set_up_material()
-        self._set_up_human()
-        self._set_up_robot()
-        self._set_up_storage()
-        self._set_up_route()
-
-    def reset_env(self):
-        for m in self.iter_managers():
-            m.reset(self.env_state_action_dict)
-        return self.env_state_action_dict
-
-    @abstractmethod
-    def step_env_logic(self, action: dict | None = None, action_extra: dict | None = None) -> None:
-        pass
+    def register_env_assets(self):
+        self.machine_manager = MachineManager(env_id=self.env_id, cuda_device=self.cuda_device)
+        self.product_material_manager = ProductMaterialManager(env_id=self.env_id, cuda_device=self.cuda_device)
+        self.human_manager = HumanManager(env_id=self.env_id, cuda_device=self.cuda_device)
+        self.robot_manager = RobotManager(env_id=self.env_id, cuda_device=self.cuda_device)
+        self.storage_manager = StorageManager(env_id=self.env_id, cuda_device=self.cuda_device)
+        self.route_manager = RouteManagerVectorEnv(env_id=self.env_id, cuda_device=self.cuda_device)
 
     def iter_managers(self):
         return (
@@ -74,22 +65,27 @@ class HcSingleEnvBase():
             self.route_manager,
         )
 
-    def _set_up_machine(self):
-        self.machine_manager = MachineManager(env_id=self.env_id)
-        
-    def _set_up_material(self):
-        self.product_material_manager = ProductMaterialManager(env_id=self.env_id)
+    def reset_env(self):
+        for m in self.iter_managers():
+            m.reset(self.env_state_action_dict)
+        return self.env_state_action_dict
 
-    def _set_up_human(self):
-        self.human_manager = HumanManager(env_id=self.env_id)
+    def apply_data_to_sim(self) -> None:
+        #articulations
+        articulations : dict = self.env_state_action_dict["articulations"]
+        for name, data in articulations.items():
+            articulation : Articulation = data["articulation"]
+            articulation.set_joint_positions(data["joint_positions"])
+            # Currently, joint velocities are set to zero.
+            joint_velocities = torch.zeros_like(data["joint_positions"], device=self.cuda_device)
+            articulation.set_joint_velocities(joint_velocities)
+        #rigid prims
+        rigid_prims : dict = self.env_state_action_dict["rigid_prims"]
+        for name, data in rigid_prims.items():
+            rigid_prim : RigidPrim = data["rigid_prim"]
+            rigid_prim.set_world_poses(positions=data["positions"], orientations=data["orientations"])
+            rigid_prim.set_velocities(torch.zeros((1,6), device=self.cuda_device))
 
-    def _set_up_robot(self):
-        self.robot_manager = RobotManager(env_id=self.env_id)
-
-    def _set_up_storage(self):
-        self.storage_manager = StorageManager(env_id=self.env_id)
-    
-    def _set_up_route(self):
-        self.route_manager = RouteManagerVectorEnv(env_id=self.env_id)
-
-
+    @abstractmethod
+    def step_env_logic(self, action: dict | None = None, action_extra: dict | None = None) -> None:
+        pass

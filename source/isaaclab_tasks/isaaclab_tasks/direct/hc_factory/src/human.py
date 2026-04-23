@@ -1,14 +1,16 @@
 from isaacsim.core.prims import RigidPrim
 from ..env_asset_cfg.cfg_human import CfgHuman, CfgHumanRegistrationInfos
+import torch
 
 
 class HumanManager:
-    def __init__(self, env_id: int):
+    def __init__(self, env_id: int, cuda_device: torch.device):
         self.env_id = env_id
+        self.cuda_device = cuda_device
         self.cfg_human = CfgHuman
         self.cfg_registration_infos = CfgHumanRegistrationInfos
         self.human_list: list[Human] = []
-        self._set_up_human_list()
+        self._register_human_list()
 
     def reset(self, env_state_action_dict: dict) -> dict:
         for human in self.human_list:
@@ -20,15 +22,15 @@ class HumanManager:
             human.step(env_state_action_dict)
         return env_state_action_dict
 
-    def _set_up_human_list(self):
+    def _register_human_list(self):
         for type_name, n in self.cfg_registration_infos.items():
             cls = globals()[type_name]
             for idx in range(n):
-                self.human_list.append(cls(idx, self.cfg_human[type_name], self.env_id))
+                self.human_list.append(cls(idx, self.cfg_human[type_name], self.env_id, self.cuda_device))
 
 
 class Human:
-    def __init__(self, idx: int, cfg: dict, env_id: int):
+    def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
         self.idx = idx
         self.cfg = cfg
         self.type_id = cfg["type_id"]
@@ -39,9 +41,10 @@ class Human:
         self.reset_state = cfg["reset_state"]
         self.state : dict = None
         self.prim: RigidPrim | None = None
-        self._set_up_rigid_prim()
+        self.cuda_device = cuda_device
+        self._register_rigid_prim()
 
-    def _set_up_rigid_prim(self):
+    def _register_rigid_prim(self):
         meta = self.meta_registeration_info
         self.prim = RigidPrim(
             prim_paths_expr=meta["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}"),
@@ -58,5 +61,5 @@ class Human:
         return env_state_action_dict
 
 class NormalHuman(Human):
-    def __init__(self, idx: int, cfg: dict, env_id: int):
-        super().__init__(idx, cfg, env_id)
+    def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
+        super().__init__(idx, cfg, env_id, cuda_device)

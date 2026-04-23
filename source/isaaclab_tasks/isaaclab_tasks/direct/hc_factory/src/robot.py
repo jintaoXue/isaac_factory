@@ -1,14 +1,16 @@
 from isaacsim.core.prims import RigidPrim
 from ..env_asset_cfg.cfg_robot import CfgRobot, CfgRobotRegistrationInfos
+import torch
 
 
 class RobotManager:
-    def __init__(self, env_id: int):
+    def __init__(self, env_id: int, cuda_device: torch.device):
         self.env_id = env_id
+        self.cuda_device = cuda_device
         self.cfg_robot = CfgRobot
         self.cfg_registration_infos = CfgRobotRegistrationInfos
         self.robot_list: list[Robot] = []
-        self._set_up_robot_list()
+        self._register_robot_list()
 
     def reset(self, env_state_action_dict: dict) -> dict:
         env_state_action_dict["state_robot"] = self
@@ -18,7 +20,7 @@ class RobotManager:
         env_state_action_dict["state_robot"] = self
         return env_state_action_dict
 
-    def _set_up_robot_list(self):
+    def _register_robot_list(self):
         for type_name, n in self.cfg_registration_infos.items():
             cls = globals()[type_name]
             for idx in range(n):
@@ -26,7 +28,7 @@ class RobotManager:
 
 
 class Robot:
-    def __init__(self, idx: int, cfg: dict, env_id: int):
+    def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
         self.idx = idx
         self.cfg = cfg
         self.type_id = cfg["type_id"]
@@ -37,9 +39,10 @@ class Robot:
         self.reset_state = cfg["reset_state"]
         self.state : dict = None
         self.prim: RigidPrim | None = None
-        self._set_up_rigid_prim()
+        self.cuda_device = cuda_device
+        self._register_rigid_prim()
 
-    def _set_up_rigid_prim(self):
+    def _register_rigid_prim(self):
         meta = self.meta_registeration_info
         self.prim = RigidPrim(
             prim_paths_expr=meta["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}"),
@@ -57,5 +60,5 @@ class Robot:
 
 
 class AGV(Robot):
-    def __init__(self, idx: int, cfg: dict, env_id: int):
-        super().__init__(idx, cfg, env_id)
+    def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
+        super().__init__(idx, cfg, env_id, cuda_device)

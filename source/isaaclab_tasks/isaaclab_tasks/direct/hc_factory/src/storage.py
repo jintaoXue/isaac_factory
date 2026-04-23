@@ -1,14 +1,16 @@
 from isaacsim.core.prims import RigidPrim
 from ..env_asset_cfg.cfg_storage import CfgStorage, CfgCommonState
 import json
+import torch
 
 
 class StorageManager:
-    def __init__(self, env_id: int):
+    def __init__(self, env_id: int, cuda_device: torch.device):
         self.env_id = env_id
+        self.cuda_device = cuda_device
         self.cfg_storage = CfgStorage
         self.storage_list = []
-        self._set_up_storage_list()
+        self._register_storage_list()
 
     def reset(self, env_state_action_dict: dict) -> dict:
         env_state_action_dict["state_storage"] = self
@@ -18,16 +20,16 @@ class StorageManager:
         env_state_action_dict["state_storage"] = self
         return env_state_action_dict
 
-    def _set_up_storage_list(self):
+    def _register_storage_list(self):
         for class_name, cfg in self.cfg_storage.items():
             num_storage = cfg["num_storage"]
             cls = globals()[class_name]
             for idx in range(num_storage):
                 storage_cfg = cfg["storage_cfg_dict"][f"{class_name}_{idx:02d}"]
-                self.storage_list.append(cls(idx, storage_cfg, self.env_id))
+                self.storage_list.append(cls(idx, storage_cfg, self.env_id, self.cuda_device))
 
 class Storage:
-    def __init__(self, idx: int, cfg: dict, env_id: int):
+    def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
         self.idx = idx
         self.cfg = cfg
         self.type_id = cfg["type_id"]
@@ -44,9 +46,10 @@ class Storage:
         self.reset_state = CfgCommonState["reset_state"]
         self.state : dict = None
         self.prim: RigidPrim = None
-        self._set_up_rigid_prim()
+        self.cuda_device = cuda_device
+        self._register_rigid_prim()
 
-    def _set_up_rigid_prim(self):
+    def _register_rigid_prim(self):
         if self.class_name == "GroundStorage":
             return
         meta = self.meta_registeration_info
@@ -64,13 +67,13 @@ class Storage:
         return env_state_action_dict
 
 class BlackStorage(Storage):
-    def __init__(self, idx: int, cfg: dict, env_id: int):
-        super().__init__(idx, cfg, env_id)
+    def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
+        super().__init__(idx, cfg, env_id, cuda_device)
 
 class YellowStorage(Storage):
-    def __init__(self, idx: int, cfg: dict, env_id: int):
-        super().__init__(idx, cfg, env_id)
+    def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
+        super().__init__(idx, cfg, env_id, cuda_device)
 
 class GroundStorage(Storage):
-    def __init__(self, idx: int, cfg: dict, env_id: int):
-        super().__init__(idx, cfg, env_id)
+    def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
+        super().__init__(idx, cfg, env_id, cuda_device)

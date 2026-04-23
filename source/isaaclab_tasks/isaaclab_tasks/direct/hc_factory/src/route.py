@@ -2,11 +2,13 @@ from isaacsim.core.prims import RigidPrim
 from ..env_asset_cfg.cfg_route.cfg_route import CfgRoute
 import json
 from pathlib import Path
+import torch
 
 
 class RouteManagerVectorEnv:
-    def __init__(self, env_id: int):
+    def __init__(self, env_id: int, cuda_device: torch.device):
         self.env_id = env_id
+        self.cuda_device = cuda_device
         self.cfg_route = CfgRoute
         self.human_path = Path(self.cfg_route["routes_path_human"]).expanduser()
         self.robot_path = Path(self.cfg_route["routes_path_robot"]).expanduser()

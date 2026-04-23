@@ -77,7 +77,6 @@ class HcVectorEnvBase(DirectRLEnv):
         # perform physics stepping
         for _ in range(self.cfg.decimation):
             self._sim_step_counter += 1
-            # self.scene.write_data_to_sim()
             # simulate
             if self._sim_step_counter % self.cfg.sim_step_interval == 0:
                 self.sim.step(render=False)
@@ -89,4 +88,7 @@ class HcVectorEnvBase(DirectRLEnv):
             # update buffers at sim dt
             # self.scene.update(dt=self.physics_dt)
     
+    def apply_data_to_sim(self) -> None:
+        for single_env in self.env_list:
+            single_env.apply_data_to_sim()
     
