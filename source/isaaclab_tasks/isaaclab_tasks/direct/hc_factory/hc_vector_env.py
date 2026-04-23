@@ -51,10 +51,3 @@ class HcVectorEnv(HcVectorEnvBase):
     def __init__(self, cfg: HcVectorEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
             
- 
-    def step(self, action: dict | None = None, action_extra: dict | None = None) -> None:
-        """Step buffers. Refresh tensors. Compute observations and reward. Reset environments."""
-
-        self.step_env_logic(action, action_extra)
-        self.step_env_physics()
-        return

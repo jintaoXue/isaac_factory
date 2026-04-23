@@ -37,10 +37,6 @@ class HcVectorEnvBase(DirectRLEnv):
         self.env_list : list[type[HcSingleEnv]] = []
         super().__init__(cfg, render_mode, **kwargs)
         self.reward_buf = torch.zeros(self.num_envs, dtype=torch.float32, device=self.sim.device)
-    
-    def setup_one_env(self, env_id: int):
-        single_env = HcSingleEnv(env_id=env_id, cuda_device_str=self.cfg_vector_env.cuda_device_str)
-        self.env_list.append(single_env)
 
     def _setup_scene(self):
         # assert self.num_envs == 2, "Temporary testing num_envs == 2"
@@ -59,13 +55,21 @@ class HcVectorEnvBase(DirectRLEnv):
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
 
+    def setup_one_env(self, env_id: int):
+        single_env = HcSingleEnv(env_id=env_id, cuda_device_str=self.cfg_vector_env.cuda_device_str)
+        self.env_list.append(single_env)
+        
     def reset(self, num_worker=None, num_robot=None, evaluate=False):
         """Resets the task and applies default zero actions to recompute observations and states."""
         # now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         # print(f"[{now}] Running RL reset")
         for env in self.env_list:
             env_state_action_dict = env.reset_env()
+        return
 
+    def step(self, action: dict | None = None, action_extra: dict | None = None) -> None:
+        self.step_env_logic(action, action_extra)
+        self.step_env_physics()
         return
 
     def step_env_logic(self, action: dict | None = None, action_extra: dict | None = None) -> None:
