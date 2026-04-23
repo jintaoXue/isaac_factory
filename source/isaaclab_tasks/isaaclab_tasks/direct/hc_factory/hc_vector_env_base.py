@@ -56,9 +56,9 @@ class HcVectorEnvBase(DirectRLEnv):
         light_cfg.func("/World/Light", light_cfg)
 
     def setup_one_env(self, env_id: int):
-        single_env = HcSingleEnv(env_id=env_id, cuda_device_str=self.cfg_vector_env.cuda_device_str)
+        single_env = HcSingleEnv(env_id=env_id, cuda_device=self.cuda_device)
         self.env_list.append(single_env)
-        
+
     def reset(self, num_worker=None, num_robot=None, evaluate=False):
         """Resets the task and applies default zero actions to recompute observations and states."""
         # now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

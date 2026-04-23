@@ -24,7 +24,7 @@ class RobotManager:
         for type_name, n in self.cfg_registration_infos.items():
             cls = globals()[type_name]
             for idx in range(n):
-                self.robot_list.append(cls(idx, self.cfg_robot[type_name], self.env_id))
+                self.robot_list.append(cls(idx, self.cfg_robot[type_name], self.env_id, self.cuda_device))
 
 
 class Robot:

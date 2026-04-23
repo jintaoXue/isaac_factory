@@ -9,7 +9,7 @@ class StorageManager:
         self.env_id = env_id
         self.cuda_device = cuda_device
         self.cfg_storage = CfgStorage
-        self.storage_list = []
+        self.storage_list: list[Storage] = []
         self._register_storage_list()
 
     def reset(self, env_state_action_dict: dict) -> dict:
@@ -17,7 +17,8 @@ class StorageManager:
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
-        env_state_action_dict["state_storage"] = self
+        for storage in self.storage_list:
+            storage.step(env_state_action_dict)
         return env_state_action_dict
 
     def _register_storage_list(self):

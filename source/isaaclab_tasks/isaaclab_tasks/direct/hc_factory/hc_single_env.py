@@ -32,6 +32,5 @@ import torch
 
 class HcSingleEnv(HcSingleEnvBase):
     
-    def __init__(self, env_id: int, cuda_device_str: str):
-        self.cuda_device = torch.device(cuda_device_str)
-        super().__init__(env_id, cuda_device_str)
+    def __init__(self, env_id: int, cuda_device: torch.device):
+        super().__init__(env_id, cuda_device)

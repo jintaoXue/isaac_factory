@@ -26,7 +26,7 @@ class ProductMaterialManager:
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
-        for material_batch in self.iter_material_batches():
+        for material_batch in self.material_batch_list:
             material_batch.step(env_state_action_dict)
         return env_state_action_dict
 

@@ -38,10 +38,10 @@ from .env_asset_cfg.cfg_hc_env import single_env_state_action_dict_template, HcV
 
 
 class HcSingleEnvBase():
-    def __init__(self, env_id: int, cuda_device_str: str):
+    def __init__(self, env_id: int, cuda_device: torch.device):
         self.env_id : int = env_id
         self.env_id_str : str = f"env_{env_id}"
-        self.cuda_device = torch.device(cuda_device_str)
+        self.cuda_device = cuda_device
         self.reward_buf = torch.zeros(1, dtype=torch.float32, device=self.cuda_device)
         # 每个 env 持有独立的 state dict，避免多 env 共享引用导致状态串扰
         self.env_state_action_dict = copy.deepcopy(single_env_state_action_dict_template)
@@ -83,9 +83,11 @@ class HcSingleEnvBase():
         rigid_prims : dict = self.env_state_action_dict["rigid_prims"]
         for name, data in rigid_prims.items():
             rigid_prim : RigidPrim = data["rigid_prim"]
-            rigid_prim.set_world_poses(positions=data["positions"], orientations=data["orientations"])
+            rigid_prim.set_local_poses(positions=data["positions"], orientations=data["orientations"])
             rigid_prim.set_velocities(torch.zeros((1,6), device=self.cuda_device))
 
-    @abstractmethod
+
     def step_env_logic(self, action: dict | None = None, action_extra: dict | None = None) -> None:
-        pass
+        for m in self.iter_managers():
+            m.step(self.env_state_action_dict)
+        return
