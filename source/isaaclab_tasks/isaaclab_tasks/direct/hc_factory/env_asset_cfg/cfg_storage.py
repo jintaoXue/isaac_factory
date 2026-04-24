@@ -1,5 +1,8 @@
 
 
+from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.src import storage
+
+
 CfgCommonState = {
     "state_gallery": {
         0: "empty",
@@ -13,6 +16,19 @@ CfgCommonState = {
         "material_idx": [],
     },
 }
+
+
+# BlackStorage_00_example_data_from_isaac = {
+#     "base_pose" : [30.68705, 1.53554, 0.53671],
+#     "capacity": 6,
+#     "storage_pose_00": 30.76917,0.5623,-2.67265
+#     "storage_pose_01": 30.76917,0.5623,-2.67265
+#     "storage_pose_02": 30.76917,0.5623,-2.67265
+#     "storage_pose_03": 30.76917,0.5623,-2.67265
+#     "storage_pose_04": 30.76917,0.5623,-2.67265
+#     "storage_pose_05": 30.76917,0.5623,-2.67265
+
+# }
 
 CfgStorage = {
     "BlackStorage": {
