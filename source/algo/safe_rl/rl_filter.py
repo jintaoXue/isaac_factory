@@ -515,6 +515,7 @@ class SafeRlFilterAgent():
 
 
     def env_reset(self, num_worker=None, num_robot=None, evaluate=False):
+        # print('Entering env_reset', flush=True)
         with torch.no_grad():
             obs = self.vec_env.reset(num_worker, num_robot, evaluate)
 

@@ -109,6 +109,7 @@ from rl_games.common import env_configurations, vecenv
 from rl_games.common.algo_observer import IsaacAlgoObserver
 from rl_games.torch_runner import Runner
 from source.algo.multiagent import rule_based
+# from source.algo.safe_rl import rl_filter
 
 from isaaclab.envs import (
     DirectMARLEnv,

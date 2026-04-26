@@ -33,6 +33,7 @@ single_env_state_action_dict_template : dict = {
     "state_robot": {},
     "state_storage": {},
     "state_route": {},
+    "articulations": {},
 }
 
 
