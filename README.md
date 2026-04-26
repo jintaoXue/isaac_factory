@@ -62,3 +62,6 @@ vector env的step concate apply change
 vec env: hc_vector_env_base.py
 self.scene.write_data_to_sim()
 self.scene.update(dt=self.physics_dt)
+
+#4.24
+发现cube等材料有90旋转，需要去掉
