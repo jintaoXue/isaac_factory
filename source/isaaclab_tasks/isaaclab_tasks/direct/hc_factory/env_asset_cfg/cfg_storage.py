@@ -21,13 +21,12 @@ CfgCommonState = {
 # BlackStorage_00_example_data_from_isaac = {
 #     "base_pose" : [30.68705, 1.53554, 0.53671],
 #     "capacity": 6,
-#     "storage_pose_00": 30.76917,0.5623,-2.67265
-#     "storage_pose_01": 30.76917,0.5623,-2.67265
-#     "storage_pose_02": 30.76917,0.5623,-2.67265
-#     "storage_pose_03": 30.76917,0.5623,-2.67265
-#     "storage_pose_04": 30.76917,0.5623,-2.67265
-#     "storage_pose_05": 30.76917,0.5623,-2.67265
-
+#     "storage_pose_00": xyz 30.76917,2.65819,0.5623 orientation  Quaternion (1,0,0,0)
+#     "storage_pose_01": xyz 30.76917,2.22427,0.5623 orientation  Quaternion (1,0,0,0)
+#     "storage_pose_02": xyz 30.76917,1.78928,0.5623 orientation  Quaternion (1,0,0,0)
+#     "storage_pose_03": xyz 30.76917,2.43246,0.93627 orientation  Quaternion (1,0,0,0)
+#     "storage_pose_04": xyz 30.76917,2.01911,0.93681 orientation  Quaternion (1,0,0,0)
+#     "storage_pose_05": xyz 30.76917,2.21886,1.29129 orientation  Quaternion (1,0,0,0)
 # }
 
 CfgStorage = {
