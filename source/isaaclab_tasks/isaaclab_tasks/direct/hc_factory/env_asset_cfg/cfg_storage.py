@@ -281,14 +281,16 @@ GroundStorage_example_flange_placement_cfg_absolute = _build_ground_storage_plac
 ###################################################################
 ###################################################################
 
-
-CfgCommonState = {
-    "state_gallery": {
+# State Gallery
+CfgStateGallery = {
         0: "empty",
         1: "partial",
         2: "full",
-    },
-    "reset_state": {
+}
+
+CfgResetStateTemplate = {
+    "key_variables": {},
+    "state": {
         "state": [0],
         "num_material": 0,
         "material_type": None,

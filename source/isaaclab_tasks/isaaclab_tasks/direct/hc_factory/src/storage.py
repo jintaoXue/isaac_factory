@@ -1,5 +1,5 @@
 from isaacsim.core.prims import RigidPrim
-from ..env_asset_cfg.cfg_storage import CfgStorage, CfgCommonState, _quat_multiply, _quat_conjugate
+from ..env_asset_cfg.cfg_storage import CfgStorage, CfgResetStateTemplate, CfgStateGallery,_quat_multiply, _quat_conjugate
 import json
 import torch
 from abc import abstractmethod
@@ -41,8 +41,8 @@ class Storage:
         self.human_working_areas_ids = cfg["human_working_areas_ids"]
         self.robot_parking_areas_ids = cfg["robot_parking_areas_ids"]
         self.gantry_parking_areas_ids = cfg["gantry_parking_areas_ids"]
-        self.state_gallery = CfgCommonState["state_gallery"]
-        self.reset_state = CfgCommonState["reset_state"]
+        self.state_gallery = CfgStateGallery
+        self.reset_state = CfgResetStateTemplate
         self.placement_type = cfg["placement_type"]
 
         self.prim: RigidPrim = None
@@ -98,9 +98,8 @@ class Storage:
 
     def reset(self, env_state_action_dict: dict) -> dict:
         self.state : dict = self.reset_state.copy()
-        env_state_action_dict["storage"][f"{self.class_name}_{self.idx:02d}"] = {
-            "key_variables": self.iter_key_variables(), 
-             "state": self.state}
+        self.state["key_variables"] = self.iter_key_variables()
+        env_state_action_dict["storage"][f"{self.class_name}_{self.idx:02d}"] = self.state
         return env_state_action_dict
     
     def step(self, env_state_action_dict: dict) -> dict:
