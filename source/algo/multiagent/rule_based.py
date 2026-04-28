@@ -36,6 +36,7 @@ class RuleBasedAgent():
 
 
     def train(self):
+        self.vec_env.reset()
         while True:
             action = None
             action_extra = {}

@@ -32,16 +32,18 @@ class ProductMaterialManager:
 
 class MaterialBatch:
     def __init__(self, idx_in_material_batch_list: int, cfg: dict, env_id: int, cuda_device: torch.device):
+        # static variables
         self.idx_in_material_batch_list = idx_in_material_batch_list
-        self.cfg = cfg
+        self.cuda_device = cuda_device
+        self.cfg = cfg.copy()
         self.type_id = cfg["type_id"]
         self.type_name = cfg["type_name"]
         self.meta_registeration_info = cfg["meta_registeration_info"]
         self.env_id = env_id
         self.reset_state = cfg["reset_state"]
-        self.state : dict = None
-        self.cuda_device = cuda_device
         self._register_rigid_prim()
+        ### dynmaic variables
+        self.state : dict = None
 
     def _register_rigid_prim(self):
         for obj_name, info in self.meta_registeration_info.items():
@@ -54,10 +56,21 @@ class MaterialBatch:
 
     def reset(self, env_state_action_dict: dict) -> dict:
         self.state : dict = self.reset_state.copy()
-        env_state_action_dict["state_material"][f"{self.type_name}_{self.idx_in_material_batch_list:02d}"] = self.state
+        env_state_action_dict["material"][f"{self.type_name}_{self.idx_in_material_batch_list:02d}"] = self.state
         return env_state_action_dict
 
-    def reset_rigid_prims(self) -> dict:
+    def reset_material_to_storage(self, env_state_action_dict: dict) -> dict:
+        material_variables : dict = self.iter_material_variables()
+        storages : dict = env_state_action_dict["storage"]
+        for storage_name, storage_variables in storages.items():
+            storage_key_variables = storage_variables["key_variables"]
+            if storage_key_variables["supporting_materials"] is None:
+                continue
+            for supporting_material in storage_key_variables["supporting_materials"]:
+                if supporting_material not in material_variables:
+                    continue
+                material_variable = material_variables[supporting_material]
+                storage_variable = storage_variables[supporting_material]
         rigid_prims_values: dict = {}
         for obj_name in self.meta_registeration_info.keys():
             rigid_prim = getattr(self, obj_name, None)
@@ -69,6 +82,10 @@ class MaterialBatch:
                 "orientations": rigid_prim.get_world_poses()[1],
             }
         return rigid_prims_values
+
+    @abstractmethod
+    def iter_material_variables(self): 
+        pass
 
     @abstractmethod
     def step(self, env_state_action_dict: dict) -> dict:
@@ -86,3 +103,12 @@ class ProductWaterPipe(MaterialBatch):
 
     def step(self, env_state_action_dict: dict) -> dict:
         return env_state_action_dict
+
+    def iter_material_variables(self):
+        return {
+            "product_00_pipe": self.product_00_pipe,
+            "product_00_flange": self.product_00_flange,
+            "product_00_elbow": self.product_00_elbow,
+            "product_00_semi": self.product_00_semi,
+            "product_00_maded": self.product_00_maded,
+        }

@@ -27,12 +27,14 @@ from isaaclab.envs.common import ViewerCfg
 
 
 single_env_state_action_dict_template : dict = {
-    "state_machine": {},
-    "state_material": {},
-    "state_human": {},
-    "state_robot": {},
-    "state_storage": {},
-    "state_route": {},
+    "machine": {},
+    "material": {},
+    "human": {},
+    "robot": {},
+    "storage": {},
+    "route": {},
+    "articulations": {},
+    "rigid_prims": {},
 }
 
 

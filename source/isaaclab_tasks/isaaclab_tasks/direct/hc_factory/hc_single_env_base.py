@@ -48,20 +48,20 @@ class HcSingleEnvBase():
         self.register_env_assets()
     
     def register_env_assets(self):
-        self.machine_manager = MachineManager(env_id=self.env_id, cuda_device=self.cuda_device)
+        self.storage_manager = StorageManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.product_material_manager = ProductMaterialManager(env_id=self.env_id, cuda_device=self.cuda_device)
+        self.machine_manager = MachineManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.human_manager = HumanManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.robot_manager = RobotManager(env_id=self.env_id, cuda_device=self.cuda_device)
-        self.storage_manager = StorageManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.route_manager = RouteManagerVectorEnv(env_id=self.env_id, cuda_device=self.cuda_device)
 
     def iter_managers(self):
         return (
-            self.machine_manager,
+            self.storage_manager,
             self.product_material_manager,
+            self.machine_manager,
             self.human_manager,
             self.robot_manager,
-            self.storage_manager,
             self.route_manager,
         )
 
