@@ -7,51 +7,40 @@ CfgRegistrationInfos = {
 }
 
 
-CfgResetStateTemplate = {
-    "key_variables": {},
-    "state": {
-    },
-}
-
-
 CfgProductProcess= {
     "ProductWaterPipe": {
         "type_id": "00",
         "type_name": "ProductWaterPipe",
         "state_gallery": {
-            "product_00_pipe": {"raw_pipe", "in_list", "conveying", "on_machine", "cutting", "cut_done", "integrated"},
-            "product_00_flange": {"raw_flange", "in_list", "conveying", "integrated"},
-            "product_00_elbow": {"raw_elbow", "in_list", "conveying", "integrated"},
-            "product_00_semi": {"separated", "integrated"},
-            "product_00_maded": {"separated", "integrated"},
+            "product_00_pipe": {"raw_pipe", "cutting", "cut_done", "integrated", "disappeared"},
+            "product_00_flange": {"raw_flange", "integrated", "disappeared"},
+            "product_00_elbow": {"raw_elbow", "integrated", "disappeared"},
+            "product_00_semi": {"unappeared", "appeared"},
+            "product_00_maded": {"unappeared", "appeared"},
+            "logistic_state": {"unappeared", "in_storage", "conveying", "on_machine", "on_workbench", "on_storage"},
         },
-        "reset_state": {
+        "reset_state_template": {
             "key_variables": {},
             "state": {
                 "product_00_pipe": {
-                    "state": [0],
-                    "current_pose": None,
-                    "target_pose": None,
+                    "state": "raw_pipe",
+                    "logistic_state": "in_storage",
                 },
                 "product_00_flange": {
-                    "state": [0],
-                    "current_pose": None,
-                    "target_pose": None,
+                    "state": "raw_flange",
+                    "logistic_state": "in_storage",
                 },
                 "product_00_elbow": {
-                    "state": [0],
-                    "current_pose": None,
-                    "target_pose": None,
+                    "state": "raw_elbow",
+                    "logistic_state": "in_storage",
                 },
                 "product_00_semi": {
-                    "state": [0],
-                    "current_pose": None,
-                    "target_pose": None,
+                    "state": "unappeared",
+                    "logistic_state": "unappeared",
                 },
                 "product_00_maded": {
-                    "state": [0],
-                        "current_pose": None,
-                        "target_pose": None,
+                    "state": "unappeared",
+                    "logistic_state": "unappeared",
                 },
             },
         },

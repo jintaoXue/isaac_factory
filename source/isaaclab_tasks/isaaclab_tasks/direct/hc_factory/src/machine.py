@@ -2,6 +2,7 @@ from isaacsim.core.prims import Articulation
 from abc import abstractmethod
 from ..env_asset_cfg.cfg_machine import CfgMachine
 from .utils import PoseAnimation
+import copy
 import torch
 
 class MachineManager:
@@ -55,7 +56,7 @@ class Machine:
         self.num_registration_parts = cfg["num_registration_parts"]
         self.registration_infos = cfg["registration_infos"]
         self.state_gallery = cfg["state_gallery"]
-        self.reset_state = cfg["reset_state"]
+        self.reset_state = copy.deepcopy(cfg["reset_state"])
         ### dynmaic variables
         self.state : dict = None
         self._register_articulation_animation()
@@ -75,7 +76,7 @@ class Machine:
             ))
 
     def reset(self, env_state_action_dict: dict) -> dict:
-        env_state_action_dict["machine"][self.type_name] = self.reset_state.copy()
+        env_state_action_dict["machine"][self.type_name] = copy.deepcopy(self.reset_state)
         articulations_values = self.reset_articulations()
         env_state_action_dict["articulations"].update(articulations_values)
         return env_state_action_dict
@@ -83,13 +84,13 @@ class Machine:
     def reset_articulations(self) -> dict:
         articulations_values: dict = {}
         for obj_name in self.registration_infos.keys():
-            articulation = getattr(self, obj_name, None)
-            if articulation is None:
+            obj = getattr(self, obj_name, None)
+            if obj is None:
                 continue
             joint_positions_reset : torch.Tensor = self.registration_infos[obj_name]["joint_positions_reset"].to(self.cuda_device)
             articulations_values[obj_name] = {
-                "articulation": articulation,
-                "joint_positions": joint_positions_reset,
+                "object": obj,
+                "joint_position": joint_positions_reset,
             }
         return articulations_values
 

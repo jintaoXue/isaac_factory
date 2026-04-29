@@ -2,6 +2,22 @@
 
 import math
 
+
+# State Gallery
+CfgStateGallery = {
+        0: "empty",
+        1: "partial",
+        2: "full",
+}
+
+CfgResetStateTemplate = {
+    "key_variables": {},
+    "state": "empty",
+    "num_material": 0,
+    "material_type": None,
+    "material_idx_list": [],
+}
+
 ###################################################################
 ###################################################################
 # 1. functions for building storage placement config
@@ -280,24 +296,6 @@ GroundStorage_example_flange_placement_cfg_absolute = _build_ground_storage_plac
 # 3. cfg storage for the environment
 ###################################################################
 ###################################################################
-
-# State Gallery
-CfgStateGallery = {
-        0: "empty",
-        1: "partial",
-        2: "full",
-}
-
-CfgResetStateTemplate = {
-    "key_variables": {},
-    "state": {
-        "state": "empty",
-        "num_material": 0,
-        "material_type": None,
-        "material_idx": [],
-    },
-}
-
 CfgStorage = {
     "BlackStorage": {
         "num_storage": 5,

@@ -3,6 +3,7 @@ from ..env_asset_cfg.cfg_storage import CfgStorage, CfgResetStateTemplate, CfgSt
 import json
 import torch
 from abc import abstractmethod
+import copy
 
 class StorageManager:
     def __init__(self, env_id: int, cuda_device: torch.device):
@@ -36,7 +37,7 @@ class Storage:
         self.env_id = env_id
         self.idx = idx
         self.cuda_device = cuda_device
-        self.cfg = cfg.copy()
+        self.cfg = copy.deepcopy(cfg)
         self.type_id = cfg["type_id"]
         self.type_name = cfg["type_name"]
         self.class_name = cfg["class_name"]
@@ -47,12 +48,12 @@ class Storage:
         self.robot_parking_areas_ids = cfg["robot_parking_areas_ids"]
         self.gantry_parking_areas_ids = cfg["gantry_parking_areas_ids"]
         self.state_gallery = CfgStateGallery
-        self.reset_state = CfgResetStateTemplate.copy()
+        self.reset_state = copy.deepcopy(CfgResetStateTemplate)
         self.prim: RigidPrim = None
         self._register_rigid_prim()
         self.placement_type = cfg["placement_type"]
         #We need to copy the original data to avoid modifying the original data
-        self.placement_cfg = self.cfg["placement_cfg"].copy()
+        self.placement_cfg = copy.deepcopy(self.cfg["placement_cfg"])
         self.initialize_placement_cfg()
         self.reset_state["key_variables"] = self.iter_key_variables()
         ### dynmaic variables
@@ -79,6 +80,7 @@ class Storage:
             "robot_parking_areas_ids": self.robot_parking_areas_ids,
             "gantry_parking_areas_ids": self.gantry_parking_areas_ids,
             "placement_type": self.placement_type,
+            "placement_cfg": self.placement_cfg,
         }
 
     def initialize_placement_cfg(self):
@@ -97,12 +99,15 @@ class Storage:
                 pose["orientation"] = [
                     *_quat_multiply(_quat_conjugate(storage_base_orientation), pose["orientation"])
                 ]
+                pose["position"] = torch.tensor(pose["position"], dtype=storage_base_position.dtype, device=storage_base_position.device).unsqueeze(0)
+                pose["orientation"] = torch.tensor(pose["orientation"], dtype=storage_base_orientation.dtype, device=storage_base_orientation.device).unsqueeze(0)
+            self.placement_cfg["data_type"] == "absolute"
         elif self.placement_cfg["data_type"] == "absolute":
             pass
         return
 
     def reset(self, env_state_action_dict: dict) -> dict:
-        self.state : dict = self.reset_state.copy()
+        self.state : dict = copy.deepcopy(self.reset_state)
         env_state_action_dict["storage"][f"{self.class_name}_{self.idx:02d}"] = self.state
         return env_state_action_dict
     

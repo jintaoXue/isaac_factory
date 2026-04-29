@@ -74,16 +74,16 @@ class HcSingleEnvBase():
         #articulations
         articulations : dict = self.env_state_action_dict["articulations"]
         for name, data in articulations.items():
-            articulation : Articulation = data["articulation"]
-            articulation.set_joint_positions(data["joint_positions"])
+            obj : Articulation = data["object"]
+            obj.set_joint_positions(data["joint_position"])
             # Currently, joint velocities are set to zero.
-            joint_velocities = torch.zeros_like(data["joint_positions"], device=self.cuda_device)
-            articulation.set_joint_velocities(joint_velocities)
+            joint_velocities = torch.zeros_like(data["joint_position"], device=self.cuda_device)
+            obj.set_joint_velocities(joint_velocities)
         #rigid prims
         rigid_prims : dict = self.env_state_action_dict["rigid_prims"]
         for name, data in rigid_prims.items():
             rigid_prim : RigidPrim = data["rigid_prim"]
-            rigid_prim.set_local_poses(positions=data["positions"], orientations=data["orientations"])
+            rigid_prim.set_local_poses(positions=data["position"], orientations=data["orientation"])
             rigid_prim.set_velocities(torch.zeros((1,6), device=self.cuda_device))
 
 
