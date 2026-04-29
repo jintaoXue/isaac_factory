@@ -28,7 +28,6 @@ class HumanManager:
             for idx in range(n):
                 self.human_list.append(cls(idx, self.cfg_human[type_name], self.env_id, self.cuda_device))
 
-
 class Human:
     def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
         # static variables
