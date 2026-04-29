@@ -291,7 +291,7 @@ CfgStateGallery = {
 CfgResetStateTemplate = {
     "key_variables": {},
     "state": {
-        "state": [0],
+        "state": "empty",
         "num_material": 0,
         "material_type": None,
         "material_idx": [],
@@ -311,7 +311,7 @@ CfgStorage = {
                     "name": "black_storage_00",
                 },
                 "capacity": 6,
-                "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
+                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [39],
                 "robot_parking_areas_ids": [39],
                 #same with human working areas ids
@@ -330,7 +330,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
+                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [42],
                 "robot_parking_areas_ids": [42],
                 "gantry_parking_areas_ids": [42],
@@ -348,7 +348,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
+                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [53],
                 "robot_parking_areas_ids": [54],
                 "gantry_parking_areas_ids": [53],
@@ -366,7 +366,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
+                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [221],
                 "robot_parking_areas_ids": [83],
                 "gantry_parking_areas_ids": [221],
@@ -384,7 +384,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
+                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [140],
                 "robot_parking_areas_ids": [9],
                 "gantry_parking_areas_ids": [140],
@@ -402,7 +402,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
+                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [142],
                 "robot_parking_areas_ids": [9],
                 "gantry_parking_areas_ids": [142],
@@ -426,7 +426,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
+                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [116],
                 "robot_parking_areas_ids": [9],
                 "gantry_parking_areas_ids": [116],
@@ -444,7 +444,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
+                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [116],
                 "robot_parking_areas_ids": [9],
                 "gantry_parking_areas_ids": [116],
@@ -462,7 +462,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
+                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [117],
                 "robot_parking_areas_ids": [9],
                 "gantry_parking_areas_ids": [117],
@@ -480,7 +480,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
+                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [118],
                 "robot_parking_areas_ids": [9],
                 "gantry_parking_areas_ids": [118],
@@ -498,7 +498,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
+                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [118],
                 "robot_parking_areas_ids": [9],
                 "gantry_parking_areas_ids": [118],
@@ -515,7 +515,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
+                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [144],
                 "robot_parking_areas_ids": [9],
                 "gantry_parking_areas_ids": [144],
@@ -532,7 +532,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
+                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [144],
                 "robot_parking_areas_ids": [9],
                 "gantry_parking_areas_ids": [144],
@@ -549,7 +549,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
+                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [144],
                 "robot_parking_areas_ids": [9],
                 "gantry_parking_areas_ids": [144],
@@ -566,7 +566,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
+                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [148],
                 "robot_parking_areas_ids": [9],
                 "gantry_parking_areas_ids": [148],
@@ -583,7 +583,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
+                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [148],
                 "robot_parking_areas_ids": [9],
                 "gantry_parking_areas_ids": [148],
@@ -600,7 +600,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": ["product_00_pipe", "product_00_semi", "product_00_maded"],
+                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [148],
                 "robot_parking_areas_ids": [9],
                 "gantry_parking_areas_ids": [148],
@@ -621,8 +621,8 @@ CfgStorage = {
                     "prim_paths_expr": "",
                     "name": "ground_storage_00",
                 },
-                "capacity": "Infinite",
-                "supporting_materials": ["product_00_elbow"],
+                "capacity": 100,
+                "supporting_materials": {"product_00_elbow"},
                 "human_working_areas_ids": [45],
                 "robot_parking_areas_ids": [],
                 "gantry_parking_areas_ids": [],
@@ -639,8 +639,8 @@ CfgStorage = {
                     "prim_paths_expr": "",
                     "name": "ground_storage_01",
                 },
-                "capacity": 'Infinite',
-                "supporting_materials": ["product_00_flange"],
+                "capacity": 100,
+                "supporting_materials": {"product_00_flange"},
                 "human_working_areas_ids": [49],
                 "robot_parking_areas_ids": [],
                 "gantry_parking_areas_ids": [],

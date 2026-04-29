@@ -24,6 +24,11 @@ class StorageManager:
             for idx in range(num_storage):
                 storage_cfg = cfg["storage_cfg_dict"][f"{class_name}_{idx:02d}"]
                 self.storage_list.append(cls(idx, storage_cfg, self.env_id, self.cuda_device))
+    
+    def step(self, env_state_action_dict: dict) -> dict:
+        for storage in self.storage_list:
+            storage.step(env_state_action_dict)
+        return env_state_action_dict
 
 class Storage:
     def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
@@ -42,17 +47,17 @@ class Storage:
         self.robot_parking_areas_ids = cfg["robot_parking_areas_ids"]
         self.gantry_parking_areas_ids = cfg["gantry_parking_areas_ids"]
         self.state_gallery = CfgStateGallery
-        self.reset_state = CfgResetStateTemplate
-        self.placement_type = cfg["placement_type"]
-
+        self.reset_state = CfgResetStateTemplate.copy()
         self.prim: RigidPrim = None
         self._register_rigid_prim()
-
-        ### dynmaic variables
-        self.state : dict = None        
+        self.placement_type = cfg["placement_type"]
         #We need to copy the original data to avoid modifying the original data
         self.placement_cfg = self.cfg["placement_cfg"].copy()
         self.initialize_placement_cfg()
+        self.reset_state["key_variables"] = self.iter_key_variables()
+        ### dynmaic variables
+        self.state : dict = None        
+
 
     def _register_rigid_prim(self):
         if self.class_name == "GroundStorage":
@@ -98,7 +103,6 @@ class Storage:
 
     def reset(self, env_state_action_dict: dict) -> dict:
         self.state : dict = self.reset_state.copy()
-        self.state["key_variables"] = self.iter_key_variables()
         env_state_action_dict["storage"][f"{self.class_name}_{self.idx:02d}"] = self.state
         return env_state_action_dict
     

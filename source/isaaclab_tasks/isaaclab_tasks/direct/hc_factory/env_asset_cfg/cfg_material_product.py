@@ -1,4 +1,19 @@
 
+
+CfgRegistrationInfos = {
+    
+    "ProductWaterPipe": 5, #idx: 00-04
+    
+}
+
+
+CfgResetStateTemplate = {
+    "key_variables": {},
+    "state": {
+    },
+}
+
+
 CfgProductProcess= {
     "ProductWaterPipe": {
         "type_id": "00",
@@ -11,30 +26,33 @@ CfgProductProcess= {
             "product_00_maded": {"separated", "integrated"},
         },
         "reset_state": {
-            "product_00_pipe": {
-                "state": [0],
-                "current_pose": None,
-                "target_pose": None,
-            },
-            "product_00_flange": {
-                "state": [0],
-                "current_pose": None,
-                "target_pose": None,
-            },
-            "product_00_elbow": {
-                "state": [0],
-                "current_pose": None,
-                "target_pose": None,
-            },
-            "product_00_semi": {
-                "state": [0],
-                "current_pose": None,
-                "target_pose": None,
-            },
-            "product_00_maded": {
-                "state": [0],
-                "current_pose": None,
-                "target_pose": None,
+            "key_variables": {},
+            "state": {
+                "product_00_pipe": {
+                    "state": [0],
+                    "current_pose": None,
+                    "target_pose": None,
+                },
+                "product_00_flange": {
+                    "state": [0],
+                    "current_pose": None,
+                    "target_pose": None,
+                },
+                "product_00_elbow": {
+                    "state": [0],
+                    "current_pose": None,
+                    "target_pose": None,
+                },
+                "product_00_semi": {
+                    "state": [0],
+                    "current_pose": None,
+                    "target_pose": None,
+                },
+                "product_00_maded": {
+                    "state": [0],
+                        "current_pose": None,
+                        "target_pose": None,
+                },
             },
         },
         "meta_registeration_info": {
