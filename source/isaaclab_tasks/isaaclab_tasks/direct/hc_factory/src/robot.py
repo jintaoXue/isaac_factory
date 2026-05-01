@@ -39,6 +39,7 @@ class Robot:
         self.env_id = env_id
         self.state_gallery = cfg["state_gallery"]
         self.reset_state = copy.deepcopy(cfg["reset_state"])
+        self.optional_init_point_ids_in_map_points_list = cfg["optional_init_point_ids_in_map_points_list"]
         self.prim: RigidPrim | None = None
         self.cuda_device = cuda_device
         self._register_rigid_prim()
@@ -55,7 +56,7 @@ class Robot:
 
     def reset(self, env_state_action_dict: dict) -> dict:
         self.state : dict = copy.deepcopy(self.reset_state)
-        env_state_action_dict["robot"][f"{self.type_name}_{self.idx:02d}"] = self.state
+        env_state_action_dict["robot"][f"num_{self.idx:02d}_{self.type_name}"] = self.state
         return env_state_action_dict
     
     def step(self, env_state_action_dict: dict) -> dict:

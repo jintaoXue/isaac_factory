@@ -85,8 +85,6 @@ class Machine:
         articulations_values: dict = {}
         for obj_name in self.registration_infos.keys():
             obj = getattr(self, obj_name, None)
-            if obj is None:
-                continue
             joint_positions_reset : torch.Tensor = self.registration_infos[obj_name]["joint_positions_reset"].to(self.cuda_device)
             articulations_values[obj_name] = {
                 "object": obj,

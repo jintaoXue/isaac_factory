@@ -10,8 +10,6 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free", "free"],
-            "current_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0, 0.0])],
-            "target_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0, 0.0])],
         },
         "registration_infos": {
             "num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
@@ -47,8 +45,6 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
-            "current_pose": [torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), torch.tensor([0.0])],
-            "target_pose": [torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), torch.tensor([0.0])],
         },
         "registration_infos": {
             "num01_weldingRobot_part02_robot_arm_and_base": {
@@ -78,8 +74,6 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
-            "current_pose": [torch.tensor([0.0]), torch.tensor([0.0, 0.0, 0.0])],
-            "target_pose": [torch.tensor([0.0]), torch.tensor([0.0, 0.0, 0.0])],
         },
         "registration_infos": {
             "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
@@ -109,8 +103,6 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
-            "current_pose": [torch.tensor([0.0])],
-            "target_pose": [torch.tensor([0.0])],
         },
         "registration_infos": {
             "num03_laserCuttingMachine": {
@@ -134,8 +126,6 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
-            "current_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0])],
-            "target_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0])],
         },
         "registration_infos": {
             "num04_groovingMachineLarge_part01_large_fixed_base": {
@@ -165,8 +155,6 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
-            "current_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0, 0.0])],
-            "target_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0, 0.0])],
         },
         "registration_infos": {
             "num05_groovingMachineSmall_part01_small_fixed_base": {
@@ -196,8 +184,6 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
-            "current_pose": [torch.tensor([0.0])],
-            "target_pose": [torch.tensor([0.0])],
         },
         "registration_infos": {
             "num06_highPressureFoamingMachine": {
@@ -221,8 +207,6 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free", "free", "free", "free"],
-            "current_pose": [torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])],
-            "target_pose": [torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])],
         },
         "registration_infos": {
             "num07_gantry_group": {
@@ -246,8 +230,6 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free", "free"],
-            "current_pose": [torch.tensor([0.0])],
-            "target_pose": [torch.tensor([0.0])],
         },
         "registration_infos": {
             "num08_workbench": {

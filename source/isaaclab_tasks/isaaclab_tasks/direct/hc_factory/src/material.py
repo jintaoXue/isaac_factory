@@ -58,7 +58,7 @@ class MaterialBatch:
 
     def reset(self, env_state_action_dict: dict) -> dict:
         self.state : dict = copy.deepcopy(self.reset_state)
-        env_state_action_dict["material"][f"{self.type_name}_{self.idx:02d}"] = self.state
+        env_state_action_dict["material"][f"num_{self.idx:02d}_{self.type_name}"] = self.state
         self.reset_raw_materials_to_storage(env_state_action_dict)
         self.reset_integrated_materials_to_unappeared(env_state_action_dict)
         return env_state_action_dict

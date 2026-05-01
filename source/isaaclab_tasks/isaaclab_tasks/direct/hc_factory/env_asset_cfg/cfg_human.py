@@ -21,8 +21,11 @@ CfgHuman = {
             "current_pose": [None, None],
             "target_pose": [None, None],
         },
+        # 可选初始化点集合 in map points
+        "optional_init_point_ids_in_map_points_list": [190, 191, 192, 193, 194, 195, 202, 203, 204, 205, 206, 207, 214, 215, 216, 217, 218, 219],
     }
 }
+
 
 
 CfgHumanRegistrationInfos = {

@@ -39,6 +39,7 @@ class Human:
         self.env_id = env_id
         self.state_gallery = cfg["state_gallery"]
         self.reset_state = copy.deepcopy(cfg["reset_state"])
+        self.optional_init_point_ids_in_map_points_list = cfg["optional_init_point_ids_in_map_points_list"]
         self.prim: RigidPrim | None = None
         self.cuda_device = cuda_device
         self._register_rigid_prim()
@@ -56,9 +57,15 @@ class Human:
     
     def reset(self, env_state_action_dict: dict) -> dict:
         self.state : dict = copy.deepcopy(self.reset_state)
-        env_state_action_dict["human"][f"{self.type_name}_{self.idx:02d}"] = self.state
+        env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"] = self.state
+
         return env_state_action_dict
-    
+
+    def reset_to_random_point(self, env_state_action_dict: dict) -> dict:
+        random_point_id = random.choice(self.optional_init_point_ids_in_map_points_list)
+        self.prim.set_local_poses(translations=random_point_id, orientations=None)
+        return env_state_action_dict
+        
     def step(self, env_state_action_dict: dict) -> dict:
         return env_state_action_dict
 
