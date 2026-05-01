@@ -9,7 +9,7 @@ CfgMachine = {
         "num_registration_parts": 2,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0, 0],
+            "state": ["free", "free"],
             "current_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0, 0.0])],
             "target_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0, 0.0])],
         },
@@ -46,7 +46,7 @@ CfgMachine = {
         "num_registration_parts": 2,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0],
+            "state": ["free"],
             "current_pose": [torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), torch.tensor([0.0])],
             "target_pose": [torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), torch.tensor([0.0])],
         },
@@ -77,7 +77,7 @@ CfgMachine = {
         "num_registration_parts": 2,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0],
+            "state": ["free"],
             "current_pose": [torch.tensor([0.0]), torch.tensor([0.0, 0.0, 0.0])],
             "target_pose": [torch.tensor([0.0]), torch.tensor([0.0, 0.0, 0.0])],
         },
@@ -108,7 +108,7 @@ CfgMachine = {
         "num_registration_parts": 1,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0],
+            "state": ["free"],
             "current_pose": [torch.tensor([0.0])],
             "target_pose": [torch.tensor([0.0])],
         },
@@ -133,7 +133,7 @@ CfgMachine = {
         "num_registration_parts": 2,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0],
+            "state": ["free"],
             "current_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0])],
             "target_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0])],
         },
@@ -164,7 +164,7 @@ CfgMachine = {
         "num_registration_parts": 2,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0],
+            "state": ["free"],
             "current_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0, 0.0])],
             "target_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0, 0.0])],
         },
@@ -195,7 +195,7 @@ CfgMachine = {
         "num_registration_parts": 1,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0],
+            "state": ["free"],
             "current_pose": [torch.tensor([0.0])],
             "target_pose": [torch.tensor([0.0])],
         },
@@ -220,7 +220,7 @@ CfgMachine = {
         "num_registration_parts": 1,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0, 0, 0, 0],
+            "state": ["free", "free", "free", "free"],
             "current_pose": [torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])],
             "target_pose": [torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])],
         },
@@ -245,7 +245,7 @@ CfgMachine = {
         "num_registration_parts": 1,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0, 0],
+            "state": ["free", "free"],
             "current_pose": [torch.tensor([0.0])],
             "target_pose": [torch.tensor([0.0])],
         },
