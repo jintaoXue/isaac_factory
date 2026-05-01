@@ -1,5 +1,6 @@
 from isaacsim.core.prims import RigidPrim
 from ..env_asset_cfg.cfg_robot import CfgRobot, CfgRobotRegistrationInfos
+from ..env_asset_cfg.cfg_route.cfg_route import RouteOptionalInitPointsInMap
 import copy
 import torch
 
@@ -39,7 +40,7 @@ class Robot:
         self.env_id = env_id
         self.state_gallery = cfg["state_gallery"]
         self.reset_state = copy.deepcopy(cfg["reset_state"])
-        self.optional_init_point_ids_in_map_points_list = cfg["optional_init_point_ids_in_map_points_list"]
+        self.optional_init_points_in_map = RouteOptionalInitPointsInMap["robot_xyz"]
         self.prim: RigidPrim | None = None
         self.cuda_device = cuda_device
         self._register_rigid_prim()
@@ -57,8 +58,19 @@ class Robot:
     def reset(self, env_state_action_dict: dict) -> dict:
         self.state : dict = copy.deepcopy(self.reset_state)
         env_state_action_dict["robot"][f"num_{self.idx:02d}_{self.type_name}"] = self.state
+        self.reset_to_random_map_point(env_state_action_dict)
         return env_state_action_dict
     
+    def reset_to_random_map_point(self, env_state_action_dict: dict) -> dict:
+        random_point_idx = torch.randint(0, self.optional_init_points_in_map.shape[0], (1,))
+        name = f"num_{self.idx:02d}_{self.type_name}"
+        env_state_action_dict["rigid_prims"][name] = {
+            "object": self.prim,
+            "position": self.optional_init_points_in_map[random_point_idx],
+            "orientation": torch.tensor([1, 0, 0, 0], dtype=torch.float32, device=self.cuda_device),
+        }
+        return env_state_action_dict
+
     def step(self, env_state_action_dict: dict) -> dict:
         return env_state_action_dict
 
