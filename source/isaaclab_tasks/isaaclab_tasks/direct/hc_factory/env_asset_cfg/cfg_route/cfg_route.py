@@ -65,10 +65,10 @@ _points_human = _load_points(CfgRoute["points_path_human"])
 _points_robot = _load_points(CfgRoute["points_path_robot"])
 
 RouteOptionalInitPointsInMap["human_xy"] = _extract_xy_points_by_ids(
-    _points_human, OptionalInitPointIds["human"]
+    _points_human["points"], OptionalInitPointIds["human"]
 )
 RouteOptionalInitPointsInMap["robot_xy"] = _extract_xy_points_by_ids(
-    _points_robot, OptionalInitPointIds["robot"]
+    _points_robot["points"], OptionalInitPointIds["robot"]
 )
 
 # Also expose xyz (xy + fixed z) for convenience.

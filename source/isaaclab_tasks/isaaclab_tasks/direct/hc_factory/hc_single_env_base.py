@@ -82,8 +82,8 @@ class HcSingleEnvBase():
         #rigid prims
         rigid_prims : dict = self.env_state_action_dict["rigid_prims"]
         for name, data in rigid_prims.items():
-            rigid_prim : RigidPrim = data["rigid_prim"]
-            rigid_prim.set_local_poses(positions=data["position"], orientations=data["orientation"])
+            rigid_prim : RigidPrim = data["object"]
+            rigid_prim.set_local_poses(translations=data["position"], orientations=data["orientation"])
             rigid_prim.set_velocities(torch.zeros((1,6), device=self.cuda_device))
 
 

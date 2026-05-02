@@ -67,7 +67,7 @@ class Robot:
         env_state_action_dict["rigid_prims"][name] = {
             "object": self.prim,
             "position": self.optional_init_points_in_map[random_point_idx],
-            "orientation": torch.tensor([1, 0, 0, 0], dtype=torch.float32, device=self.cuda_device),
+            "orientation": torch.tensor([1, 0, 0, 0], dtype=torch.float32, device=self.cuda_device).unsqueeze(0),
         }
         return env_state_action_dict
 

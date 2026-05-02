@@ -103,7 +103,9 @@ class Storage:
                 pose["orientation"] = torch.tensor(pose["orientation"], dtype=storage_base_orientation.dtype, device=storage_base_orientation.device).unsqueeze(0)
             self.placement_cfg["data_type"] == "absolute"
         elif self.placement_cfg["data_type"] == "absolute":
-            pass
+            for pose in self.placement_cfg["pose_list"]:
+                pose["position"] = torch.tensor(pose["position"], dtype=torch.float32, device=self.cuda_device).unsqueeze(0)
+                pose["orientation"] = torch.tensor(pose["orientation"], dtype=torch.float32, device=self.cuda_device).unsqueeze(0)
         return
 
     def reset(self, env_state_action_dict: dict) -> dict:
