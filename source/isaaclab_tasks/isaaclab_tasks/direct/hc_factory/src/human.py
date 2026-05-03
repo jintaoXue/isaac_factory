@@ -1,4 +1,6 @@
 from isaacsim.core.prims import RigidPrim
+import omni.usd
+from pxr import Usd, UsdSkel, Gf, Sdf
 from ..env_asset_cfg.cfg_human import CfgHuman, CfgHumanRegistrationInfos
 from ..env_asset_cfg.cfg_route.cfg_route import RouteOptionalInitPointsInMap
 import torch
@@ -41,20 +43,33 @@ class Human:
         self.state_gallery = cfg["state_gallery"]
         self.reset_state = copy.deepcopy(cfg["reset_state"])
         self.optional_init_points_in_map = RouteOptionalInitPointsInMap["human_xyz"]
-        self.prim: RigidPrim | None = None
+        self.skeleton: UsdSkel.Skeleton | None = None
         self.cuda_device = cuda_device
+        self._register_skeleton()
         self._register_rigid_prim()
-
         ### dynmaic variables
         self.state : dict = None
 
-    def _register_rigid_prim(self):
+    def _register_skeleton(self):
+        stage = omni.usd.get_context().get_stage()
+        prim_path = meta["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}")
+        skeleton_prim = stage.GetPrimAtPath(prim_path)
+        self.skeleton = UsdSkel.Skeleton(skeleton_prim)
+        # Example of reading joint translations
+        joints = skel.GetJointsAttr().Get()
         meta = self.meta_registeration_info
-        self.prim = RigidPrim(
+        self.skeleton = UsdSkel.Skeleton.Define(
             prim_paths_expr=meta["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}"),
             name=f"env_{self.env_id}_{meta['name'].format(idx=f'{self.idx:02d}')}",
-            reset_xform_properties=False,
         )
+        return
+    
+    def _register_rigid_prim(self):
+        stage = omni.usd.get_context().get_stage()
+        prim_path = self.meta_registeration_info["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}")
+        rigid_prim = stage.GetPrimAtPath(prim_path)
+        self.rigid_prim = RigidPrim(rigid_prim)
+        return
     
     def reset(self, env_state_action_dict: dict) -> dict:
         self.state : dict = copy.deepcopy(self.reset_state)
