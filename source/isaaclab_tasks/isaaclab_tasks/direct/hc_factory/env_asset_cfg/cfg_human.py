@@ -26,6 +26,5 @@ CfgHuman = {
 
 
 CfgHumanRegistrationInfos = {
-    # "NormalHuman": 10, #idx 00-09
-    "NormalHuman": 1,
+    "NormalHuman": 1, #idx 00-09
 }

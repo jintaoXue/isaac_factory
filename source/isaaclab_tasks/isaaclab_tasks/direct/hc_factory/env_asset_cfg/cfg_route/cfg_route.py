@@ -1,12 +1,12 @@
 
 
 CfgRoute = {
-    "map_path_human": "~/work/isaac_factory/source/map_data_generation/occupancy_map4human.png",
-    "points_path_human": "~/work/isaac_factory/source/map_data_generation/map_points_human.json",
-    "routes_path_human": "~/work/Dataset/HC_data/map_data/map_routes_human.json",
-    "map_path_robot": "~/work/isaac_factory/source/map_data_generation/occupancy_map4robot.png",
-    "points_path_robot": "~/work/isaac_factory/source/map_data_generation/map_points_robot.json",
-    "routes_path_robot": "~/work/Dataset/HC_data/map_data/map_routes_robot.json",   
+    "map_path_human": "D:\\isaac_factory\\map_data\\occupancy_map4human.png",
+    "points_path_human": "D:\\isaac_factory\\map_data\\map_points_human.json",
+    "routes_path_human": "D:\\isaac_factory\\map_data\\map_routes_human.json",
+    "map_path_robot": "D:\\isaac_factory\\map_data\\occupancy_map4robot.png",
+    "points_path_robot": "D:\\isaac_factory\\map_data\\map_points_robot.json",
+    "routes_path_robot": "D:\\isaac_factory\\map_data\\map_routes_robot.json",   
     "png_image_coordinates": {
         "top_left": [0, 0],
         "bottom_right": [2202, 1645],

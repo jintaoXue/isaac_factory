@@ -15,6 +15,7 @@ from rl_games.algos_torch import torch_ext
 
 class RuleBasedAgent():
     def __init__(self, base_name, params):
+        self.model = None
         config = params['config']
         self.env_config = config.get('env_config', {})
         self.num_actors = config.get('num_actors', 1)

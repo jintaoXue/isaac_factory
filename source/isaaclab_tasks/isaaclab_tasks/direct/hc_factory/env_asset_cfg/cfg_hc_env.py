@@ -90,7 +90,8 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     observation_space = 2
     state_space = 2    
     #asset path, include machine, human, robot
-    asset_path = os.path.expanduser("~") + "/work/Dataset/HC_data/final_for_isaac/HC_import_0503.usd"
+    # asset_path = os.path.expanduser("~") + "/work/Dataset/HC_data/final_for_isaac/HC_import.usd"
+    asset_path = "D:/501914071/HC_import_0503.usd"
     n_max_product = 0
     n_max_human = 0
     n_max_robot = 0
