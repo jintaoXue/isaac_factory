@@ -68,3 +68,6 @@ self.scene.update(dt=self.physics_dt)
 
 #4.29 
 human robot reset 函数要修改
+
+
+#5.4 重力取消
