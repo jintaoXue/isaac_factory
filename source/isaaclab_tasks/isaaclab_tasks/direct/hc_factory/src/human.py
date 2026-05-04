@@ -44,6 +44,7 @@ class Human:
         self.reset_state = copy.deepcopy(cfg["reset_state"])
         self.optional_init_points_in_map = RouteOptionalInitPointsInMap["human_xyz"]
         self.skeleton: UsdSkel.Skeleton | None = None
+        self.prim: RigidPrim | None = None
         self.cuda_device = cuda_device
         self._register_skeleton()
         self._register_rigid_prim()
@@ -51,24 +52,21 @@ class Human:
         self.state : dict = None
 
     def _register_skeleton(self):
+        meta = self.meta_registeration_info
         stage = omni.usd.get_context().get_stage()
         prim_path = meta["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}")
         skeleton_prim = stage.GetPrimAtPath(prim_path)
         self.skeleton = UsdSkel.Skeleton(skeleton_prim)
         # Example of reading joint translations
-        joints = skel.GetJointsAttr().Get()
-        meta = self.meta_registeration_info
-        self.skeleton = UsdSkel.Skeleton.Define(
-            prim_paths_expr=meta["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}"),
-            name=f"env_{self.env_id}_{meta['name'].format(idx=f'{self.idx:02d}')}",
-        )
+        joints = self.skeleton.GetJointsAttr().Get()
         return
     
     def _register_rigid_prim(self):
-        stage = omni.usd.get_context().get_stage()
-        prim_path = self.meta_registeration_info["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}")
-        rigid_prim = stage.GetPrimAtPath(prim_path)
-        self.rigid_prim = RigidPrim(rigid_prim)
+        meta = self.meta_registeration_info
+        self.prim = RigidPrim(
+            prim_paths_expr=meta["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}"),
+            name=f"env_{self.env_id}_{meta['name'].format(idx=f'{self.idx:02d}')}",
+        )
         return
     
     def reset(self, env_state_action_dict: dict) -> dict:

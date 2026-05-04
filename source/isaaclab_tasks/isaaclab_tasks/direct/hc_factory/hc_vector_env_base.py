@@ -20,14 +20,14 @@ from isaacsim.core.utils.stage import add_reference_to_stage
 from isaacsim.core.utils.stage import get_current_stage
 from isaacsim.core.prims import RigidPrim, Articulation
 from isaacsim.core.api.world import World
-
+import carb
 
 from .env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
 from abc import abstractmethod
 import numpy as np
 import torch
 from .hc_single_env import HcSingleEnv
-from isaacsim.core.rendering_manager import ViewportManager
+
 
 class HcVectorEnvBase(DirectRLEnv):
     cfg_vector_env: HcVectorEnvCfg
@@ -37,13 +37,14 @@ class HcVectorEnvBase(DirectRLEnv):
         self.env_list : list[type[HcSingleEnv]] = []
         super().__init__(cfg, render_mode, **kwargs)
         self.reward_buf = torch.zeros(self.num_envs, dtype=torch.float32, device=self.sim.device)
-        self._setup_viewport_resolution()
-        
-    def _setup_viewport_resolution(self):
-        # Get the viewport API
-        viewport_api = ViewportManager.get_viewport_api()
-        # Set resolution
-        viewport_api.set_texture_resolution(self.cfg_vector_env.rendering_resolution[0], self.cfg_vector_env.rendering_resolution[1])
+        self._setup_rendering_resolution()
+
+    def _setup_rendering_resolution(self):
+        settings = carb.settings.get_settings()
+        WIDTH = self.cfg_vector_env.rendering_resolution[0]
+        HEIGHT = self.cfg_vector_env.rendering_resolution[1]
+        settings.set("/app/renderer/resolution/width", WIDTH)
+        settings.set("/app/renderer/resolution/height", HEIGHT)
         return
 
     def _setup_scene(self):
