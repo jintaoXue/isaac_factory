@@ -54,7 +54,7 @@ class Human:
     def _register_skeleton(self):
         meta = self.meta_registeration_info
         stage = omni.usd.get_context().get_stage()
-        prim_path = meta["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}")
+        prim_path = meta["skeleton_prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}")
         skeleton_prim = stage.GetPrimAtPath(prim_path)
         self.skeleton = UsdSkel.Skeleton(skeleton_prim)
         # Example of reading joint translations
@@ -64,7 +64,7 @@ class Human:
     def _register_rigid_prim(self):
         meta = self.meta_registeration_info
         self.prim = RigidPrim(
-            prim_paths_expr=meta["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}"),
+            prim_paths_expr=meta["rigid_prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}"),
             name=f"env_{self.env_id}_{meta['name'].format(idx=f'{self.idx:02d}')}",
         )
         return

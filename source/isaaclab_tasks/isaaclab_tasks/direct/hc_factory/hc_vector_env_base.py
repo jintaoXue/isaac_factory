@@ -20,13 +20,15 @@ from isaacsim.core.utils.stage import add_reference_to_stage
 from isaacsim.core.utils.stage import get_current_stage
 from isaacsim.core.prims import RigidPrim, Articulation
 from isaacsim.core.api.world import World
-import carb
 
 from .env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
 from abc import abstractmethod
 import numpy as np
 import torch
 from .hc_single_env import HcSingleEnv
+
+from omni.kit.viewport.utility import get_active_viewport_window
+
 
 
 class HcVectorEnvBase(DirectRLEnv):
@@ -40,11 +42,14 @@ class HcVectorEnvBase(DirectRLEnv):
         self._setup_rendering_resolution()
 
     def _setup_rendering_resolution(self):
-        settings = carb.settings.get_settings()
-        WIDTH = self.cfg_vector_env.rendering_resolution[0]
-        HEIGHT = self.cfg_vector_env.rendering_resolution[1]
-        settings.set("/app/renderer/resolution/width", WIDTH)
-        settings.set("/app/renderer/resolution/height", HEIGHT)
+        # 1. Get the active Viewport window
+        viewport_window = get_active_viewport_window()
+
+        # 2. Disable "Fill Frame" to allow a custom fixed resolution
+        viewport_window.viewport_api.fill_frame = False
+
+        # 3. Set the resolution to the rendering resolution
+        viewport_window.viewport_api.resolution = self.cfg_vector_env.rendering_resolution
         return
 
     def _setup_scene(self):

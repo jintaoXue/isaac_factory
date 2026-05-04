@@ -101,7 +101,8 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     cuda_device_str = "cuda:0"
     #train_cfg will be update when running train.py
     train_cfg = None
-    rendering_resolution = (3840, 2160)
+    # rendering_resolution = (3840, 2160)
+    rendering_resolution = (1920, 1080)
 
 
 
