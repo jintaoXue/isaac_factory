@@ -12,12 +12,22 @@ class HumanManager:
         self.cuda_device = cuda_device
         self.cfg_human = CfgHuman
         self.cfg_registration_infos = CfgHumanRegistrationInfos
+        self.optional_init_points_in_map = RouteOptionalInitPointsInMap["human_xyz"]
         self.human_list: list[Human] = []
         self._register_human_list()
 
     def reset(self, env_state_action_dict: dict) -> dict:
-        for human in self.human_list:
-            human.reset(env_state_action_dict)
+        num_humans = len(self.human_list)
+        num_points = int(self.optional_init_points_in_map.shape[0])
+        if num_points < num_humans:
+            raise ValueError(
+                f"Not enough init points for humans: points={num_points}, humans={num_humans}."
+            )
+
+        perm = torch.randperm(num_points, device=self.optional_init_points_in_map.device)
+        shuffled_init_points_in_map = self.optional_init_points_in_map[perm]
+        for human, i in zip(self.human_list, range(num_humans)):
+            human.reset(env_state_action_dict, shuffled_init_points_in_map[i].unsqueeze(0))
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
@@ -42,7 +52,6 @@ class Human:
         self.env_id = env_id
         self.state_gallery = cfg["state_gallery"]
         self.reset_state = copy.deepcopy(cfg["reset_state"])
-        self.optional_init_points_in_map = RouteOptionalInitPointsInMap["human_xyz"]
         self.skeleton: UsdSkel.Skeleton | None = None
         self.prim: RigidPrim | None = None
         self.cuda_device = cuda_device
@@ -69,18 +78,17 @@ class Human:
         )
         return
     
-    def reset(self, env_state_action_dict: dict) -> dict:
+    def reset(self, env_state_action_dict: dict, init_point_in_map: torch.tensor) -> dict:
         self.state : dict = copy.deepcopy(self.reset_state)
         env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"] = self.state
-        self.reset_to_random_map_point(env_state_action_dict)
+        self.reset_to_random_map_point(env_state_action_dict, init_point_in_map)
         return env_state_action_dict
 
-    def reset_to_random_map_point(self, env_state_action_dict: dict) -> dict:
-        random_point_idx = torch.randint(0, self.optional_init_points_in_map.shape[0], (1,))
+    def reset_to_random_map_point(self, env_state_action_dict: dict, init_point_in_map: torch.tensor) -> dict:
         name = f"num_{self.idx:02d}_{self.type_name}"
         env_state_action_dict["rigid_prims"][name] = {
             "object": self.prim,
-            "position": self.optional_init_points_in_map[random_point_idx],
+            "position": init_point_in_map,
             "orientation": torch.tensor([1, 0, 0, 0], dtype=torch.float32, device=self.cuda_device).unsqueeze(0),
         }
         return env_state_action_dict
