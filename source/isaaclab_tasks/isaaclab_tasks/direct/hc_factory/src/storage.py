@@ -1,3 +1,5 @@
+import omni.usd
+from pxr import PhysxSchema
 from isaacsim.core.prims import RigidPrim
 from ..env_asset_cfg.cfg_storage import CfgStorage, CfgResetStateTemplate, CfgStateGallery,_quat_multiply, _quat_conjugate
 import json
@@ -69,6 +71,21 @@ class Storage:
             name=f"env_{self.env_id}_{meta['name']}",
             reset_xform_properties=False,
         )
+        
+        # Since the storage's local pose is not updated by apply_data_to_sim at each step, we need to lock its position and rotation.
+        # Get the stage and the prim
+        stage = omni.usd.get_context().get_stage()
+        prim_path = self.prim.prim_paths[0]
+        usd_prim = stage.GetPrimAtPath(prim_path)
+        # Apply the PhysX Rigid Body API
+        physx_api = PhysxSchema.PhysxRigidBodyAPI.Apply(usd_prim)
+        # Lock Position Axes (bitmask: 1=X, 2=Y, 4=Z, 7=XYZ)
+        # To lock Z translation, use value 4
+        physx_api.CreateLockedPosAxisAttr(7)
+        # Lock Rotation Axes (bitmask: 1=X, 2=Y, 4=Z, 7=XYZ)
+        # To lock X and Y rotation, use value 3
+        physx_api.CreateLockedRotAxisAttr(7)
+        physx_api.CreateDisableGravityAttr(True)
 
     def iter_key_variables(self):
         return {
