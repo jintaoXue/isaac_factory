@@ -132,9 +132,3 @@ CfgProductProcess= {
         }
     }
 }
-
-CfgRegistrationInfos = {
-    
-    "ProductWaterPipe": 5, #idx: 00-04
-    
-}

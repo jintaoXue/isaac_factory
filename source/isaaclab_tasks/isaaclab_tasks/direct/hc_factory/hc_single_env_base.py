@@ -86,7 +86,6 @@ class HcSingleEnvBase():
             rigid_prim.set_local_poses(translations=data["position"], orientations=data["orientation"])
             rigid_prim.set_velocities(torch.zeros((1,6), device=self.cuda_device))
 
-
     def step_env_logic(self, action: dict | None = None, action_extra: dict | None = None) -> None:
         for m in self.iter_managers():
             m.step(self.env_state_action_dict)
