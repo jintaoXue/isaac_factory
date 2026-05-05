@@ -23,7 +23,6 @@ class HumanManager:
             raise ValueError(
                 f"Not enough init points for humans: points={num_points}, humans={num_humans}."
             )
-
         perm = torch.randperm(num_points, device=self.optional_init_points_in_map.device)
         shuffled_init_points_in_map = self.optional_init_points_in_map[perm]
         for human, i in zip(self.human_list, range(num_humans)):

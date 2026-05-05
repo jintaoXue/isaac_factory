@@ -22,7 +22,6 @@ class RobotManager:
             raise ValueError(
                 f"Not enough init points for robots: points={num_points}, robots={num_robots}."
             )
-
         perm = torch.randperm(num_points, device=self.optional_init_points_in_map.device)
         shuffled_init_points_in_map = self.optional_init_points_in_map[perm]
         for robot, i in zip(self.robot_list, range(num_robots)):
