@@ -10,10 +10,12 @@ from torch import nn
 from rl_games.common import vecenv
 # from ..utils import vecenv
 from rl_games.algos_torch import torch_ext
+from .agent_A_product_sequencer import ProductSequencingAgent
+from .agent_B_process_task_planner import ProcessTaskPlanningAgent
+from .agent_C_human_robot_machine_allocator import HumanRobotMachineAllocationAgent
 
 
-
-class RuleBasedAgent():
+class RuleBasedMultiAgent():
     def __init__(self, base_name, params):
         config = params['config']
         self.env_config = config.get('env_config', {})
@@ -25,19 +27,25 @@ class RuleBasedAgent():
             self.vec_env = vecenv.create_vec_env(self.env_name, self.num_actors, **self.env_config)
             self.env_info = self.vec_env.get_env_info()
 
-    
-    
-    def play_steps(self):
-        while True:
-            obs : dict = self.vec_env.reset()
-            with torch.no_grad():
-                next_obs, rewards, dones, infos, action = self.vec_env.step(action)
-            return next_obs, rewards, dones, infos, action
+        self.product_sequencing_agent = ProductSequencingAgent()
+        self.process_task_planning_agent = ProcessTaskPlanningAgent()
+        self.human_robot_machine_allocation_agent = HumanRobotMachineAllocationAgent()
+
+    def act(self, obs):
+        product_sequencing_action = self.product_sequencing_agent.act(obs)
+        process_task_planning_action = self.process_task_planning_agent.act(obs)
+        human_robot_machine_allocation_action = self.human_robot_machine_allocation_agent.act(obs)
+        action = {}
+        action['product_sequencing'] = product_sequencing_action
+        action['process_task_planning'] = process_task_planning_action
+        action['human_robot_machine_allocation'] = human_robot_machine_allocation_action
+        return action
 
 
     def train(self):
-        self.vec_env.reset()
+        obs : dict = self.vec_env.reset()
         while True:
-            action = None
+            action = self.act(obs)
             action_extra = {}
-            self.vec_env.step(action, action_extra)
+            next_obs = self.vec_env.step(action, action_extra)
+            obs = next_obs

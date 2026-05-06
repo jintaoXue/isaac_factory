@@ -16,6 +16,6 @@ class HumanRobotMachineAllocationAgent:
     def reset(self, task: dict, env_state_action_dict: dict) -> dict:
         return env_state_action_dict
 
-    def step(self, task: dict, env_state_action_dict: dict) -> dict:
+    def act(self, task: dict, env_state_action_dict: dict) -> dict:
         return env_state_action_dict
 

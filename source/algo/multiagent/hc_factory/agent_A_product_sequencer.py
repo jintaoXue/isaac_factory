@@ -23,7 +23,7 @@ class ProductSequencingAgent:
         # For now, return the production order unchanged.
         return production_order
 
-    def step(self, production_order: list[dict], env_state_action_dict: dict) -> list[dict]:
+    def act(self, production_order: list[dict], env_state_action_dict: dict) -> list[dict]:
 
         # Placeholder: Returns production order unchanged.
         return production_order

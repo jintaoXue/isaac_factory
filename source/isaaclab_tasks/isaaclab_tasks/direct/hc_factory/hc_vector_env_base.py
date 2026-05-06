@@ -77,14 +77,18 @@ class HcVectorEnvBase(DirectRLEnv):
         """Resets the task and applies default zero actions to recompute observations and states."""
         # now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         # print(f"[{now}] Running RL reset")
-        for env in self.env_list:
-            env_state_action_dict = env.reset_env()
-        return
+        obs : list[dict] = []
+        for env_id, env in enumerate(self.env_list):
+            obs.append(env.reset_env())
+        return obs
 
     def step(self, action: dict | None = None, action_extra: dict | None = None) -> None:
         self.step_env_logic(action, action_extra)
         self.step_env_physics()
-        return
+        obs : list[dict] = []
+        for env_id, env in enumerate(self.env_list):
+            obs.append(env.env_state_action_dict)
+        return obs
 
     def step_env_logic(self, action: dict | None = None, action_extra: dict | None = None) -> None:
         for single_env in self.env_list:
