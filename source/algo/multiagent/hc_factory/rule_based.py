@@ -36,22 +36,24 @@ class RuleBasedMultiAgent():
         # 'actions' is a list where each element is a dictionary representing the action of a single environment instance.
         num_envs = len(obs)
         actions : list[dict] = []
+        actions_extra : list[dict] = []
         for env_id in range(num_envs):
             product_sequencing_action = self.product_sequencing_agent.act(obs[env_id])
             process_task_planning_action = self.process_task_planning_agent.act(obs[env_id])
             human_robot_machine_allocation_action = self.human_robot_machine_allocation_agent.act(obs[env_id])
             action = {}
+            action_extra = {}
             action['product_sequencing'] = product_sequencing_action
             action['process_task_planning'] = process_task_planning_action
             action['human_robot_machine_allocation'] = human_robot_machine_allocation_action
             actions.append(action)
-        return actions
+            actions_extra.append(action_extra)
+        return actions, actions_extra
 
     def train(self):
         # 'obs' is a list where each element is a dictionary representing the state of a single environment instance.
         obs : list[dict] = self.vec_env.reset()
         while True:
-            action = self.act(obs)
-            action_extra = {}
+            action, action_extra = self.act(obs)
             next_obs = self.vec_env.step(action, action_extra)
             obs = next_obs

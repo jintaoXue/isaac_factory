@@ -16,9 +16,6 @@ class ProcessTaskPlanningAgent:
     - The next task to be executed, including the predefined sequence of subtasks to be executed.
     """
 
-    def reset(self, env_state_action_dict: dict) -> dict:
-        return env_state_action_dict
-
     def act(self, env_state_action_dict: dict) -> dict:
-        return env_state_action_dict
+        return None
 

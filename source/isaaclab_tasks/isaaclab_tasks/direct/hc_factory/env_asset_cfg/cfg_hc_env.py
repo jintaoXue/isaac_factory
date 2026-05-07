@@ -37,8 +37,11 @@ SingleEnvStateActionDictTemplate : dict = {
     "rigid_prims": {},
     "progress": {
         "product_order": {},
-        "progress": {"not_started": [], "next_product": "", "producing": [], "finished": []},
-    },
+        "not_started": [],
+        "next_product": None,
+        "producing": [],
+        "finished": [],
+    }
 }
 
 
@@ -68,6 +71,10 @@ class HcViewerCfg(ViewerCfg):
     eye: tuple[float, float, float] = (0, 10, 100)
     lookat: tuple[float, float, float] = (0, 2, 0.5)
 
+
+    #Number envs = 4, look at env_0
+    eye: tuple[float, float, float] = (60, -25, 100)
+    lookat: tuple[float, float, float] = (60, -45, 10)
 
 # @configclass
 # class HcSingleEnvCfg():

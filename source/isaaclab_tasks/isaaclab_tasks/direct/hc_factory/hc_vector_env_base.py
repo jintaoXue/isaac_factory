@@ -82,7 +82,7 @@ class HcVectorEnvBase(DirectRLEnv):
             obs.append(env.reset_env())
         return obs
 
-    def step(self, action: dict | None = None, action_extra: dict | None = None) -> None:
+    def step(self, action: list[dict] | None = None, action_extra: list[dict] | None = None) -> None:
         self.step_env_logic(action, action_extra)
         self.step_env_physics()
         obs : list[dict] = []
@@ -90,9 +90,9 @@ class HcVectorEnvBase(DirectRLEnv):
             obs.append(env.env_state_action_dict)
         return obs
 
-    def step_env_logic(self, action: dict | None = None, action_extra: dict | None = None) -> None:
-        for single_env in self.env_list:
-            single_env.step_env_logic(action, action_extra)
+    def step_env_logic(self, action: list[dict] | None = None, action_extra: list[dict] | None = None) -> None:
+        for env_id, single_env in enumerate(self.env_list):
+            single_env.step_env_logic(action[env_id], action_extra[env_id])
 
     def step_env_physics(self) -> None:
         is_rendering = self.sim.has_gui() or self.sim.has_rtx_sensors()

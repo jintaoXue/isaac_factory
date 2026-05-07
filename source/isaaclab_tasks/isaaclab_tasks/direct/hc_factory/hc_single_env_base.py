@@ -88,7 +88,16 @@ class HcSingleEnvBase():
             rigid_prim.set_local_poses(translations=data["position"], orientations=data["orientation"])
             rigid_prim.set_velocities(torch.zeros((1,6), device=self.cuda_device))
 
-    def step_env_logic(self, action: dict | None = None, action_extra: dict | None = None) -> None:
+    def step_env_logic(self, action: list[dict] | None = None, action_extra: list[dict] | None = None) -> None:
+        action_product_sequencing = action["product_sequencing"]
+        action_process_task_planning = action["process_task_planning"]
+        action_human_robot_machine_allocation = action["human_robot_machine_allocation"]
+        if action_product_sequencing:
+            self.env_state_action_dict["progress"]["next_product"] = action_product_sequencing
+        if action_process_task_planning:
+            pass
+        if action_human_robot_machine_allocation:
+            pass
         for m in self.iter_managers():
             m.step(self.env_state_action_dict)
         return

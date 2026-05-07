@@ -13,9 +13,6 @@ class HumanRobotMachineAllocationAgent:
     - Task allocation result: The human, robot, and machine are in charge of executing the task.
     """
 
-    def reset(self, task: dict, env_state_action_dict: dict) -> dict:
-        return env_state_action_dict
-
-    def act(self, task: dict, env_state_action_dict: dict) -> dict:
-        return env_state_action_dict
+    def act(self, env_state_action_dict: dict) -> dict:
+        return None
 

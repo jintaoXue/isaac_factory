@@ -19,16 +19,16 @@ class ProductSequencingAgent:
         - Or the schedule of products to be produced in the future.
     """
 
-    def act(self, env_state_action_dict: dict) -> dict:
+    def act(self, env_state_action_dict: dict) -> str | None:
         #example: env_state_action_dict["progress"]    "progress": {
         not_started : dict = env_state_action_dict["progress"]["not_started"]
         next_product : str = env_state_action_dict["progress"]["next_product"]
         producing : list[str] = env_state_action_dict["progress"]["producing"]
         finished : list[str] = env_state_action_dict["progress"]["finished"]
         
-        if next_product and len(not_started.keys()) > 0:
+        if next_product is None and len(not_started.keys()) > 0:
             #select the first product in not_started
-            action = not_started.keys()[0]
+            action = list(not_started.keys())[0]
         else:
             action = None
         return action
