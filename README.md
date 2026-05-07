@@ -78,3 +78,4 @@ Aligned with a 3-layer factory operations stack (formal academic/industrial term
 - Product Sequencing Agent: determine the manufacturing sequence from the production order
 - Process Task Planning Agent: decompose the next product/schedule into process-driven executable tasks (via the task dependency graph)
 - Human–Robot–Machine Allocation Agent: allocate the next task to specific human/robot/machine resources for execution
+
