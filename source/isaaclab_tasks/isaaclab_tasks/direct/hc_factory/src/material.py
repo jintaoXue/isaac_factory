@@ -1,6 +1,6 @@
 from isaacsim.core.prims import RigidPrim
 from abc import abstractmethod
-from ..env_asset_cfg.cfg_material_product import CfgProductProcess, CfgRegistrationInfos
+from ..env_asset_cfg.cfg_material_product import CfgProductProcess, CfgProductOrder, CfgRegistrationInfos
 import copy
 import torch
 
@@ -10,6 +10,7 @@ class ProductMaterialManager:
         self.env_id = env_id
         self.cuda_device = cuda_device
         self.cfg_product_process = CfgProductProcess
+        self.cfg_product_order = CfgProductOrder
         self.cfg_registration_infos = CfgRegistrationInfos
         self.material_batch_list: list[MaterialBatch] = []
         self._register_material_batch_list()
@@ -24,6 +25,7 @@ class ProductMaterialManager:
     def reset(self, env_state_action_dict: dict) -> dict:
         for material_batch in self.material_batch_list:
             material_batch.reset(env_state_action_dict)
+        env_state_action_dict["product_order"] = self.cfg_product_order
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:

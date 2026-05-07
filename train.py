@@ -108,7 +108,7 @@ from source.isaaclab_rl.isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnv
 from rl_games.common import env_configurations, vecenv
 from rl_games.common.algo_observer import IsaacAlgoObserver
 from rl_games.torch_runner import Runner
-from source.algo.multiagent.hc_factory import rule_based_multi_agent
+from source.algo.multiagent.hc_factory import rule_based
 
 from isaaclab.envs import (
     DirectMARLEnv,

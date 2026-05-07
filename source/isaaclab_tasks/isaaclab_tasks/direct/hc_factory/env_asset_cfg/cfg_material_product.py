@@ -6,7 +6,7 @@ CfgRegistrationInfos = {
     
 }
 
-CfgProductionOrder = {
+CfgProductOrder = {
     #The production order is a list of products to be produced
     "ProductWaterPipe": 5, #idx: 00-04
     

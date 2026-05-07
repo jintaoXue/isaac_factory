@@ -26,7 +26,7 @@ from isaaclab.envs.common import ViewerCfg
 
 
 
-single_env_state_action_dict_template : dict = {
+SingleEnvStateActionDictTemplate : dict = {
     "machine": {},
     "material": {},
     "human": {},
@@ -35,6 +35,10 @@ single_env_state_action_dict_template : dict = {
     "route": {},
     "articulations": {},
     "rigid_prims": {},
+    "progress": {
+        "product_order": {},
+        "progress": {"not_started": [], "next_product": "", "producing": [], "finished": []},
+    },
 }
 
 

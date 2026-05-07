@@ -19,6 +19,6 @@ class ProcessTaskPlanningAgent:
     def reset(self, env_state_action_dict: dict) -> dict:
         return env_state_action_dict
 
-    def step(self, env_state_action_dict: dict) -> dict:
+    def act(self, env_state_action_dict: dict) -> dict:
         return env_state_action_dict
 

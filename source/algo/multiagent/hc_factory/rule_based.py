@@ -32,18 +32,24 @@ class RuleBasedMultiAgent():
         self.human_robot_machine_allocation_agent = HumanRobotMachineAllocationAgent()
 
     def act(self, obs):
-        product_sequencing_action = self.product_sequencing_agent.act(obs)
-        process_task_planning_action = self.process_task_planning_agent.act(obs)
-        human_robot_machine_allocation_action = self.human_robot_machine_allocation_agent.act(obs)
-        action = {}
-        action['product_sequencing'] = product_sequencing_action
-        action['process_task_planning'] = process_task_planning_action
-        action['human_robot_machine_allocation'] = human_robot_machine_allocation_action
-        return action
-
+        # 'obs' is a list where each element is a dictionary representing the state of a single environment instance.
+        # 'actions' is a list where each element is a dictionary representing the action of a single environment instance.
+        num_envs = len(obs)
+        actions : list[dict] = []
+        for env_id in range(num_envs):
+            product_sequencing_action = self.product_sequencing_agent.act(obs[env_id])
+            process_task_planning_action = self.process_task_planning_agent.act(obs[env_id])
+            human_robot_machine_allocation_action = self.human_robot_machine_allocation_agent.act(obs[env_id])
+            action = {}
+            action['product_sequencing'] = product_sequencing_action
+            action['process_task_planning'] = process_task_planning_action
+            action['human_robot_machine_allocation'] = human_robot_machine_allocation_action
+            actions.append(action)
+        return actions
 
     def train(self):
-        obs : dict = self.vec_env.reset()
+        # 'obs' is a list where each element is a dictionary representing the state of a single environment instance.
+        obs : list[dict] = self.vec_env.reset()
         while True:
             action = self.act(obs)
             action_extra = {}

@@ -33,7 +33,7 @@ from .src.human import HumanManager
 from .src.robot import RobotManager
 from .src.storage import StorageManager
 from .src.route import RouteManagerVectorEnv
-from .env_asset_cfg.cfg_hc_env import single_env_state_action_dict_template, HcVectorEnvCfg
+from .env_asset_cfg.cfg_hc_env import SingleEnvStateActionDictTemplate, HcVectorEnvCfg
 
 
 
@@ -44,7 +44,7 @@ class HcSingleEnvBase():
         self.cuda_device = cuda_device
         self.reward_buf = torch.zeros(1, dtype=torch.float32, device=self.cuda_device)
         # 每个 env 持有独立的 state dict，避免多 env 共享引用导致状态串扰
-        self.env_state_action_dict = copy.deepcopy(single_env_state_action_dict_template)
+        self.env_state_action_dict = copy.deepcopy(SingleEnvStateActionDictTemplate)
         self.register_env_assets()
     
     def register_env_assets(self):
@@ -68,6 +68,8 @@ class HcSingleEnvBase():
     def reset_env(self):
         for m in self.iter_managers():
             m.reset(self.env_state_action_dict)
+        #production progress reset
+        self.env_state_action_dict["progress"]["not_started"] = copy.deepcopy(self.product_material_manager.cfg_product_order)
         return self.env_state_action_dict
 
     def apply_data_to_sim(self) -> None:
