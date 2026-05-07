@@ -21,6 +21,3 @@ class ProcessTaskPlanningAgent:
         next_product : str | None = product_sequencing_action or env_state_action_dict["progress"]["next_product"]
         # check available human and robot resource
         return None
-
-
-    def check
