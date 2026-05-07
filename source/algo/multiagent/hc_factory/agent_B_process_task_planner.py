@@ -16,6 +16,11 @@ class ProcessTaskPlanningAgent:
     - The next task to be executed, including the predefined sequence of subtasks to be executed.
     """
 
-    def act(self, env_state_action_dict: dict) -> dict:
+    def act(self, env_state_action_dict: dict, product_sequencing_action: str | None) -> dict:
+        ## env start, generate first process task planning
+        next_product : str | None = product_sequencing_action or env_state_action_dict["progress"]["next_product"]
+        # check available human and robot resource
         return None
 
+
+    def check

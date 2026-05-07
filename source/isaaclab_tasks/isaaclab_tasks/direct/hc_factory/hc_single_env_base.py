@@ -46,6 +46,7 @@ class HcSingleEnvBase():
         # 每个 env 持有独立的 state dict，避免多 env 共享引用导致状态串扰
         self.env_state_action_dict = copy.deepcopy(SingleEnvStateActionDictTemplate)
         self.register_env_assets()
+        self.task_mask = torch.zeros(len(self.product_material_manager.cfg_product_order), device=self.cuda_device)
     
     def register_env_assets(self):
         self.storage_manager = StorageManager(env_id=self.env_id, cuda_device=self.cuda_device)

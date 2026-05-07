@@ -39,8 +39,8 @@ class RuleBasedMultiAgent():
         actions_extra : list[dict] = []
         for env_id in range(num_envs):
             product_sequencing_action = self.product_sequencing_agent.act(obs[env_id])
-            process_task_planning_action = self.process_task_planning_agent.act(obs[env_id])
-            human_robot_machine_allocation_action = self.human_robot_machine_allocation_agent.act(obs[env_id])
+            process_task_planning_action = self.process_task_planning_agent.act(obs[env_id], product_sequencing_action)
+            human_robot_machine_allocation_action = self.human_robot_machine_allocation_agent.act(obs[env_id], product_sequencing_action, process_task_planning_action)
             action = {}
             action_extra = {}
             action['product_sequencing'] = product_sequencing_action
