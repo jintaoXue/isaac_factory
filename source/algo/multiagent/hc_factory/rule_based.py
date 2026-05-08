@@ -11,8 +11,9 @@ from rl_games.common import vecenv
 # from ..utils import vecenv
 from rl_games.algos_torch import torch_ext
 from .agent_A_product_sequencer import ProductSequencingAgent
-from .agent_B_process_task_planner import ProcessTaskPlanningAgent
-from .agent_C_human_robot_machine_allocator import HumanRobotMachineAllocationAgent
+from .agent_B_product_selector import ProductSelectionAgent
+from .agent_C_process_task_planner import ProcessTaskPlanningAgent
+from .agent_D_human_robot_machine_allocator import HumanRobotMachineAllocationAgent
 
 
 class RuleBasedMultiAgent():
@@ -27,9 +28,10 @@ class RuleBasedMultiAgent():
             self.vec_env = vecenv.create_vec_env(self.env_name, self.num_actors, **self.env_config)
             self.env_info = self.vec_env.get_env_info()
 
-        self.product_sequencing_agent = ProductSequencingAgent()
-        self.process_task_planning_agent = ProcessTaskPlanningAgent()
-        self.human_robot_machine_allocation_agent = HumanRobotMachineAllocationAgent()
+        self.agent_A_product_sequencer = ProductSequencingAgent()
+        self.agent_B_product_selector = ProductSelectionAgent()
+        self.agent_C_process_task_planner = ProcessTaskPlanningAgent()
+        self.agent_D_human_robot_machine_allocator = HumanRobotMachineAllocationAgent()
 
     def act(self, obs):
         # 'obs' is a list where each element is a dictionary representing the state of a single environment instance.
@@ -38,12 +40,14 @@ class RuleBasedMultiAgent():
         actions : list[dict] = []
         actions_extra : list[dict] = []
         for env_id in range(num_envs):
-            product_sequencing_action = self.product_sequencing_agent.act(obs[env_id])
-            process_task_planning_action = self.process_task_planning_agent.act(obs[env_id], product_sequencing_action)
-            human_robot_machine_allocation_action = self.human_robot_machine_allocation_agent.act(obs[env_id], product_sequencing_action, process_task_planning_action)
+            product_sequencing_action = self.agent_A_product_sequencer.act(obs[env_id])
+            product_selection_action = self.agent_B_product_selector.act(obs[env_id], product_sequencing_action)
+            process_task_planning_action = self.agent_C_process_task_planner.act(obs[env_id], product_sequencing_action)
+            human_robot_machine_allocation_action = self.agent_D_human_robot_machine_allocator.act(obs[env_id], product_sequencing_action, process_task_planning_action)
             action = {}
             action_extra = {}
             action['product_sequencing'] = product_sequencing_action
+            action['product_selection'] = product_selection_action
             action['process_task_planning'] = process_task_planning_action
             action['human_robot_machine_allocation'] = human_robot_machine_allocation_action
             actions.append(action)

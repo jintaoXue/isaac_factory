@@ -2,21 +2,19 @@ from __future__ import annotations
 from pydoc import doc
 
 
-class ProductSequencingAgent:
+class ProductSelectionAgent:
     """
-    Product Sequence Planner Agent
+    Product Selection Agent
 
-    This agent is responsible for determining the optimal order in which products should be manufactured,
-    based on the current production order and the state of the environment/assets.
+    At each time step, this agent selects the focal product from the current producing list.
+    The selected product will serve as the target for process task planning in the subsequent decision stage (agent C task planner).
 
     Inputs:
-        - production_order (example: {'ProductWaterPipe': 5}): Dictionary containing product information and requirements to be produced.
         - env_state_action_dict (dict): Current state and actions of all relevant assets in the environment
           (e.g., humans, robots, machines, storage systems).
 
     Outputs:
-        - The next product (or list of products) to be prioritized for production. 
-        - Or the schedule of products to be produced in the future.
+        - The focusing product in producing list.
     """
 
     def act(self, env_state_action_dict: dict) -> str | None:
