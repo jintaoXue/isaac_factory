@@ -79,3 +79,4 @@ Aligned with a 3-layer factory operations stack (formal academic/industrial term
 - Process Task Planning Agent: decompose the next product/schedule into process-driven executable tasks (via the task dependency graph)
 - Human–Robot–Machine Allocation Agent: allocate the next task to specific human/robot/machine resources for execution
 
+#记录gantry的关节位置和local位置的相对偏移关系
