@@ -42,7 +42,7 @@ SingleEnvStateActionDictTemplate : dict = {
         "producing": [],
         "finished": [],
     },
-    "agent_mask": {
+    "agent_action_mask": {
         "agent_A_product_sequencer": {},
         "agent_B_product_selector": {},
         "agent_C_process_task_planner": {},

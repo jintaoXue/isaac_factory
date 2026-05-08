@@ -46,7 +46,7 @@ class HcSingleEnvBase():
         # 每个 env 持有独立的 state dict，避免多 env 共享引用导致状态串扰
         self.env_state_action_dict = copy.deepcopy(SingleEnvStateActionDictTemplate)
         self.register_env_assets()
-        self.algo_multiagent_masker = AlgoMultiAgentMasker()
+        self.algo_multiagent_masker = AlgoMultiAgentMasker(self.cuda_device)
     
     def register_env_assets(self):
         self.storage_manager = StorageManager(env_id=self.env_id, cuda_device=self.cuda_device)

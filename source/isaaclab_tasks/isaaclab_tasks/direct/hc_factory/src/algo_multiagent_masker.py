@@ -1,4 +1,5 @@
 from ..algo_cfg.cfg_multiagent import cfgAlgoMultiAgentMasker, CfgProductSequencerAgent, CfgProductSelectionAgent
+from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGallery
 import torch
 
 class AlgoMultiAgentMasker:
@@ -62,8 +63,21 @@ class ProductSelectorAgentMasker:
         env_state_action_dict["agent_mask"]["agent_B_product_selector"] = mask
 
 class ProcessTaskPlannerAgentMasker:
-    pass
+    def __init__(self, cuda_device: torch.device) -> None:
+        self.cuda_device = cuda_device
+        self.action_space = CfgProcessTaskGallery
+
+    def generate_mask(self, env_state_action_dict) -> None:
+        #mask for process task planning agent
+        mask = torch.zeros(len(self.action_space), dtype=torch.int32, device=self.cuda_device)
+        
+        pass
 
 class HumanRobotMachineAllocatorAgentMasker:
-    pass
+    def __init__(self, cuda_device: torch.device) -> None:
+        self.cuda_device = cuda_device
+
+    def generate_mask(self, env_state_action_dict) -> None:
+        #mask for human-robot-machine allocation agent
+        pass
 
