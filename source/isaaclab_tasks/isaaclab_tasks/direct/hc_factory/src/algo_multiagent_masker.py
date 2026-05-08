@@ -1,4 +1,4 @@
-from ..algo_cfg.cfg_multiagent import cfgAlgoMultiAgentMasker, CfgProductSequencerAgent, CfgProductSelectionAgent
+from ..algo_cfg.cfg_multiagent import cfgAlgoMultiAgentMasker, CfgProductSequencerAgent
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGallery
 import torch
 
@@ -14,6 +14,7 @@ class AlgoMultiAgentMasker:
     def generate_agents_mask(self, env_state_action_dict) -> dict:
         for agent in self.iter_agents():
             agent.generate_mask(env_state_action_dict)
+
     def iter_agents(self):
         return (
             self.agent_A_Product_sequencer,
@@ -25,7 +26,6 @@ class AlgoMultiAgentMasker:
 class ProductSequencerAgentMasker:
     def __init__(self, cuda_device: torch.device) -> None:
         self.cuda_device = cuda_device
-        self.action_space = CfgProductSequencerAgent["action_space"]
         self.product_types = CfgProductSequencerAgent["product_types"]
         self.num_product_types = CfgProductSequencerAgent["num_product_types"]
 
@@ -36,14 +36,12 @@ class ProductSequencerAgentMasker:
         producing : list[str] = env_state_action_dict["progress"]["producing"]
         finished : list[str] = env_state_action_dict["progress"]["finished"]
         
-        mask = torch.zeros(len(self.action_space), dtype=torch.int32, device=self.cuda_device)
+        mask = torch.zeros(self.num_product_types, dtype=torch.int32, device=self.cuda_device)
         if next_product is None and len(not_started.keys()) > 0:
             #can select the product in not_started
             for product in not_started.keys():
-                mask[self.action_space[product]] = 1
-        else:
-            mask[0] = 1 # can only select "None"
-        env_state_action_dict["agent_mask"]["agent_A_product_sequencer"] = mask
+                mask[self.product_types[product]] = 1
+        env_state_action_dict["agent_action_mask"]["agent_A_product_sequencer"] = mask
 
 class ProductSelectorAgentMasker:
     def __init__(self, cuda_device: torch.device) -> None:
@@ -55,12 +53,15 @@ class ProductSelectorAgentMasker:
         # can only select the product in producing or the next product to be produced
         producing : list[str] = env_state_action_dict["progress"]["producing"]
         next_product : str = env_state_action_dict["progress"]["next_product"]
-        mask = torch.zeros(self.parallel_producing_limit, dtype=torch.int32, device=self.cuda_device)
+        mask = torch.zeros(self.parallel_producing_limit + 1, dtype=torch.int32, device=self.cuda_device)
         for i in range(len(producing)):
             mask[i] = 1
+        # The last position in the mask is for selecting the next product to be produced, 
+        # which can only be selected when there are available slots for producing 
+        # and there is a next product to be produced.
         if next_product is not None and len(producing) < self.parallel_producing_limit:
-            mask[-1] = 1 # can select the next product to be produced
-        env_state_action_dict["agent_mask"]["agent_B_product_selector"] = mask
+            mask[self.parallel_producing_limit + 1] = 1 # can select the next product to be produced
+        env_state_action_dict["agent_action_mask"]["agent_B_product_selector"] = mask
 
 class ProcessTaskPlannerAgentMasker:
     def __init__(self, cuda_device: torch.device) -> None:
@@ -70,7 +71,7 @@ class ProcessTaskPlannerAgentMasker:
     def generate_mask(self, env_state_action_dict) -> None:
         #mask for process task planning agent
         mask = torch.zeros(len(self.action_space), dtype=torch.int32, device=self.cuda_device)
-        
+
         pass
 
 class HumanRobotMachineAllocatorAgentMasker:

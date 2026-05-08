@@ -1,8 +1,8 @@
 
-
+from .cfg_hc_env import HcVectorEnvCfg
 
 CfgHuman = {
-
+    "NumUpperBound": HcVectorEnvCfg().human_number_upper_bound,
     "NormalHuman": {
         "type_id": 00,
         "type_name": "NormalHuman",

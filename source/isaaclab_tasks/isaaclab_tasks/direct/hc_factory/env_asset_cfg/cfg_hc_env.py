@@ -109,9 +109,6 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     state_space = 2    
     #asset path, include machine, human, robot
     asset_path = os.path.expanduser("~") + "/work/Dataset/HC_data/final_for_isaac/HC_import.usd"
-    n_max_product = 0
-    n_max_human = 0
-    n_max_robot = 0
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=3, env_spacing=120.0, replicate_physics=True)
     # cuda decive
@@ -120,6 +117,9 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     train_cfg = None
     # rendering_resolution = (3840, 2160)
     rendering_resolution = (1920, 1080)
+
+    parallel_producing_limit = 5
+    human_number_upper_bound = 10
 
 
 

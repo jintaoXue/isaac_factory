@@ -15,6 +15,7 @@ class HumanManager:
         self.optional_init_points_in_map = RouteOptionalInitPointsInMap["human_xyz"]
         self.human_list: list[Human] = []
         self._register_human_list()
+        self.upper_bound_num_human = self.cfg_human["NumUpperBound"]
 
     def reset(self, env_state_action_dict: dict) -> dict:
         num_humans = len(self.human_list)
@@ -32,6 +33,15 @@ class HumanManager:
     def step(self, env_state_action_dict: dict) -> dict:
         for human in self.human_list:
             human.step(env_state_action_dict)
+        return env_state_action_dict
+    
+    def update_human_availability_mask(self, env_state_action_dict: dict) -> dict:
+        # mask for human availability for selection by human-robot machine allocator agent
+        mask = torch.zeros(self.upper_bound_num_human, dtype=torch.int32, device=self.cuda_device)
+        for human, i in zip(self.human_list, range(len(self.human_list))):
+            if human.state['state'] == "free":
+                mask[i] = 1
+        env_state_action_dict["human"]["availability_mask"] = mask
         return env_state_action_dict
 
     def _register_human_list(self):

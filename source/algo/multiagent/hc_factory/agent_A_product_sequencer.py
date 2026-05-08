@@ -1,6 +1,6 @@
 from __future__ import annotations
 from pydoc import doc
-
+import torch
 
 class ProductSequencingAgent:
     """
@@ -20,15 +20,17 @@ class ProductSequencingAgent:
     """
 
     def act(self, env_state_action_dict: dict) -> str | None:
-        #example: env_state_action_dict["progress"]    "progress": {
-        not_started : dict = env_state_action_dict["progress"]["not_started"]
-        next_product : str = env_state_action_dict["progress"]["next_product"]
-        producing : list[str] = env_state_action_dict["progress"]["producing"]
-        finished : list[str] = env_state_action_dict["progress"]["finished"]
-        
-        if next_product is None and len(not_started.keys()) > 0:
-            #select the first product in not_started
-            action = list(not_started.keys())[0]
-        else:
-            action = None
+        # mask is a tensor shaped (1 + num_product_types,)
+        # Each entry is binary: 1 means the corresponding product type may be selected,
+        # 0 means it is not eligible right now.
+        # The extra first entry mask[0] is reserved for not selecting any product for production in current step.
+        mask: torch.Tensor = env_state_action_dict["agent_action_mask"]["agent_A_product_sequencer"]
+        assert mask is not None, "Agent action mask for agent_A_product_sequencer is None"
+        nonzero = mask.nonzero(as_tuple=True)[0]
+        if nonzero.numel() == 0:
+            return mask
+        # The current strategy is simply select the first product type in the action space 
+        # that is eligible according to the mask
+        action = mask.clone().detach()
+        action[nonzero[0]+1:] = 0
         return action
