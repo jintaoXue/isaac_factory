@@ -34,7 +34,7 @@ from .src.robot import RobotManager
 from .src.storage import StorageManager
 from .src.route import RouteManagerVectorEnv
 from .env_asset_cfg.cfg_hc_env import SingleEnvStateActionDictTemplate, HcVectorEnvCfg
-
+from .src.algo_multiagent_masker import AlgoMultiAgentMasker
 
 
 class HcSingleEnvBase():
@@ -46,7 +46,7 @@ class HcSingleEnvBase():
         # 每个 env 持有独立的 state dict，避免多 env 共享引用导致状态串扰
         self.env_state_action_dict = copy.deepcopy(SingleEnvStateActionDictTemplate)
         self.register_env_assets()
-        self.task_mask = torch.zeros(len(self.product_material_manager.cfg_product_order), device=self.cuda_device)
+        self.algo_multiagent_masker = AlgoMultiAgentMasker()
     
     def register_env_assets(self):
         self.storage_manager = StorageManager(env_id=self.env_id, cuda_device=self.cuda_device)
@@ -71,6 +71,7 @@ class HcSingleEnvBase():
             m.reset(self.env_state_action_dict)
         #production progress reset
         self.env_state_action_dict["progress"]["not_started"] = copy.deepcopy(self.product_material_manager.cfg_product_order)
+        self.algo_multiagent_masker.generate_agents_mask(self.env_state_action_dict)
         return self.env_state_action_dict
 
     def apply_data_to_sim(self) -> None:
@@ -101,4 +102,5 @@ class HcSingleEnvBase():
             pass
         for m in self.iter_managers():
             m.step(self.env_state_action_dict)
+        self.algo_multiagent_masker.generate_agents_mask(self.env_state_action_dict)
         return
