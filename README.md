@@ -74,9 +74,10 @@ human robot reset 函数要修改
 
 #海创factory
 
-Aligned with a 3-layer factory operations stack (formal academic/industrial terminology):
-- Product Sequencing Agent: determine the manufacturing sequence from the production order
-- Process Task Planning Agent: decompose the next product/schedule into process-driven executable tasks (via the task dependency graph)
-- Human–Robot–Machine Allocation Agent: allocate the next task to specific human/robot/machine resources for execution
+Aligned with a 4-layer real-time factory operations stack (formal academic/industrial terminology):
+- Product Sequencing Agent: determine the optimal production order from the current manufacturing request
+- Product Selector Agent: choose which product should be prioritized next for detailed task planning
+- Process Task Planning Agent: real-time planning of the next key process task for the selected product 
+- Human–Robot–Machine Allocation Agent: assign each planned task to the most suitable human, robot, or machine resource for execution
 
 #记录gantry的关节位置和local位置的相对偏移关系
