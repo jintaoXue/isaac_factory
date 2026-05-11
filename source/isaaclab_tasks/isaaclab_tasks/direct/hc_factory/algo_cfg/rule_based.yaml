@@ -11,7 +11,7 @@ params:
     clip_actions: 1.0
 
   config:
-    torch_compile: False
+    # torch_compile: False
     name: HcFactory
     env_name: rlgpu_HRTPA
     device: 'cuda:0'

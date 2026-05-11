@@ -12,7 +12,7 @@ import sys
 import h5py
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-os.environ["TORCH_COMPILE_DISABLE"] = "1"
+# os.environ["TORCH_COMPILE_DISABLE"] = "1"
 
 from isaaclab.app import AppLauncher
 import setproctitle

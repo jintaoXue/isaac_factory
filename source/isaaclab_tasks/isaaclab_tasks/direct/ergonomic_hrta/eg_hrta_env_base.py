@@ -59,7 +59,7 @@ class HRTaskAllocEnvBase(DirectRLEnv):
             # set_prim_visibility(prim=ground_prim, visible=False)
             # if get_prim_at_path(raw_ground_path):
             #     delete_prim(raw_ground_path)
-        # spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
+        spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
         
         # for debug, visualize only prims 
         # stage_utils.print_stage_prim_paths()
