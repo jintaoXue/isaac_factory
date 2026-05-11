@@ -103,10 +103,10 @@ class Human:
         return env_state_action_dict
         
     def step(self, env_state_action_dict: dict) -> dict:
-        if self.prim is not None:
-            pos, rot = self.prim.get_world_poses()
-            pos[:, 0] += 1  # Small constant movement in x-axis for testing
-            self.prim.set_world_poses(pos, rot)
+        # if self.prim is not None:
+        #     pos, rot = self.prim.get_world_poses()
+        #     pos[:, 0] += 1  # Small constant movement in x-axis for testing
+        #     self.prim.set_world_poses(pos, rot)
         return env_state_action_dict
 
 class NormalHuman(Human):

@@ -32,6 +32,8 @@ class RuleBasedMultiAgent():
         self.agent_B_product_selector = ProductSelectionAgent()
         self.agent_C_process_task_planner = ProcessTaskPlanningAgent()
         self.agent_D_human_robot_machine_allocator = HumanRobotMachineAllocationAgent()
+        
+        self.model = None
 
     def act(self, obs):
         # 'obs' is a list where each element is a dictionary representing the state of a single environment instance.
