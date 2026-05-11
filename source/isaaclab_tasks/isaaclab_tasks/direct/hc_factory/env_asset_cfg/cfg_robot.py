@@ -17,9 +17,7 @@ CfgRobot = {
             3: "resetting",
         },
         "reset_state": {
-            "state": [0],
-            "current_pose": [None, None],
-            "target_pose": [None, None],
+            "state": "free",
         },
     }
 }

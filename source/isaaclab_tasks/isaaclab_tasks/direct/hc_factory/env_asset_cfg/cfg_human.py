@@ -1,13 +1,14 @@
 
-
+from .cfg_hc_env import HcVectorEnvCfg
 
 CfgHuman = {
-
+    "NumUpperBound": HcVectorEnvCfg().human_number_upper_bound,
     "NormalHuman": {
         "type_id": 00,
         "type_name": "NormalHuman",
         "meta_registeration_info": {
-            "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/human_robot_group/human_{idx}",
+            "rigid_prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/human_robot_group/human_{idx}",
+            "skeleton_prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/human_robot_group/human_{idx}/ManRoot/male_adult_construction_01/male_adult_construction_01/male_adult_construction_01",
             "name": "human_00_{idx}",
         },
         "state_gallery": {
@@ -17,14 +18,13 @@ CfgHuman = {
             3: "resetting",
         },
         "reset_state": {
-            "state": [0],
-            "current_pose": [None, None],
-            "target_pose": [None, None],
+            "state": "free",
         },
     }
 }
 
 
+
 CfgHumanRegistrationInfos = {
-    "NormalHuman": 1, #idx 00-09
+    "NormalHuman": 5, #idx 00-09
 }

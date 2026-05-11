@@ -33,8 +33,8 @@ from .src.human import HumanManager
 from .src.robot import RobotManager
 from .src.storage import StorageManager
 from .src.route import RouteManagerVectorEnv
-from .env_asset_cfg.cfg_hc_env import single_env_state_action_dict_template, HcVectorEnvCfg
-
+from .env_asset_cfg.cfg_hc_env import SingleEnvStateActionDictTemplate, HcVectorEnvCfg
+from .src.algo_multiagent_masker import AlgoMultiAgentMasker
 
 
 class HcSingleEnvBase():
@@ -44,50 +44,63 @@ class HcSingleEnvBase():
         self.cuda_device = cuda_device
         self.reward_buf = torch.zeros(1, dtype=torch.float32, device=self.cuda_device)
         # 每个 env 持有独立的 state dict，避免多 env 共享引用导致状态串扰
-        self.env_state_action_dict = copy.deepcopy(single_env_state_action_dict_template)
+        self.env_state_action_dict = copy.deepcopy(SingleEnvStateActionDictTemplate)
         self.register_env_assets()
+        self.algo_multiagent_masker = AlgoMultiAgentMasker(self.cuda_device)
     
     def register_env_assets(self):
-        self.machine_manager = MachineManager(env_id=self.env_id, cuda_device=self.cuda_device)
+        self.storage_manager = StorageManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.product_material_manager = ProductMaterialManager(env_id=self.env_id, cuda_device=self.cuda_device)
+        self.machine_manager = MachineManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.human_manager = HumanManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.robot_manager = RobotManager(env_id=self.env_id, cuda_device=self.cuda_device)
-        self.storage_manager = StorageManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.route_manager = RouteManagerVectorEnv(env_id=self.env_id, cuda_device=self.cuda_device)
 
     def iter_managers(self):
         return (
-            self.machine_manager,
+            self.storage_manager,
             self.product_material_manager,
+            self.route_manager,
+            self.machine_manager,
             self.human_manager,
             self.robot_manager,
-            self.storage_manager,
-            self.route_manager,
         )
 
     def reset_env(self):
         for m in self.iter_managers():
             m.reset(self.env_state_action_dict)
+        #production progress reset
+        self.env_state_action_dict["progress"]["not_started"] = copy.deepcopy(self.product_material_manager.cfg_product_order)
+        self.algo_multiagent_masker.generate_agents_mask(self.env_state_action_dict)
         return self.env_state_action_dict
 
     def apply_data_to_sim(self) -> None:
         #articulations
         articulations : dict = self.env_state_action_dict["articulations"]
         for name, data in articulations.items():
-            articulation : Articulation = data["articulation"]
-            articulation.set_joint_positions(data["joint_positions"])
+            obj : Articulation = data["object"]
+            obj.set_joint_positions(data["joint_position"])
             # Currently, joint velocities are set to zero.
-            joint_velocities = torch.zeros_like(data["joint_positions"], device=self.cuda_device)
-            articulation.set_joint_velocities(joint_velocities)
+            joint_velocities = torch.zeros_like(data["joint_position"], device=self.cuda_device)
+            obj.set_joint_velocities(joint_velocities)
         #rigid prims
         rigid_prims : dict = self.env_state_action_dict["rigid_prims"]
         for name, data in rigid_prims.items():
-            rigid_prim : RigidPrim = data["rigid_prim"]
-            rigid_prim.set_local_poses(positions=data["positions"], orientations=data["orientations"])
+            rigid_prim : RigidPrim = data["object"]
+            rigid_prim.set_local_poses(translations=data["position"], orientations=data["orientation"])
             rigid_prim.set_velocities(torch.zeros((1,6), device=self.cuda_device))
 
-
-    def step_env_logic(self, action: dict | None = None, action_extra: dict | None = None) -> None:
+    def step_env_logic(self, action: list[dict] | None = None, action_extra: list[dict] | None = None) -> None:
+        action_product_sequencing = action["product_sequencing"]
+        action_process_task_planning = action["process_task_planning"]
+        action_human_robot_machine_allocation = action["human_robot_machine_allocation"]
+        if action_product_sequencing:
+            self.env_state_action_dict["progress"]["next_product"] = action_product_sequencing
+        if action_process_task_planning:
+            pass
+        if action_human_robot_machine_allocation:
+            pass
         for m in self.iter_managers():
             m.step(self.env_state_action_dict)
+        self.algo_multiagent_masker.generate_agents_mask(self.env_state_action_dict)
         return

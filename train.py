@@ -112,8 +112,7 @@ from source.isaaclab_rl.isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnv
 from rl_games.common import env_configurations, vecenv
 from rl_games.common.algo_observer import IsaacAlgoObserver
 from rl_games.torch_runner import Runner
-from source.algo.multiagent import rule_based
-# from source.algo.safe_rl import rl_filter
+from source.algo.multiagent.hc_factory import rule_based
 
 from isaaclab.envs import (
     DirectMARLEnv,
@@ -272,7 +271,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     # create runner from rl-games
     runner = Runner(IsaacAlgoObserver())
     # runner.algo_factory.register_builder('rl_filter', lambda **kwargs: rl_filter.SafeRlFilterAgent(**kwargs))
-    runner.algo_factory.register_builder('rule_based', lambda **kwargs: rule_based.RuleBasedAgent(**kwargs))
+    runner.algo_factory.register_builder('rule_based', lambda **kwargs: rule_based.RuleBasedMultiAgent(**kwargs))
 
     runner.load(algo_cfg)
     # reset the agent and env

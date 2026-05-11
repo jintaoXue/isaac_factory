@@ -50,7 +50,7 @@ class DirectRLEnv(gym.Env):
     environment. Thus, to reduce complexity, we directly use the :class:`gym.Env` over
     here and leave it up to library-defined wrappers to take care of wrapping this
     environment for their agents.
-
+DirectRLEnv
     Note:
         For vectorized environments, it is recommended to **only** call the :meth:`reset`
         method once before the first call to :meth:`step`, i.e. after the environment is created.

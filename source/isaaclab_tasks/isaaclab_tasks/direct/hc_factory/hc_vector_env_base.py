@@ -21,12 +21,14 @@ from isaacsim.core.utils.stage import get_current_stage
 from isaacsim.core.prims import RigidPrim, Articulation
 from isaacsim.core.api.world import World
 
-
 from .env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
 from abc import abstractmethod
 import numpy as np
 import torch
 from .hc_single_env import HcSingleEnv
+
+from omni.kit.viewport.utility import get_active_viewport_window
+
 
 
 class HcVectorEnvBase(DirectRLEnv):
@@ -37,6 +39,18 @@ class HcVectorEnvBase(DirectRLEnv):
         self.env_list : list[type[HcSingleEnv]] = []
         super().__init__(cfg, render_mode, **kwargs)
         self.reward_buf = torch.zeros(self.num_envs, dtype=torch.float32, device=self.sim.device)
+        self._setup_rendering_resolution()
+
+    def _setup_rendering_resolution(self):
+        # 1. Get the active Viewport window
+        viewport_window = get_active_viewport_window()
+
+        # 2. Disable "Fill Frame" to allow a custom fixed resolution
+        viewport_window.viewport_api.fill_frame = False
+
+        # 3. Set the resolution to the rendering resolution
+        viewport_window.viewport_api.resolution = self.cfg_vector_env.rendering_resolution
+        return
 
     def _setup_scene(self):
         # assert self.num_envs == 2, "Temporary testing num_envs == 2"
@@ -63,21 +77,26 @@ class HcVectorEnvBase(DirectRLEnv):
         """Resets the task and applies default zero actions to recompute observations and states."""
         # now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         # print(f"[{now}] Running RL reset")
-        for env in self.env_list:
-            env_state_action_dict = env.reset_env()
-        return
+        obs : list[dict] = []
+        for env_id, env in enumerate(self.env_list):
+            obs.append(env.reset_env())
+        return obs
 
-    def step(self, action: dict | None = None, action_extra: dict | None = None) -> None:
+    def step(self, action: list[dict] | None = None, action_extra: list[dict] | None = None) -> None:
         self.step_env_logic(action, action_extra)
         self.step_env_physics()
-        return
+        obs : list[dict] = []
+        for env_id, env in enumerate(self.env_list):
+            obs.append(env.env_state_action_dict)
+        return obs
 
-    def step_env_logic(self, action: dict | None = None, action_extra: dict | None = None) -> None:
-        for single_env in self.env_list:
-            single_env.step_env_logic(action, action_extra)
+    def step_env_logic(self, action: list[dict] | None = None, action_extra: list[dict] | None = None) -> None:
+        for env_id, single_env in enumerate(self.env_list):
+            single_env.step_env_logic(action[env_id], action_extra[env_id])
 
     def step_env_physics(self) -> None:
         is_rendering = self.sim.has_gui() or self.sim.has_rtx_sensors()
+        self.apply_data_to_sim()
         # perform physics stepping
         for _ in range(self.cfg.decimation):
             self._sim_step_counter += 1

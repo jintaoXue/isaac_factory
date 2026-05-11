@@ -16,11 +16,11 @@ class RouteManagerVectorEnv:
         self.routes_robot = json.load(self.robot_path.open("r", encoding="utf-8"))
 
     def reset(self, env_state_action_dict: dict) -> dict:
-        env_state_action_dict["state_route"] = self
+        env_state_action_dict["route"] = self
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
-        env_state_action_dict["state_route"] = self
+        env_state_action_dict["route"] = self
         return env_state_action_dict
 
 

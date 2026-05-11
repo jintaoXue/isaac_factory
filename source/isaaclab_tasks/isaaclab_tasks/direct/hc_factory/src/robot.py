@@ -1,5 +1,7 @@
 from isaacsim.core.prims import RigidPrim
 from ..env_asset_cfg.cfg_robot import CfgRobot, CfgRobotRegistrationInfos
+from ..env_asset_cfg.cfg_route.cfg_route import RouteOptionalInitPointsInMap
+import copy
 import torch
 
 
@@ -9,15 +11,26 @@ class RobotManager:
         self.cuda_device = cuda_device
         self.cfg_robot = CfgRobot
         self.cfg_registration_infos = CfgRobotRegistrationInfos
+        self.optional_init_points_in_map = RouteOptionalInitPointsInMap["robot_xyz"]
         self.robot_list: list[Robot] = []
         self._register_robot_list()
 
     def reset(self, env_state_action_dict: dict) -> dict:
-        env_state_action_dict["state_robot"] = self
+        num_robots = len(self.robot_list)
+        num_points = int(self.optional_init_points_in_map.shape[0])
+        if num_points < num_robots:
+            raise ValueError(
+                f"Not enough init points for robots: points={num_points}, robots={num_robots}."
+            )
+        perm = torch.randperm(num_points, device=self.optional_init_points_in_map.device)
+        shuffled_init_points_in_map = self.optional_init_points_in_map[perm]
+        for robot, i in zip(self.robot_list, range(num_robots)):
+            robot.reset(env_state_action_dict, shuffled_init_points_in_map[i].unsqueeze(0))
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
-        env_state_action_dict["state_robot"] = self
+        for robot in self.robot_list:
+            robot.step(env_state_action_dict)
         return env_state_action_dict
 
     def _register_robot_list(self):
@@ -29,18 +42,20 @@ class RobotManager:
 
 class Robot:
     def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
+        # static variables
         self.idx = idx
-        self.cfg = cfg
+        self.cfg = copy.deepcopy(cfg)
         self.type_id = cfg["type_id"]
         self.type_name = cfg["type_name"]
         self.meta_registeration_info = cfg["meta_registeration_info"]
         self.env_id = env_id
         self.state_gallery = cfg["state_gallery"]
-        self.reset_state = cfg["reset_state"]
-        self.state : dict = None
+        self.reset_state = copy.deepcopy(cfg["reset_state"])
         self.prim: RigidPrim | None = None
         self.cuda_device = cuda_device
         self._register_rigid_prim()
+        ### dynmaic variables
+        self.state : dict = None
 
     def _register_rigid_prim(self):
         meta = self.meta_registeration_info
@@ -50,11 +65,21 @@ class Robot:
             reset_xform_properties=False,
         ) 
 
-    def reset(self, env_state_action_dict: dict) -> dict:
-        self.state : dict = self.reset_state.copy()
-        env_state_action_dict["state_robot"][f"{self.type_name}_{self.idx:02d}"] = self.state
+    def reset(self, env_state_action_dict: dict, init_point_in_map: torch.tensor) -> dict:
+        self.state : dict = copy.deepcopy(self.reset_state)
+        env_state_action_dict["robot"][f"num_{self.idx:02d}_{self.type_name}"] = self.state
+        self.reset_to_random_map_point(env_state_action_dict, init_point_in_map)
         return env_state_action_dict
     
+    def reset_to_random_map_point(self, env_state_action_dict: dict, init_point_in_map: torch.tensor) -> dict:
+        name = f"num_{self.idx:02d}_{self.type_name}"
+        env_state_action_dict["rigid_prims"][name] = {
+            "object": self.prim,
+            "position": init_point_in_map,
+            "orientation": torch.tensor([1, 0, 0, 0], dtype=torch.float32, device=self.cuda_device).unsqueeze(0),
+        }
+        return env_state_action_dict
+
     def step(self, env_state_action_dict: dict) -> dict:
         return env_state_action_dict
 

@@ -9,9 +9,7 @@ CfgMachine = {
         "num_registration_parts": 2,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0, 0],
-            "current_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0, 0.0])],
-            "target_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0, 0.0])],
+            "state": ["free", "free"],
         },
         "registration_infos": {
             "num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
@@ -46,9 +44,7 @@ CfgMachine = {
         "num_registration_parts": 2,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0],
-            "current_pose": [torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), torch.tensor([0.0])],
-            "target_pose": [torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), torch.tensor([0.0])],
+            "state": ["free"],
         },
         "registration_infos": {
             "num01_weldingRobot_part02_robot_arm_and_base": {
@@ -77,9 +73,7 @@ CfgMachine = {
         "num_registration_parts": 2,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0],
-            "current_pose": [torch.tensor([0.0]), torch.tensor([0.0, 0.0, 0.0])],
-            "target_pose": [torch.tensor([0.0]), torch.tensor([0.0, 0.0, 0.0])],
+            "state": ["free"],
         },
         "registration_infos": {
             "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
@@ -108,9 +102,7 @@ CfgMachine = {
         "num_registration_parts": 1,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0],
-            "current_pose": [torch.tensor([0.0])],
-            "target_pose": [torch.tensor([0.0])],
+            "state": ["free"],
         },
         "registration_infos": {
             "num03_laserCuttingMachine": {
@@ -133,9 +125,7 @@ CfgMachine = {
         "num_registration_parts": 2,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0],
-            "current_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0])],
-            "target_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0])],
+            "state": ["free"],
         },
         "registration_infos": {
             "num04_groovingMachineLarge_part01_large_fixed_base": {
@@ -164,9 +154,7 @@ CfgMachine = {
         "num_registration_parts": 2,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0],
-            "current_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0, 0.0])],
-            "target_pose": [torch.tensor([0.0, 0.0]), torch.tensor([0.0, 0.0])],
+            "state": ["free"],
         },
         "registration_infos": {
             "num05_groovingMachineSmall_part01_small_fixed_base": {
@@ -195,9 +183,7 @@ CfgMachine = {
         "num_registration_parts": 1,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0],
-            "current_pose": [torch.tensor([0.0])],
-            "target_pose": [torch.tensor([0.0])],
+            "state": ["free"],
         },
         "registration_infos": {
             "num06_highPressureFoamingMachine": {
@@ -220,9 +206,7 @@ CfgMachine = {
         "num_registration_parts": 1,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0, 0, 0, 0],
-            "current_pose": [torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])],
-            "target_pose": [torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])],
+            "state": ["free", "free", "free", "free"],
         },
         "registration_infos": {
             "num07_gantry_group": {
@@ -245,9 +229,7 @@ CfgMachine = {
         "num_registration_parts": 1,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            "state": [0, 0],
-            "current_pose": [torch.tensor([0.0])],
-            "target_pose": [torch.tensor([0.0])],
+            "state": ["free", "free"],
         },
         "registration_infos": {
             "num08_workbench": {

@@ -26,14 +26,28 @@ from isaaclab.envs.common import ViewerCfg
 
 
 
-single_env_state_action_dict_template : dict = {
-    "state_machine": {},
-    "state_material": {},
-    "state_human": {},
-    "state_robot": {},
-    "state_storage": {},
-    "state_route": {},
+SingleEnvStateActionDictTemplate : dict = {
+    "machine": {},
+    "material": {},
+    "human": {},
+    "robot": {},
+    "storage": {},
+    "route": {},
     "articulations": {},
+    "rigid_prims": {},
+    "progress": {
+        "product_order": {},
+        "not_started": [],
+        "next_product": None,
+        "producing": [],
+        "finished": [],
+    },
+    "agent_action_mask": {
+        "agent_A_product_sequencer": {},
+        "agent_B_product_selector": {},
+        "agent_C_process_task_planner": {},
+        "agent_D_human_robot_machine_allocator": {},
+    }
 }
 
 
@@ -64,6 +78,10 @@ class HcViewerCfg(ViewerCfg):
     lookat: tuple[float, float, float] = (0, 2, 0.5)
 
 
+    #Number envs = 4, look at env_0
+    eye: tuple[float, float, float] = (60, -25, 100)
+    lookat: tuple[float, float, float] = (60, -45, 10)
+
 # @configclass
 # class HcSingleEnvCfg():
 
@@ -92,15 +110,20 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     #asset path, include machine, human, robot
     # asset_path = os.path.expanduser("~") + "/work/Dataset/HC_data/final_for_isaac/HC_import.usd"
     asset_path = "D:/501914071/HC_import_0503.usd"
-    n_max_product = 0
-    n_max_human = 0
-    n_max_robot = 0
+    # n_max_product = 0
+    # n_max_human = 0
+    # n_max_robot = 0
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=3, env_spacing=120.0, replicate_physics=True)
     # cuda decive
     cuda_device_str = "cuda:0"
     #train_cfg will be update when running train.py
     train_cfg = None
+    # rendering_resolution = (3840, 2160)
+    rendering_resolution = (1920, 1080)
+
+    parallel_producing_limit = 5
+    human_number_upper_bound = 10
 
 
 
