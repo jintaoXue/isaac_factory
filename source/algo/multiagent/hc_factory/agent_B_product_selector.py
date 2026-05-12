@@ -24,7 +24,7 @@ class ProductSelectionAgent:
         # The extra first entry mask[0] is reserved for not selecting any product for production in current step.
         producing_products : list[str] = env_state_action_dict["progress"]["producing"]
         next_product : str = env_state_action_dict["progress"]["next_product"]
-        mask: torch.Tensor = env_state_action_dict["agent_action_mask"]["agent_B_product_selector"]
+        mask: torch.Tensor = env_state_action_dict["agent_action_mask"]["agent_B_product_selector"]["mask"]
         assert mask is not None, "Agent action mask for agent_B_product_selector is None"
         nonzero = mask.nonzero(as_tuple=True)[0]
         if nonzero.numel() == 0:

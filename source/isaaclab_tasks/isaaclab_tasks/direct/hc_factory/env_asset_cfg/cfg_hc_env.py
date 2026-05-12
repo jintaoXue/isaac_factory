@@ -44,7 +44,12 @@ SingleEnvStateActionDictTemplate : dict = {
     },
     "agent_action_mask": {
         "agent_A_product_sequencer": {},
-        "agent_B_product_selector": {},
+        "agent_B_product_selector": {
+            "mask": {},
+            #the same length of mask, including the currently producing products and the next product to be produced
+            # ["ProductWaterPipe", "None", "None", "None", "None", "ProductWaterPipe"] 
+            "products_to_check": list[str],
+        },
         "agent_C_process_task_planner": {},
         "agent_D_human_robot_machine_allocator": {},
     }
@@ -118,8 +123,9 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     # rendering_resolution = (3840, 2160)
     rendering_resolution = (1920, 1080)
 
-    parallel_producing_limit = 5
+    single_env_parallel_producing_limit = 5
     human_number_upper_bound = 10
+    robot_upper_bound = 2
 
 
 

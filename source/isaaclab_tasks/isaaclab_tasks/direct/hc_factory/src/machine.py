@@ -10,6 +10,7 @@ class MachineManager:
         self.env_id = env_id
         self.cuda_device = cuda_device
         self.cfg_machine = CfgMachine
+        self.num_machine = len(self.cfg_machine)
         self.num00_rotaryPipeAutomaticWeldingMachine = num00_rotaryPipeAutomaticWeldingMachine(env_id=self.env_id, cuda_device=self.cuda_device)
         self.num01_weldingRobot = num01_weldingRobot(env_id=self.env_id, cuda_device=self.cuda_device)
         self.num02_rollerbedCNCPipeIntersectionCuttingMachine = num02_rollerbedCNCPipeIntersectionCuttingMachine(env_id=self.env_id, cuda_device=self.cuda_device)
@@ -43,6 +44,16 @@ class MachineManager:
             self.num08_workbench,
         )
 
+    def update_machine_availability_mask(self, env_state_action_dict: dict) -> dict:
+        # mask for machine availability for selection by human-robot machine allocator agent
+        mask = torch.zeros(self.num_machine, dtype=torch.int32, device=self.cuda_device)
+        for machine, i in zip(self.iter_machines(), range(self.num_machine)):
+            state : list = machine.state
+            if "free" in state:
+                mask[i] = 1
+        env_state_action_dict["machine"]["availability_mask"] = mask
+        return env_state_action_dict
+
 
 class Machine:
     def __init__(self, cfg: dict, env_id: int, cuda_device: torch.device):
@@ -58,7 +69,7 @@ class Machine:
         self.state_gallery = cfg["state_gallery"]
         self.reset_state = copy.deepcopy(cfg["reset_state"])
         ### dynmaic variables
-        self.state : dict = None
+        self.state : list = None
         self._register_articulation_animation()
 
     def _register_articulation_animation(self):
@@ -76,7 +87,8 @@ class Machine:
             ))
 
     def reset(self, env_state_action_dict: dict) -> dict:
-        env_state_action_dict["machine"][self.type_name] = copy.deepcopy(self.reset_state)
+        self.state : dict = copy.deepcopy(self.reset_state)
+        env_state_action_dict["machine"][self.type_name] = self.state
         articulations_values = self.reset_articulations()
         env_state_action_dict["articulations"].update(articulations_values)
         return env_state_action_dict

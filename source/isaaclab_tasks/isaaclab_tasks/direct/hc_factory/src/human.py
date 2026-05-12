@@ -28,6 +28,9 @@ class HumanManager:
         shuffled_init_points_in_map = self.optional_init_points_in_map[perm]
         for human, i in zip(self.human_list, range(num_humans)):
             human.reset(env_state_action_dict, shuffled_init_points_in_map[i].unsqueeze(0))
+        
+        self.update_human_availability_mask(env_state_action_dict)
+        
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
