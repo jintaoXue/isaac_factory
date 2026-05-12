@@ -24,11 +24,13 @@ class MachineManager:
     def reset(self, env_state_action_dict: dict) -> dict:
         for machine in self.iter_machines():
             machine.reset(env_state_action_dict)
+        self.update_machine_availability_mask(env_state_action_dict)
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
         for machine in self.iter_machines():
             machine.step(env_state_action_dict)
+        self.update_machine_availability_mask(env_state_action_dict)
         return env_state_action_dict
     
     def iter_machines(self):
@@ -52,7 +54,6 @@ class MachineManager:
             if "free" in state:
                 mask[i] = 1
         env_state_action_dict["machine"]["availability_mask"] = mask
-        return env_state_action_dict
 
 
 class Machine:

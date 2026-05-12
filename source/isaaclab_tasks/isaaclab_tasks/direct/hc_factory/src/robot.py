@@ -14,6 +14,7 @@ class RobotManager:
         self.optional_init_points_in_map = RouteOptionalInitPointsInMap["robot_xyz"]
         self.robot_list: list[Robot] = []
         self._register_robot_list()
+        self.upper_bound_num_robot = self.cfg_robot["NumUpperBound"]
 
     def reset(self, env_state_action_dict: dict) -> dict:
         num_robots = len(self.robot_list)
@@ -39,6 +40,15 @@ class RobotManager:
             for idx in range(n):
                 self.robot_list.append(cls(idx, self.cfg_robot[type_name], self.env_id, self.cuda_device))
 
+    def update_robot_availability_mask(self, env_state_action_dict: dict) -> dict:
+        # mask for robot availability for selection by human-robot machine allocator agent
+        mask = torch.zeros(self.upper_bound_num_robot, dtype=torch.int32, device=self.cuda_device)
+        for robot, i in zip(self.robot_list, range(len(self.robot_list))):
+            if robot.state == "free":
+                mask[i] = 1
+        env_state_action_dict["robot"]["availability_mask"] = mask
+        return env_state_action_dict
+
 
 class Robot:
     def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
@@ -50,12 +60,12 @@ class Robot:
         self.meta_registeration_info = cfg["meta_registeration_info"]
         self.env_id = env_id
         self.state_gallery = cfg["state_gallery"]
-        self.reset_state = copy.deepcopy(cfg["reset_state"])
+        self.reset_state : str = copy.deepcopy(cfg["reset_state"])
         self.prim: RigidPrim | None = None
         self.cuda_device = cuda_device
         self._register_rigid_prim()
         ### dynmaic variables
-        self.state : dict = None
+        self.state : str = None
 
     def _register_rigid_prim(self):
         meta = self.meta_registeration_info
@@ -66,7 +76,7 @@ class Robot:
         ) 
 
     def reset(self, env_state_action_dict: dict, init_point_in_map: torch.tensor) -> dict:
-        self.state : dict = copy.deepcopy(self.reset_state)
+        self.state : str = copy.deepcopy(self.reset_state)
         env_state_action_dict["robot"][f"num_{self.idx:02d}_{self.type_name}"] = self.state
         self.reset_to_random_map_point(env_state_action_dict, init_point_in_map)
         return env_state_action_dict

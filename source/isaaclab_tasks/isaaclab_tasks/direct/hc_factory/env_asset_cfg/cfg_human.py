@@ -17,9 +17,7 @@ CfgHuman = {
             2: "working",
             3: "resetting",
         },
-        "reset_state": {
-            "state": "free",
-        },
+        "reset_state": "free",
     }
 }
 

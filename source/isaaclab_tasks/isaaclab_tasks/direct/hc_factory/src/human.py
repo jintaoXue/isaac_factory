@@ -30,19 +30,20 @@ class HumanManager:
             human.reset(env_state_action_dict, shuffled_init_points_in_map[i].unsqueeze(0))
         
         self.update_human_availability_mask(env_state_action_dict)
-        
+
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
         for human in self.human_list:
             human.step(env_state_action_dict)
+        self.update_human_availability_mask(env_state_action_dict)
         return env_state_action_dict
     
     def update_human_availability_mask(self, env_state_action_dict: dict) -> dict:
         # mask for human availability for selection by human-robot machine allocator agent
         mask = torch.zeros(self.upper_bound_num_human, dtype=torch.int32, device=self.cuda_device)
         for human, i in zip(self.human_list, range(len(self.human_list))):
-            if human.state['state'] == "free":
+            if human.state == "free":
                 mask[i] = 1
         env_state_action_dict["human"]["availability_mask"] = mask
         return env_state_action_dict
@@ -63,14 +64,14 @@ class Human:
         self.meta_registeration_info = cfg["meta_registeration_info"]
         self.env_id = env_id
         self.state_gallery = cfg["state_gallery"]
-        self.reset_state = copy.deepcopy(cfg["reset_state"])
+        self.reset_state : str = copy.deepcopy(cfg["reset_state"])
         self.skeleton: UsdSkel.Skeleton | None = None
         self.prim: RigidPrim | None = None
         self.cuda_device = cuda_device
         self._register_skeleton()
         self._register_rigid_prim()
         ### dynmaic variables
-        self.state : dict = None
+        self.state : str = None
 
     def _register_skeleton(self):
         meta = self.meta_registeration_info
@@ -91,7 +92,7 @@ class Human:
         return
     
     def reset(self, env_state_action_dict: dict, init_point_in_map: torch.tensor) -> dict:
-        self.state : dict = copy.deepcopy(self.reset_state)
+        self.state : str = copy.deepcopy(self.reset_state)
         env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"] = self.state
         self.reset_to_random_map_point(env_state_action_dict, init_point_in_map)
         return env_state_action_dict

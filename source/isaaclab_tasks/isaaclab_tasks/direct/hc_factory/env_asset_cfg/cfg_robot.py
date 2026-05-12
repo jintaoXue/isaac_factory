@@ -1,8 +1,8 @@
 
-
+from .cfg_hc_env import HcVectorEnvCfg
 
 CfgRobot = {
-    
+    "NumUpperBound": HcVectorEnvCfg().robot_upper_bound,
     "AGV": {
         "type_id": 00,
         "type_name": "AGV",
@@ -16,9 +16,7 @@ CfgRobot = {
             2: "working",
             3: "resetting",
         },
-        "reset_state": {
-            "state": "free",
-        },
+        "reset_state": "free",
     }
 }
 
