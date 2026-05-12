@@ -196,7 +196,54 @@ class num07_gantry_group(Machine):
         self.num07_gantry_group = None
         self.animation_num07_gantry_group: PoseAnimation = None
         super().__init__(cfg=CfgMachine["num07_gantry_group"], env_id=env_id, cuda_device=cuda_device)
+        # shape 8x1 tensor and joint_position has 8 elements: [x0, x1, x2, x3, y0, y1, y2, y3] for 4 subgantrys
+        self.joint_position_reset = self.registration_infos["num07_gantry_group"]["joint_positions_reset"].to(self.cuda_device)
+        self.xy_position_reset = self.registration_infos["num07_gantry_group"]["xy_position_reset"].to(self.cuda_device)
+        #"gantry_indexs": torch.tensor([0, 1, 2, 3, 0, 1, 2, 3]), number 4 subgantrys in total, each subgantry has a gantry and a hook, the gantry moves in xy plane and the hook moves in z axis, the subgantry indexs indicate which subgantry each joint belongs to
+        self.gantry_indexs = self.registration_infos["num07_gantry_group"]["gantry_indexs"]
+        self.fixed_hook_height = self.registration_infos["num07_gantry_group"]["fixed_hook_height"]
 
+    def step(self, env_state_action_dict):
+        joint_position = env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"]
+        xyz_1 : list = [-50.45092570343084, 10.18675, 0.5]
+        xyz_2 : list = [-46, 10.18675, 0.5]
+        xyz_3 : list = [-42, 10.18675, 0.5]
+
+        target_joint_position_1 = self.get_joint_pose_from_xy_target(joint_position, xyz_1[:2], gantry_index = 1)
+        target_joint_position_2 = self.get_joint_pose_from_xy_target(joint_position, xyz_2[:2], gantry_index = 2)
+        target_joint_position_3 = self.get_joint_pose_from_xy_target(joint_position, xyz_3[:2], gantry_index = 3)
+
+        final_target_joint_position = joint_position.clone()
+        final_target_joint_position[self.gantry_indexs == 1] = target_joint_position_1[self.gantry_indexs == 1]
+        final_target_joint_position[self.gantry_indexs == 2] = target_joint_position_2[self.gantry_indexs == 2]
+        final_target_joint_position[self.gantry_indexs == 3] = target_joint_position_3[self.gantry_indexs == 3]
+        env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"] = final_target_joint_position
+        return
+    
+    def get_joint_pose_from_xy_target(self, joint_position: torch.Tensor, position_xy: list, gantry_index: int) -> torch.Tensor:
+        # compute the target joint position for the gantry, with specified target xy position and subgantry index
+        # the subgantry index indicates which subgantry the target position belongs to, and the gantry will move in xy plane to reach the target position, while the hook will keep a fixed height
+        target_joint_position = joint_position.clone()
+        # Assume joint_position has 8 elements: [x0, x1, x2, x3, y0, y1, y2, y3] for 4 subgantrys
+        # where x0 is x for subgantry 0, y0 is y for subgantry 0, etc.
+        # For the selected subgantry, update x and y joints to reach position_xy
+        x_index = gantry_index
+        y_index = gantry_index + 4
+        # Calculate offset from reset position
+        reset_x = self.xy_position_reset[x_index]
+        reset_y = self.xy_position_reset[y_index]
+        target_x = position_xy[0]
+        target_y = position_xy[1]
+        # Update joints (assuming linear mapping, adjust as needed for actual kinematics)
+        target_joint_position[x_index] = self.joint_position_reset[x_index] + (target_x - reset_x)
+        target_joint_position[y_index] = self.joint_position_reset[y_index] + (target_y - reset_y)
+        # Hook height remains fixed, so no change to z joints if any
+        return target_joint_position
+    
+    def gantrys_collision_check(self, joint_position: torch.Tensor) -> bool:
+        # Implement collision check logic for the gantry group based on joint positions
+        # x0 > x1 > x2 > x3 to avoid collision between gantrys, adjust the threshold as needed
+        return False
 
 class num08_workbench(Machine):
 

@@ -92,8 +92,10 @@ class HcSingleEnvBase():
 
     def step_env_logic(self, action: list[dict] | None = None, action_extra: list[dict] | None = None) -> None:
         action_product_sequencing = action["product_sequencing"]
+        action_product_selection = action["product_selection"]
         action_process_task_planning = action["process_task_planning"]
         action_human_robot_machine_allocation = action["human_robot_machine_allocation"]
+        #TODO
         if action_product_sequencing:
             self.env_state_action_dict["progress"]["next_product"] = action_product_sequencing
         if action_process_task_planning:

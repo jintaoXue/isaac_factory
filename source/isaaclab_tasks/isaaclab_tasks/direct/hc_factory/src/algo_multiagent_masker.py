@@ -60,7 +60,7 @@ class ProductSelectorAgentMasker:
         # which can only be selected when there are available slots for producing 
         # and there is a next product to be produced.
         if next_product is not None and len(producing) < self.parallel_producing_limit:
-            mask[self.parallel_producing_limit + 1] = 1 # can select the next product to be produced
+            mask[self.parallel_producing_limit] = 1 # can select the next product to be produced
         env_state_action_dict["agent_action_mask"]["agent_B_product_selector"] = mask
 
 class ProcessTaskPlannerAgentMasker:

@@ -17,7 +17,7 @@ class ProductSelectionAgent:
         - The focusing product in producing list.
     """
 
-    def act(self, env_state_action_dict: dict) -> str | None:
+    def act(self, env_state_action_dict: dict, product_sequencing_action: torch.Tensor) -> torch.Tensor | None:
         # mask is a tensor shaped (1 + num_product_types,)
         # Each entry is binary: 1 means the corresponding product type may be selected,
         # 0 means it is not eligible right now.

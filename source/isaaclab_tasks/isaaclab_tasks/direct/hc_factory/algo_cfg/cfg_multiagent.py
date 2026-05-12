@@ -11,7 +11,7 @@ cfgAlgoMultiAgentMasker = {
 
 CfgProductSequencerAgent = {
     "num_product_types": len(CfgProductProcess),
-    "product_types": {**{k: i+1 for i, k in enumerate(CfgProductProcess.keys())}},
+    "product_types": {**{k: i for i, k in enumerate(CfgProductProcess.keys())}},
 }
 
 CfgProductSelectorAgent = {

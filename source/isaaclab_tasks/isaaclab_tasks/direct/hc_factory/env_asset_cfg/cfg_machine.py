@@ -213,6 +213,12 @@ CfgMachine = {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num07_gantry_group/gantry_00",
                 "joint_positions_working": torch.tensor([10.0, 10.0, 10.0, 10.0, 5.0, -5.0, 5.0, -5.0]),
                 "joint_positions_reset": torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+                ####the articulation pose corresponding pose, and for calculating the offset
+                "xy_position_reset": torch.tensor([36.74226, 16.74226, -11.35883, -30.35883, 10.18675, 10.18675, 10.18675, 10.18675]),
+                # Assume joint_position has 8 elements: [x0, x1, x2, x3, y0, y1, y2, y3] for 4 subgantrys
+                "gantry_indexs": torch.tensor([0, 1, 2, 3, 0, 1, 2, 3]),
+                ### to simplify the problem, we set the z of hook to be fixed, and only control the x and y movement of the gantry, so the joint position of z axis is not used for calculating the reward and is not included in the observation, but it is still needed for animation and calculating the offset between the hook and the material when gripping.
+                "fixed_hook_height": 8.90808,
                 "animation_time": 100,
                 "human_working_areas_ids": [],
                 "robot_parking_areas_ids": [],

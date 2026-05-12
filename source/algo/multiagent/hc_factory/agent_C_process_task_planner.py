@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import torch
 
 class ProcessTaskPlanningAgent:
     """Process's Task Planning Agent.
@@ -16,8 +16,7 @@ class ProcessTaskPlanningAgent:
     - The next task to be executed, including the predefined sequence of subtasks to be executed.
     """
 
-    def act(self, env_state_action_dict: dict, product_sequencing_action: str | None) -> dict:
+    def act(self, env_state_action_dict: dict, product_selection_action: torch.Tensor | None) -> dict:
         ## env start, generate first process task planning
-        next_product : str | None = product_sequencing_action or env_state_action_dict["progress"]["next_product"]
         # check available human and robot resource
         return None

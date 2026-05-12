@@ -42,8 +42,9 @@ class RuleBasedMultiAgent():
         for env_id in range(num_envs):
             product_sequencing_action = self.agent_A_product_sequencer.act(obs[env_id])
             product_selection_action = self.agent_B_product_selector.act(obs[env_id], product_sequencing_action)
-            process_task_planning_action = self.agent_C_process_task_planner.act(obs[env_id], product_sequencing_action)
-            human_robot_machine_allocation_action = self.agent_D_human_robot_machine_allocator.act(obs[env_id], product_sequencing_action, process_task_planning_action)
+            process_task_planning_action = self.agent_C_process_task_planner.act(obs[env_id], product_selection_action)
+            human_robot_machine_allocation_action = self.agent_D_human_robot_machine_allocator.act(obs[env_id], 
+                                                        product_selection_action, process_task_planning_action)
             action = {}
             action_extra = {}
             action['product_sequencing'] = product_sequencing_action

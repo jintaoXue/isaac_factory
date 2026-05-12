@@ -19,7 +19,7 @@ class ProductSequencingAgent:
         - Or the schedule of products to be produced in the future.
     """
 
-    def act(self, env_state_action_dict: dict) -> str | None:
+    def act(self, env_state_action_dict: dict) -> torch.Tensor | None:
         # mask is a tensor shaped (1 + num_product_types,)
         # Each entry is binary: 1 means the corresponding product type may be selected,
         # 0 means it is not eligible right now.
