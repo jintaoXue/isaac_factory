@@ -1,4 +1,5 @@
 CfgProductProcessGallery = {
+    #Currently we only have one product type "ProductWaterPipe", but we can easily add more product types in the future
     "ProductWaterPipe": {
         "num_process_steps": 7,
         "process_steps": {
@@ -60,6 +61,8 @@ CfgProductProcessGallery = {
 }
 
 
+# This contains the task gallery for all product types; each product type has its own process gallery.
+# All product process tasks share a common encoded index space defined by CfgProcessTaskGallery.
 CfgProcessTaskGallery = {
     "none": 0,
     "logistic_for_pipe_cutting": 1,
@@ -75,6 +78,11 @@ CfgProcessTaskGallery = {
     "logistic_for_paint_rust_proof": 11,
     "paint_rust_proof": 12,
     "product_to_storage": 13,
+}
+
+
+CfgProdutcIndexInProcessTaskGallery = {
+    "ProductWaterPipe": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
 }
 
 

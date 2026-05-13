@@ -7,13 +7,20 @@ CfgRegistrationInfos = {
 }
 
 CfgProductOrder = {
-    #The production order is a list of products to be produced
-    "ProductWaterPipe": 5, #idx: 00-04
-    
+    # The production order is a map of product type to requested quantity.
+    "ProductWaterPipe": 5, # idx: 00-04
 }
 
+for product_type, quantity in CfgProductOrder.items():
+    if product_type not in CfgRegistrationInfos:
+        raise ValueError(f"Unknown product type in CfgProductOrder: {product_type}")
+    if quantity > CfgRegistrationInfos[product_type]:
+        raise ValueError(
+            f"Requested quantity for {product_type} ({quantity}) exceeds registered max "
+            f"({CfgRegistrationInfos[product_type]})"
+        )
 
-CfgProductProcess= {
+CfgProductProcess = {
     "ProductWaterPipe": {
         "type_id": "00",
         "type_name": "ProductWaterPipe",
@@ -28,6 +35,8 @@ CfgProductProcess= {
         "reset_state_template": {
             "key_variables": {},
             "state": {
+                # task_step tracks the current production stage, indexed by CfgProcessTaskGallery (see cfg_process_task_gallery.py)
+                "task_step": "none",
                 "product_00_pipe": {
                     "state": "raw_pipe",
                     "logistic_state": "in_storage",
