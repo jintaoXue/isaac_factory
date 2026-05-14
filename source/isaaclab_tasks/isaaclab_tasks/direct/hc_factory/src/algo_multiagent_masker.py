@@ -32,6 +32,7 @@ class ProductSequencerAgentMasker:
 
     def generate_mask(self, env_state_action_dict) -> None:
         #mask for product sequencing agent
+        # output shape (self.num_product_types,)
         not_started : dict = env_state_action_dict["progress"]["not_started"]
         next_product : str = env_state_action_dict["progress"]["next_product"]
         producing : list[str] = env_state_action_dict["progress"]["producing"]
@@ -77,7 +78,7 @@ class ProcessTaskPlannerAgentMasker:
         self.parallel_producing_limit = HcVectorEnvCfg().single_env_parallel_producing_limit
 
     def generate_mask(self, env_state_action_dict) -> None:
-        # Output shape (self.parallel_producing_limit + 1, num_tasks) mask for process task planning agent.
+        # Output shape (self.parallel_producing_limit + 1, len(self.task_gallery)) mask for process task planning agent.
 
         product_selector_mask: torch.Tensor = env_state_action_dict["agent_action_mask"]["agent_B_product_selector"]["mask"]
         # the same length as product_selector_mask, including the currently producing products and the next product to be produced
@@ -88,11 +89,11 @@ class ProcessTaskPlannerAgentMasker:
             if product_selector_mask[i] == 0:
                 continue
             assert products_to_check[i] != "None", "The product to check for process task planning should not be None when the corresponding product selection mask is 1"
-            mask[i] = self._task_mask_for_product(products_to_check[i], env_state_action_dict)
+            mask[i] = self._task_mask_for_one_product(products_to_check[i], env_state_action_dict)
 
         env_state_action_dict["agent_action_mask"]["agent_C_process_task_planner"] = mask
 
-    def _task_mask_for_product(self, product: str, env_state_action_dict: dict) -> torch.Tensor:
+    def _task_mask_for_one_product(self, product: str, env_state_action_dict: dict) -> torch.Tensor:
         task_mask = torch.zeros(len(self.task_gallery), dtype=torch.int32, device=self.cuda_device)
         for i, task in enumerate(self.task_gallery):
             if self._check_task_ready(env_state_action_dict, product, task):
@@ -102,10 +103,9 @@ class ProcessTaskPlannerAgentMasker:
     def _check_task_ready(self, env_state_action_dict: dict, product: str, task : str) -> bool:
         # TODO: generate task mask rules based on product state, required materials, and process order.
         assert product == "ProductWaterPipe", "Currently only ProductWaterPipe is supported in ProcessTaskPlannerAgentMasker"
-        if task == "none":
-            return True
-        elif task == "logistic_for_pipe_cutting":
-
+        material_task_availability_mask = env_state_action_dict["material"]["task_availability_mask"]
+    
+    def _check_material_ready(self,)
 
         return False
 

@@ -5,6 +5,7 @@ CfgMachine = {
         "type_id": "00",
         "type_name": "num00_rotaryPipeAutomaticWeldingMachine",
         "registration_type": "articulation",
+        "corresponding_task": "pipe_welding",
         "num_workstations": 2,
         "num_registration_parts": 2,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},

@@ -1,6 +1,7 @@
 from isaacsim.core.prims import Articulation
 from abc import abstractmethod
 from ..env_asset_cfg.cfg_machine import CfgMachine
+from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
 from .utils import PoseAnimation
 import copy
 import torch
@@ -53,7 +54,7 @@ class MachineManager:
             state : list = machine.state
             if "free" in state:
                 mask[i] = 1
-        env_state_action_dict["machine"]["availability_mask"] = mask
+        env_state_action_dict["machine"]["task_availability_mask"] = mask
 
 
 class Machine:
