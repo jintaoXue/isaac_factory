@@ -63,7 +63,7 @@ CfgProductProcessGallery = {
 
 # This contains the task gallery for all product types; each product type has its own process gallery.
 # All product process tasks share a common encoded index space defined by CfgProcessTaskGallery.
-CfgProcessTaskGallery = {
+CfgProcessTaskGalleryInAll = {
     "none": 0,
     "logistic_for_pipe_cutting": 1,
     "pipe_cutting": 2,
@@ -81,8 +81,25 @@ CfgProcessTaskGallery = {
 }
 
 
-CfgProdutcIndexInProcessTaskGallery = {
-    "ProductWaterPipe": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+CfgProcessTaskGalleryClassified = {
+    "ProductWaterPipe": {
+        #the dict value is the index in the common encoded index space defined by CfgProcessTaskGalleryInAll
+        "none": 0,
+        "logistic_for_pipe_cutting": 1,
+        "pipe_cutting": 2,
+        "logistic_for_pipe_grooving": 3,
+        "pipe_grooving": 4,
+        "logistic_for_batch_spot_welding": 5,
+        "batch_spot_welding": 6,
+        "logistic_for_arc_welding_root": 7,
+        "arc_welding_root": 8,
+        "logistic_for_MIG_welding_surface": 9,
+        "MIG_welding_surface": 10,
+        "logistic_for_paint_rust_proof": 11,
+        "paint_rust_proof": 12,
+        "product_to_storage": 13,
+    },
+    #Will add more product types in the future, and they will share the same common encoded index space defined by CfgProcessTaskGalleryInAll
 }
 
 

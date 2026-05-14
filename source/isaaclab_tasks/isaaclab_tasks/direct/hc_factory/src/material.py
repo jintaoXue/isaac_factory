@@ -1,6 +1,7 @@
 from isaacsim.core.prims import RigidPrim
 from abc import abstractmethod
 from ..env_asset_cfg.cfg_material_product import CfgProductProcess, CfgProductOrder, CfgRegistrationInfos
+from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskGalleryClassified
 import copy
 import torch
 
@@ -32,6 +33,31 @@ class ProductMaterialManager:
         for material_batch in self.material_batch_list:
             material_batch.step(env_state_action_dict)
         return env_state_action_dict
+    
+    def update_material_batch_task_availability_mask(self, env_state_action_dict: dict) -> dict:
+        # mask for human availability for selection by human-robot machine allocator agent
+        mask = torch.zeros(len(self.material_batch_list), len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
+        mask[:, 0] = 1 # "none" task is always available
+        for material_batch, i in zip(self.material_batch_list, range(len(self.material_batch_list))):
+            product_type = material_batch.type_name
+            current_task = material_batch.state["current_task"]
+            one_ProcessTaskGallery = CfgProcessTaskGalleryClassified[product_type]
+            next_allowing_task_index = self.find_product_next_allowing_task_index(current_task, one_ProcessTaskGallery)
+            mask[i][next_allowing_task_index] = 1
+        env_state_action_dict["material"]["task_availability_mask"] = mask
+        return env_state_action_dict
+    
+    def find_product_next_allowing_task_index(self, current_task, one_ProcessTaskGallery):
+        # Use the ordered task list for the product to determine the next allowable task.
+        # If current_task is the last task in this product's gallery, return "none".
+        keys = list(one_ProcessTaskGallery.keys())
+        assert current_task in keys, f"Current task {current_task} not found in the product's process task gallery."
+        current_index = keys.index(current_task)
+        next_index = current_index + 1
+        if next_index >= len(keys):
+            return CfgProcessTaskGalleryInAll["none"]
+        next_task = keys[next_index]
+        return CfgProcessTaskGalleryInAll[next_task]
 
 class MaterialBatch:
     def __init__(self, idx_in_material_batch_list: int, cfg: dict, env_id: int, cuda_device: torch.device):

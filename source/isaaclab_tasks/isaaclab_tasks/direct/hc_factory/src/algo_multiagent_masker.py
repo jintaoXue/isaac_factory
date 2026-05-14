@@ -1,5 +1,5 @@
 from ..algo_cfg.cfg_multiagent import CfgProductSequencerAgent
-from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGallery
+from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
 from ..env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
 import torch
 
@@ -73,7 +73,7 @@ class ProductSelectorAgentMasker:
 class ProcessTaskPlannerAgentMasker:
     def __init__(self, cuda_device: torch.device) -> None:
         self.cuda_device = cuda_device
-        self.task_gallery = CfgProcessTaskGallery
+        self.task_gallery = CfgProcessTaskGalleryInAll
         self.parallel_producing_limit = HcVectorEnvCfg().single_env_parallel_producing_limit
 
     def generate_mask(self, env_state_action_dict) -> None:
@@ -105,7 +105,7 @@ class ProcessTaskPlannerAgentMasker:
         if task == "none":
             return True
         elif task == "logistic_for_pipe_cutting":
-            
+
 
         return False
 

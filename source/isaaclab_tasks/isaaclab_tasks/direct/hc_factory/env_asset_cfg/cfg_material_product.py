@@ -34,9 +34,9 @@ CfgProductProcess = {
         },
         "reset_state_template": {
             "key_variables": {},
-            "state": {
-                # task_step tracks the current production stage, indexed by CfgProcessTaskGallery (see cfg_process_task_gallery.py)
-                "task_step": "none",
+            "current_task": "none",
+            "substate": {
+                # task_step tracks the current production stage, indexed by CfgProcessTaskGalleryInAll (see cfg_process_task_gallery.py)
                 "product_00_pipe": {
                     "state": "raw_pipe",
                     "logistic_state": "in_storage",
