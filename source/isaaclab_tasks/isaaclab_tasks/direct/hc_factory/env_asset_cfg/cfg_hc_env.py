@@ -50,14 +50,9 @@ SingleEnvStateActionDictTemplate : dict = {
         "finished": {},
     },
     "agent_action_mask": {
-        "agent_A_product_sequencer": {},
-        "agent_B_product_selector": {
-            "mask": {},
-            #the same length of mask, including the currently producing products and the next product to be produced
-            # ["ProductWaterPipe", "None", "None", "None", "None", "ProductWaterPipe"] 
-            "products_to_check": list[str],
-        },
-        "agent_C_process_task_planner": {},
+        "agent_A_product_sequencer": torch.Tensor([]),
+        "agent_B_product_selector": torch.Tensor([]),
+        "agent_C_process_task_planner": torch.Tensor([]),
         #human: (upper_bound_num_human,) robot: (upper_bound_num_robot,)
         "agent_D_human_robot_allocator": {},
     }

@@ -68,7 +68,7 @@ class ProductSelectorAgentMasker:
         if next_product is not None and len(producing) < self.parallel_producing_limit:
             mask[self.parallel_producing_limit] = 1 # can select the next product to be produced
     
-        env_state_action_dict["agent_action_mask"]["agent_B_product_selector"]["mask"] = mask
+        env_state_action_dict["agent_action_mask"]["agent_B_product_selector"] = mask
         
 class ProcessTaskPlannerAgentMasker:
     def __init__(self, cuda_device: torch.device) -> None:
@@ -79,7 +79,7 @@ class ProcessTaskPlannerAgentMasker:
     def generate_mask(self, env_state_action_dict) -> None:
         # Output shape (self.parallel_producing_limit + 1, len(self.task_gallery)) mask for process task planning agent.
         # product_selector_mask shape (1 + self.parallel_producing_limit,)
-        product_selector_mask: torch.Tensor = env_state_action_dict["agent_action_mask"]["agent_B_product_selector"]["mask"]
+        product_selector_mask: torch.Tensor = env_state_action_dict["agent_action_mask"]["agent_B_product_selector"]
         producing_indexs : list = env_state_action_dict["progress"]["producing_indexs"]
         next_product_index : int = env_state_action_dict["progress"]["next_product_index"]
         #shape is (material_batch_upper_bound, len(CfgProcessTaskGalleryInAll))
@@ -88,8 +88,7 @@ class ProcessTaskPlannerAgentMasker:
         mask = torch.zeros((self.parallel_producing_limit + 1, len(self.task_gallery)), dtype=torch.int32, device=self.cuda_device)
         
         #expand dim and repeat to match the shape of task_mask_for_all_products
-        product_selector_mask_expanded = product_selector_mask.clone()
-        product_selector_mask_expanded = product_selector_mask_expanded.unsqueeze(1).expand(-1, len(self.task_gallery))
+        product_selector_mask_expanded = product_selector_mask.unsqueeze(1).expand(-1, len(self.task_gallery))
         # first check producing products
         for i in range(len(producing_indexs)): # including the next product to be produced
             index_in_material_batch = producing_indexs[i]
