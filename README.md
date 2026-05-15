@@ -78,6 +78,6 @@ Aligned with a 4-layer real-time factory operations stack (formal academic/indus
 - Product Sequencing Agent: determine the optimal production order from the current manufacturing request
 - Product Selector Agent: choose which product should be prioritized next for detailed task planning
 - Process Task Planning Agent: real-time planning of the next key process task for the selected product 
-- Human–Robot–Machine Allocation Agent: assign each planned task to the most suitable human, robot, or machine resource for execution
+- Human–Robot Allocation Agent: assign each planned task to the most suitable human, robot, or machine resource for execution
 
 #记录gantry的关节位置和local位置的相对偏移关系

@@ -30,17 +30,18 @@ class HumanManager:
         for human, i in zip(self.human_list, range(num_humans)):
             human.reset(env_state_action_dict, shuffled_init_points_in_map[i].unsqueeze(0))
         
-        self.update_human_availability_mask(env_state_action_dict)
+        self.update_task_availability_mask(env_state_action_dict)
+        self.update_self_availability_mask(env_state_action_dict)
 
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
         for human in self.human_list:
             human.step(env_state_action_dict)
-        self.update_human_availability_mask(env_state_action_dict)
+        self.update_task_availability_mask(env_state_action_dict)
         return env_state_action_dict
     
-    def update_human_availability_mask(self, env_state_action_dict: dict) -> dict:
+    def update_task_availability_mask(self, env_state_action_dict: dict) -> dict:
         # mask for human availability for selection by human-robot machine allocator agent
         mask = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
         mask[0] = 1 # "none" task is always available
@@ -49,6 +50,16 @@ class HumanManager:
                 mask[:] = 1
                 break
         env_state_action_dict["human"]["task_availability_mask"] = mask
+        return env_state_action_dict
+
+    def update_self_availability_mask(self, env_state_action_dict: dict) -> dict:
+        # mask for human availability
+        # shape (upper_bound_num_human,) 
+        mask = torch.zeros(self.upper_bound_num_human, dtype=torch.int32, device=self.cuda_device)
+        for human, i in zip(self.human_list, range(len(self.human_list))):
+            if human.state == "free":
+                mask[i] = 1
+        env_state_action_dict["human"]["self_availability_mask"] = mask
         return env_state_action_dict
 
     def _register_human_list(self):

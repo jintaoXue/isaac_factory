@@ -26,7 +26,7 @@ class ProductMaterialManager:
     def reset(self, env_state_action_dict: dict) -> dict:
         for material_batch in self.material_batch_list:
             material_batch.reset(env_state_action_dict)
-        self.update_material_batch_task_availability_mask(env_state_action_dict)
+        self.update_task_availability_mask(env_state_action_dict)
         return env_state_action_dict
 
     def generate_order_not_started_dict(self, env_state_action_dict: dict) -> list:
@@ -41,10 +41,10 @@ class ProductMaterialManager:
     def step(self, env_state_action_dict: dict) -> dict:
         for material_batch in self.material_batch_list:
             material_batch.step(env_state_action_dict)
-        self.update_material_batch_task_availability_mask(env_state_action_dict)
+        self.update_task_availability_mask(env_state_action_dict)
         return env_state_action_dict
     
-    def update_material_batch_task_availability_mask(self, env_state_action_dict: dict) -> dict:
+    def update_task_availability_mask(self, env_state_action_dict: dict) -> dict:
         # CfgProcessTaskGalleryInAll. All product process tasks share a common encoded index space defined by CfgProcessTaskGallery.
         # CfgProcessTaskGalleryClassified. This contains the task gallery for all product types; each product type has its own process gallery. 
         mask = torch.zeros(len(self.material_batch_list), len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)

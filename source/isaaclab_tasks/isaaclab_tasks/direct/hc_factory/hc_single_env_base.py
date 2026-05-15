@@ -123,3 +123,4 @@ class HcSingleEnvBase():
         action_product_sequencing = action["product_sequencing"]
         if action_product_sequencing:   
             self.env_state_action_dict["progress"]["next_product"] = action_product_sequencing
+        

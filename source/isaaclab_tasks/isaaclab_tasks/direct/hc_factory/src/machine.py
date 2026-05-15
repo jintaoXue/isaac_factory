@@ -25,13 +25,13 @@ class MachineManager:
     def reset(self, env_state_action_dict: dict) -> dict:
         for machine in self.iter_machines():
             machine.reset(env_state_action_dict)
-        self.update_machine_availability_mask(env_state_action_dict)
+        self.update_task_availability_mask(env_state_action_dict)
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
         for machine in self.iter_machines():
             machine.step(env_state_action_dict)
-        self.update_machine_availability_mask(env_state_action_dict)
+        self.update_task_availability_mask(env_state_action_dict)
         return env_state_action_dict
     
     def iter_machines(self):
@@ -47,7 +47,7 @@ class MachineManager:
             self.num08_workbench,
         )
 
-    def update_machine_availability_mask(self, env_state_action_dict: dict) -> dict:
+    def update_task_availability_mask(self, env_state_action_dict: dict) -> dict:
         # mask for machine availability for selection by human-robot machine allocator agent
         # output shape (len(CfgProcessTaskGalleryInAll))
         mask = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)

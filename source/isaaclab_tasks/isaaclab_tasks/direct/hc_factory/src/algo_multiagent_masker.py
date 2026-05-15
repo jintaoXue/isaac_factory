@@ -88,7 +88,7 @@ class ProcessTaskPlannerAgentMasker:
         mask = torch.zeros((self.parallel_producing_limit + 1, len(self.task_gallery)), dtype=torch.int32, device=self.cuda_device)
         
         #expand dim and repeat to match the shape of task_mask_for_all_products
-        product_selector_mask_expanded = copy.deepcopy(product_selector_mask)
+        product_selector_mask_expanded = product_selector_mask.clone()
         product_selector_mask_expanded = product_selector_mask_expanded.unsqueeze(1).expand(-1, len(self.task_gallery))
         # first check producing products
         for i in range(len(producing_indexs)): # including the next product to be produced
@@ -111,11 +111,9 @@ class ProcessTaskPlannerAgentMasker:
 
         # First, perform bitwise AND on human, robot, machine masks
         combined_mask = human_task_availability_mask & robot_task_availability_mask & machine_task_availability_mask
-        
         # material_task_availability_mask is 2D, expand combined_mask to match dimensions
         num_batches = material_task_availability_mask.shape[0]
         expanded_combined = combined_mask.unsqueeze(0).expand(num_batches, -1)
-        
         # Perform bitwise AND with material mask
         task_mask_for_all_product = expanded_combined & material_task_availability_mask
     
@@ -127,5 +125,12 @@ class HumanRobotMachineAllocatorAgentMasker:
 
     def generate_mask(self, env_state_action_dict) -> None:
         #mask for human-robot-machine allocation agent
-        pass
+        #output shape (len(CfgProcessTaskGalleryInAll),)
+        human_mask = env_state_action_dict["human"]["self_availability_mask"]
+        robot_mask = env_state_action_dict["robot"]["self_availability_mask"]
+
+        env_state_action_dict["agent_action_mask"]["agent_D_human_robot_allocator"] = {
+            "human_mask": human_mask,
+            "robot_mask": robot_mask,
+        }
 

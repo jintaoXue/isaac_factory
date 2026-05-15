@@ -28,11 +28,16 @@ class RobotManager:
         shuffled_init_points_in_map = self.optional_init_points_in_map[perm]
         for robot, i in zip(self.robot_list, range(num_robots)):
             robot.reset(env_state_action_dict, shuffled_init_points_in_map[i].unsqueeze(0))
+        
+        self.update_task_availability_mask(env_state_action_dict)
+        self.update_self_availability_mask(env_state_action_dict)
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
         for robot in self.robot_list:
             robot.step(env_state_action_dict)
+        self.update_task_availability_mask(env_state_action_dict)
+        self.update_self_availability_mask(env_state_action_dict)
         return env_state_action_dict
 
     def _register_robot_list(self):
@@ -41,10 +46,25 @@ class RobotManager:
             for idx in range(n):
                 self.robot_list.append(cls(idx, self.cfg_robot[type_name], self.env_id, self.cuda_device))
 
-    def update_robot_availability_mask(self, env_state_action_dict: dict) -> dict:
+    def update_task_availability_mask(self, env_state_action_dict: dict) -> dict:
         # mask for robot availability for selection by human-robot machine allocator agent
-        mask = torch.ones(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
+        mask = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
+        mask[0] = 1 # "none" task is always available
+        for robot, i in zip(self.robot_list, range(len(self.robot_list))):
+            if robot.state == "free":
+                mask[:] = 1
+                break
         env_state_action_dict["robot"]["task_availability_mask"] = mask
+        return env_state_action_dict
+
+    def update_self_availability_mask(self, env_state_action_dict: dict) -> dict:
+        # mask for robot availability
+        # shape (upper_bound_num_robot,) 
+        mask = torch.zeros(self.upper_bound_num_robot, dtype=torch.int32, device=self.cuda_device)
+        for robot, i in zip(self.robot_list, range(len(self.robot_list))):
+            if robot.state == "free":
+                mask[i] = 1
+        env_state_action_dict["robot"]["self_availability_mask"] = mask
         return env_state_action_dict
 
 

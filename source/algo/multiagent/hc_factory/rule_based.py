@@ -13,7 +13,7 @@ from rl_games.algos_torch import torch_ext
 from .agent_A_product_sequencer import ProductSequencingAgent
 from .agent_B_product_selector import ProductSelectionAgent
 from .agent_C_process_task_planner import ProcessTaskPlanningAgent
-from .agent_D_human_robot_machine_allocator import HumanRobotMachineAllocationAgent
+from .agent_D_human_robot_allocator import HumanRobotMachineAllocationAgent
 
 
 class RuleBasedMultiAgent():
@@ -31,7 +31,7 @@ class RuleBasedMultiAgent():
         self.agent_A_product_sequencer = ProductSequencingAgent()
         self.agent_B_product_selector = ProductSelectionAgent()
         self.agent_C_process_task_planner = ProcessTaskPlanningAgent()
-        self.agent_D_human_robot_machine_allocator = HumanRobotMachineAllocationAgent()
+        self.agent_D_human_robot_allocator = HumanRobotMachineAllocationAgent()
 
     def act(self, obs):
         # 'obs' is a list where each element is a dictionary representing the state of a single environment instance.
@@ -43,7 +43,7 @@ class RuleBasedMultiAgent():
             product_sequencing_action = self.agent_A_product_sequencer.act(obs[env_id])
             product_selection_action = self.agent_B_product_selector.act(obs[env_id], product_sequencing_action)
             process_task_planning_action = self.agent_C_process_task_planner.act(obs[env_id], product_selection_action)
-            human_robot_machine_allocation_action = self.agent_D_human_robot_machine_allocator.act(obs[env_id], 
+            human_robot_machine_allocation_action = self.agent_D_human_robot_allocator.act(obs[env_id], 
                                                         product_selection_action, process_task_planning_action)
             action = {}
             action_extra = {}

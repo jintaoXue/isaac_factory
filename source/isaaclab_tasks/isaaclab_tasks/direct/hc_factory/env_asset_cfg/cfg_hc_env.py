@@ -58,7 +58,8 @@ SingleEnvStateActionDictTemplate : dict = {
             "products_to_check": list[str],
         },
         "agent_C_process_task_planner": {},
-        "agent_D_human_robot_machine_allocator": {},
+        #human: (upper_bound_num_human,) robot: (upper_bound_num_robot,)
+        "agent_D_human_robot_allocator": {},
     }
 }
 
