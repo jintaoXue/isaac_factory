@@ -49,12 +49,16 @@ class MachineManager:
 
     def update_machine_availability_mask(self, env_state_action_dict: dict) -> dict:
         # mask for machine availability for selection by human-robot machine allocator agent
+        # output shape (len(CfgProcessTaskGalleryInAll))
         mask = torch.zeros(self.num_machine, dtype=torch.int32, device=self.cuda_device)
         for machine, i in zip(self.iter_machines(), range(self.num_machine)):
             state : list = machine.state
+            task_name = self.get_machine_corresponding_task(machine.)
             if "free" in state:
                 mask[i] = 1
         env_state_action_dict["machine"]["task_availability_mask"] = mask
+
+    def get_machine_corresponding_task(self, task: str) -> Machine:
 
 
 class Machine:
