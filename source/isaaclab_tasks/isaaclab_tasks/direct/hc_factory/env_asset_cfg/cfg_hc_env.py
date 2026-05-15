@@ -36,11 +36,18 @@ SingleEnvStateActionDictTemplate : dict = {
     "articulations": {},
     "rigid_prims": {},
     "progress": {
+        #product_type: quantity, e.g., "ProductWaterPipe": 5
         "product_order": {},
-        "not_started": [],
+        #products that have not started production, with the corresponding material batch index, e.g., "ProductWaterPipe": [0, 1, 2, 3, 4]
+        "not_started": {},
         "next_product": None,
+        "next_product_index": None,
         "producing": [],
-        "finished": [],
+        #producing_indexs, value is the index in the material batch list in material manager, 
+        # e.g., [0, 1]
+        "producing_indexs": [],
+        #finished products with indexs list, e.g., "ProductWaterPipe": [0, 1, 2]
+        "finished": {},
     },
     "agent_action_mask": {
         "agent_A_product_sequencer": {},
@@ -126,6 +133,7 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     single_env_parallel_producing_limit = 5
     human_number_upper_bound = 10
     robot_upper_bound = 2
+    material_batch_upper_bound = 5
 
 
 

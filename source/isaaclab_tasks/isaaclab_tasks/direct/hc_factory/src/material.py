@@ -26,16 +26,27 @@ class ProductMaterialManager:
     def reset(self, env_state_action_dict: dict) -> dict:
         for material_batch in self.material_batch_list:
             material_batch.reset(env_state_action_dict)
-        env_state_action_dict["product_order"] = self.cfg_product_order
+        self.update_material_batch_task_availability_mask(env_state_action_dict)
         return env_state_action_dict
+
+    def generate_order_not_started_dict(self, env_state_action_dict: dict) -> list:
+        # Implementation for generating the not started order dictionary
+        not_started_dict = {}
+        for product_type, nums in self.cfg_product_order.items():
+            find_indexs = [i for i, material_batch in enumerate(self.material_batch_list) if material_batch.type_name == product_type]
+            find_indexs = find_indexs[:nums] # in case there are more material batches than the order quantity for this product type
+            not_started_dict[product_type] = find_indexs
+        return not_started_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
         for material_batch in self.material_batch_list:
             material_batch.step(env_state_action_dict)
+        self.update_material_batch_task_availability_mask(env_state_action_dict)
         return env_state_action_dict
     
     def update_material_batch_task_availability_mask(self, env_state_action_dict: dict) -> dict:
-        # mask for human availability for selection by human-robot machine allocator agent
+        # CfgProcessTaskGalleryInAll. All product process tasks share a common encoded index space defined by CfgProcessTaskGallery.
+        # CfgProcessTaskGalleryClassified. This contains the task gallery for all product types; each product type has its own process gallery. 
         mask = torch.zeros(len(self.material_batch_list), len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
         mask[:, 0] = 1 # "none" task is always available
         for material_batch, i in zip(self.material_batch_list, range(len(self.material_batch_list))):

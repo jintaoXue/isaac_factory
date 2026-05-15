@@ -2,6 +2,7 @@ from ..algo_cfg.cfg_multiagent import CfgProductSequencerAgent
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
 from ..env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
 import torch
+import copy
 
 class AlgoMultiAgentMasker:
     def __init__(self, cuda_device: torch.device) -> None:
@@ -41,8 +42,8 @@ class ProductSequencerAgentMasker:
         mask = torch.zeros(self.num_product_types, dtype=torch.int32, device=self.cuda_device)
         if next_product is None and len(not_started.keys()) > 0:
             #can select the product in not_started
-            for product in not_started.keys():
-                mask[self.product_types[product]] = 1
+            for product_type in not_started.keys():
+                mask[self.product_types[product_type]] = 1
         env_state_action_dict["agent_action_mask"]["agent_A_product_sequencer"] = mask
 
 class ProductSelectorAgentMasker:
@@ -57,20 +58,18 @@ class ProductSelectorAgentMasker:
         producing : list[str] = env_state_action_dict["progress"]["producing"]
         next_product : str = env_state_action_dict["progress"]["next_product"]
         mask = torch.zeros(self.parallel_producing_limit + 1, dtype=torch.int32, device=self.cuda_device)
-        products_to_check = ["None"] * (self.parallel_producing_limit + 1)
+        
         for i in range(len(producing)):
             mask[i] = 1
-            products_to_check[i] = producing[i]
+            
         # The last position in the mask is for selecting the next product to be produced, 
         # which can only be selected when there are available slots for producing 
         # and there is a next product to be produced.
         if next_product is not None and len(producing) < self.parallel_producing_limit:
             mask[self.parallel_producing_limit] = 1 # can select the next product to be produced
-            products_to_check[self.parallel_producing_limit] = next_product
-        
+    
         env_state_action_dict["agent_action_mask"]["agent_B_product_selector"]["mask"] = mask
-        env_state_action_dict["agent_action_mask"]["agent_B_product_selector"]["products_to_check"] = products_to_check
-            
+        
 class ProcessTaskPlannerAgentMasker:
     def __init__(self, cuda_device: torch.device) -> None:
         self.cuda_device = cuda_device
@@ -79,39 +78,48 @@ class ProcessTaskPlannerAgentMasker:
 
     def generate_mask(self, env_state_action_dict) -> None:
         # Output shape (self.parallel_producing_limit + 1, len(self.task_gallery)) mask for process task planning agent.
-
+        # product_selector_mask shape (1 + self.parallel_producing_limit,)
         product_selector_mask: torch.Tensor = env_state_action_dict["agent_action_mask"]["agent_B_product_selector"]["mask"]
+        producing_indexs : list = env_state_action_dict["progress"]["producing_indexs"]
+        next_product_index : int = env_state_action_dict["progress"]["next_product_index"]
+        #shape is (material_batch_upper_bound, len(CfgProcessTaskGalleryInAll))
+        task_mask_for_all_products = self.get_task_mask_for_all_products(env_state_action_dict)
         # the same length as product_selector_mask, including the currently producing products and the next product to be produced
-        products_to_check : list[str] = env_state_action_dict["agent_action_mask"]["agent_B_product_selector"]["products_to_check"] 
         mask = torch.zeros((self.parallel_producing_limit + 1, len(self.task_gallery)), dtype=torch.int32, device=self.cuda_device)
-
-        for i in range(len(product_selector_mask)):
-            if product_selector_mask[i] == 0:
-                continue
-            assert products_to_check[i] != "None", "The product to check for process task planning should not be None when the corresponding product selection mask is 1"
-            mask[i] = self._task_mask_for_one_product(products_to_check[i], env_state_action_dict)
+        
+        #expand dim and repeat to match the shape of task_mask_for_all_products
+        product_selector_mask_expanded = copy.deepcopy(product_selector_mask)
+        product_selector_mask_expanded = product_selector_mask_expanded.unsqueeze(1).expand(-1, len(self.task_gallery))
+        # first check producing products
+        for i in range(len(producing_indexs)): # including the next product to be produced
+            index_in_material_batch = producing_indexs[i]
+            mask[i] = task_mask_for_all_products[index_in_material_batch] & product_selector_mask_expanded[i]
+        if next_product_index is not None:
+            mask[self.parallel_producing_limit] = task_mask_for_all_products[next_product_index] & product_selector_mask_expanded[self.parallel_producing_limit]
 
         env_state_action_dict["agent_action_mask"]["agent_C_process_task_planner"] = mask
 
-    def _task_mask_for_one_product(self, product: str, env_state_action_dict: dict) -> torch.Tensor:
-        task_mask = torch.zeros(len(self.task_gallery), dtype=torch.int32, device=self.cuda_device)
-        for i, task in enumerate(self.task_gallery):
-            if self._check_task_ready(env_state_action_dict, product, task):
-                task_mask[i] = 1
-        return task_mask
-
-    def _check_task_ready(self, env_state_action_dict: dict, product: str, task : str) -> bool:
-        # TODO: generate task mask rules based on product state, required materials, and process order.
-        assert product == "ProductWaterPipe", "Currently only ProductWaterPipe is supported in ProcessTaskPlannerAgentMasker"
+    def get_task_mask_for_all_products(self, env_state_action_dict: dict) -> torch.Tensor:
+        #shape of human task_availability_mask (len(CfgProcessTaskGalleryInAll),)
+        human_task_availability_mask = env_state_action_dict["human"]["task_availability_mask"]
+        #shape of machine task_availability_mask (len(CfgProcessTaskGalleryInAll),)
+        machine_task_availability_mask = env_state_action_dict["machine"]["task_availability_mask"]
+        #shape of robot task_availability_mask (len(CfgProcessTaskGalleryInAll),)
+        robot_task_availability_mask = env_state_action_dict["robot"]["task_availability_mask"]
+        #shape of material_task_availability_mask (upper_bound_num_material_batch, len(CfgProcessTaskGalleryInAll))
         material_task_availability_mask = env_state_action_dict["material"]["task_availability_mask"]
+
+        # First, perform bitwise AND on human, robot, machine masks
+        combined_mask = human_task_availability_mask & robot_task_availability_mask & machine_task_availability_mask
+        
+        # material_task_availability_mask is 2D, expand combined_mask to match dimensions
+        num_batches = material_task_availability_mask.shape[0]
+        expanded_combined = combined_mask.unsqueeze(0).expand(num_batches, -1)
+        
+        # Perform bitwise AND with material mask
+        task_mask_for_all_product = expanded_combined & material_task_availability_mask
     
-    def _check_material_ready(self,)
-
-        return False
-
-
-
-
+        return task_mask_for_all_product
 
 class HumanRobotMachineAllocatorAgentMasker:
     def __init__(self, cuda_device: torch.device) -> None:

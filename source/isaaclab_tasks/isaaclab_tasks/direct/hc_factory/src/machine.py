@@ -50,15 +50,16 @@ class MachineManager:
     def update_machine_availability_mask(self, env_state_action_dict: dict) -> dict:
         # mask for machine availability for selection by human-robot machine allocator agent
         # output shape (len(CfgProcessTaskGalleryInAll))
-        mask = torch.zeros(self.num_machine, dtype=torch.int32, device=self.cuda_device)
+        mask = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
         for machine, i in zip(self.iter_machines(), range(self.num_machine)):
             state : list = machine.state
-            task_name = self.get_machine_corresponding_task(machine.)
+            task_names : list = machine.corresponding_process_task
             if "free" in state:
-                mask[i] = 1
+                for task_name in task_names:
+                    task_index = CfgProcessTaskGalleryInAll[task_name]
+                    mask[task_index] = 1
         env_state_action_dict["machine"]["task_availability_mask"] = mask
 
-    def get_machine_corresponding_task(self, task: str) -> Machine:
 
 
 class Machine:
@@ -72,6 +73,7 @@ class Machine:
         self.num_workstations = cfg["num_workstations"]
         self.num_registration_parts = cfg["num_registration_parts"]
         self.registration_infos = cfg["registration_infos"]
+        self.corresponding_process_task = cfg["corresponding_process_task"]
         self.state_gallery = cfg["state_gallery"]
         self.reset_state = copy.deepcopy(cfg["reset_state"])
         ### dynmaic variables

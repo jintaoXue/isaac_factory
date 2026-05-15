@@ -69,8 +69,7 @@ class HcSingleEnvBase():
     def reset_env(self):
         for m in self.iter_managers():
             m.reset(self.env_state_action_dict)
-        #production progress reset
-        self.env_state_action_dict["progress"]["not_started"] = copy.deepcopy(self.product_material_manager.cfg_product_order)
+        self.reset_progress_info()
         self.algo_multiagent_masker.generate_agents_mask(self.env_state_action_dict)
         return self.env_state_action_dict
 
@@ -95,14 +94,32 @@ class HcSingleEnvBase():
         action_product_selection = action["product_selection"]
         action_process_task_planning = action["process_task_planning"]
         action_human_robot_machine_allocation = action["human_robot_machine_allocation"]
+
         #TODO
         if action_product_sequencing:
-            self.env_state_action_dict["progress"]["next_product"] = action_product_sequencing
+            pass
         if action_process_task_planning:
             pass
         if action_human_robot_machine_allocation:
             pass
         for m in self.iter_managers():
             m.step(self.env_state_action_dict)
+
+        self.update_progress_info()
         self.algo_multiagent_masker.generate_agents_mask(self.env_state_action_dict)
         return
+
+    def reset_progress_info(self) -> dict:
+        #production progress reset
+        self.env_state_action_dict["progress"]["product_order"] = copy.deepcopy(self.product_material_manager.cfg_product_order)
+        self.env_state_action_dict["progress"]["not_started"] = self.product_material_manager.generate_order_not_started_dict(self.env_state_action_dict)
+        self.env_state_action_dict["progress"]["next_product"] = None
+        self.env_state_action_dict["progress"]["next_product_index"] = None
+        self.env_state_action_dict["progress"]["producing"] = []
+        self.env_state_action_dict["progress"]["producing_indexs"] = []
+        self.env_state_action_dict["progress"]["finished"] = {}
+
+    def update_progress_info(self, action) -> dict:
+        action_product_sequencing = action["product_sequencing"]
+        if action_product_sequencing:   
+            self.env_state_action_dict["progress"]["next_product"] = action_product_sequencing
