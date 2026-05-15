@@ -20,5 +20,6 @@ class HumanRobotMachineAllocationAgent(AgentBase):
         
         human_availability_mask = env_state_action_dict["human"]["self_availability_mask"]
         robot_availability_mask = env_state_action_dict["robot"]["self_availability_mask"]
+        
         return None
 
