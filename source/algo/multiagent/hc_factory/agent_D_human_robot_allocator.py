@@ -20,6 +20,17 @@ class HumanRobotMachineAllocationAgent(AgentBase):
         
         human_availability_mask = env_state_action_dict["human"]["self_availability_mask"]
         robot_availability_mask = env_state_action_dict["robot"]["self_availability_mask"]
-        
-        return None
+        count = (process_task_planning_action == 1).sum().item()
+        assert count == 1, "There should be only one task selected for human-robot-machine allocation, but got multiple."
+        if process_task_planning_action[0] == 1: # "none" task is selected, no allocation needed
+            action = {
+                "human": torch.zeros((human_availability_mask.shape[0]), dtype=torch.int32, device=self.cuda_device),
+                "robot": torch.zeros((robot_availability_mask.shape[0]), dtype=torch.int32, device=self.cuda_device),
+            }
+        else:
+            action = {
+                "human": self.keep_first_one(human_availability_mask) , # allocate the task to the first available human
+                "robot": self.keep_first_one(robot_availability_mask), # allocate the task to the first available robot
+            }
+        return action
 
