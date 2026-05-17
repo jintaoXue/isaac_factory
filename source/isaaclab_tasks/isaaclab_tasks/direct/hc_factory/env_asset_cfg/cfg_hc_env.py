@@ -55,6 +55,12 @@ SingleEnvStateActionDictTemplate : dict = {
         "agent_C_process_task_planner": torch.Tensor([]),
         #human: (upper_bound_num_human,) robot: (upper_bound_num_robot,)
         "agent_D_human_robot_allocator": {},
+    },
+    "action": {
+        "product_sequencing": torch.Tensor([]),
+        "product_selection": torch.Tensor([]),
+        "process_task_planning": torch.Tensor([]),
+        "human_robot_allocation": torch.Tensor([]),
     }
 }
 
