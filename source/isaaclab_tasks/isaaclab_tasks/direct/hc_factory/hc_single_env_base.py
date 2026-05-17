@@ -91,12 +91,12 @@ class HcSingleEnvBase():
 
     def step_env_logic(self, action: dict | None = None, action_extra: list[dict] | None = None) -> None:
         
-
+        self.env_state_action_dict['action'] = action
 
         for m in self.iter_managers():
             m.step(self.env_state_action_dict)
 
-        self.update_progress_info(action)
+        self.update_progress_info()
         self.algo_multiagent_masker.generate_agents_mask(self.env_state_action_dict)
         return
 
@@ -110,7 +110,8 @@ class HcSingleEnvBase():
         self.env_state_action_dict["progress"]["producing_indexs"] = []
         self.env_state_action_dict["progress"]["finished"] = {}
 
-    def update_progress_info(self, action) -> dict:
+    def update_progress_info(self) -> dict:
+        action = self.env_state_action_dict['action']
         action_product_sequencing = action["product_sequencing"]
         if action_product_sequencing:   
             self.env_state_action_dict["progress"]["next_product"] = action_product_sequencing
