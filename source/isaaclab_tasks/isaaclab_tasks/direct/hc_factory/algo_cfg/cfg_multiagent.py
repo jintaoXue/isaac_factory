@@ -9,13 +9,13 @@ CfgProductSequencerAgent = {
     "product_types": {**{k: i for i, k in enumerate(CfgProductProcess.keys())}},
 }
 
-CfgProductSelectorAgent = {
+# CfgProductSelectorAgent = {
 
-}
+# }
 
-CfgProcessTaskPlannerAgent = {
+# CfgProcessTaskPlannerAgent = {
     
-}
+# }
        
-CfgHumanRobotMachineAllocatorAgent = {
-}
+# CfgHumanRobotMachineAllocatorAgent = {
+# }

@@ -29,15 +29,6 @@ class ProductMaterialManager:
         self.update_task_availability_mask(env_state_action_dict)
         return env_state_action_dict
 
-    def generate_order_not_started_dict(self, env_state_action_dict: dict) -> list:
-        # Implementation for generating the not started order dictionary
-        not_started_dict = {}
-        for product_type, nums in self.cfg_product_order.items():
-            find_indexs = [i for i, material_batch in enumerate(self.material_batch_list) if material_batch.type_name == product_type]
-            find_indexs = find_indexs[:nums] # in case there are more material batches than the order quantity for this product type
-            not_started_dict[product_type] = find_indexs
-        return not_started_dict
-
     def step(self, env_state_action_dict: dict) -> dict:
         for material_batch in self.material_batch_list:
             material_batch.step(env_state_action_dict)

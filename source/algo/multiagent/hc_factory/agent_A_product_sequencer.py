@@ -23,10 +23,9 @@ class ProductSequencingAgent(AgentBase):
         self.cuda_device = cuda_device
 
     def act(self, env_state_action_dict: dict) -> torch.Tensor | None:
-        # mask is a tensor shaped (1 + num_product_types,)
+        # mask is a tensor shaped (num_product_types,)
         # Each entry is binary: 1 means the corresponding product type may be selected,
         # 0 means it is not eligible right now.
-        # The extra first entry mask[0] is reserved for not selecting any product for production in current step.
         mask: torch.Tensor = env_state_action_dict["agent_action_mask"]["agent_A_product_sequencer"]
         assert mask is not None, "Agent action mask for agent_A_product_sequencer is None"
         action = self.keep_first_one(mask)

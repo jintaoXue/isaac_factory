@@ -40,6 +40,7 @@ SingleEnvStateActionDictTemplate : dict = {
         "product_order": {},
         #products that have not started production, with the corresponding material batch index, e.g., "ProductWaterPipe": [0, 1, 2, 3, 4]
         "not_started": {},
+        # str, for example 'ProductWaterPipe'
         "next_product": None,
         "next_product_index": None,
         "producing": [],
