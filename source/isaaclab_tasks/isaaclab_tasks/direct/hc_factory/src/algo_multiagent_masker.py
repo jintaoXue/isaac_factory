@@ -13,7 +13,13 @@ class AlgoMultiAgentMasker:
         self.agent_C_Process_task_planning = ProcessTaskPlannerAgentMasker(self.cuda_device)
         self.agent_D_Human_robot_machine_allocation = HumanRobotMachineAllocatorAgentMasker(self.cuda_device)
 
-    def generate_agents_mask(self, env_state_action_dict) -> dict:
+    def reset(self, env_state_action_dict):
+        return self.generate_agents_mask(env_state_action_dict)
+
+    def step(self, env_state_action_dict):
+        return self.generate_agents_mask(env_state_action_dict)
+
+    def generate_agents_mask(self, env_state_action_dict):
         for agent in self.iter_agents():
             agent.generate_mask(env_state_action_dict)
 
