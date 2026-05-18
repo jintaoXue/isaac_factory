@@ -89,15 +89,12 @@ class TaskManager:
         #shape is (upper_bound_num_robot,)
         action_robot = action_human_robot_allocation["robot"]
         decoded_action = {"human": "none", "human_index": "none", "robot": "none", "robot_index" : "none"}
-        if action_human.sum() == 0 and action_robot.sum() == 0:
-            return decoded_action
-        else:
-            if action_human.sum() == 0:
-                decoded_action["human"] = "none"
-            else:
-                decoded_action["human"] = self.inverse_index_to_human_name[action_human.nonzero()[0][0]]
-            if action_robot.sum() == 0:
-                decoded_action["robot"] = "none"
-            else:
-                decoded_action["robot"] = self.inverse_index_to_robot_name[action_robot.nonzero()[0][0]]
+        if action_human.sum() != 0:
+            _index = action_human.nonzero()[0][0]
+            decoded_action["human"] = self.inverse_index_to_human_name[_index]
+            decoded_action["human_index"] = _index
+        if action_robot.sum() != 0:
+            _index = action_robot.nonzero()[0][0]
+            decoded_action["robot"] = self.inverse_index_to_robot_name[_index]
+            decoded_action["robot_index"] = _index
         return decoded_action
