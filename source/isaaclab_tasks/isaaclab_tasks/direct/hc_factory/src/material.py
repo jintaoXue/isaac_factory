@@ -151,6 +151,7 @@ class MaterialBatch:
         return {
             "type_name": self.type_name,
             "type_id": self.type_id,
+            "idx": self.idx,
         }
 
     @abstractmethod

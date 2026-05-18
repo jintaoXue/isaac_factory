@@ -49,6 +49,7 @@ SingleEnvStateActionDictTemplate : dict = {
         "producing_indexs": [],
         #finished products with indexs list, e.g., "ProductWaterPipe": [0, 1, 2]
         "finished": {},
+        "ongoing_task_records": {},
     },
     "agent_action_mask": {
         "agent_A_product_sequencer": torch.Tensor([]),
@@ -62,7 +63,7 @@ SingleEnvStateActionDictTemplate : dict = {
         "product_selection": torch.Tensor([]),
         "process_task_planning": torch.Tensor([]),
         "human_robot_allocation": torch.Tensor([]),
-    }
+    },
 }
 
 
