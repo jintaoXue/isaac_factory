@@ -84,9 +84,11 @@ class TaskManager:
     
     def decode_action_human_robot_allocation(self, env_state_action_dict):
         action_human_robot_allocation = env_state_action_dict["action"]["human_robot_allocation"]
+        #shape is (upper_bound_num_human,)
         action_human = action_human_robot_allocation["human"]
+        #shape is (upper_bound_num_robot,)
         action_robot = action_human_robot_allocation["robot"]
-        decoded_action = {"human": "none", "robot": "none"}
+        decoded_action = {"human": "none", "human_index": "none", "robot": "none", "robot_index" : "none"}
         if action_human.sum() == 0 and action_robot.sum() == 0:
             return decoded_action
         else:
