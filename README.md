@@ -81,3 +81,5 @@ Aligned with a 4-layer real-time factory operations stack (formal academic/indus
 - Human–Robot Allocation Agent: assign each planned task to the most suitable human, robot, or machine resource for execution
 
 #记录gantry的关节位置和local位置的相对偏移关系
+
+#when to set processed_task_record["task_done"] = True?

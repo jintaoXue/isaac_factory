@@ -56,7 +56,7 @@ class HcSingleEnvBase():
         self.machine_manager = MachineManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.human_manager = HumanManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.robot_manager = RobotManager(env_id=self.env_id, cuda_device=self.cuda_device)
-        self.route_manager = RouteManagerVectorEnv(env_id=self.env_id, cuda_device=self.cuda_device)
+        self.route_manager = RouteManagerVectorEnv(cuda_device=self.cuda_device)
 
     def iter_managers(self):
         return (

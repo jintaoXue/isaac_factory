@@ -31,7 +31,13 @@ class ProcessTaskPlanningAgent(AgentBase):
         else:
             assert count == 1, "There should be only one product selected for process task planning, but got multiple."
             mask = task_mask_for_products[product_selection_action.nonzero()[0][0]] # get the task mask for the selected product
-            #select the first available task for the selected product according to the task mask
-            action = self.keep_first_one(mask)
+            if mask.sum() == 1:
+                #only "none" task is available for the selected product
+                action = torch.zeros((task_mask_for_products.shape[1]), dtype=torch.int32, device=self.cuda_device)
+                action[0] = 1
+            else:
+                #select the second available task for the selected product according to the task mask
+                mask[0] = 0 #set "none" task is not available
+                action = self.keep_first_one(mask)
         return action
 

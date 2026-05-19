@@ -98,6 +98,10 @@ class HcViewerCfg(ViewerCfg):
     eye: tuple[float, float, float] = (60, -25, 100)
     lookat: tuple[float, float, float] = (60, -45, 10)
 
+    #Number envs = 1, look at env_0
+    eye: tuple[float, float, float] = (0, 30, 100)
+    lookat: tuple[float, float, float] = (0, 10, 10)
+
 # @configclass
 # class HcSingleEnvCfg():
 

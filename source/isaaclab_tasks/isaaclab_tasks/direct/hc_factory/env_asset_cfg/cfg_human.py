@@ -17,7 +17,13 @@ CfgHuman = {
             2: "working",
             3: "resetting",
         },
-        "reset_state": "free",
+        "reset_state": {
+            "key_variables": {
+                "type_name": None,
+                "idx": None,
+            },
+            "state": "free",
+        },
     }
 }
 

@@ -6,8 +6,7 @@ import torch
 
 
 class RouteManagerVectorEnv:
-    def __init__(self, env_id: int, cuda_device: torch.device):
-        self.env_id = env_id
+    def __init__(self, cuda_device: torch.device):
         self.cuda_device = cuda_device
         self.cfg_route = CfgRoute
         self.human_path = Path(self.cfg_route["routes_path_human"]).expanduser()

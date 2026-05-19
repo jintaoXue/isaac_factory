@@ -6,13 +6,13 @@ import torch
 import copy
 
 class TaskManager:
-    def __init__(self, env_id: int, cuda_device: torch.device):
-        self.env_id = env_id
+    def __init__(self, cuda_device: torch.device):
         self.cuda_device = cuda_device
         self.cfg_storage = CfgStorage
-        self.decode_action_to_task_records = {
-            "product_selection": {"product": "none", "product_index" : "none"},
+        self.decode_action_to_task_record = {
+            "product_selection": {"product": "none", "product_index" : "none", "new_product_selected": False},
             "process_task_planning": {"task": "none", "task_index" : 0},
+            "human_robot_allocation": {"human": "none", "human_index": "none", "robot": "none", "robot_index" : "none"}
         }
         self.inverse_index_to_task_name = {v: k for k, v in CfgProcessTaskGalleryInAll.items()}
 
@@ -30,23 +30,79 @@ class TaskManager:
     def step(self, env_state_action_dict: dict) -> dict:
 
         self.decode_action_product_sequencing(env_state_action_dict)
-        self.decode_action_to_task_records["product_selection"] = self.decode_action_product_selection(env_state_action_dict)
-        self.decode_action_to_task_records["process_task_planning"] = self.decode_action_process_task_planning(env_state_action_dict)
-        self.decode_action_to_task_records["human_robot_allocation"] = self.decode_action_human_robot_allocation(env_state_action_dict)
-
+        self.decode_action_to_task_record["product_selection"] = self.decode_action_product_selection(env_state_action_dict)
+        self.decode_action_to_task_record["process_task_planning"] = self.decode_action_process_task_planning(env_state_action_dict)
+        self.decode_action_to_task_record["human_robot_allocation"] = self.decode_action_human_robot_allocation(env_state_action_dict)
+        self.step_task_records(env_state_action_dict)
         return env_state_action_dict
     
+    def step_task_records(self, env_state_action_dict):
+        ### add new task record
+        new_task_record : dict | None = self.process_decoded_task_record_from_action()
+        if new_task_record is not None:
+            #TODO
+            # assert new_task_record["product_index"] not in env_state_action_dict["progress"]["ongoing_task_records"], "The product index should not be in the ongoing task records"
+            if new_task_record["product_index"] not in env_state_action_dict["progress"]["ongoing_task_records"]:
+                env_state_action_dict["progress"]["ongoing_task_records"][new_task_record["product_index"]] = new_task_record
+        ongoing_task_records : dict = env_state_action_dict["progress"]["ongoing_task_records"]
+        for product_index, task_record in ongoing_task_records.items():
+            product_type = task_record["product"]
+            if task_record["task_done"]:
+                #delete the task_record from ongoing_task_records
+                del ongoing_task_records[product_index]
+                # Remove only one occurrence of product_type from the producing list, even if there are duplicates
+                producing_list = env_state_action_dict["progress"]["producing"]
+                producing_indexs = env_state_action_dict["progress"]["producing_indexs"]
+                assert len(producing_list) == len(producing_indexs), "The length of producing list and producing indexs should be the same"
+                for i, prod in enumerate(producing_list):
+                    if prod == product_type:
+                        del producing_list[i]
+                        del producing_indexs[i]
+                        if product_type not in env_state_action_dict["progress"]["finished"]:
+                            env_state_action_dict["progress"]["finished"][product_type] = 0
+                        else:
+                            env_state_action_dict["progress"]["finished"][product_type] += 1
+                        break
+            elif task_record["new_product_selected"] == True:
+                task_record['new_product_selected'] = False
+                env_state_action_dict["progress"]["producing"].append(product_type)
+                env_state_action_dict["progress"]["producing_indexs"].append(product_index)
+                env_state_action_dict["progress"]["next_product"] = None
+                env_state_action_dict["progress"]["next_product_index"] = None
+                env_state_action_dict["progress"]["not_started"][product_type] -= 1
+        return env_state_action_dict
+
+    def process_decoded_task_record_from_action(self):
+        processed_task_record = {}
+        if self.decode_action_to_task_record["product_selection"]["product"] == "none" or \
+            self.decode_action_to_task_record["process_task_planning"]["task"] == "none":
+            # means no valuable record, including task, human, or robot, is set up
+            return None
+        assert self.decode_action_to_task_record["human_robot_allocation"]["human"] != "none", "Human availablity should be check by mask before the task can be selected"
+        
+        processed_task_record["product"] = self.decode_action_to_task_record["product_selection"]["product"]
+        processed_task_record["product_index"] = self.decode_action_to_task_record["product_selection"]["product_index"]
+        processed_task_record["new_product_selected"] = self.decode_action_to_task_record["product_selection"]["new_product_selected"]
+        processed_task_record["task"] = self.decode_action_to_task_record["process_task_planning"]["task"]
+        processed_task_record["task_index"] = self.decode_action_to_task_record["process_task_planning"]["task_index"]
+        processed_task_record["human"] = self.decode_action_to_task_record["human_robot_allocation"]["human"]
+        processed_task_record["human_index"] = self.decode_action_to_task_record["human_robot_allocation"]["human_index"]
+        processed_task_record["robot"] = self.decode_action_to_task_record["human_robot_allocation"]["robot"]
+        processed_task_record["robot_index"] = self.decode_action_to_task_record["human_robot_allocation"]["robot_index"]
+        processed_task_record["task_done"] = False #default is False, will be set to True when the task is done
+        
+        return processed_task_record
+
     def decode_action_product_sequencing(self, env_state_action_dict):
         action_product_sequencing = env_state_action_dict["action"]["product_sequencing"]
         # Return a torch tensor filled with zeros that matches the shape of action_product_sequencing,
         # placed on the correct device.
-        if action_product_sequencing.sum() == 0:
-            env_state_action_dict["progress"]["next_product"] = None
-            env_state_action_dict["progress"]["next_product_index"] = None
-        else:
+        if action_product_sequencing.sum() != 0:
             product_type_index = action_product_sequencing.nonzero()[0][0]
-            product_type = CfgProductProcess.keys()[product_type_index]
+            product_type = list(CfgProductProcess.keys())[product_type_index]
+            #shape is (num_material_batch, )
             material_states_dict = env_state_action_dict["material"]
+            #find the next_product_index in material_batch list that is the right product type
             for material_name, material_state in material_states_dict.items():
                 key_variables = material_state["key_variables"]
                 current_task = material_state["current_task"]
@@ -58,14 +114,16 @@ class TaskManager:
     def decode_action_product_selection(self, env_state_action_dict):
         # action shape is (1 + self.parallel_producing_limit,)
         action_product_selection = env_state_action_dict["action"]["product_selection"]
-        decoded_action = {"product": "none", "product_index" : "none"}
+        decoded_action = {"product": "none", "product_index" : "none", "new_product_selected": False}
         if action_product_selection.sum() == 0:
             return decoded_action
         else:
             _index = action_product_selection.nonzero()[0][0]
+            _index = _index.item()
             if _index == action_product_selection.shape[0] - 1:
                 decoded_action["product"] = env_state_action_dict["progress"]["next_product"]
                 decoded_action["product_index"] = env_state_action_dict["progress"]["next_product_index"]
+                decoded_action["new_product_selected"] = True
             else:
                 decoded_action["product"] = env_state_action_dict["progress"]["producing"][_index]
                 decoded_action["product_index"] = env_state_action_dict["progress"]["producing_indexs"][_index]
@@ -78,6 +136,7 @@ class TaskManager:
             return decoded_action
         else:
             _index = action_process_task_planning.nonzero()[0][0]
+            _index = _index.item()
             decoded_action["task"] = self.inverse_index_to_task_name[_index]
             decoded_action["task_index"] = _index
         return decoded_action
@@ -91,10 +150,14 @@ class TaskManager:
         decoded_action = {"human": "none", "human_index": "none", "robot": "none", "robot_index" : "none"}
         if action_human.sum() != 0:
             _index = action_human.nonzero()[0][0]
-            decoded_action["human"] = self.inverse_index_to_human_name[_index]
+            _index = _index.item()
+            key_name = list(env_state_action_dict["human"].keys())[_index]
+            decoded_action["human"] = env_state_action_dict["human"][key_name]["key_variables"]["type_name"]
             decoded_action["human_index"] = _index
         if action_robot.sum() != 0:
             _index = action_robot.nonzero()[0][0]
-            decoded_action["robot"] = self.inverse_index_to_robot_name[_index]
+            _index = _index.item()
+            key_name = list(env_state_action_dict["robot"].keys())[_index]
+            decoded_action["robot"] = env_state_action_dict["robot"][key_name]["key_variables"]["type_name"]
             decoded_action["robot_index"] = _index
         return decoded_action

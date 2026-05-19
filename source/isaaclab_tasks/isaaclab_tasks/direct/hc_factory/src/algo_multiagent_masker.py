@@ -42,8 +42,6 @@ class ProductSequencerAgentMasker:
         # output shape (self.num_product_types,)
         not_started : dict = env_state_action_dict["progress"]["not_started"]
         next_product : str = env_state_action_dict["progress"]["next_product"]
-        producing : list[str] = env_state_action_dict["progress"]["producing"]
-        finished : list[str] = env_state_action_dict["progress"]["finished"]
         
         mask = torch.zeros(self.num_product_types, dtype=torch.int32, device=self.cuda_device)
         if next_product is None and len(not_started.keys()) > 0:
@@ -62,12 +60,15 @@ class ProductSelectorAgentMasker:
         # can only select the product in producing or the next product to be produced
         # output shape (1 + self.parallel_producing_limit,)
         producing : list[str] = env_state_action_dict["progress"]["producing"]
+        producing_indexs : list[int] = env_state_action_dict["progress"]["producing_indexs"]
         next_product : str = env_state_action_dict["progress"]["next_product"]
         mask = torch.zeros(self.parallel_producing_limit + 1, dtype=torch.int32, device=self.cuda_device)
-        
-        for i in range(len(producing)):
-            mask[i] = 1
-            
+        keys_of_ongoing_task_records : list[int] = list(env_state_action_dict["progress"]["ongoing_task_records"].keys())
+        for i in range(len(producing_indexs)):
+            product_index = producing_indexs[i]
+            if product_index not in keys_of_ongoing_task_records:
+                #means no ongoing task for processing this product, can select this product
+                mask[i] = 1
         # The last position in the mask is for selecting the next product to be produced, 
         # which can only be selected when there are available slots for producing 
         # and there is a next product to be produced.

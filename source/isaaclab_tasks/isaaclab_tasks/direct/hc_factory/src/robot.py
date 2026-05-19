@@ -51,7 +51,7 @@ class RobotManager:
         mask = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
         mask[0] = 1 # "none" task is always available
         for robot, i in zip(self.robot_list, range(len(self.robot_list))):
-            if robot.state == "free":
+            if robot.state['state'] == "free":
                 mask[:] = 1
                 break
         env_state_action_dict["robot"]["task_availability_mask"] = mask
@@ -62,7 +62,7 @@ class RobotManager:
         # shape (upper_bound_num_robot,) 
         mask = torch.zeros(self.upper_bound_num_robot, dtype=torch.int32, device=self.cuda_device)
         for robot, i in zip(self.robot_list, range(len(self.robot_list))):
-            if robot.state == "free":
+            if robot.state['state'] == "free":
                 mask[i] = 1
         env_state_action_dict["robot"]["self_availability_mask"] = mask
         return env_state_action_dict
@@ -79,6 +79,7 @@ class Robot:
         self.env_id = env_id
         self.state_gallery = cfg["state_gallery"]
         self.reset_state : str = copy.deepcopy(cfg["reset_state"])
+        self.reset_state["key_variables"] = self.iter_key_variables()
         self.prim: RigidPrim | None = None
         self.cuda_device = cuda_device
         self._register_rigid_prim()
@@ -92,6 +93,12 @@ class Robot:
             name=f"env_{self.env_id}_{meta['name'].format(idx=f'{self.idx:02d}')}",
             reset_xform_properties=False,
         ) 
+
+    def iter_key_variables(self):
+        return {
+            "type_name": self.type_name,
+            "idx": self.idx,
+        }
 
     def reset(self, env_state_action_dict: dict, init_point_in_map: torch.tensor) -> dict:
         self.state : str = copy.deepcopy(self.reset_state)

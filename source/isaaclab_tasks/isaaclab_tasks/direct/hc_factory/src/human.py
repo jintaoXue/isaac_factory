@@ -46,7 +46,7 @@ class HumanManager:
         mask = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
         mask[0] = 1 # "none" task is always available
         for human, i in zip(self.human_list, range(len(self.human_list))):
-            if human.state == "free":
+            if human.state['state'] == "free":
                 mask[:] = 1
                 break
         env_state_action_dict["human"]["task_availability_mask"] = mask
@@ -57,7 +57,7 @@ class HumanManager:
         # shape (upper_bound_num_human,) 
         mask = torch.zeros(self.upper_bound_num_human, dtype=torch.int32, device=self.cuda_device)
         for human, i in zip(self.human_list, range(len(self.human_list))):
-            if human.state == "free":
+            if human.state['state'] == "free":
                 mask[i] = 1
         env_state_action_dict["human"]["self_availability_mask"] = mask
         return env_state_action_dict
@@ -79,6 +79,7 @@ class Human:
         self.env_id = env_id
         self.state_gallery = cfg["state_gallery"]
         self.reset_state : str = copy.deepcopy(cfg["reset_state"])
+        self.reset_state["key_variables"] = self.iter_key_variables()
         self.skeleton: UsdSkel.Skeleton | None = None
         self.prim: RigidPrim | None = None
         self.cuda_device = cuda_device
@@ -102,9 +103,16 @@ class Human:
         self.prim = RigidPrim(
             prim_paths_expr=meta["rigid_prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}"),
             name=f"env_{self.env_id}_{meta['name'].format(idx=f'{self.idx:02d}')}",
+            reset_xform_properties=False,
         )
         return
     
+    def iter_key_variables(self):
+        return {
+            "type_name": self.type_name,
+            "idx": self.idx,
+        }
+
     def reset(self, env_state_action_dict: dict, init_point_in_map: torch.tensor) -> dict:
         self.state : str = copy.deepcopy(self.reset_state)
         env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"] = self.state
@@ -122,6 +130,7 @@ class Human:
         
     def step(self, env_state_action_dict: dict) -> dict:
         return env_state_action_dict
+    
 
 class NormalHuman(Human):
     def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
