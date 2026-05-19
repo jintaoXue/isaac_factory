@@ -39,6 +39,19 @@ class TaskManager:
     
     def update_human_robot_machine_ongoing_task_records(self, env_state_action_dict):
         #TODO
+        for task_record in env_state_action_dict["progress"]["ongoing_task_records"].values():
+            human_type = task_record["human"]
+            human_idx = task_record["human_index"]
+            human_key = f"num_{human_idx:02d}_{human_type}"
+            env_state_action_dict["human"][human_key]["ongoing_task_record"] = task_record
+            env_state_action_dict["human"][human_key]["ongoing_task_record"]["human_done"] = False
+            robot_type = task_record["robot"]
+            robot_idx = task_record["robot_index"]
+            robot_key = f"num_{robot_idx:02d}_{robot_type}"
+            env_state_action_dict["robot"][robot_key]["ongoing_task_record"] = task_record
+            machine_type = task_record["machine"]
+            machine_idx = task_record["machine_index"]
+            machine_key = f"num_{machine_idx:02d}_{machine_type}"
         pass
     
     def step_task_records(self, env_state_action_dict):
