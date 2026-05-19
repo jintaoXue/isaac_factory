@@ -127,6 +127,7 @@ class MaterialBatch:
                 if value["state"] == "partial" and material_type != value["material_type"]:
                     continue
                 # Otherwise, place material in this storage
+                self.state["storage_name"] = storage_name
                 value["material_type"] = material_type
                 value["num_material"] += 1
                 value["material_idx_list"].append(self.idx)

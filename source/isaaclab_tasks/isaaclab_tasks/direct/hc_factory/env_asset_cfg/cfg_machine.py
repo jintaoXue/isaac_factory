@@ -44,7 +44,10 @@ CfgMachine = {
         "num_workstations": 1,
         "num_registration_parts": 2,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
-        "reset_state": ["free"],
+        "reset_state": {
+            "state": "free",
+            "ongoing_task_record": {},
+        },
         "registration_infos": {
             "num01_weldingRobot_part02_robot_arm_and_base": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num01_weldingRobot/part02_robot_arm_and_base",

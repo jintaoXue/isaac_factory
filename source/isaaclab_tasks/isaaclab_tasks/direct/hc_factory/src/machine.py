@@ -52,7 +52,7 @@ class MachineManager:
         # output shape (len(CfgProcessTaskGalleryInAll))
         mask = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
         for machine, i in zip(self.iter_machines(), range(self.num_machine)):
-            state : list = machine.state
+            state : list = machine.state['state']
             task_names : list = machine.corresponding_process_task
             if "free" in state:
                 for task_name in task_names:
@@ -77,7 +77,7 @@ class Machine:
         self.state_gallery = cfg["state_gallery"]
         self.reset_state = copy.deepcopy(cfg["reset_state"])
         ### dynmaic variables
-        self.state : list = None
+        self.state : dict = {}
         self._register_articulation_animation()
 
     def _register_articulation_animation(self):

@@ -23,6 +23,7 @@ CfgHuman = {
                 "idx": None,
             },
             "state": "free",
+            "ongoing_task_record": {},
         },
     }
 }

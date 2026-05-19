@@ -10,7 +10,7 @@ class TaskManager:
         self.cuda_device = cuda_device
         self.cfg_storage = CfgStorage
         self.decode_action_to_task_record = {
-            "product_selection": {"product": "none", "product_index" : "none", "new_product_selected": False},
+            "product_selection": {"product": "none", "product_index" : "none", "new_product_selected": False, "storage_name": "none"},
             "process_task_planning": {"task": "none", "task_index" : 0},
             "human_robot_allocation": {"human": "none", "human_index": "none", "robot": "none", "robot_index" : "none"}
         }
@@ -34,7 +34,12 @@ class TaskManager:
         self.decode_action_to_task_record["process_task_planning"] = self.decode_action_process_task_planning(env_state_action_dict)
         self.decode_action_to_task_record["human_robot_allocation"] = self.decode_action_human_robot_allocation(env_state_action_dict)
         self.step_task_records(env_state_action_dict)
+
         return env_state_action_dict
+    
+    def update_human_robot_machine_ongoing_task_records(self, env_state_action_dict):
+        #TODO
+        pass
     
     def step_task_records(self, env_state_action_dict):
         ### add new task record
@@ -114,7 +119,7 @@ class TaskManager:
     def decode_action_product_selection(self, env_state_action_dict):
         # action shape is (1 + self.parallel_producing_limit,)
         action_product_selection = env_state_action_dict["action"]["product_selection"]
-        decoded_action = {"product": "none", "product_index" : "none", "new_product_selected": False}
+        decoded_action = {"product": "none", "product_index" : "none", "new_product_selected": False, "storage_name": "none"}
         if action_product_selection.sum() == 0:
             return decoded_action
         else:
@@ -127,6 +132,8 @@ class TaskManager:
             else:
                 decoded_action["product"] = env_state_action_dict["progress"]["producing"][_index]
                 decoded_action["product_index"] = env_state_action_dict["progress"]["producing_indexs"][_index]
+            material_name = f"num_{decoded_action["product_index"]:02d}_{decoded_action["product"]}"
+            decoded_action["storage_name"] = env_state_action_dict["material"][material_name]["storage_name"]
         return decoded_action
 
     def decode_action_process_task_planning(self, env_state_action_dict):
