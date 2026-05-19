@@ -43,6 +43,7 @@ class TaskManager:
             human_type = task_record["human"]
             human_idx = task_record["human_index"]
             human_key = f"num_{human_idx:02d}_{human_type}"
+            if env_state_action_dict["human"][human_key]["ongoing_task_record"]
             env_state_action_dict["human"][human_key]["ongoing_task_record"] = task_record
             env_state_action_dict["human"][human_key]["ongoing_task_record"]["human_done"] = False
             robot_type = task_record["robot"]
