@@ -90,6 +90,7 @@ class Storage:
     def iter_key_variables(self):
         return {
             "type_name": self.type_name, 
+            "idx": self.idx,
             "class_name": self.class_name,
             "capacity": self.capacity,
             "supporting_materials": self.supporting_materials,

@@ -75,6 +75,7 @@ class Machine:
         self.corresponding_process_task = cfg["corresponding_process_task"]
         self.state_gallery = cfg["state_gallery"]
         self.reset_state = copy.deepcopy(cfg["reset_state"])
+        self.working_area_ids = cfg["working_area_ids"]
         ### dynmaic variables
         self.state : dict = {}
         self._register_articulation_animation()
@@ -110,6 +111,13 @@ class Machine:
                 "joint_position": joint_positions_reset,
             }
         return articulations_values
+
+    def iter_key_variables(self):
+        return {
+            "type_name": self.type_name, 
+            "working_area_ids": self.working_area_ids,
+            "num_workstations": self.num_workstations,
+        }
 
     @abstractmethod
     def step(self, env_state_action_dict: dict) -> dict:

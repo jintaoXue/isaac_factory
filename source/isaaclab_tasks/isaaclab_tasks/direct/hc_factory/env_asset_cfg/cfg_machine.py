@@ -13,6 +13,22 @@ CfgMachine = {
         "reset_state": {
             "state": ["free", "free"],
             "ongoing_task_record": {},
+            "key_variables": {},
+        },
+        # 只有“工位/工作站（station）”这种可以处理物料的节点，才需要配置 working area ids。
+        # human_working_areas_ids 的编号来源：map_data/map_with_points_human.png（图中蓝色编号）
+        # agv/gantry 的停车区编号来源：map_data/map_with_points_robot.png（图中蓝色编号）
+        "working_area_ids": {
+            "num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
+                "human_working_areas_ids": [56],
+                "robot_parking_areas_ids": [56],
+                "gantry_parking_areas_ids": [56],
+            },
+            "num00_rotaryPipeAutomaticWeldingMachine_part_02_station": {
+                "human_working_areas_ids": [60],
+                "robot_parking_areas_ids": [60],
+                "gantry_parking_areas_ids": [60],
+            },
         },
         "registration_infos": {
             "num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
@@ -21,21 +37,12 @@ CfgMachine = {
                 "joint_positions_working": torch.tensor([0.0, 2.0]),
                 "joint_positions_reset": torch.tensor([0.0, 0.0]),
                 "animation_time": 100,
-                # 只有“工位/工作站（station）”这种可以处理物料的节点，才需要配置 working area ids。
-                # human_working_areas_ids 的编号来源：map_data/map_with_points_human.png（图中蓝色编号）
-                "human_working_areas_ids": [56],
-                # agv/gantry 的停车区编号来源：map_data/map_with_points_robot.png（图中蓝色编号）
-                "robot_parking_areas_ids": [56],
-                "gantry_parking_areas_ids": [56],
             },
             "num00_rotaryPipeAutomaticWeldingMachine_part_02_station": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num00_rotaryPipeAutomaticWeldingMachine/part_02_station/track_for_mobile_base_001",
                 "joint_positions_working": torch.tensor([0.0, 0.5]),
                 "joint_positions_reset": torch.tensor([0.0, 0.0]),
                 "animation_time": 50,
-                "human_working_areas_ids": [60],
-                "robot_parking_areas_ids": [60],
-                "gantry_parking_areas_ids": [60],
             },
         },
     },
@@ -50,6 +57,14 @@ CfgMachine = {
         "reset_state": {
             "state": ["free"],
             "ongoing_task_record": {},
+            "key_variables": {},
+        },
+        "working_area_ids": {
+            "num01_weldingRobot_part02_robot_arm_and_base": {
+                "human_working_areas_ids": [66],
+                "robot_parking_areas_ids": [65],
+                "gantry_parking_areas_ids": [65],
+            },
         },
         "registration_infos": {
             "num01_weldingRobot_part02_robot_arm_and_base": {
@@ -57,9 +72,6 @@ CfgMachine = {
                 "joint_positions_working": torch.tensor([3.2, -1.5, -0.3, 0.1, 0.2, 0.0]),
                 "joint_positions_reset": torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
                 "animation_time": 100,
-                "human_working_areas_ids": [66],
-                "robot_parking_areas_ids": [65],
-                "gantry_parking_areas_ids": [65],
             },
             "num01_weldingRobot_part04_mobile_base_for_material": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num01_weldingRobot/part04_mobile_base_for_material",
@@ -81,6 +93,14 @@ CfgMachine = {
         "reset_state": {
             "state": ["free"],
             "ongoing_task_record": {},
+            "key_variables": {},
+        },
+        "working_area_ids": {
+            "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
+                "human_working_areas_ids": [90],
+                "robot_parking_areas_ids": [78],
+                "gantry_parking_areas_ids": [78],
+            },
         },
         "registration_infos": {
             "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
@@ -88,9 +108,6 @@ CfgMachine = {
                 "joint_positions_working": torch.tensor([1.0]),
                 "joint_positions_reset": torch.tensor([0.0]),
                 "animation_time": 100,
-                "human_working_areas_ids": [90],
-                "robot_parking_areas_ids": [78],
-                "gantry_parking_areas_ids": [78],
             },
             "num02_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num02_rollerbedCNCPipeIntersectionCuttingMachine/part05_cutting_machine",
@@ -112,6 +129,14 @@ CfgMachine = {
         "reset_state": {
             "state": ["free"],
             "ongoing_task_record": {},
+            "key_variables": {},
+        },
+        "working_area_ids": {
+            "num03_laserCuttingMachine": {
+                "human_working_areas_ids": [113],
+                "robot_parking_areas_ids": [111],
+                "gantry_parking_areas_ids": [111],
+            },
         },
         "registration_infos": {
             "num03_laserCuttingMachine": {
@@ -119,9 +144,6 @@ CfgMachine = {
                 "joint_positions_working": torch.tensor([-3.5]),
                 "joint_positions_reset": torch.tensor([0.0]),
                 "animation_time": 100,
-                "human_working_areas_ids": [113],
-                "robot_parking_areas_ids": [111],
-                "gantry_parking_areas_ids": [111],
             },
         },
     },
@@ -137,6 +159,14 @@ CfgMachine = {
         "reset_state": {
             "state": ["free"],
             "ongoing_task_record": {},
+            "key_variables": {},
+        },
+        "working_area_ids": {
+            "num04_groovingMachineLarge_part01_large_fixed_base": {
+                "human_working_areas_ids": [138],
+                "robot_parking_areas_ids": [136],
+                "gantry_parking_areas_ids": [136],
+            },
         },
         "registration_infos": {
             "num04_groovingMachineLarge_part01_large_fixed_base": {
@@ -144,9 +174,6 @@ CfgMachine = {
                 "joint_positions_working": torch.tensor([-0.2, 0.0]),
                 "joint_positions_reset": torch.tensor([0.0, 0.0]),
                 "animation_time": 100,
-                "human_working_areas_ids": [138],
-                "robot_parking_areas_ids": [136],
-                "gantry_parking_areas_ids": [136],
             },
             "num04_groovingMachineLarge_part02_large_mobile_base": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num04_groovingMachineLarge/part02_large_mobile_base",
@@ -168,6 +195,14 @@ CfgMachine = {
         "reset_state": {
             "state": ["free"],
             "ongoing_task_record": {},
+            "key_variables": {},
+        },
+        "working_area_ids": {
+            "num05_groovingMachineSmall_part01_small_fixed_base": {
+                "human_working_areas_ids": [160],
+                "robot_parking_areas_ids": [139],
+                "gantry_parking_areas_ids": [139],
+            },
         },
         "registration_infos": {
             "num05_groovingMachineSmall_part01_small_fixed_base": {
@@ -175,9 +210,6 @@ CfgMachine = {
                 "joint_positions_working": torch.tensor([-0.3, -0.5]),
                 "joint_positions_reset": torch.tensor([0.0, 0.0]),
                 "animation_time": 100,
-                "human_working_areas_ids": [160],
-                "robot_parking_areas_ids": [139],
-                "gantry_parking_areas_ids": [139],
             },
             "num05_groovingMachineSmall_part02_small_mobile_handle": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num05_groovingMachineSmall/part02_small_mobile_handle",
@@ -199,6 +231,14 @@ CfgMachine = {
         "reset_state": {
             "state": ["free"],
             "ongoing_task_record": {},
+            "key_variables": {},
+        },
+        "working_area_ids": {
+            "num06_highPressureFoamingMachine": {
+                "human_working_areas_ids": [130],
+                "robot_parking_areas_ids": [131],
+                "gantry_parking_areas_ids": [131],
+            },
         },
         "registration_infos": {
             "num06_highPressureFoamingMachine": {
@@ -206,9 +246,6 @@ CfgMachine = {
                 "joint_positions_working": torch.tensor([-0.7]),
                 "joint_positions_reset": torch.tensor([0.0]),
                 "animation_time": 100,
-                "human_working_areas_ids": [130],
-                "robot_parking_areas_ids": [131],
-                "gantry_parking_areas_ids": [131],
             },
         },
     },
@@ -226,6 +263,29 @@ CfgMachine = {
         "reset_state": {
             "state": ["free", "invalid", "invalid", "invalid"],
             "ongoing_task_record": {},
+            "key_variables": {},
+        },
+        "working_area_ids": {
+            "num07_gantry_group_station_00": {
+                "human_working_areas_ids": [],
+                "robot_parking_areas_ids": [],
+                "gantry_parking_areas_ids": [],
+            },
+            "num07_gantry_group_station_01": {
+                "human_working_areas_ids": [],
+                "robot_parking_areas_ids": [],
+                "gantry_parking_areas_ids": [],
+            },
+            "num07_gantry_group_station_02": {
+                "human_working_areas_ids": [],
+                "robot_parking_areas_ids": [],
+                "gantry_parking_areas_ids": [],
+            },
+            "num07_gantry_group_station_03": {
+                "human_working_areas_ids": [],
+                "robot_parking_areas_ids": [],
+                "gantry_parking_areas_ids": [],
+            },
         },
         "registration_infos": {
             "num07_gantry_group": {
@@ -239,9 +299,6 @@ CfgMachine = {
                 ### to simplify the problem, we set the z of hook to be fixed, and only control the x and y movement of the gantry, so the joint position of z axis is not used for calculating the reward and is not included in the observation, but it is still needed for animation and calculating the offset between the hook and the material when gripping.
                 "fixed_hook_height": 8.90808,
                 "animation_time": 100,
-                "human_working_areas_ids": [],
-                "robot_parking_areas_ids": [],
-                "gantry_parking_areas_ids": [],
             },
         },
     },
@@ -257,6 +314,19 @@ CfgMachine = {
         "reset_state": {
             "state": ["free", "free"],
             "ongoing_task_record": {},
+            "key_variables": {},
+        },
+        "working_area_ids": {
+            "num08_workbench_station_00": {
+                "human_working_areas_ids": [45],
+                "robot_parking_areas_ids": [40],
+                "gantry_parking_areas_ids": [47],
+            },
+            "num08_workbench_station_01": {
+                "human_working_areas_ids": [49],
+                "robot_parking_areas_ids": [41],
+                "gantry_parking_areas_ids": [47],
+            },
         },
         "registration_infos": {
             "num08_workbench": {
@@ -264,10 +334,6 @@ CfgMachine = {
                 "joint_positions_working": torch.tensor([0.0]),
                 "joint_positions_reset": torch.tensor([0.0]),
                 "animation_time": 100,
-                # [station_00, station_01]
-                "human_working_areas_ids": [45, 49],
-                "robot_parking_areas_ids": [40, 41],
-                "gantry_parking_areas_ids": [47],
             },
         },
     },
