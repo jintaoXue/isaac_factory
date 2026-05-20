@@ -133,11 +133,11 @@ class TaskManager:
         processed_task_record["storage_key_variables"] = storage_key_variables
         ##machine
         machine_name = processed_task_record["target_machine"]
-        machine_state : list = env_state_action_dict["machine"][machine_name]["state"]
-        first_free_workstation_index = machine_state.index('free')
-        _key = list(env_state_action_dict["machine"][machine_name]["key_variables"]["working_area_ids"].keys())[first_free_workstation_index]
-        processed_task_record["machine_working_area_ids"] = env_state_action_dict["machine"][machine_name]["key_variables"]["working_area_ids"][_key]
-
+        # machine_state : list = env_state_action_dict["machine"][machine_name]["state"]
+        # first_free_workstation_index = machine_state.index('free')
+        # _key = list(env_state_action_dict["machine"][machine_name]["key_variables"]["working_area_ids"].keys())[first_free_workstation_index]
+        # processed_task_record["machine_working_area_ids"] = env_state_action_dict["machine"][machine_name]["key_variables"]["working_area_ids"][_key]
+        processed_task_record["machine_key_variables"] = env_state_action_dict["machine"][machine_name]["key_variables"]
         return processed_task_record
 
     def decode_action_product_sequencing(self, env_state_action_dict):
