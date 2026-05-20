@@ -102,7 +102,13 @@ CfgProcessTaskGalleryClassified = {
 }
 
 
-CfgSubtaskGallery = {
+CfgSubtaskLogisticGallery = {
+    "human":{},
+    "robot":{},
+    "gantry":{},
+}
+
+CfgSubtaskProcessingGallery = {
     "none": 0,
     "pick_up_preparation" : 1,
     "pick_up" : 2,
@@ -112,6 +118,7 @@ CfgSubtaskGallery = {
     "process_preparation" : 6,
     "process" : 7,
 }
+
 
 CfgTask2SubtaskGallery = {
     "none": [],
