@@ -82,4 +82,6 @@ Aligned with a 4-layer real-time factory operations stack (formal academic/indus
 
 #记录gantry的关节位置和local位置的相对偏移关系
 
-#when to set processed_task_record["task_done"] = True?
+#when to set processed_task_record["task_done"] = True? update ongoing task records
+
+#task excution and route generation
