@@ -80,7 +80,6 @@ CfgProcessTaskGalleryInAll = {
     "product_to_storage": 13,
 }
 
-
 CfgProcessTaskGalleryClassified = {
     "ProductWaterPipe": {
         #the dict value is the index in the common encoded index space defined by CfgProcessTaskGalleryInAll
@@ -139,4 +138,22 @@ CfgTask2SubtaskGallery = {
                            "human use rope to lock products on gantry, gantry move products to num07_gantry_group"
                            "or put them on AGV, AGV move them to num07_gantry_group "
                            "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
+}
+
+
+CfgProcessTaskToMachineMapping = {
+    "none": "none",
+    "logistic_for_pipe_cutting": {"target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine", "logistic_machine": "num07_gantry_group"},
+    "pipe_cutting": {"target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine", "logistic_machine": "none"},
+    "logistic_for_pipe_grooving": {"target_machine": "num04_groovingMachineLarge", "logistic_machine": "num07_gantry_group"},
+    "pipe_grooving": {"target_machine": "num04_groovingMachineLarge", "logistic_machine": "none"},
+    "logistic_for_batch_spot_welding": {"target_machine": "num08_workbench", "logistic_machine": "num07_gantry_group"},
+    "batch_spot_welding": {"target_machine": "num08_workbench", "logistic_machine": "none"},
+    "logistic_for_arc_welding_root": {"target_machine": "num01_weldingRobot", "logistic_machine": "num07_gantry_group"},
+    "arc_welding_root": {"target_machine": "num01_weldingRobot", "logistic_machine": "none"},
+    "logistic_for_MIG_welding_surface": {"target_machine": "num00_rotaryPipeAutomaticWeldingMachine", "logistic_machine": "num07_gantry_group"},
+    "MIG_welding_surface": {"target_machine": "num00_rotaryPipeAutomaticWeldingMachine", "logistic_machine": "none"},
+    "logistic_for_paint_rust_proof": {"target_machine": "num08_workbench", "logistic_machine": "num07_gantry_group"},
+    "paint_rust_proof": {"target_machine": "num08_workbench", "logistic_machine": "none"},
+    "product_to_storage": {"target_machine": "num07_gantry_group", "logistic_machine": "none"},
 }

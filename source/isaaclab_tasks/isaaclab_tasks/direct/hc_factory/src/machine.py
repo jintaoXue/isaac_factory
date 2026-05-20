@@ -61,7 +61,6 @@ class MachineManager:
         env_state_action_dict["machine"]["task_availability_mask"] = mask
 
 
-
 class Machine:
     def __init__(self, cfg: dict, env_id: int, cuda_device: torch.device):
         # static variables

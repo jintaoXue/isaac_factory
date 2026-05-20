@@ -1,7 +1,7 @@
 
 from ..env_asset_cfg.cfg_storage import CfgStorage
 from ..env_asset_cfg.cfg_material_product import CfgRegistrationInfos, CfgProductOrder, CfgProductProcess
-from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
+from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskToMachineMapping
 import torch
 import copy
 
@@ -33,36 +33,41 @@ class TaskManager:
         self.decode_action_to_task_record["product_selection"] = self.decode_action_product_selection(env_state_action_dict)
         self.decode_action_to_task_record["process_task_planning"] = self.decode_action_process_task_planning(env_state_action_dict)
         self.decode_action_to_task_record["human_robot_allocation"] = self.decode_action_human_robot_allocation(env_state_action_dict)
+        self.step_new_generated_task_record(env_state_action_dict)
         self.step_task_records(env_state_action_dict)
-
+        self.update_human_robot_machine_ongoing_task_records(env_state_action_dict)
         return env_state_action_dict
-    
-    def update_human_robot_machine_ongoing_task_records(self, env_state_action_dict):
-        #TODO
-        for task_record in env_state_action_dict["progress"]["ongoing_task_records"].values():
-            human_type = task_record["human"]
-            human_idx = task_record["human_index"]
-            human_key = f"num_{human_idx:02d}_{human_type}"
-            if env_state_action_dict["human"][human_key]["ongoing_task_record"]
-            env_state_action_dict["human"][human_key]["ongoing_task_record"] = task_record
-            env_state_action_dict["human"][human_key]["ongoing_task_record"]["human_done"] = False
-            robot_type = task_record["robot"]
-            robot_idx = task_record["robot_index"]
-            robot_key = f"num_{robot_idx:02d}_{robot_type}"
-            env_state_action_dict["robot"][robot_key]["ongoing_task_record"] = task_record
-            machine_type = task_record["machine"]
-            machine_idx = task_record["machine_index"]
-            machine_key = f"num_{machine_idx:02d}_{machine_type}"
-        pass
-    
-    def step_task_records(self, env_state_action_dict):
+
+    def step_new_generated_task_record(self, env_state_action_dict):
         ### add new task record
-        new_task_record : dict | None = self.process_decoded_task_record_from_action()
+        new_task_record : dict | None = self.process_decoded_task_record_from_action(env_state_action_dict)
         if new_task_record is not None:
-            #TODO
+            #TODO: check if the product index is already in the ongoing task records
             # assert new_task_record["product_index"] not in env_state_action_dict["progress"]["ongoing_task_records"], "The product index should not be in the ongoing task records"
             if new_task_record["product_index"] not in env_state_action_dict["progress"]["ongoing_task_records"]:
                 env_state_action_dict["progress"]["ongoing_task_records"][new_task_record["product_index"]] = new_task_record
+                self.apply_new_task_record_to_human_robot_machine(env_state_action_dict, new_task_record)
+    
+    def apply_new_task_record_to_human_robot_machine(self, env_state_action_dict, task_record):
+        #apply the new task record to the human, robot, and machine
+        human_type = task_record["human"]
+        human_idx = task_record["human_index"]
+        human_key = f"num_{human_idx:02d}_{human_type}"
+        assert env_state_action_dict["human"][human_key]["ongoing_task_record"] == {}, "The ongoing task record should be empty"
+        env_state_action_dict["human"][human_key]["ongoing_task_record"] = task_record
+        robot_type = task_record["robot"]
+        robot_idx = task_record["robot_index"]
+        robot_key = f"num_{robot_idx:02d}_{robot_type}"
+        assert env_state_action_dict["robot"][robot_key]["ongoing_task_record"] == {}, "The ongoing task record should be empty"
+        env_state_action_dict["robot"][robot_key]["ongoing_task_record"] = task_record
+        machine_type = task_record["machine"]
+        machine_idx = task_record["machine_index"]
+        machine_key = f"num_{machine_idx:02d}_{machine_type}"
+        assert env_state_action_dict["machine"][machine_key]["ongoing_task_record"] == {}, "The ongoing task record should be empty"
+        env_state_action_dict["machine"][machine_key]["ongoing_task_record"] = task_record
+
+    def step_task_records(self, env_state_action_dict):
+
         ongoing_task_records : dict = env_state_action_dict["progress"]["ongoing_task_records"]
         for product_index, task_record in ongoing_task_records.items():
             product_type = task_record["product"]
@@ -91,7 +96,7 @@ class TaskManager:
                 env_state_action_dict["progress"]["not_started"][product_type] -= 1
         return env_state_action_dict
 
-    def process_decoded_task_record_from_action(self):
+    def process_decoded_task_record_from_action(self, env_state_action_dict):
         processed_task_record = {}
         if self.decode_action_to_task_record["product_selection"]["product"] == "none" or \
             self.decode_action_to_task_record["process_task_planning"]["task"] == "none":
@@ -102,14 +107,25 @@ class TaskManager:
         processed_task_record["product"] = self.decode_action_to_task_record["product_selection"]["product"]
         processed_task_record["product_index"] = self.decode_action_to_task_record["product_selection"]["product_index"]
         processed_task_record["new_product_selected"] = self.decode_action_to_task_record["product_selection"]["new_product_selected"]
-        processed_task_record["task"] = self.decode_action_to_task_record["process_task_planning"]["task"]
-        processed_task_record["task_index"] = self.decode_action_to_task_record["process_task_planning"]["task_index"]
         processed_task_record["human"] = self.decode_action_to_task_record["human_robot_allocation"]["human"]
         processed_task_record["human_index"] = self.decode_action_to_task_record["human_robot_allocation"]["human_index"]
         processed_task_record["robot"] = self.decode_action_to_task_record["human_robot_allocation"]["robot"]
         processed_task_record["robot_index"] = self.decode_action_to_task_record["human_robot_allocation"]["robot_index"]
         processed_task_record["task_done"] = False #default is False, will be set to True when the task is done
-        
+        processed_task_record["task"] = self.decode_action_to_task_record["process_task_planning"]["task"]
+        processed_task_record["task_index"] = self.decode_action_to_task_record["process_task_planning"]["task_index"]
+        processed_task_record["target_machine"] = CfgProcessTaskToMachineMapping[processed_task_record["task"]]["target_machine"]
+        processed_task_record["logistic_machine"] = CfgProcessTaskToMachineMapping[processed_task_record["task"]]["logistic_machine"]
+        if processed_task_record["logistic_machine"] != "none":
+            processed_task_record["for_logistic"] = True
+        else:
+            processed_task_record["for_logistic"] = False
+        ##storage
+        material_name = f"num_{processed_task_record["product_index"]:02d}_{processed_task_record["product"]}"
+        storage_name = env_state_action_dict["material"][material_name]["storage_name"]
+        key_variables = env_state_action_dict["storage"][storage_name]["key_variables"]
+        storage_area_id = key_variables["human_working_areas_ids"]
+        processed_task_record["machine"] = processed_task_record["target_machine"]
         return processed_task_record
 
     def decode_action_product_sequencing(self, env_state_action_dict):
