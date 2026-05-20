@@ -102,7 +102,6 @@ CfgProcessTaskGalleryClassified = {
 }
 
 
-
 CfgSubtaskGallery = {
     "none": 0,
     "pick_up_preparation" : 1,
