@@ -66,13 +66,14 @@ class HcSingleEnvBase():
             self.machine_manager,
             self.human_manager,
             self.robot_manager,
+            self.algo_multiagent_masker,
             self.task_manager,
-            self.algo_multiagent_masker
         )
 
     def reset_env(self):
         for m in self.iter_managers():
             m.reset(self.env_state_action_dict)
+        self.env_state_action_dict["time_step"] = 0
         return self.env_state_action_dict
 
     def apply_data_to_sim(self) -> None:
@@ -94,9 +95,8 @@ class HcSingleEnvBase():
     def step_env_logic(self, action: dict | None = None, action_extra: list[dict] | None = None) -> None:
         
         self.env_state_action_dict['action'] = action
-
         for m in self.iter_managers():
             m.step(self.env_state_action_dict)
-
+        self.env_state_action_dict["time_step"] += 1
         return
 

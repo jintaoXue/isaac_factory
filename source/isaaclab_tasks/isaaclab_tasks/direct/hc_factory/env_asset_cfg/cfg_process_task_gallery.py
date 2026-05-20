@@ -102,6 +102,18 @@ CfgProcessTaskGalleryClassified = {
 }
 
 
+
+CfgSubtaskGallery = {
+    "none": 0,
+    "pick_up_preparation" : 1,
+    "pick_up" : 2,
+    "carry_it_to_target_area" : 3,
+    "put_down_preparation" : 4,
+    "put_down" : 5,
+    "process_preparation" : 6,
+    "process" : 7,
+}
+
 CfgTask2SubtaskGallery = {
     "none": [],
     "logistic_for_pipe_cutting": ["human go to storage to get raw pipe and gantry move it to storage", 

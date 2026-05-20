@@ -27,6 +27,7 @@ from isaaclab.envs.common import ViewerCfg
 
 
 SingleEnvStateActionDictTemplate : dict = {
+    "time_step": 0,
     "machine": {},
     "material": {},
     "human": {},

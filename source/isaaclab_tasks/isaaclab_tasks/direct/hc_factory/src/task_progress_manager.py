@@ -135,7 +135,14 @@ class TaskManager:
         # _key = list(env_state_action_dict["machine"][machine_name]["key_variables"]["working_area_ids"].keys())[first_free_workstation_index]
         # task_record["machine_working_area_ids"] = env_state_action_dict["machine"][machine_name]["key_variables"]["working_area_ids"][_key]
         task_record["machine_key_variables"] = env_state_action_dict["machine"][machine_name]["key_variables"]
+        task_record["subtask_records"] = self.initialze_subtask_records(env_state_action_dict, task_record)
         return task_record
+
+    def initialze_subtask_records(self, env_state_action_dict, task_record):
+        
+        subtask_records = {}
+        return env_state_action_dict
+
 
     def decode_action_product_sequencing(self, env_state_action_dict):
         action_product_sequencing = env_state_action_dict["action"]["product_sequencing"]

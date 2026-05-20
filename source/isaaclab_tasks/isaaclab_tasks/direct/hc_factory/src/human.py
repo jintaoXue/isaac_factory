@@ -129,7 +129,7 @@ class Human:
         return env_state_action_dict
         
     def step(self, env_state_action_dict: dict) -> dict:
-        #
+        task_record = env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"]["ongoing_task_record"]
         
         return env_state_action_dict
     
