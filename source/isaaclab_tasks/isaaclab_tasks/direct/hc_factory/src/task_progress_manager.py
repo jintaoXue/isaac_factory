@@ -1,7 +1,7 @@
 
 from ..env_asset_cfg.cfg_storage import CfgStorage
 from ..env_asset_cfg.cfg_material_product import CfgRegistrationInfos, CfgProductOrder, CfgProductProcess
-from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskToMachineMapping
+from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskToMachineMapping, CfgSubtaskGallery
 import torch
 import copy
 
@@ -146,9 +146,16 @@ class TaskManager:
         return subtask_records
 
     def initialze_subtasks_logistic(self, env_state_action_dict, task_record):
-        subtask_records = {}
+        subtasks = {"human": {}, "robot": {}, "gantry": {}}
+        if task_record["have_AGV"]:
+            subtasks["human"] = CfgSubtaskGallery["logistic"]["have_AGV"]["human"]
+            subtasks["robot"] = CfgSubtaskGallery["logistic"]["have_AGV"]["robot"]
+            subtasks["gantry"] = CfgSubtaskGallery["logistic"]["have_AGV"]["gantry"]
+        else:
+            subtasks["human"] = CfgSubtaskGallery["logistic"]["only_have_gantry"]["human"]
+            subtasks["gantry"] = CfgSubtaskGallery["logistic"]["only_have_gantry"]["gantry"]
 
-        return subtask_records
+        return subtasks
 
     def initialze_subtasks_processing(self, env_state_action_dict, task_record):
         subtask_records = {}
