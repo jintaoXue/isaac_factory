@@ -218,4 +218,3 @@ class TaskManager:
                 env_state_action_dict["progress"]["next_product_index"] = None
                 env_state_action_dict["progress"]["not_started"][product_type] -= 1
         return env_state_action_dict
-

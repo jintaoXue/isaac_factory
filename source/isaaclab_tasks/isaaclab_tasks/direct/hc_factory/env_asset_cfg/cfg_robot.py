@@ -22,7 +22,7 @@ CfgRobot = {
                 "idx": None,
             },
             "state": "free",
-            "ongoing_task_record": {},
+            "ongoing_task_record_index": None,
         },
     }
 }

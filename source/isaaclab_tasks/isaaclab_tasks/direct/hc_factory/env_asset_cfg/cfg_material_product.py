@@ -36,7 +36,7 @@ CfgProductProcess = {
             "key_variables": {},
             "current_task": "none",
             "storage_name": "none",
-            "ongoing_task_record": {},
+            "ongoing_task_record_index": None,
             "substate": {
                 # task_step tracks the current production stage, indexed by CfgProcessTaskGalleryInAll (see cfg_process_task_gallery.py)
                 "product_00_pipe": {

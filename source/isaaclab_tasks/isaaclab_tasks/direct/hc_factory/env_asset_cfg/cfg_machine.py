@@ -12,7 +12,7 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free", "free"],
-            "ongoing_task_record": {},
+            "ongoing_task_record_index": None,
             "key_variables": {},
         },
         # 只有“工位/工作站（station）”这种可以处理物料的节点，才需要配置 working area ids。
@@ -56,7 +56,7 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
-            "ongoing_task_record": {},
+            "ongoing_task_record_index": None,
             "key_variables": {},
         },
         "working_area_ids": {
@@ -92,7 +92,7 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
-            "ongoing_task_record": {},
+            "ongoing_task_record_index": None,
             "key_variables": {},
         },
         "working_area_ids": {
@@ -128,7 +128,7 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
-            "ongoing_task_record": {},
+            "ongoing_task_record_index": None,
             "key_variables": {},
         },
         "working_area_ids": {
@@ -158,7 +158,7 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
-            "ongoing_task_record": {},
+            "ongoing_task_record_index": None,
             "key_variables": {},
         },
         "working_area_ids": {
@@ -194,7 +194,7 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
-            "ongoing_task_record": {},
+            "ongoing_task_record_index": None,
             "key_variables": {},
         },
         "working_area_ids": {
@@ -230,7 +230,7 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
-            "ongoing_task_record": {},
+            "ongoing_task_record_index": None,
             "key_variables": {},
         },
         "working_area_ids": {
@@ -262,7 +262,7 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting", 4: "invalid"},
         "reset_state": {
             "state": ["free", "invalid", "invalid", "invalid"],
-            "ongoing_task_record": {},
+            "ongoing_task_record_index": None,
             "key_variables": {},
         },
         "working_area_ids": {
@@ -313,7 +313,7 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free", "free"],
-            "ongoing_task_record": {},
+            "ongoing_task_record_index": None,
             "key_variables": {},
         },
         "working_area_ids": {

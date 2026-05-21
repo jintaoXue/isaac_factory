@@ -129,17 +129,31 @@ class Human:
         return env_state_action_dict
         
     def step(self, env_state_action_dict: dict) -> dict:
-        # task_record = env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"]["ongoing_task_record"]
-        # if task_record is None or task_record["human_index"] != self.idx:
-        #     return env_state_action_dict
-        
-        # if task_record["for_logistic"]:
-        #     self.step_logistic(env_state_action_dict, task_record)
-        # else:
-        #     self.step_processing(env_state_action_dict, task_record)
+        task_record_index : int = env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"]["ongoing_task_record_index"]
+        if task_record_index is None:
+            return
+        task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
+        if task_record["human_index"] != self.idx:
+            return
+
+        if task_record["for_logistic"]:
+            self.step_logistic(env_state_action_dict, task_record)
+        else:
+            self.step_processing(env_state_action_dict, task_record)
         return env_state_action_dict
     
+    def step_logistic(self, env_state_action_dict: dict, task_record: dict) -> dict:
+        subtasks = task_record["subtasks"]
+        subtask = subtasks["ongoing"]
+        index = subtasks["ongoing_index"]
+        #bool, whether the subtask is finished
+        finished = subtasks["finished"]
+        #type 1, only have human and gantry
+        
+        #type 2, have human, AGV, and gantry
     
+    def step_processing(self, env_state_action_dict: dict, task_record: dict) -> dict:
+        pass
 
 class NormalHuman(Human):
     def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
