@@ -105,18 +105,49 @@ CfgProcessTaskGalleryClassified = {
 CfgSubtaskGallery = {
     "logistic":{
         "have_AGV":{
-            "human":{},
-            "robot":{},
-            "gantry":{},
+            # human: 0, robot: 1, gantry: 2
+            "ongoing": ["go_to_material", "go_to_material", "go_to_material"],
+            "ongoing_index": 0,
+            "num_subtasks": 7,
+            "finished": [False,False,False],
+            "subtasks": [
+                #human: 0, robot: 1, gantry: 2
+                ["go_to_material", "go_to_material", "go_to_material"],
+                ["material_on_gantry", "wait", "wait"],
+                ["control_gantry", "wait", "carry_to_robot"],
+                ["material_on_robot", "wait", "wait"],
+                ["go_to_target_area", "carry_to_target_area", "move_to_robot_area"],
+                ["material_on_gantry", "wait", "wait"],
+                ["control_gantry", "done", "move_to_target_area"],
+                ["material_on_target_area", "done", "wait"],
+            ],
         },
         "only_have_gantry":{
-            "human":{},
-            "gantry":{},
+            # human: 0, gantry: 1
+            "ongoing": ["go_to_material", "go_to_material"],
+            "ongoing_index": 0,
+            "num_subtasks": 4,
+            "finished": [False,False],
+            "subtasks": [
+                #human: 0, gantry: 1
+                ["go_to_material", "go_to_material"],
+                ["material_on_gantry", "wait"],
+                ["control_gantry_while_moving_to_target_area", "carry_to_target_area"],
+                ["material_on_target_area", "wait"],
+            ],
         },
     },
     "processing":{
-        "human":{},
-        "machine":{},
+            # human: 0, machine: 1
+            "ongoing": ["go_to_machine", "wait"],
+            "ongoing_index": 0,
+            "num_subtasks": 2,
+            "finished": [False, True],
+            "subtasks": [
+                #human: 0, gantry: 1
+                ["go_to_machine", "wait"],
+                ["control_machine", "process"],
+            ],
     },
 }
 
