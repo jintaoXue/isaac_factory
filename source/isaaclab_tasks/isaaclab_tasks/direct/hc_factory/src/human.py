@@ -129,9 +129,16 @@ class Human:
         return env_state_action_dict
         
     def step(self, env_state_action_dict: dict) -> dict:
-        task_record = env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"]["ongoing_task_record"]
+        # task_record = env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"]["ongoing_task_record"]
+        # if task_record is None or task_record["human_index"] != self.idx:
+        #     return env_state_action_dict
         
+        # if task_record["for_logistic"]:
+        #     self.step_logistic(env_state_action_dict, task_record)
+        # else:
+        #     self.step_processing(env_state_action_dict, task_record)
         return env_state_action_dict
+    
     
 
 class NormalHuman(Human):

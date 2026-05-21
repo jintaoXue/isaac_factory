@@ -102,10 +102,22 @@ CfgProcessTaskGalleryClassified = {
 }
 
 
-CfgSubtaskLogisticGallery = {
-    "human":{},
-    "robot":{},
-    "gantry":{},
+CfgSubtaskGallery = {
+    "logistic":{
+        "have_AGV":{
+            "human":{},
+            "robot":{},
+            "gantry":{},
+        },
+        "only_have_gantry":{
+            "human":{},
+            "gantry":{},
+        },
+    },
+    "processing":{
+        "human":{},
+        "machine":{},
+    },
 }
 
 CfgSubtaskProcessingGallery = {
