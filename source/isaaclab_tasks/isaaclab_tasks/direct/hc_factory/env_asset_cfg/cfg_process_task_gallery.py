@@ -166,6 +166,7 @@ CfgSubtaskPredefinedTimeGallery = {
    "material_on_robot": 10,
    "material_on_target_area": 10,
    "control_gantry_while_going_to_target_area": 10,
+   "control_machine": 10,
 }
 
 

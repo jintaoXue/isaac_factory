@@ -169,24 +169,33 @@ class TaskManager:
             subtasks = CfgSubtaskGallery["processing"]
         return subtasks
 
-    def apply_new_task_record_to_human_robot_machine(self, env_state_action_dict, task_record):
+    def apply_new_task_record_to_human_robot_machine_material(self, env_state_action_dict, task_record):
         #apply the new task record to the human, robot, and machine
         #human
         human_type = task_record["human"]
-        human_idx = task_record["human_index"]
-        human_key = f"num_{human_idx:02d}_{human_type}"
-        assert env_state_action_dict["human"][human_key]["ongoing_task_record"] == {}, "The ongoing task record should be empty"
-        env_state_action_dict["human"][human_key]["ongoing_task_record"] = task_record
+        if human_type != "none":
+            human_idx = task_record["human_index"]
+            human_key = f"num_{human_idx:02d}_{human_type}"
+            assert env_state_action_dict["human"][human_key]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
+            env_state_action_dict["human"][human_key]["ongoing_task_record_index"] = task_record["product_index"]
         #robot
         robot_type = task_record["robot"]
-        robot_idx = task_record["robot_index"]
-        robot_key = f"num_{robot_idx:02d}_{robot_type}"
-        assert env_state_action_dict["robot"][robot_key]["ongoing_task_record"] == {}, "The ongoing task record should be empty"
-        env_state_action_dict["robot"][robot_key]["ongoing_task_record"] = task_record
+        if robot_type != "none":
+            robot_idx = task_record["robot_index"]
+            robot_key = f"num_{robot_idx:02d}_{robot_type}"
+            assert env_state_action_dict["robot"][robot_key]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
+            env_state_action_dict["robot"][robot_key]["ongoing_task_record_index"] = task_record["product_index"]
         #machine
         machine_type = task_record["target_machine"]
-        assert env_state_action_dict["machine"][machine_type]["ongoing_task_record"] == {}, "The ongoing task record should be empty"
-        env_state_action_dict["machine"][machine_type]["ongoing_task_record"] = task_record
+        if machine_type != "none":
+            assert env_state_action_dict["machine"][machine_type]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
+            env_state_action_dict["machine"][machine_type]["ongoing_task_record_index"] = task_record["product_index"]
+        #material
+        material_type = task_record["product"]
+        assert material_type != "none", "The material type should not be none"
+        material_name = f"num_{task_record['product_index']:02d}_{material_type}"
+        assert env_state_action_dict["material"][material_name]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
+        env_state_action_dict["material"][material_name]["ongoing_task_record_index"] = task_record["product_index"]
 
     def step_task_records(self, env_state_action_dict):
 

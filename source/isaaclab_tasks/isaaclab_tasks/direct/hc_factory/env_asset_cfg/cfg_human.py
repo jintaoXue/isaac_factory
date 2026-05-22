@@ -17,7 +17,7 @@ CfgHuman = {
             },
             #states: free, working_task gallery + done
             "state": "free",
-            "ongoing_task_record": {},
+            "ongoing_task_record_index": None,
             "current_area_id": None,
             "target_area_id": None,
             "arrived_target_area": False,

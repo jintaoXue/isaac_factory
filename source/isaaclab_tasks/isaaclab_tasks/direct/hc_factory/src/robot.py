@@ -118,8 +118,54 @@ class Robot:
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
+        task_record_index : int = env_state_action_dict["robot"][f"num_{self.idx:02d}_{self.type_name}"]["ongoing_task_record_index"]
+        if task_record_index is None:
+            return
+        task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
+
+        assert task_record["robot_index"] == self.idx, "The robot index should be the same as the robot index in the task record"
+    
+        if self.state["state"] == "free":
+            #robot is chosen to work on the task
+            self.state["state"] = 'working_' + task_record["task"]
+        
+        #now robot is only for logistic
+        self.step_logistic(env_state_action_dict, task_record)
         return env_state_action_dict
 
+    def step_logistic(self, env_state_action_dict: dict, task_record: dict) -> dict:
+        subtasks = task_record["subtasks"]
+        subtask = subtasks["ongoing"]
+        robot_subtask = subtask[0]
+        if robot_subtask == "go_to_storage":
+            self._subtask_go_to_storage(env_state_action_dict, task_record, subtasks)
+        elif robot_subtask == "wait":
+            self._subtask_wait(env_state_action_dict, task_record, subtasks)
+        elif robot_subtask == "carry_to_target_area":
+            self._subtask_carry_to_target_area(env_state_action_dict, task_record, subtasks)
+        elif robot_subtask == "done":
+            self._subtask_done(env_state_action_dict, task_record, subtasks)
+        else:
+            raise ValueError(f"Invalid robot subtask for logistic: {robot_subtask}")
+        return env_state_action_dict
+    
+    def _subtask_go_to_storage(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
+        if self.state["target_area_id"] is None:
+            storage_key_variables = env_state_action_dict["storage"][task_record["storage_name"]]["key_variables"]
+            self.state["target_area_id"] = random.choice(storage_key_variables["human_working_areas_ids"])
+        if self.state["target_area_id"] == self.state["current_area_id"]:
+            subtasks["finished"][0] = True
+    def _subtask_wait(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
+        if self.state["subtask_time_counter"] < CfgSubtaskPredefinedTimeGallery[robot_subtask]:
+            self.state["subtask_time_counter"] += 1
+        elif self.state["target_area_id"] == self.state["current_area_id"]:
+            subtasks["finished"][1] = True
+    def _subtask_carry_to_target_area(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
+        if self.state["target_area_id"] == self.state["current_area_id"]:
+            subtasks["finished"][2] = True
+    def _subtask_done(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
+        if self.state["target_area_id"] == self.state["current_area_id"]:
+            subtasks["finished"][3] = True
 
 class AGV(Robot):
     def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):

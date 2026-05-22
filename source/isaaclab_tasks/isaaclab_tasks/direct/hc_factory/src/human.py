@@ -136,9 +136,9 @@ class Human:
         if task_record_index is None:
             return
         task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
-        if task_record["human_index"] != self.idx:
-            return
-        elif self.state["state"] == "free":
+        assert task_record["human_index"] == self.idx, "The human index should be the same as the human index in the task record"
+
+        if self.state["state"] == "free":
             #human is chosen to work on the task
             self.state["state"] = 'working_' + task_record["task"]
         
@@ -177,8 +177,16 @@ class Human:
                 raise ValueError(f"Invalid human subtask for logistic with robot: {human_subtask}")
 
     def step_processing(self, env_state_action_dict: dict, task_record: dict) -> dict:
-        pass
-    
+        subtasks = task_record["subtasks"]
+        subtask = subtasks["ongoing"]
+        human_subtask = subtask[0]
+        
+        if human_subtask == "go_to_target_area":
+            self._subtask_go_to_target_area(env_state_action_dict, task_record, subtasks, human_subtask)
+        elif human_subtask == "control_machine":
+            self._time_counting_subtask(env_state_action_dict, task_record, subtasks, human_subtask)
+        else:
+            raise ValueError(f"Invalid human subtask for processing: {human_subtask}")
 
     def _subtask_go_to_storage(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
         if self.state["target_area_id"] is None:
