@@ -264,6 +264,9 @@ CfgMachine = {
             "state": ["free", "invalid", "invalid", "invalid"],
             "ongoing_task_record_index": None,
             "key_variables": {},
+            "current_joints_position": None,
+            "target_joints_position": None,
+            "arrived_target_area": False,
         },
         "working_area_ids": {
             "num07_gantry_group_station_00": {

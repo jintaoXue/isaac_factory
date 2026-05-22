@@ -2,10 +2,11 @@ from isaacsim.core.prims import RigidPrim
 import omni.usd
 from pxr import Usd, UsdSkel, Gf, Sdf
 from ..env_asset_cfg.cfg_human import CfgHuman, CfgHumanRegistrationInfos
-from ..env_asset_cfg.cfg_route.cfg_route import RouteOptionalInitPointsInMap
-from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
+from ..env_asset_cfg.cfg_route.cfg_route import RouteOptionalInitPointsInMap, OptionalInitPointIds
+from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgSubtaskPredefinedTimeGallery, CfgProcessTaskToMachineMapping
 import torch
 import copy
+import random
 
 class HumanManager:
     def __init__(self, env_id: int, cuda_device: torch.device):
@@ -14,6 +15,7 @@ class HumanManager:
         self.cfg_human = CfgHuman
         self.cfg_registration_infos = CfgHumanRegistrationInfos
         self.optional_init_points_in_map = RouteOptionalInitPointsInMap["human_xyz"]
+        self.optional_init_points_ids = OptionalInitPointIds["human"]
         self.human_list: list[Human] = []
         self._register_human_list()
         self.upper_bound_num_human = self.cfg_human["NumUpperBound"]
@@ -27,8 +29,9 @@ class HumanManager:
             )
         perm = torch.randperm(num_points, device=self.optional_init_points_in_map.device)
         shuffled_init_points_in_map = self.optional_init_points_in_map[perm]
+        shuffled_init_points_ids = self.optional_init_points_ids[perm]
         for human, i in zip(self.human_list, range(num_humans)):
-            human.reset(env_state_action_dict, shuffled_init_points_in_map[i].unsqueeze(0))
+            human.reset(env_state_action_dict, shuffled_init_points_in_map[i].unsqueeze(0), shuffled_init_points_ids[i])
         
         self.update_task_availability_mask(env_state_action_dict)
         self.update_self_availability_mask(env_state_action_dict)
@@ -77,7 +80,6 @@ class Human:
         self.type_name = cfg["type_name"]
         self.meta_registeration_info = cfg["meta_registeration_info"]
         self.env_id = env_id
-        self.state_gallery = cfg["state_gallery"]
         self.reset_state : str = copy.deepcopy(cfg["reset_state"])
         self.reset_state["key_variables"] = self.iter_key_variables()
         self.skeleton: UsdSkel.Skeleton | None = None
@@ -113,8 +115,9 @@ class Human:
             "idx": self.idx,
         }
 
-    def reset(self, env_state_action_dict: dict, init_point_in_map: torch.tensor) -> dict:
+    def reset(self, env_state_action_dict: dict, init_point_in_map: torch.tensor, init_point_id: int) -> dict:
         self.state : str = copy.deepcopy(self.reset_state)
+        self.state["current_area_id"] = init_point_id
         env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"] = self.state
         self.reset_to_random_map_point(env_state_action_dict, init_point_in_map)
         return env_state_action_dict
@@ -127,7 +130,7 @@ class Human:
             "orientation": torch.tensor([1, 0, 0, 0], dtype=torch.float32, device=self.cuda_device).unsqueeze(0),
         }
         return env_state_action_dict
-        
+
     def step(self, env_state_action_dict: dict) -> dict:
         task_record_index : int = env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"]["ongoing_task_record_index"]
         if task_record_index is None:
@@ -135,7 +138,10 @@ class Human:
         task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
         if task_record["human_index"] != self.idx:
             return
-
+        elif self.state["state"] == "free":
+            #human is chosen to work on the task
+            self.state["state"] = 'working_' + task_record["task"]
+        
         if task_record["for_logistic"]:
             self.step_logistic(env_state_action_dict, task_record)
         else:
@@ -145,15 +151,71 @@ class Human:
     def step_logistic(self, env_state_action_dict: dict, task_record: dict) -> dict:
         subtasks = task_record["subtasks"]
         subtask = subtasks["ongoing"]
-        index = subtasks["ongoing_index"]
-        #bool, whether the subtask is finished
-        finished = subtasks["finished"]
-        #type 1, only have human and gantry
-        
-        #type 2, have human, AGV, and gantry
-    
+        human_subtask = subtask[0]
+        #type 1, only have human and gantry + Type
+        #TODO: check change subtasks value can change task records value
+        if task_record["robot"] == "none":
+            if human_subtask == "go_to_storage":
+                self._subtask_go_to_storage(env_state_action_dict, task_record, subtasks)
+            elif human_subtask == "material_on_gantry":
+                self._time_counting_subtask(subtasks, human_subtask)
+            elif human_subtask == "control_gantry_while_going_to_target_area":
+                self._subtask_control_gantry_while_going_to_target_area(
+                    env_state_action_dict, task_record, subtasks, human_subtask
+                )
+            elif human_subtask == "material_on_target_area":
+                self._time_counting_subtask(subtasks, human_subtask)
+
+            #type 2, extra subtasks have human, AGV, and gantry
+            elif human_subtask == "control_gantry":
+                self._time_counting_subtask(subtasks, human_subtask)
+            elif human_subtask == "material_on_robot":
+                self._time_counting_subtask(subtasks, human_subtask)
+            elif human_subtask == "go_to_target_area":
+                self._subtask_go_to_target_area(env_state_action_dict, task_record, subtasks, human_subtask)
+            else:
+                raise ValueError(f"Invalid human subtask for logistic with robot: {human_subtask}")
+
     def step_processing(self, env_state_action_dict: dict, task_record: dict) -> dict:
         pass
+    
+
+    def _subtask_go_to_storage(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
+        if self.state["target_area_id"] is None:
+            storage_key_variables = env_state_action_dict["storage"][task_record["storage_name"]]["key_variables"]
+            self.state["target_area_id"] = random.choice(storage_key_variables["human_working_areas_ids"])
+        if self.state["target_area_id"] == self.state["current_area_id"]:
+            subtasks["finished"][0] = True
+
+    def _subtask_control_gantry_while_going_to_target_area(
+        self, env_state_action_dict: dict, task_record: dict, subtasks: dict, human_subtask: str
+    ) -> None:
+        if self.state["target_area_id"] is None:
+            workstation_areas = env_state_action_dict["machine"][task_record["target_machine"]]["key_variables"]["working_area_ids"][task_record["target_machine_workstation_key"]]
+            self.state["target_area_id"] = random.choice(workstation_areas["human_working_areas_ids"])
+        if self.state["subtask_time_counter"] < CfgSubtaskPredefinedTimeGallery[human_subtask] and not subtasks["finished"][1]:
+            self.state["subtask_time_counter"] += 1
+        elif self.state["target_area_id"] == self.state["current_area_id"]:
+            subtasks["finished"][1] = True
+            self.state["subtask_time_counter"] = 0
+
+    def _subtask_go_to_target_area(self, env_state_action_dict: dict, task_record: dict, subtasks: dict, human_subtask: str) -> None:
+        if self.state["target_area_id"] is None:
+            workstation_areas = env_state_action_dict["machine"][task_record["target_machine"]]["key_variables"]["working_area_ids"][task_record["target_machine_workstation_key"]]
+            self.state["target_area_id"] = random.choice(workstation_areas["human_working_areas_ids"])
+        if self.state["subtask_time_counter"] < CfgSubtaskPredefinedTimeGallery[human_subtask] and not subtasks["finished"][1]:
+            self.state["subtask_time_counter"] += 1
+        elif self.state["target_area_id"] == self.state["current_area_id"]:
+            subtasks["finished"][1] = True
+            self.state["subtask_time_counter"] = 0
+            
+    def _time_counting_subtask(self, subtasks: dict, human_subtask: str, finished_index: int = 0) -> None:
+        if self.state["subtask_time_counter"] < CfgSubtaskPredefinedTimeGallery[human_subtask] and not subtasks["finished"][finished_index]:
+            self.state["subtask_time_counter"] += 1
+        else:
+            subtasks["finished"][finished_index] = True
+            self.state["subtask_time_counter"] = 0
+
 
 class NormalHuman(Human):
     def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):

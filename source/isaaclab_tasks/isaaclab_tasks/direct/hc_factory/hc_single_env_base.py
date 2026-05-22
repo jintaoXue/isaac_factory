@@ -47,8 +47,6 @@ class HcSingleEnvBase():
         # 每个 env 持有独立的 state dict，避免多 env 共享引用导致状态串扰
         self.env_state_action_dict = copy.deepcopy(SingleEnvStateActionDictTemplate)
         self.register_env_assets()
-        self.algo_multiagent_masker = AlgoMultiAgentMasker(self.cuda_device)
-        self.task_manager = TaskManager(self.cuda_device)
     
     def register_env_assets(self):
         self.storage_manager = StorageManager(env_id=self.env_id, cuda_device=self.cuda_device)
@@ -56,18 +54,20 @@ class HcSingleEnvBase():
         self.machine_manager = MachineManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.human_manager = HumanManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.robot_manager = RobotManager(env_id=self.env_id, cuda_device=self.cuda_device)
+        self.algo_multiagent_masker = AlgoMultiAgentMasker(self.cuda_device)
+        self.task_manager = TaskManager(self.cuda_device)
         self.route_manager = RouteManagerVectorEnv(cuda_device=self.cuda_device)
 
     def iter_managers(self):
         return (
             self.storage_manager,
             self.product_material_manager,
-            self.route_manager,
             self.machine_manager,
             self.human_manager,
             self.robot_manager,
             self.algo_multiagent_masker,
             self.task_manager,
+            self.route_manager,
         )
 
     def reset_env(self):

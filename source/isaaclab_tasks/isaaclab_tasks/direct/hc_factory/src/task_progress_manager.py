@@ -139,8 +139,7 @@ class TaskManager:
         task_record["task_done"] = False #default is False, will be set to True when the task is done
         task_record["task"] = self.decode_action_to_task_record["process_task_planning"]["task"]
         task_record["task_index"] = self.decode_action_to_task_record["process_task_planning"]["task_index"]
-        task_record["target_machine"] = CfgProcessTaskToMachineMapping[task_record["task"]]["target_machine"]
-        task_record["logistic_machine"] = CfgProcessTaskToMachineMapping[task_record["task"]]["logistic_machine"]
+
         if task_record["logistic_machine"] != "none":
             task_record["for_logistic"] = True
         else:
@@ -148,15 +147,15 @@ class TaskManager:
         ##storage
         product_name = f"num_{task_record['product_index']:02d}_{task_record['product']}"
         storage_name = env_state_action_dict["material"][product_name]["storage_name"]
-        storage_key_variables = env_state_action_dict["storage"][storage_name]["key_variables"]
-        task_record["storage_key_variables"] = storage_key_variables
+        task_record["storage_name"] = storage_name
         ##machine
-        machine_name = task_record["target_machine"]
-        # machine_state : list = env_state_action_dict["machine"][machine_name]["state"]
-        # first_free_workstation_index = machine_state.index('free')
-        # _key = list(env_state_action_dict["machine"][machine_name]["key_variables"]["working_area_ids"].keys())[first_free_workstation_index]
-        # task_record["machine_working_area_ids"] = env_state_action_dict["machine"][machine_name]["key_variables"]["working_area_ids"][_key]
-        task_record["machine_key_variables"] = env_state_action_dict["machine"][machine_name]["key_variables"]
+        task_record["target_machine"] = CfgProcessTaskToMachineMapping[task_record["task"]]["target_machine"]
+        states = env_state_action_dict["machine"][task_record["target_machine"]]["state"]
+        first_free_workstation_index = states.index('free')
+        task_record["target_machine_workstation_key"] = \
+            list(env_state_action_dict["machine"][task_record["target_machine"]]["key_variables"]["working_area_ids"].keys())[first_free_workstation_index]
+        task_record["logistic_machine"] = CfgProcessTaskToMachineMapping[task_record["task"]]["logistic_machine"]
+        
         task_record["subtasks"] = self.initialze_subtasks(env_state_action_dict, task_record)
         return task_record
 

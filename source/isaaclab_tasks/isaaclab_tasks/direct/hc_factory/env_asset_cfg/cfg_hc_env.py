@@ -33,7 +33,26 @@ SingleEnvStateActionDictTemplate : dict = {
     "human": {},
     "robot": {},
     "storage": {},
-    "route": {},
+    "route": {
+        "human": {
+            "current_area_id": "none",
+            "target_area_id": "none",
+            "generated_route": [],
+            "route_index": 0,
+            "route_length": 0,
+        },
+        "robot": {
+            "current_area_id": "none",
+            "target_area_id": "none",
+            "generated_route": [],
+            "route_index": 0,
+            "route_length": 0,
+        },
+        "gantry": {
+            "current_joints_position": "none",
+            "target_joints_position": "none",
+        },
+    },
     "articulations": {},
     "rigid_prims": {},
     "progress": {
@@ -50,7 +69,9 @@ SingleEnvStateActionDictTemplate : dict = {
         "producing_indexs": [],
         #finished products with indexs list, e.g., "ProductWaterPipe": [0, 1, 2]
         "finished": {},
-        "ongoing_task_records": {},
+        "ongoing_task_records": {
+            "subtasks": {},
+        },
     },
     "agent_action_mask": {
         "agent_A_product_sequencer": torch.Tensor([]),

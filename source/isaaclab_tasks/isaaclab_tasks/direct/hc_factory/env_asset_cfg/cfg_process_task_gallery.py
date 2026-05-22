@@ -1,3 +1,6 @@
+from isaaclab_tasks.direct.hc_factory.src import human
+
+
 CfgProductProcessGallery = {
     #Currently we only have one product type "ProductWaterPipe", but we can easily add more product types in the future
     "ProductWaterPipe": {
@@ -106,60 +109,63 @@ CfgSubtaskGallery = {
     "logistic":{
         "have_AGV":{
             # human: 0, robot: 1, gantry: 2
-            "ongoing": ["go_to_material", "go_to_material", "go_to_material"],
+            "ongoing": ["go_to_storage", "go_to_storage", "go_to_storage"],
             "ongoing_index": 0,
-            "num_subtasks": 7,
+            "num_subtasks": 6,
             "finished": [False,False,False],
             "subtasks": [
-                #human: 0, robot: 1, gantry: 2
-                ["go_to_material", "go_to_material", "go_to_material"],
+                #human: 0, robot: 1, gantry: 2, 
+                # ["go_to_storage", "go_to_storage", "go_to_storage"],
+                # ["material_on_gantry", "wait", "wait"],
+                # ["control_gantry", "wait", "carry_to_robot"],
+                # ["material_on_robot", "wait", "wait"],
+                # ["go_to_target_area", "carry_to_target_area", "move_to_robot_area"],
+                # ["material_on_gantry", "wait", "wait"],
+                # ["control_gantry", "done", "move_to_target_area"],
+                # ["material_on_target_area", "done", "wait"],
+                ["go_to_storage", "go_to_storage", "go_to_storage"],
                 ["material_on_gantry", "wait", "wait"],
                 ["control_gantry", "wait", "carry_to_robot"],
-                ["material_on_robot", "wait", "wait"],
-                ["go_to_target_area", "carry_to_target_area", "move_to_robot_area"],
-                ["material_on_gantry", "wait", "wait"],
-                ["control_gantry", "done", "move_to_target_area"],
-                ["material_on_target_area", "done", "wait"],
+                ["material_on_robot", "wait", "done"],
+                ["go_to_target_area", "carry_to_target_area", "free"],
+                ["material_on_target_area", "done", "free"],
             ],
         },
         "only_have_gantry":{
             # human: 0, gantry: 1
-            "ongoing": ["go_to_material", "go_to_material"],
+            "ongoing": ["go_to_storage", "go_to_storage"],
             "ongoing_index": 0,
             "num_subtasks": 4,
             "finished": [False,False],
             "subtasks": [
                 #human: 0, gantry: 1
-                ["go_to_material", "go_to_material"],
+                ["go_to_storage", "go_to_storage"],
                 ["material_on_gantry", "wait"],
-                ["control_gantry_while_moving_to_target_area", "carry_to_target_area"],
+                ["control_gantry_while_going_to_target_area", "carry_to_target_area"],
                 ["material_on_target_area", "wait"],
             ],
         },
     },
     "processing":{
             # human: 0, machine: 1
-            "ongoing": ["go_to_machine", "wait"],
+            "ongoing": ["go_to_target_area", "wait"],
             "ongoing_index": 0,
             "num_subtasks": 2,
             "finished": [False, True],
             "subtasks": [
                 #human: 0, gantry: 1
-                ["go_to_machine", "wait"],
+                ["go_to_target_area", "wait"],
                 ["control_machine", "process"],
             ],
     },
 }
 
-CfgSubtaskProcessingGallery = {
-    "none": 0,
-    "pick_up_preparation" : 1,
-    "pick_up" : 2,
-    "carry_it_to_target_area" : 3,
-    "put_down_preparation" : 4,
-    "put_down" : 5,
-    "process_preparation" : 6,
-    "process" : 7,
+CfgSubtaskPredefinedTimeGallery = {
+   "material_on_gantry": 10,
+   "control_gantry": 10,
+   "material_on_robot": 10,
+   "material_on_target_area": 10,
+   "control_gantry_while_going_to_target_area": 10,
 }
 
 

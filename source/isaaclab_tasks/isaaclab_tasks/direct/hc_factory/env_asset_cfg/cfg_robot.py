@@ -10,19 +10,20 @@ CfgRobot = {
             "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/human_robot_group/robot_AGV_{idx}",
             "name": "robot_00_{idx}",
         },
-        "state_gallery": {
-            0: "free",
-            1: "moving_to_working",
-            2: "working",
-            3: "resetting",
-        },
         "reset_state": {
             "key_variables": {
                 "type_name": None,
                 "idx": None,
             },
+            #states: free, working_taskName + done
             "state": "free",
             "ongoing_task_record_index": None,
+            "current_area_id": None,
+            "target_area_id": None,
+            "arrived_target_area": False,
+            "generated_route": [],
+            "route_index": 0,
+            "route_length": 0,
         },
     }
 }
