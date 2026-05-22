@@ -20,6 +20,7 @@ class RouteManagerVectorEnv:
 
     def step(self, env_state_action_dict: dict) -> dict:
         env_state_action_dict["route"] = self
+        #TODO: update human robot current area id 
         return env_state_action_dict
 
 

@@ -159,10 +159,19 @@ class Robot:
     def _subtask_carry_to_target_area(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
         if self.state["target_area_id"] == self.state["current_area_id"]:
             subtasks["finished"][2] = True
-            
+
     def _subtask_done(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
-        if self.state["target_area_id"] == self.state["current_area_id"]:
-            subtasks["finished"][3] = True
+        ### reset the robot in advance
+        self.state["state"] = "free"
+        self.state["ongoing_task_record_index"] = None
+        # self.state["current_area_id"] = None
+        self.state["target_area_id"] = None
+        self.state["arrived_target_area"] = False
+        self.state["generated_route"] = []
+        self.state["route_index"] = 0
+        self.state["route_length"] = 0
+        env_state_action_dict["robot"][f"num_{self.idx:02d}_{self.type_name}"] = self.state
+        return env_state_action_dict
 
 class AGV(Robot):
     def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
