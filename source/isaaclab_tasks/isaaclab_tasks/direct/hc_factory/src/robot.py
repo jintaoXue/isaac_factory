@@ -1,10 +1,10 @@
 from isaacsim.core.prims import RigidPrim
 from ..env_asset_cfg.cfg_robot import CfgRobot, CfgRobotRegistrationInfos
 from ..env_asset_cfg.cfg_route.cfg_route import RouteOptionalInitPointsInMap, OptionalInitPointIds
-from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
+from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgSubtaskPredefinedTimeGallery
 import copy
 import torch
-
+import random
 
 class RobotManager:
     def __init__(self, env_id: int, cuda_device: torch.device):
@@ -140,7 +140,7 @@ class Robot:
         if robot_subtask == "go_to_storage":
             self._subtask_go_to_storage(env_state_action_dict, task_record, subtasks)
         elif robot_subtask == "wait":
-            self._subtask_wait(env_state_action_dict, task_record, subtasks)
+            subtasks["finished"][1] = True
         elif robot_subtask == "carry_to_target_area":
             self._subtask_carry_to_target_area(env_state_action_dict, task_record, subtasks)
         elif robot_subtask == "done":
@@ -155,14 +155,11 @@ class Robot:
             self.state["target_area_id"] = random.choice(storage_key_variables["human_working_areas_ids"])
         if self.state["target_area_id"] == self.state["current_area_id"]:
             subtasks["finished"][0] = True
-    def _subtask_wait(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
-        if self.state["subtask_time_counter"] < CfgSubtaskPredefinedTimeGallery[robot_subtask]:
-            self.state["subtask_time_counter"] += 1
-        elif self.state["target_area_id"] == self.state["current_area_id"]:
-            subtasks["finished"][1] = True
+            
     def _subtask_carry_to_target_area(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
         if self.state["target_area_id"] == self.state["current_area_id"]:
             subtasks["finished"][2] = True
+            
     def _subtask_done(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
         if self.state["target_area_id"] == self.state["current_area_id"]:
             subtasks["finished"][3] = True

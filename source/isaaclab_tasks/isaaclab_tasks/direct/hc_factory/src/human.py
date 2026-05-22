@@ -211,11 +211,8 @@ class Human:
         if self.state["target_area_id"] is None:
             workstation_areas = env_state_action_dict["machine"][task_record["target_machine"]]["key_variables"]["working_area_ids"][task_record["target_machine_workstation_key"]]
             self.state["target_area_id"] = random.choice(workstation_areas["human_working_areas_ids"])
-        if self.state["subtask_time_counter"] < CfgSubtaskPredefinedTimeGallery[human_subtask] and not subtasks["finished"][1]:
-            self.state["subtask_time_counter"] += 1
-        elif self.state["target_area_id"] == self.state["current_area_id"]:
+        if self.state["target_area_id"] == self.state["current_area_id"]:
             subtasks["finished"][1] = True
-            self.state["subtask_time_counter"] = 0
             
     def _time_counting_subtask(self, subtasks: dict, human_subtask: str, finished_index: int = 0) -> None:
         if self.state["subtask_time_counter"] < CfgSubtaskPredefinedTimeGallery[human_subtask] and not subtasks["finished"][finished_index]:
