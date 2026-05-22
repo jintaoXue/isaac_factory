@@ -156,11 +156,11 @@ class Human:
         #TODO: check change subtasks value can change task records value
         if task_record["robot"] == "none":
             if human_subtask == "go_to_storage":
-                self._subtask_go_to_storage(env_state_action_dict, task_record, subtasks)
+                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_type="storage")
             elif human_subtask == "material_on_gantry":
                 self._time_counting_subtask(subtasks, human_subtask)
-            elif human_subtask == "control_gantry_while_going_to_target_area":
-                self._subtask_control_gantry_while_going_to_target_area(
+            elif human_subtask == "control_gantry_while_going_to_target_machine":
+                self._subtask_control_gantry_while_going_to_target_machine(
                     env_state_action_dict, task_record, subtasks, human_subtask
                 )
             elif human_subtask == "material_on_target_area":
@@ -171,8 +171,8 @@ class Human:
                 self._time_counting_subtask(subtasks, human_subtask)
             elif human_subtask == "material_on_robot":
                 self._time_counting_subtask(subtasks, human_subtask)
-            elif human_subtask == "go_to_target_area":
-                self._subtask_go_to_target_area(env_state_action_dict, task_record, subtasks, human_subtask)
+            elif human_subtask == "go_to_target_machine":
+                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_type="machine")
             else:
                 raise ValueError(f"Invalid human subtask for logistic with robot: {human_subtask}")
 
@@ -181,21 +181,27 @@ class Human:
         subtask = subtasks["ongoing"]
         human_subtask = subtask[0]
         
-        if human_subtask == "go_to_target_area":
-            self._subtask_go_to_target_area(env_state_action_dict, task_record, subtasks, human_subtask)
+        if human_subtask == "go_to_target_machine":
+            self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_type="machine")
         elif human_subtask == "control_machine":
             self._time_counting_subtask(env_state_action_dict, task_record, subtasks, human_subtask)
         else:
             raise ValueError(f"Invalid human subtask for processing: {human_subtask}")
 
-    def _subtask_go_to_storage(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
+    def _subtask_go_to_target(self, env_state_action_dict: dict, task_record: dict, subtasks: dict, target_type: str) -> None:
         if self.state["target_area_id"] is None:
-            storage_key_variables = env_state_action_dict["storage"][task_record["storage_name"]]["key_variables"]
-            self.state["target_area_id"] = random.choice(storage_key_variables["human_working_areas_ids"])
+            if target_type == "machine":
+                workstation_areas = env_state_action_dict["machine"][task_record["target_machine"]]["key_variables"]["working_area_ids"][task_record["target_machine_workstation_key"]]
+                self.state["target_area_id"] = random.choice(workstation_areas["human_working_areas_ids"])
+            elif target_type == "storage":
+                storage_key_variables = env_state_action_dict["storage"][task_record["storage_name"]]["key_variables"]
+                self.state["target_area_id"] = random.choice(storage_key_variables["human_working_areas_ids"])
+            else:
+                raise ValueError(f"Invalid target type: {target_type}")
         if self.state["target_area_id"] == self.state["current_area_id"]:
-            subtasks["finished"][0] = True
+            subtasks["finished"][1] = True
 
-    def _subtask_control_gantry_while_going_to_target_area(
+    def _subtask_control_gantry_while_going_to_target_machine(
         self, env_state_action_dict: dict, task_record: dict, subtasks: dict, human_subtask: str
     ) -> None:
         if self.state["target_area_id"] is None:
@@ -206,13 +212,6 @@ class Human:
         elif self.state["target_area_id"] == self.state["current_area_id"]:
             subtasks["finished"][1] = True
             self.state["subtask_time_counter"] = 0
-
-    def _subtask_go_to_target_area(self, env_state_action_dict: dict, task_record: dict, subtasks: dict, human_subtask: str) -> None:
-        if self.state["target_area_id"] is None:
-            workstation_areas = env_state_action_dict["machine"][task_record["target_machine"]]["key_variables"]["working_area_ids"][task_record["target_machine_workstation_key"]]
-            self.state["target_area_id"] = random.choice(workstation_areas["human_working_areas_ids"])
-        if self.state["target_area_id"] == self.state["current_area_id"]:
-            subtasks["finished"][1] = True
             
     def _time_counting_subtask(self, subtasks: dict, human_subtask: str, finished_index: int = 0) -> None:
         if self.state["subtask_time_counter"] < CfgSubtaskPredefinedTimeGallery[human_subtask] and not subtasks["finished"][finished_index]:

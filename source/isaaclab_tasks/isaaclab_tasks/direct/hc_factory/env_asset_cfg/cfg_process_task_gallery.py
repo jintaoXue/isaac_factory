@@ -119,7 +119,7 @@ CfgSubtaskGallery = {
                 # ["material_on_gantry", "wait", "wait"],
                 # ["control_gantry", "wait", "carry_to_robot"],
                 # ["material_on_robot", "wait", "wait"],
-                # ["go_to_target_area", "carry_to_target_area", "move_to_robot_area"],
+                # ["go_to_target_machine", "carry_to_target_area", "move_to_robot_area"],
                 # ["material_on_gantry", "wait", "wait"],
                 # ["control_gantry", "done", "move_to_target_area"],
                 # ["material_on_target_area", "done", "wait"],
@@ -127,7 +127,7 @@ CfgSubtaskGallery = {
                 ["material_on_gantry", "wait", "wait"],
                 ["control_gantry", "wait", "carry_to_robot"],
                 ["material_on_robot", "wait", "done"],
-                ["go_to_target_area", "carry_to_target_area", "free"],
+                ["go_to_target_machine", "carry_to_target_area", "free"],
                 ["material_on_target_area", "done", "free"],
             ],
         },
@@ -141,20 +141,20 @@ CfgSubtaskGallery = {
                 #human: 0, gantry: 1
                 ["go_to_storage", "go_to_storage"],
                 ["material_on_gantry", "wait"],
-                ["control_gantry_while_going_to_target_area", "carry_to_target_area"],
+                ["control_gantry_while_going_to_target_machine", "carry_to_target_area"],
                 ["material_on_target_area", "wait"],
             ],
         },
     },
     "processing":{
             # human: 0, machine: 1
-            "ongoing": ["go_to_target_area", "wait"],
+            "ongoing": ["go_to_target_machine", "wait"],
             "ongoing_index": 0,
             "num_subtasks": 2,
             "finished": [False, True],
             "subtasks": [
                 #human: 0, gantry: 1
-                ["go_to_target_area", "wait"],
+                ["go_to_target_machine", "wait"],
                 ["control_machine", "process"],
             ],
     },
@@ -165,7 +165,7 @@ CfgSubtaskPredefinedTimeGallery = {
    "control_gantry": 10,
    "material_on_robot": 10,
    "material_on_target_area": 10,
-   "control_gantry_while_going_to_target_area": 10,
+   "control_gantry_while_going_to_target_machine": 10,
    "control_machine": 10,
 }
 

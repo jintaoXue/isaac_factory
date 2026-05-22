@@ -245,6 +245,7 @@ class num07_gantry_group(Machine):
         final_target_joint_position[self.gantry_indexs == 2] = target_joint_position_2[self.gantry_indexs == 2]
         final_target_joint_position[self.gantry_indexs == 3] = target_joint_position_3[self.gantry_indexs == 3]
         env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"] = final_target_joint_position
+        
         return
     
     def get_joint_pose_from_xy_target(self, joint_position: torch.Tensor, position_xy: list, gantry_index: int) -> torch.Tensor:

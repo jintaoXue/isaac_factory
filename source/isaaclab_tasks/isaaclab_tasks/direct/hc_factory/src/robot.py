@@ -138,27 +138,30 @@ class Robot:
         subtask = subtasks["ongoing"]
         robot_subtask = subtask[0]
         if robot_subtask == "go_to_storage":
-            self._subtask_go_to_storage(env_state_action_dict, task_record, subtasks)
+            self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_type="storage")
         elif robot_subtask == "wait":
             subtasks["finished"][1] = True
         elif robot_subtask == "carry_to_target_area":
-            self._subtask_carry_to_target_area(env_state_action_dict, task_record, subtasks)
+            self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_type="machine")
         elif robot_subtask == "done":
             self._subtask_done(env_state_action_dict, task_record, subtasks)
         else:
             raise ValueError(f"Invalid robot subtask for logistic: {robot_subtask}")
         return env_state_action_dict
-    
-    def _subtask_go_to_storage(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
-        if self.state["target_area_id"] is None:
-            storage_key_variables = env_state_action_dict["storage"][task_record["storage_name"]]["key_variables"]
-            self.state["target_area_id"] = random.choice(storage_key_variables["human_working_areas_ids"])
-        if self.state["target_area_id"] == self.state["current_area_id"]:
-            subtasks["finished"][0] = True
             
-    def _subtask_carry_to_target_area(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
+    def _subtask_go_to_target(self, env_state_action_dict: dict, task_record: dict, subtasks: dict, target_type: str) -> None:
+        
+        if self.state["target_area_id"] is None:
+            if target_type == "machine":
+                workstation_areas = env_state_action_dict["machine"][task_record["target_machine"]]["key_variables"]["working_area_ids"][task_record["target_machine_workstation_key"]]
+                self.state["target_area_id"] = random.choice(workstation_areas["human_working_areas_ids"])
+            elif target_type == "storage":
+                storage_key_variables = env_state_action_dict["storage"][task_record["storage_name"]]["key_variables"]
+                self.state["target_area_id"] = random.choice(storage_key_variables["human_working_areas_ids"])
+            else:
+                raise ValueError(f"Invalid target type: {target_type}")
         if self.state["target_area_id"] == self.state["current_area_id"]:
-            subtasks["finished"][2] = True
+            subtasks["finished"][1] = True
 
     def _subtask_done(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
         ### reset the robot in advance

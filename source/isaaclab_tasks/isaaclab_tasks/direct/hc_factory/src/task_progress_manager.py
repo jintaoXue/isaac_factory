@@ -195,7 +195,7 @@ class TaskManager:
         assert material_type != "none", "The material type should not be none"
         material_name = f"num_{task_record['product_index']:02d}_{material_type}"
         assert env_state_action_dict["material"][material_name]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
-        env_state_action_dict["material"][material_name]["ongoing_task_record_index"] = task_record["product_index"]
+        env_state_action_dict["material"][material_name]["ongoing_task_record_index"] = task_record["product_index"]        
 
     def step_task_records(self, env_state_action_dict):
 
