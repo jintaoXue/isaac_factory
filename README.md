@@ -88,4 +88,4 @@ Aligned with a 4-layer real-time factory operations stack (formal academic/indus
 
 #缩短 多层决策带来的时间增加
 
-#还剩带来的route planner 和material 状态， product_to_storage 的任务描述
+#还剩带来的route planner 和material 状态， product_to_storage 的任务描述， material的update_task_availability_mask要确保，current task是完成的
