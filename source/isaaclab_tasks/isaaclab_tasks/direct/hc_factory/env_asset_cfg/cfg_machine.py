@@ -12,7 +12,9 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free", "free"],
-            "ongoing_task_record_index": None,
+            "processing_time_step": [0, 0],
+            "target_joints_position": [None, None],
+            "ongoing_task_record_index": [None, None],
             "key_variables": {},
         },
         # 只有“工位/工作站（station）”这种可以处理物料的节点，才需要配置 working area ids。
@@ -56,7 +58,9 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
-            "ongoing_task_record_index": None,
+            "processing_time_step": [0],
+            "target_joints_position": [None],
+            "ongoing_task_record_index": [None],
             "key_variables": {},
         },
         "working_area_ids": {
@@ -92,6 +96,8 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
+            "processing_time_step": [0],
+            "target_joints_position": [None],
             "ongoing_task_record_index": None,
             "key_variables": {},
         },
@@ -128,7 +134,9 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
-            "ongoing_task_record_index": None,
+            "processing_time_step": [0],
+            "target_joints_position": [None],
+            "ongoing_task_record_index": [None],
             "key_variables": {},
         },
         "working_area_ids": {
@@ -158,7 +166,9 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
-            "ongoing_task_record_index": None,
+            "processing_time_step": [0],
+            "target_joints_position": [None],
+            "ongoing_task_record_index": [None],
             "key_variables": {},
         },
         "working_area_ids": {
@@ -194,8 +204,10 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
-            "ongoing_task_record_index": None,
+            "processing_time_step": [0],
+            "ongoing_task_record_index": [None],
             "key_variables": {},
+            "target_joints_position": [None],
         },
         "working_area_ids": {
             "num05_groovingMachineSmall_part01_small_fixed_base": {
@@ -230,8 +242,10 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free"],
-            "ongoing_task_record_index": None,
+            "processing_time_step": [0],
+            "ongoing_task_record_index": [None],
             "key_variables": {},
+            "target_joints_position": [None],
         },
         "working_area_ids": {
             "num06_highPressureFoamingMachine": {
@@ -262,11 +276,11 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting", 4: "invalid"},
         "reset_state": {
             "state": ["free", "invalid", "invalid", "invalid"],
-            "ongoing_task_record_index": None,
+            "ongoing_task_record_index": [None, None, None, None],
             "key_variables": {},
-            "current_joints_position": None,
+            "target_area_id": None,
+            "target_area_xyz": None,
             "target_joints_position": None,
-            "arrived_target_area": False,
         },
         "working_area_ids": {
             "num07_gantry_group_station_00": {
@@ -301,7 +315,7 @@ CfgMachine = {
                 "gantry_indexs": torch.tensor([0, 1, 2, 3, 0, 1, 2, 3]),
                 ### to simplify the problem, we set the z of hook to be fixed, and only control the x and y movement of the gantry, so the joint position of z axis is not used for calculating the reward and is not included in the observation, but it is still needed for animation and calculating the offset between the hook and the material when gripping.
                 "fixed_hook_height": 8.90808,
-                "animation_time": 100,
+                "animation_time": 20,
             },
         },
     },
@@ -316,7 +330,8 @@ CfgMachine = {
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
             "state": ["free", "free"],
-            "ongoing_task_record_index": None,
+            "processing_time_step": [0, 0],
+            "ongoing_task_record_index": [None, None],
             "key_variables": {},
         },
         "working_area_ids": {

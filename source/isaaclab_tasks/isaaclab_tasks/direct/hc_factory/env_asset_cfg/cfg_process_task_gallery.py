@@ -108,41 +108,44 @@ CfgProcessTaskGalleryClassified = {
 CfgSubtaskGallery = {
     "logistic":{
         "have_AGV":{
-            # human: 0, robot: 1, gantry: 2
-            "ongoing": ["go_to_storage", "go_to_storage", "go_to_storage"],
+            # human: 0, gantry: 1, robot: 2
+            "ongoing": ["go_to_storage", "go_to_storage", "go_to_storage", "in_storage"],
             "ongoing_index": 0,
-            "num_subtasks": 6,
+            "num_subtasks": 9,
             "finished": [False,False,False],
             "subtasks": [
-                #human: 0, robot: 1, gantry: 2, 
+                # human: 0, gantry: 1, robot: 2
+                ["go_to_storage", "go_to_storage", "go_to_storage", "in_storage"],
+                ["material_on_gantry", "wait", "wait", "in_storage"],
+                ["control_gantry", "carry_to_robot", "wait", "with_gantry"],
+                ["material_on_robot", "wait", "wait", "with_gantry"],
+                ["go_to_target_machine", "move_to_target_area", "carry_to_target_area", "with_robot"],
+                ["material_on_gantry", "wait", "wait", "with_robot"],
+                ["control_gantry", "move_to_target_area", "wait", "with_gantry"],
+                ["material_on_target_area", "done", "wait", "with_gantry"],
+                ["done", "done", "done", "on_machine"],
                 # ["go_to_storage", "go_to_storage", "go_to_storage"],
                 # ["material_on_gantry", "wait", "wait"],
                 # ["control_gantry", "wait", "carry_to_robot"],
-                # ["material_on_robot", "wait", "wait"],
-                # ["go_to_target_machine", "carry_to_target_area", "move_to_robot_area"],
-                # ["material_on_gantry", "wait", "wait"],
-                # ["control_gantry", "done", "move_to_target_area"],
-                # ["material_on_target_area", "done", "wait"],
-                ["go_to_storage", "go_to_storage", "go_to_storage"],
-                ["material_on_gantry", "wait", "wait"],
-                ["control_gantry", "wait", "carry_to_robot"],
-                ["material_on_robot", "wait", "done"],
-                ["go_to_target_machine", "carry_to_target_area", "free"],
-                ["material_on_target_area", "done", "free"],
+                # ["material_on_robot", "wait", "done"],
+                # ["go_to_target_machine", "carry_to_target_area", "done"],
+                # ["material_on_target_area", "done", "done"],
+                # ["done", "done", "done"],
             ],
         },
         "only_have_gantry":{
             # human: 0, gantry: 1
-            "ongoing": ["go_to_storage", "go_to_storage"],
+            "ongoing": ["go_to_storage", "go_to_storage", "in_storage"],
             "ongoing_index": 0,
             "num_subtasks": 4,
             "finished": [False,False],
             "subtasks": [
-                #human: 0, gantry: 1
-                ["go_to_storage", "go_to_storage"],
-                ["material_on_gantry", "wait"],
-                ["control_gantry_while_going_to_target_machine", "carry_to_target_area"],
-                ["material_on_target_area", "wait"],
+                #human: 0, gantry: 1, material: -1
+                ["go_to_storage", "go_to_storage", "in_storage"],
+                ["material_on_gantry", "wait", "in_storage"],
+                ["control_gantry_while_going_to_target_machine", "carry_to_target_area", "with_gantry"],
+                ["material_on_target_area", "wait", "with_gantry"],
+                ["done", "done", "on_machine"],
             ],
         },
     },
@@ -153,9 +156,10 @@ CfgSubtaskGallery = {
             "num_subtasks": 2,
             "finished": [False, True],
             "subtasks": [
-                #human: 0, gantry: 1
-                ["go_to_target_machine", "wait"],
-                ["control_machine", "process"],
+                #human: 0, machine: 1, material: -1
+                ["go_to_target_machine", "wait", "on_machine"],
+                ["control_machine", "process", "on_machine"],
+                ["done", "done", "on_machine"],
             ],
     },
 }
@@ -209,7 +213,7 @@ CfgTask2SubtaskGallery = {
 }
 
 
-CfgProcessTaskToMachineMapping = {
+CfgProcessTaskToTargetMapping = {
     "none": "none",
     "logistic_for_pipe_cutting": {"target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine", "logistic_machine": "num07_gantry_group"},
     "pipe_cutting": {"target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine", "logistic_machine": "none"},
@@ -223,5 +227,5 @@ CfgProcessTaskToMachineMapping = {
     "MIG_welding_surface": {"target_machine": "num00_rotaryPipeAutomaticWeldingMachine", "logistic_machine": "none"},
     "logistic_for_paint_rust_proof": {"target_machine": "num08_workbench", "logistic_machine": "num07_gantry_group"},
     "paint_rust_proof": {"target_machine": "num08_workbench", "logistic_machine": "none"},
-    "product_to_storage": {"target_machine": "num07_gantry_group", "logistic_machine": "none"},
+    "product_to_storage": {"target_machine": "num08_workbench", "logistic_machine": "num07_gantry_group", "target_area": "storage"},
 }

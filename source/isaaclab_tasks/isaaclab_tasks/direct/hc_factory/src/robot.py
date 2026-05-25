@@ -136,11 +136,11 @@ class Robot:
     def step_logistic(self, env_state_action_dict: dict, task_record: dict) -> dict:
         subtasks = task_record["subtasks"]
         subtask = subtasks["ongoing"]
-        robot_subtask = subtask[0]
+        robot_subtask = subtask[2]
         if robot_subtask == "go_to_storage":
             self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_type="storage")
         elif robot_subtask == "wait":
-            subtasks["finished"][1] = True
+            subtasks["finished"][2] = True
         elif robot_subtask == "carry_to_target_area":
             self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_type="machine")
         elif robot_subtask == "done":
@@ -161,18 +161,14 @@ class Robot:
             else:
                 raise ValueError(f"Invalid target type: {target_type}")
         if self.state["target_area_id"] == self.state["current_area_id"]:
-            subtasks["finished"][1] = True
+            subtasks["finished"][2] = True
 
     def _subtask_done(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
+        subtasks["finished"][2] = True
         ### reset the robot in advance
-        self.state["state"] = "free"
-        self.state["ongoing_task_record_index"] = None
-        # self.state["current_area_id"] = None
-        self.state["target_area_id"] = None
-        self.state["arrived_target_area"] = False
-        self.state["generated_route"] = []
-        self.state["route_index"] = 0
-        self.state["route_length"] = 0
+        current_area_id = self.state["current_area_id"]
+        self.state : str = copy.deepcopy(self.reset_state)
+        self.state["current_area_id"] = current_area_id
         env_state_action_dict["robot"][f"num_{self.idx:02d}_{self.type_name}"] = self.state
         return env_state_action_dict
 

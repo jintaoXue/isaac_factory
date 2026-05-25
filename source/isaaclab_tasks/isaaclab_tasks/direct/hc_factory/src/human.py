@@ -3,7 +3,7 @@ import omni.usd
 from pxr import Usd, UsdSkel, Gf, Sdf
 from ..env_asset_cfg.cfg_human import CfgHuman, CfgHumanRegistrationInfos
 from ..env_asset_cfg.cfg_route.cfg_route import RouteOptionalInitPointsInMap, OptionalInitPointIds
-from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgSubtaskPredefinedTimeGallery, CfgProcessTaskToMachineMapping
+from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgSubtaskPredefinedTimeGallery, CfgProcessTaskToTargetMapping
 import torch
 import copy
 import random
@@ -154,27 +154,27 @@ class Human:
         human_subtask = subtask[0]
         #type 1, only have human and gantry + Type
         #TODO: check change subtasks value can change task records value
-        if task_record["robot"] == "none":
-            if human_subtask == "go_to_storage":
-                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_type="storage")
-            elif human_subtask == "material_on_gantry":
-                self._time_counting_subtask(subtasks, human_subtask)
-            elif human_subtask == "control_gantry_while_going_to_target_machine":
-                self._subtask_control_gantry_while_going_to_target_machine(
-                    env_state_action_dict, task_record, subtasks, human_subtask
-                )
-            elif human_subtask == "material_on_target_area":
-                self._time_counting_subtask(subtasks, human_subtask)
-
-            #type 2, extra subtasks have human, AGV, and gantry
-            elif human_subtask == "control_gantry":
-                self._time_counting_subtask(subtasks, human_subtask)
-            elif human_subtask == "material_on_robot":
-                self._time_counting_subtask(subtasks, human_subtask)
-            elif human_subtask == "go_to_target_machine":
-                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_type="machine")
-            else:
-                raise ValueError(f"Invalid human subtask for logistic with robot: {human_subtask}")
+        if human_subtask == "go_to_storage":
+            self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_type="storage")
+        elif human_subtask == "material_on_gantry":
+            self._time_counting_subtask(subtasks, human_subtask)
+        elif human_subtask == "control_gantry_while_going_to_target_machine":
+            self._subtask_control_gantry_while_going_to_target_machine(
+                env_state_action_dict, task_record, subtasks, human_subtask
+            )
+        elif human_subtask == "material_on_target_area":
+            self._time_counting_subtask(subtasks, human_subtask)
+        elif human_subtask == "done":
+            self._subtask_done(env_state_action_dict, task_record, subtasks)
+        #type 2, extra subtasks have human, AGV, and gantry
+        elif human_subtask == "control_gantry":
+            self._time_counting_subtask(subtasks, human_subtask)
+        elif human_subtask == "material_on_robot":
+            self._time_counting_subtask(subtasks, human_subtask)
+        elif human_subtask == "go_to_target_machine":
+            self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_type="machine")
+        else:
+            raise ValueError(f"Invalid human subtask for logistic with robot: {human_subtask}")
 
     def step_processing(self, env_state_action_dict: dict, task_record: dict) -> dict:
         subtasks = task_record["subtasks"]
@@ -220,6 +220,13 @@ class Human:
             subtasks["finished"][finished_index] = True
             self.state["subtask_time_counter"] = 0
 
+    def _subtask_done(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
+        subtasks["finished"][0] = True
+        current_area_id = self.state["current_area_id"]
+        self.state : str = copy.deepcopy(self.reset_state)
+        self.state["current_area_id"] = current_area_id
+        env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"] = self.state
+        return env_state_action_dict
 
 class NormalHuman(Human):
     def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
