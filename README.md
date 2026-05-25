@@ -87,3 +87,5 @@ Aligned with a 4-layer real-time factory operations stack (formal academic/indus
 #task excution and route generation
 
 #缩短 多层决策带来的时间增加
+
+#还剩带来的route planner 和material 状态， product_to_storage 的任务描述
