@@ -160,8 +160,7 @@ class Human:
             self._time_counting_subtask(subtasks, human_subtask)
         elif human_subtask == "control_gantry_while_going_to_target_machine":
             self._subtask_control_gantry_while_going_to_target_machine(
-                env_state_action_dict, task_record, subtasks, human_subtask
-            )
+                env_state_action_dict, task_record, subtasks, human_subtask)
         elif human_subtask == "material_on_target_area":
             self._time_counting_subtask(subtasks, human_subtask)
         elif human_subtask == "done":

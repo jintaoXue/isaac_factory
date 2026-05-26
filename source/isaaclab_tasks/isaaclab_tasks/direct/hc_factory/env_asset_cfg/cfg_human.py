@@ -15,12 +15,11 @@ CfgHuman = {
                 "type_name": None,
                 "idx": None,
             },
-            #states: free, working_task gallery + done
+            #states: free, working_task gallery
             "state": "free",
             "ongoing_task_record_index": None,
             "current_area_id": None,
             "target_area_id": None,
-            "arrived_target_area": False,
             "subtask_time_counter": 0,
             "generated_route": [],
             "route_index": 0,
