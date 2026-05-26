@@ -34,7 +34,7 @@ CfgProductProcess = {
         },
         "reset_state_template": {
             "key_variables": {},
-            "current_task": "none",
+            "finished_task": "none",
             "storage_name": "none",
             "ongoing_task_record_index": None,
             "substate": {

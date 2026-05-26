@@ -49,8 +49,8 @@ class TaskManager:
             #find the next_product_index in material_batch list that is the right product type
             for material_name, material_state in material_states_dict.items():
                 key_variables = material_state["key_variables"]
-                current_task = material_state["current_task"]
-                if key_variables["type_name"] == product_type and current_task == "none":
+                finished_task = material_state["finished_task"]
+                if key_variables["type_name"] == product_type and finished_task == "none":
                     env_state_action_dict["progress"]["next_product"] = product_type
                     env_state_action_dict["progress"]["next_product_index"] = key_variables["idx"]
                     break

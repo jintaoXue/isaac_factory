@@ -40,21 +40,24 @@ class ProductMaterialManager:
         # CfgProcessTaskGalleryClassified. This contains the task gallery for all product types; each product type has its own process gallery. 
         mask = torch.zeros(len(self.material_batch_list), len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
         mask[:, 0] = 1 # "none" task is always available
-        for material_batch, i in zip(self.material_batch_list, range(len(self.material_batch_list))):
+        ongoing_task_records : dict = env_state_action_dict["progress"]["ongoing_task_records"]
+        for material_batch, material_batch_index in zip(self.material_batch_list, range(len(self.material_batch_list))):
+            if material_batch_index in ongoing_task_records:
+                continue
             product_type = material_batch.type_name
-            current_task = material_batch.state["current_task"]
+            finished_task = material_batch.state["finished_task"]
             one_ProcessTaskGallery = CfgProcessTaskGalleryClassified[product_type]
-            next_allowing_task_index = self.find_product_next_allowing_task_index(current_task, one_ProcessTaskGallery)
-            mask[i][next_allowing_task_index] = 1
+            next_allowing_task_index = self.find_product_next_allowing_task_index(finished_task, one_ProcessTaskGallery)
+            mask[material_batch_index][next_allowing_task_index] = 1
         env_state_action_dict["material"]["task_availability_mask"] = mask
         return env_state_action_dict
     
-    def find_product_next_allowing_task_index(self, current_task, one_ProcessTaskGallery):
+    def find_product_next_allowing_task_index(self, finished_task, one_ProcessTaskGallery):
         # Use the ordered task list for the product to determine the next allowable task.
-        # If current_task is the last task in this product's gallery, return "none".
+        # If finished_task is the last task in this product's gallery, return "none".
         keys = list(one_ProcessTaskGallery.keys())
-        assert current_task in keys, f"Current task {current_task} not found in the product's process task gallery."
-        current_index = keys.index(current_task)
+        assert finished_task in keys, f"Current task {finished_task} not found in the product's process task gallery."
+        current_index = keys.index(finished_task)
         next_index = current_index + 1
         if next_index >= len(keys):
             return CfgProcessTaskGalleryInAll["none"]
@@ -178,6 +181,7 @@ class ProductWaterPipe(MaterialBatch):
         super().__init__(idx, cfg, env_id, cuda_device)
 
     def step(self, env_state_action_dict: dict) -> dict:
+        
         return env_state_action_dict
 
     def iter_raw_material_prims(self):
