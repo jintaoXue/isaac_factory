@@ -20,7 +20,6 @@ CfgRobot = {
             "ongoing_task_record_index": None,
             "current_area_id": None,
             "target_area_id": None,
-            "arrived_target_area": False,
             "generated_route": [],
             "route_index": 0,
             "route_length": 0,
