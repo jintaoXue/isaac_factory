@@ -181,7 +181,7 @@ class ProductWaterPipe(MaterialBatch):
         super().__init__(idx, cfg, env_id, cuda_device)
 
     def step(self, env_state_action_dict: dict) -> dict:
-        
+        # trace the material batch's state, and update the position
         return env_state_action_dict
 
     def iter_raw_material_prims(self):

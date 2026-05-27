@@ -163,7 +163,7 @@ class TaskManager:
             chosen_free_gantry_index = gantry_states.index('free')
             task_record["chosen_free_gantry_index"] = chosen_free_gantry_index
         
-        task_record["subtasks"] = self.initialze_subtasks(env_state_action_dict, task_record)
+        task_record["subtasks"] : dict = copy.deepcopy(self.initialze_subtasks(env_state_action_dict, task_record))
         return task_record
 
     def initialze_subtasks(self, env_state_action_dict, task_record):
@@ -239,6 +239,7 @@ class TaskManager:
                 env_state_action_dict["progress"]["next_product"] = None
                 env_state_action_dict["progress"]["next_product_index"] = None
                 env_state_action_dict["progress"]["not_started"][product_type] -= 1
+
         return env_state_action_dict
 
     def _check_task_done(self, task_record):
