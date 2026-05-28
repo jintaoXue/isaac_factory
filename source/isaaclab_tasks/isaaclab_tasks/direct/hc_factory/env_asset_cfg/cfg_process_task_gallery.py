@@ -189,17 +189,17 @@ CfgSubtaskPredefinedTimeGallery = {
 CfgProcessTaskToTargetMapping = {
     "none": {"task_type": "none", "target_machine": None, "logistic_machine": None, "is_final_task": False},
     "logistic_for_pipe_cutting": {"task_type": "logistic", "target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine", "logistic_machine": "num07_gantry_group", "is_final_task": False},
-    "pipe_cutting": {"task_type": "processing", "target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine", "logistic_machine": "none", "is_final_task": False},
+    "pipe_cutting": {"task_type": "processing", "target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine", "logistic_machine": None, "is_final_task": False},
     "logistic_for_pipe_grooving": {"task_type": "logistic", "target_machine": "num04_groovingMachineLarge", "logistic_machine": "num07_gantry_group", "is_final_task": False},
-    "pipe_grooving": {"task_type": "processing", "target_machine": "num04_groovingMachineLarge", "logistic_machine": "none", "is_final_task": False},
+    "pipe_grooving": {"task_type": "processing", "target_machine": "num04_groovingMachineLarge", "logistic_machine": None, "is_final_task": False},
     "logistic_for_batch_spot_welding": {"task_type": "logistic", "target_machine": "num08_workbench", "logistic_machine": "num07_gantry_group", "is_final_task": False},
-    "batch_spot_welding": {"task_type": "processing", "target_machine": "num08_workbench", "logistic_machine": "none", "is_final_task": False},
+    "batch_spot_welding": {"task_type": "processing", "target_machine": "num08_workbench", "logistic_machine": None, "is_final_task": False},
     "logistic_for_arc_welding_root": {"task_type": "logistic", "target_machine": "num01_weldingRobot", "logistic_machine": "num07_gantry_group", "is_final_task": False},
-    "arc_welding_root": {"task_type": "processing", "target_machine": "num01_weldingRobot", "logistic_machine": "none", "is_final_task": False},
+    "arc_welding_root": {"task_type": "processing", "target_machine": "num01_weldingRobot", "logistic_machine": None, "is_final_task": False},
     "logistic_for_MIG_welding_surface": {"task_type": "logistic", "target_machine": "num00_rotaryPipeAutomaticWeldingMachine", "logistic_machine": "num07_gantry_group", "is_final_task": False},
-    "MIG_welding_surface": {"task_type": "processing", "target_machine": "num00_rotaryPipeAutomaticWeldingMachine", "logistic_machine": "none", "is_final_task": False},
+    "MIG_welding_surface": {"task_type": "processing", "target_machine": "num00_rotaryPipeAutomaticWeldingMachine", "logistic_machine": None, "is_final_task": False},
     "logistic_for_paint_rust_proof": {"task_type": "logistic", "target_machine": "num08_workbench", "logistic_machine": "num07_gantry_group", "is_final_task": False},
-    "paint_rust_proof": {"task_type": "processing", "target_machine": "num08_workbench", "logistic_machine": "none", "is_final_task": True},
+    "paint_rust_proof": {"task_type": "processing", "target_machine": "num08_workbench", "logistic_machine": None, "is_final_task": True},
     # "product_to_storage": {"task_type": "logistic", "target_machine": "num08_workbench", "logistic_machine": "num07_gantry_group"},
 }
 

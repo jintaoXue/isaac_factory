@@ -111,14 +111,14 @@ class TaskManager:
 
         ##machine information
         new_task_record["target_machine"] = CfgProcessTaskToTargetMapping[new_task_record["task"]]["target_machine"]
-        assert new_task_record["target_machine"] != None, "Target machine should be set"
+        # assert new_task_record["target_machine"] != None, "Target machine should be set"
         states = env_state_action_dict["machine"][new_task_record["target_machine"]]["state"]
         chosen_free_workstation_index = states.index('free')
         new_task_record["target_machine_workstation"] = \
             list(env_state_action_dict["machine"][new_task_record["target_machine"]]["key_variables"]["working_area_ids"].keys())[chosen_free_workstation_index]
         new_task_record["chosen_free_workstation_index"] = chosen_free_workstation_index
         new_task_record["logistic_machine"] = CfgProcessTaskToTargetMapping[new_task_record["task"]]["logistic_machine"]
-        if new_task_record["logistic_machine"] != None:
+        if new_task_record["task_type"] == "logistic":
             chosen_free_gantry_index = self._find_free_gantry(env_state_action_dict, new_task_record)
             assert chosen_free_gantry_index is not None, "Free gantry index should be found"
             new_task_record["chosen_free_gantry_index"] = chosen_free_gantry_index
@@ -144,6 +144,17 @@ class TaskManager:
                 subtasks = CfgSubtaskGallery["logistic"]["have_AGV"]
             else:
                 subtasks = CfgSubtaskGallery["logistic"]["only_have_gantry"]
+            #1. set the material start area
+            material_name = f"num_{task_record['product_index']:02d}_{task_record['product']}"
+            material_state = env_state_action_dict["material"][material_name]
+            material_start_area = material_state["storage_name"]
+            subtasks["material_start_area"] = material_start_area
+            #2. set the material goal area
+            if CfgProcessTaskToTargetMapping[task_record["task"]]["is_final_task"] == True:
+                subtasks["material_goal_area"] = "storage"
+            else:
+                #check machine is free first
+                subtasks["material_goal_area"] = CfgProcessTaskToTargetMapping[task_record["task"]]["target_machine"]
         else:
             subtasks = CfgSubtaskGallery["processing"]
         return subtasks
@@ -237,7 +248,7 @@ class TaskManager:
         ### 1. check next subtask target
         task = task_record["task"]
         if CfgProcessTaskToTargetMapping[task]["is_final_task"] == True:
-            
+            task_record["subtasks_dict"]["target_area_type"] = "storage"
         if task_to_target_mapping["is_final_task"] == True:
             return task_record
         else:
