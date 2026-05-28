@@ -4,7 +4,7 @@ from isaaclab_tasks.direct.hc_factory.src import human
 CfgProductProcessGallery = {
     #Currently we only have one product type "ProductWaterPipe", but we can easily add more product types in the future
     "ProductWaterPipe": {
-        "num_process_steps": 7,
+        "num_process_steps": 6,
         "process_steps": {
             "pipe_cutting": {
                 "machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine",
@@ -50,15 +50,15 @@ CfgProductProcessGallery = {
                 "gaussian_random_time": 10,
                 "material_state_sequence": ["on_machine", "painting_rust_proof", "painted_rust_proof"],
             },
-            # 运存放区
-            "product_to_storage": {
-                "machine": "num07_gantry_group",
-                "alternative_robot": "AGV",
-                "required_materials": {"product_water_pipe": 1},
-                "process_time": 100,
-                "gaussian_random_time": 10,
-                "material_state_sequence": ["on_machine", "conveying", "in_storage"],
-            },
+            # # 运存放区
+            # "product_to_storage": {
+            #     "machine": "num07_gantry_group",
+            #     "alternative_robot": "AGV",
+            #     "required_materials": {"product_water_pipe": 1},
+            #     "process_time": 100,
+            #     "gaussian_random_time": 10,
+            #     "material_state_sequence": ["on_machine", "conveying", "on_storage"],
+            # },
         }
     }
 }
@@ -80,7 +80,7 @@ CfgProcessTaskGalleryInAll = {
     "MIG_welding_surface": 10,
     "logistic_for_paint_rust_proof": 11,
     "paint_rust_proof": 12,
-    "product_to_storage": 13,
+    # "product_to_storage": 13,
 }
 
 CfgProcessTaskGalleryClassified = {
@@ -99,30 +99,30 @@ CfgProcessTaskGalleryClassified = {
         "MIG_welding_surface": 10,
         "logistic_for_paint_rust_proof": 11,
         "paint_rust_proof": 12,
-        "product_to_storage": 13,
+        # "product_to_storage": 13,
     },
     #Will add more product types in the future, and they will share the same common encoded index space defined by CfgProcessTaskGalleryInAll
 }
 
 
 CfgSubtaskGallery = {
-    "logistic":{
+    "task_type_logistic":{
         "have_AGV":{
             # human: 0, gantry: 1, robot: 2
-            "ongoing": ["go_to_storage", "go_to_storage", "go_to_storage", "in_storage"],
+            "ongoing": ["go_to_storage", "go_to_storage", "go_to_storage", "on_storage"],
             "ongoing_index": 0,
             "num_subtasks": 9,
             "finished": [False,False,False],
             "subtasks": [
                 # human: 0, gantry: 1, robot: 2
-                ["go_to_storage", "go_to_storage", "go_to_storage", "in_storage"],
-                ["material_on_gantry", "wait", "wait", "in_storage"],
-                ["control_gantry", "carry_to_robot", "wait", "with_gantry"],
-                ["material_on_robot", "wait", "wait", "with_gantry"],
-                ["go_to_target_machine", "move_to_target_area", "carry_to_target_area", "with_robot"],
-                ["material_on_gantry", "wait", "wait", "with_robot"],
-                ["control_gantry", "move_to_target_area", "wait", "with_gantry"],
-                ["material_on_target_area", "done", "wait", "with_gantry"],
+                ["go_to_storage", "go_to_storage", "go_to_storage", "on_storage"],
+                ["material_on_gantry", "wait", "wait", "on_storage"],
+                ["control_gantry", "carry_to_robot", "wait", "on_gantry"],
+                ["material_on_robot", "wait", "wait", "on_gantry"],
+                ["go_to_target_machine", "move_to_target_machine", "carry_to_target_machine", "on_robot"],
+                ["material_on_gantry", "wait", "wait", "on_robot"],
+                ["control_gantry", "move_to_target_machine", "wait", "on_gantry"],
+                ["material_on_target_machine", "done", "wait", "on_gantry"],
                 ["done", "done", "done", "on_machine"],
                 # ["go_to_storage", "go_to_storage", "go_to_storage"],
                 # ["material_on_gantry", "wait", "wait"],
@@ -135,24 +135,26 @@ CfgSubtaskGallery = {
         },
         "only_have_gantry":{
             # human: 0, gantry: 1
-            "ongoing": ["go_to_storage", "go_to_storage", "in_storage"],
+            "ongoing": ["go_to_storage", "go_to_storage", "on_storage"],
             "ongoing_index": 0,
-            "num_subtasks": 4,
+            "num_subtasks": 5,
             "finished": [False,False],
             "subtasks": [
                 #human: 0, gantry: 1, material: -1
-                ["go_to_storage", "go_to_storage", "in_storage"],
-                ["material_on_gantry", "wait", "in_storage"],
-                ["control_gantry_while_going_to_target_machine", "carry_to_target_area", "with_gantry"],
-                ["material_on_target_area", "wait", "with_gantry"],
+                ["go_to_storage", "go_to_storage", "on_storage"],
+                ["material_on_gantry", "wait", "on_storage"],
+                ["control_gantry_while_going_to_target_machine", "carry_to_target_machine", "on_gantry"],
+                ["material_on_target_machine", "wait", "on_gantry"],
                 ["done", "done", "on_machine"],
             ],
         },
     },
-    "processing":{
+    "task_type_processing":{
             # human: 0, machine: 1
             "ongoing": ["go_to_target_machine", "none", "wait", "on_machine"],
             "ongoing_index": 0,
+            "target_area_type": None,
+            "index_to_ensure_target_area_type": 5,
             "num_subtasks": 8,
             "finished": [False, None, True],
             "subtasks": [
@@ -160,10 +162,10 @@ CfgSubtaskGallery = {
                 ["go_to_target_machine", "none", "wait", "on_machine"],
                 ["control_machine", "none", "process", "on_machine"],
                 ["wait", "finding_free_gantry", "wait", "on_machine"],
-                ["control_gantry", "move_to_target_area", "wait", "on_machine"],
+                ["control_gantry", "move_to_target_machine", "wait", "on_machine"],
                 ["material_on_gantry", "wait", "wait", "on_machine"],
-                ["control_gantry", "move_to_target_area", "done", "on_gantry"],
-                ["material_on_target_area", "wait", "done", "with_gantry"],
+                ["control_gantry", "move_to_{target_area_type}", "done", "on_gantry"],
+                ["material_on_{target_area_type}", "wait", "done", "on_gantry"],
                 ["done", "done", "done", "on_{target_area_type}"],
             ],
     },
@@ -179,58 +181,85 @@ CfgSubtaskPredefinedTimeGallery = {
 }
 
 
-CfgTask2SubtaskGallery = {
-    "none": [],
-    "logistic_for_pipe_cutting": ["human go to storage to get raw pipe and gantry move it to storage", 
-                                  "human use rope to lock pipe on gantry, gantry move pipe to num02_rollerbedCNCPipeIntersectionCuttingMachine"
-                                  "or put it on AGV, AGV move it to num02_rollerbedCNCPipeIntersectionCuttingMachine "
-                                  "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
-    "pipe_cutting": ["human operate num02_rollerbedCNCPipeIntersectionCuttingMachine to cut the pipe", "done, material on machine and human are free"],
-    "logistic_for_pipe_grooving": ["human go to storage to get raw pipe and gantry move it to storage", 
-                                   "human use rope to lock pipe on gantry, gantry move pipe to num03_rollerbedCNCPipeGroovingMachine"
-                                   "or put it on AGV, AGV move it to num03_rollerbedCNCPipeGroovingMachine "
-                                   "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
-    "pipe_grooving": ["human operate num03_rollerbedCNCPipeGroovingMachine to groove the pipe", "done, material on machine and human are free"],
-    "logistic_for_batch_spot_welding": ["human go to storage to get raw materials and gantry move them to storage", 
-                                        "human use rope to lock materials on gantry, gantry move materials to num04_batchSpotWeldingMachine"
-                                        "or put them on AGV, AGV move them to num04_batchSpotWeldingMachine "
-                                        "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
-    "batch_spot_welding": ["human operate num04_batchSpotWeldingMachine to weld the materials", "done, material on machine and human are free"],
-    "logistic_for_arc_welding_root": ["human go to storage to get raw materials and gantry move them to storage", 
-                                      "human use rope to lock materials on gantry, gantry move materials to num05_arcWeldingRootMachine"
-                                      "or put them on AGV, AGV move them to num05_arcWeldingRootMachine "
-                                      "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
-    "arc_welding_root": ["human operate num05_arcWeldingRootMachine to weld the materials", "done, material on machine and human are free"],
-    "logistic_for_MIG_welding_surface": ["human go to storage to get raw materials and gantry move them to storage", 
-                                         "human use rope to lock materials on gantry, gantry move materials to num06_MIGWeldingSurfaceMachine"
-                                         "or put them on AGV, AGV move them to num06_MIGWeldingSurfaceMachine "
-                                         "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
-    "MIG_welding_surface": ["human operate num06_MIGWeldingSurfaceMachine to weld the materials", "done, material on machine and human are free"],
-    "logistic_for_paint_rust_proof": ["human go to storage to get raw materials and gantry move them to storage", 
-                                      "human use rope to lock materials on gantry, gantry move materials to num08_workbench"
-                                      "or put them on AGV, AGV move them to num08_workbench "
-                                      "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
-    "paint_rust_proof": ["human operate num08_workbench to paint the materials", "done, material on machine and human are free"],
-    "product_to_storage": ["human go to storage to get finished products and gantry move them to storage", 
-                           "human use rope to lock products on gantry, gantry move products to num07_gantry_group"
-                           "or put them on AGV, AGV move them to num07_gantry_group "
-                           "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
-}
-
-
 CfgProcessTaskToTargetMapping = {
-    "none": "none",
-    "logistic_for_pipe_cutting": {"target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine", "logistic_machine": "num07_gantry_group"},
-    "pipe_cutting": {"target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine", "logistic_machine": "none"},
-    "logistic_for_pipe_grooving": {"target_machine": "num04_groovingMachineLarge", "logistic_machine": "num07_gantry_group"},
-    "pipe_grooving": {"target_machine": "num04_groovingMachineLarge", "logistic_machine": "none"},
-    "logistic_for_batch_spot_welding": {"target_machine": "num08_workbench", "logistic_machine": "num07_gantry_group"},
-    "batch_spot_welding": {"target_machine": "num08_workbench", "logistic_machine": "none"},
-    "logistic_for_arc_welding_root": {"target_machine": "num01_weldingRobot", "logistic_machine": "num07_gantry_group"},
-    "arc_welding_root": {"target_machine": "num01_weldingRobot", "logistic_machine": "none"},
-    "logistic_for_MIG_welding_surface": {"target_machine": "num00_rotaryPipeAutomaticWeldingMachine", "logistic_machine": "num07_gantry_group"},
-    "MIG_welding_surface": {"target_machine": "num00_rotaryPipeAutomaticWeldingMachine", "logistic_machine": "none"},
-    "logistic_for_paint_rust_proof": {"target_machine": "num08_workbench", "logistic_machine": "num07_gantry_group"},
-    "paint_rust_proof": {"target_machine": "num08_workbench", "logistic_machine": "none"},
-    "product_to_storage": {"target_machine": "num08_workbench", "logistic_machine": "num07_gantry_group", "target_area": "storage"},
+    "none": {"task_type": "none", "target_machine": "none", "logistic_machine": "none"},
+    "logistic_for_pipe_cutting": {"task_type": "logistic", "target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine", "logistic_machine": "num07_gantry_group"},
+    "pipe_cutting": {"task_type": "processing", "target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine", "logistic_machine": "none"},
+    "logistic_for_pipe_grooving": {"task_type": "logistic", "target_machine": "num04_groovingMachineLarge", "logistic_machine": "num07_gantry_group"},
+    "pipe_grooving": {"task_type": "processing", "target_machine": "num04_groovingMachineLarge", "logistic_machine": "none"},
+    "logistic_for_batch_spot_welding": {"task_type": "logistic", "target_machine": "num08_workbench", "logistic_machine": "num07_gantry_group"},
+    "batch_spot_welding": {"task_type": "processing", "target_machine": "num08_workbench", "logistic_machine": "none"},
+    "logistic_for_arc_welding_root": {"task_type": "logistic", "target_machine": "num01_weldingRobot", "logistic_machine": "num07_gantry_group"},
+    "arc_welding_root": {"task_type": "processing", "target_machine": "num01_weldingRobot", "logistic_machine": "none"},
+    "logistic_for_MIG_welding_surface": {"task_type": "logistic", "target_machine": "num00_rotaryPipeAutomaticWeldingMachine", "logistic_machine": "num07_gantry_group"},
+    "MIG_welding_surface": {"task_type": "processing", "target_machine": "num00_rotaryPipeAutomaticWeldingMachine", "logistic_machine": "none"},
+    "logistic_for_paint_rust_proof": {"task_type": "logistic", "target_machine": "num08_workbench", "logistic_machine": "num07_gantry_group"},
+    "paint_rust_proof": {"task_type": "processing", "target_machine": "num08_workbench", "logistic_machine": "none"},
+    # "product_to_storage": {"task_type": "logistic", "target_machine": "num08_workbench", "logistic_machine": "num07_gantry_group"},
 }
+
+
+TaskRecordTemplate = {
+
+    "task_done": False,
+    "task": None,
+    "task_index": None,
+    #processing, logistic
+    "task_type": None,
+
+    "product": None,  
+    "product_index": None,
+    "new_product_selected": False,
+    "storage_name": None,
+
+    "human": None,
+    "human_index": None,
+    "robot": None,
+    "robot_index": None,
+
+    "target_machine": None,
+    "target_machine_workstation": None,
+    "chosen_free_workstation_index": None,
+    "logistic_machine": None,
+
+    "subtasks_dict": None,
+}
+
+
+# CfgTask2SubtaskGallery = {
+#     "none": [],
+#     "logistic_for_pipe_cutting": ["human go to storage to get raw pipe and gantry move it to storage", 
+#                                   "human use rope to lock pipe on gantry, gantry move pipe to num02_rollerbedCNCPipeIntersectionCuttingMachine"
+#                                   "or put it on AGV, AGV move it to num02_rollerbedCNCPipeIntersectionCuttingMachine "
+#                                   "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
+#     "pipe_cutting": ["human operate num02_rollerbedCNCPipeIntersectionCuttingMachine to cut the pipe", "done, material on machine and human are free"],
+#     "logistic_for_pipe_grooving": ["human go to storage to get raw pipe and gantry move it to storage", 
+#                                    "human use rope to lock pipe on gantry, gantry move pipe to num03_rollerbedCNCPipeGroovingMachine"
+#                                    "or put it on AGV, AGV move it to num03_rollerbedCNCPipeGroovingMachine "
+#                                    "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
+#     "pipe_grooving": ["human operate num03_rollerbedCNCPipeGroovingMachine to groove the pipe", "done, material on machine and human are free"],
+#     "logistic_for_batch_spot_welding": ["human go to storage to get raw materials and gantry move them to storage", 
+#                                         "human use rope to lock materials on gantry, gantry move materials to num04_batchSpotWeldingMachine"
+#                                         "or put them on AGV, AGV move them to num04_batchSpotWeldingMachine "
+#                                         "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
+#     "batch_spot_welding": ["human operate num04_batchSpotWeldingMachine to weld the materials", "done, material on machine and human are free"],
+#     "logistic_for_arc_welding_root": ["human go to storage to get raw materials and gantry move them to storage", 
+#                                       "human use rope to lock materials on gantry, gantry move materials to num05_arcWeldingRootMachine"
+#                                       "or put them on AGV, AGV move them to num05_arcWeldingRootMachine "
+#                                       "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
+#     "arc_welding_root": ["human operate num05_arcWeldingRootMachine to weld the materials", "done, material on machine and human are free"],
+#     "logistic_for_MIG_welding_surface": ["human go to storage to get raw materials and gantry move them to storage", 
+#                                          "human use rope to lock materials on gantry, gantry move materials to num06_MIGWeldingSurfaceMachine"
+#                                          "or put them on AGV, AGV move them to num06_MIGWeldingSurfaceMachine "
+#                                          "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
+#     "MIG_welding_surface": ["human operate num06_MIGWeldingSurfaceMachine to weld the materials", "done, material on machine and human are free"],
+#     "logistic_for_paint_rust_proof": ["human go to storage to get raw materials and gantry move them to storage", 
+#                                       "human use rope to lock materials on gantry, gantry move materials to num08_workbench"
+#                                       "or put them on AGV, AGV move them to num08_workbench "
+#                                       "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
+#     "paint_rust_proof": ["human operate num08_workbench to paint the materials", "done, material on machine and human are free"],
+#     # "product_to_storage": ["human go to storage to get finished products and gantry move them to storage", 
+#     #                        "human use rope to lock products on gantry, gantry move products to num07_gantry_group"
+#     #                        "or put them on AGV, AGV move them to num07_gantry_group "
+#     #                        "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
+# }

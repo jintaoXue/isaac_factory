@@ -134,7 +134,7 @@ class Robot:
         return env_state_action_dict
 
     def step_logistic(self, env_state_action_dict: dict, task_record: dict) -> dict:
-        subtasks = task_record["subtasks"]
+        subtasks = task_record["subtasks_dict"]
         subtask = subtasks["ongoing"]
         robot_subtask = subtask[2]
         if robot_subtask == "go_to_storage":

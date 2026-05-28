@@ -130,7 +130,7 @@ class Machine:
         if self.state["state"][chosen_free_workstation_index] == "free":
             #subgantry index = 0 is chosen to work on the task
             self.state["state"][chosen_free_workstation_index] = 'working_' + task_record["task"]
-        subtasks = task_record["subtasks"]
+        subtasks = task_record["subtasks_dict"]
         subtask = subtasks["ongoing"]
         gantry_subtask = subtask[1]
 
@@ -162,7 +162,7 @@ class Machine:
             self.state["processing_time_step"][chosen_free_workstation_index] = 0
     
     def _subtask_done(self, env_state_action_dict: dict, task_record: dict) -> None:
-        task_record["subtasks"]["finished"][1] = True
+        task_record["subtasks_dict"]["finished"][1] = True
         chosen_free_workstation_index = task_record["chosen_free_workstation_index"]
         target_machine_workstation = task_record["target_machine_workstation"]
         state = self.state["state"]
@@ -310,7 +310,7 @@ class num07_gantry_group(Machine):
             chosen_free_gantry_index = task_record["chosen_free_gantry_index"]
             assert chosen_free_gantry_index == 0, "The first free gantry index should be 0"
             task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
-            subtasks = task_record["subtasks"]
+            subtasks = task_record["subtasks_dict"]
             subtask = subtasks["ongoing"]
             gantry_subtask = subtask[1]
 

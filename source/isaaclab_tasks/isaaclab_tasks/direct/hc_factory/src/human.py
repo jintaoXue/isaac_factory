@@ -149,7 +149,7 @@ class Human:
         return env_state_action_dict
     
     def step_logistic(self, env_state_action_dict: dict, task_record: dict) -> dict:
-        subtasks = task_record["subtasks"]
+        subtasks = task_record["subtasks_dict"]
         subtask = subtasks["ongoing"]
         human_subtask = subtask[0]
         #type 1, only have human and gantry + Type
@@ -176,7 +176,7 @@ class Human:
             raise ValueError(f"Invalid human subtask for logistic with robot: {human_subtask}")
 
     def step_processing(self, env_state_action_dict: dict, task_record: dict) -> dict:
-        subtasks = task_record["subtasks"]
+        subtasks = task_record["subtasks_dict"]
         subtask = subtasks["ongoing"]
         human_subtask = subtask[0]
         
