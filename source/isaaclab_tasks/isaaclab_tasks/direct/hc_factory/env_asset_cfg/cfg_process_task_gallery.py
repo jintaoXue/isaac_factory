@@ -111,6 +111,7 @@ CfgSubtaskGallery = {
             # human: 0, gantry: 1, robot: 2
             "ongoing": ["go_to_storage", "go_to_storage", "go_to_storage", "on_storage"],
             "ongoing_index": 0,
+            "index_to_decide_target_area_type" : None,
             "num_subtasks": 9,
             "finished": [False,False,False],
             "subtasks": [
@@ -137,6 +138,7 @@ CfgSubtaskGallery = {
             # human: 0, gantry: 1
             "ongoing": ["go_to_storage", "go_to_storage", "on_storage"],
             "ongoing_index": 0,
+            "index_to_decide_target_area_type" : None,
             "num_subtasks": 5,
             "finished": [False,False],
             "subtasks": [
@@ -154,7 +156,7 @@ CfgSubtaskGallery = {
             "ongoing": ["go_to_target_machine", "none", "wait", "on_machine"],
             "ongoing_index": 0,
             "target_area_type": None,
-            "index_to_ensure_target_area_type": 5,
+            "index_to_decide_target_area_type": 5,
             "num_subtasks": 8,
             "finished": [False, None, True],
             "subtasks": [
@@ -182,7 +184,7 @@ CfgSubtaskPredefinedTimeGallery = {
 
 
 CfgProcessTaskToTargetMapping = {
-    "none": {"task_type": "none", "target_machine": "none", "logistic_machine": "none"},
+    "none": {"task_type": "none", "target_machine": None, "logistic_machine": None},
     "logistic_for_pipe_cutting": {"task_type": "logistic", "target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine", "logistic_machine": "num07_gantry_group"},
     "pipe_cutting": {"task_type": "processing", "target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine", "logistic_machine": "none"},
     "logistic_for_pipe_grooving": {"task_type": "logistic", "target_machine": "num04_groovingMachineLarge", "logistic_machine": "num07_gantry_group"},

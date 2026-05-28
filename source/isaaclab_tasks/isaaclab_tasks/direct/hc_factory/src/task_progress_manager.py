@@ -29,7 +29,7 @@ class TaskManager:
         self.decode_action_process_task_planning(env_state_action_dict, new_task_record)
         self.decode_action_human_robot_allocation(env_state_action_dict, new_task_record)
         self.step_new_generated_task_record(env_state_action_dict, new_task_record)
-        self.step_task_records(env_state_action_dict, new_task_record)
+        self.step_task_records(env_state_action_dict)
         return env_state_action_dict
 
     def decode_action_product_sequencing(self, env_state_action_dict):
@@ -73,7 +73,7 @@ class TaskManager:
     def decode_action_process_task_planning(self, env_state_action_dict, new_task_record):
         action_process_task_planning = env_state_action_dict["action"]["process_task_planning"]
         if action_process_task_planning.sum() == 0:
-            return
+            action_process_task_planning[0] = 1
         else:
             _index = action_process_task_planning.nonzero()[0][0]
             _index = _index.item()
@@ -103,59 +103,44 @@ class TaskManager:
         return new_task_record
 
     def step_new_generated_task_record(self, env_state_action_dict, new_task_record):
-        ### add new task record
-        new_task_record : dict | None = self.process_decoded_task_record(env_state_action_dict)
-        if new_task_record is not None:
-            #TODO: check if the product index is already in the ongoing task records
-            # assert new_task_record["product_index"] not in env_state_action_dict["progress"]["ongoing_task_records"], "The product index should not be in the ongoing task records"
-            if new_task_record["product_index"] not in env_state_action_dict["progress"]["ongoing_task_records"]:
-                env_state_action_dict["progress"]["ongoing_task_records"][new_task_record["product_index"]] = new_task_record
-                self.apply_new_task_record_to_human_robot_machine_material(env_state_action_dict, new_task_record)
-    
-    def process_decoded_task_record(self, env_state_action_dict):
-        task_record = {}
-        if self.decode_action_to_task_record["product_selection"]["product"] == "none" or \
-            self.decode_action_to_task_record["process_task_planning"]["task"] == "none":
+        if new_task_record["product"] is None or new_task_record["task"] == "none":
+            return
             # means no valuable record, including task, human, or robot, is set up
-            return None
-        assert self.decode_action_to_task_record["human_robot_allocation"]["human"] != "none", "Human availablity should be check by mask before the task can be selected"
+        assert new_task_record["human"] != None, "Human availablity should be check by mask before the task can be selected"
+        assert new_task_record["product_index"] not in env_state_action_dict["progress"]["ongoing_task_records"], "The product index should not be in the ongoing task records"
 
-        ##storage
-        product_name = f"num_{task_record['product_index']:02d}_{task_record['product']}"
-        storage_name = env_state_action_dict["material"][product_name]["storage_name"]
-        task_record["storage_name"] = storage_name
-        ##machine
-        task_record["target_machine"] = CfgProcessTaskToTargetMapping[task_record["task"]]["target_machine"]
-        if task_record["target_machine"] != "none":
-            states = env_state_action_dict["machine"][task_record["target_machine"]]["state"]
-            chosen_free_workstation_index = states.index('free')
-            task_record["target_machine_workstation"] = \
-                list(env_state_action_dict["machine"][task_record["target_machine"]]["key_variables"]["working_area_ids"].keys())[chosen_free_workstation_index]
-            task_record["chosen_free_workstation_index"] = chosen_free_workstation_index
-        task_record["logistic_machine"] = CfgProcessTaskToTargetMapping[task_record["task"]]["logistic_machine"]
-        if task_record["logistic_machine"] != "none":
-            task_record = self._find_free_gantry(env_state_action_dict, task_record)
+        ##machine information
+        new_task_record["target_machine"] = CfgProcessTaskToTargetMapping[new_task_record["task"]]["target_machine"]
+        assert new_task_record["target_machine"] != None, "Target machine should be set"
+        states = env_state_action_dict["machine"][new_task_record["target_machine"]]["state"]
+        chosen_free_workstation_index = states.index('free')
+        new_task_record["target_machine_workstation"] = \
+            list(env_state_action_dict["machine"][new_task_record["target_machine"]]["key_variables"]["working_area_ids"].keys())[chosen_free_workstation_index]
+        new_task_record["chosen_free_workstation_index"] = chosen_free_workstation_index
+        new_task_record["logistic_machine"] = CfgProcessTaskToTargetMapping[new_task_record["task"]]["logistic_machine"]
+        if new_task_record["logistic_machine"] != None:
+            chosen_free_gantry_index = self._find_free_gantry(env_state_action_dict, new_task_record)
+            assert chosen_free_gantry_index is not None, "Free gantry index should be found"
+            new_task_record["chosen_free_gantry_index"] = chosen_free_gantry_index
+        #subtasks information
+        new_task_record["subtasks_dict"] : dict = copy.deepcopy(self.initialze_subtasks(env_state_action_dict, new_task_record))
         
-        task_record["subtasks_dict"] : dict = copy.deepcopy(self.initialze_subtasks(env_state_action_dict, task_record))
-        return task_record
+        env_state_action_dict["progress"]["ongoing_task_records"][new_task_record["product_index"]] = new_task_record
+        self.apply_new_task_record_to_human_robot_machine_material(env_state_action_dict, new_task_record)
 
     def _find_free_gantry(self, env_state_action_dict, task_record):
         assert task_record["logistic_machine"] == "num07_gantry_group", "now only num07_gantry_group is valid logistic machine"
         gantry_states : list[str] = env_state_action_dict["machine"][task_record["logistic_machine"]]["state"]
 
         def index_of(value, in_list):
-            return next((idx for idx, item in enumerate(in_list) if item == value), -1)
+            return next((idx for idx, item in enumerate(in_list) if item == value), None)
 
         chosen_free_gantry_index = index_of("free", gantry_states)
-        if chosen_free_gantry_index != -1:
-            task_record["chosen_free_gantry_index"] = chosen_free_gantry_index
-        else:
-            task_record["chosen_free_gantry_index"] = None
-        return task_record
+        return chosen_free_gantry_index
 
     def initialze_subtasks(self, env_state_action_dict, task_record):
-        if task_record["for_logistic"]:
-            if task_record["robot"] != "none":
+        if task_record["task_type"] == "logistic":
+            if task_record["robot"] != None:
                 subtasks = CfgSubtaskGallery["logistic"]["have_AGV"]
             else:
                 subtasks = CfgSubtaskGallery["logistic"]["only_have_gantry"]
@@ -167,31 +152,31 @@ class TaskManager:
         #apply the new task record to the human, robot, and machine
         #human
         human_type = task_record["human"]
-        if human_type != "none":
+        if human_type != None:
             human_idx = task_record["human_index"]
             human_key = f"num_{human_idx:02d}_{human_type}"
             assert env_state_action_dict["human"][human_key]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
             env_state_action_dict["human"][human_key]["ongoing_task_record_index"] = task_record["product_index"]
         #robot
         robot_type = task_record["robot"]
-        if robot_type != "none":
+        if robot_type != None:
             robot_idx = task_record["robot_index"]
             robot_key = f"num_{robot_idx:02d}_{robot_type}"
             assert env_state_action_dict["robot"][robot_key]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
             env_state_action_dict["robot"][robot_key]["ongoing_task_record_index"] = task_record["product_index"]
         #machine
         machine_type = task_record["target_machine"]
-        if machine_type != "none":
+        if machine_type != None:
             assert env_state_action_dict["machine"][machine_type]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
             chosen_free_workstation_index = task_record["chosen_free_workstation_index"]
             env_state_action_dict["machine"][machine_type]["ongoing_task_record_index"][chosen_free_workstation_index] = task_record["product_index"]
         logistic_machine_type = task_record["logistic_machine"]
-        if logistic_machine_type != "none":
+        if logistic_machine_type != None:
             assert logistic_machine_type == "num07_gantry_group", "now only num07_gantry_group is valid logistic machine"
             env_state_action_dict["machine"][logistic_machine_type]["ongoing_task_record_index"] = task_record["product_index"]
         #material
         material_type = task_record["product"]
-        assert material_type != "none", "The material type should not be none"
+        assert material_type != None, "The material type should not be none"
         material_name = f"num_{task_record['product_index']:02d}_{material_type}"
         assert env_state_action_dict["material"][material_name]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
         env_state_action_dict["material"][material_name]["ongoing_task_record_index"] = task_record["product_index"]        
@@ -243,11 +228,13 @@ class TaskManager:
         return task_record
 
     def _check_target_area_update(self, env_state_action_dict, task_record):
-        if task_record["subtasks_dict"]["index_to_ensure_target_area_type"] is None:
-        if task_record["subtasks_dict"]["ongoing"][3] == "on_machine":
-            task_record["subtasks_dict"]["target_area_type"] = "machine"
-        elif task_record["subtasks_dict"]["ongoing"][3] == "on_storage":
-            task_record["subtasks_dict"]["target_area_type"] = "storage"
+        if task_record["subtasks_dict"]["index_to_decide_target_area_type"] is None:
+            return task_record
+        if task_record["subtasks_dict"]["target_area_type"] is not None:
+            return task_record
+        assert task_record["task_type"] == "processing", "now only processing task can decide the target area"
+        #### decide the target area that the processed material will be put on
+        ###
         return task_record
 
     def _check_subtask_and_task_done(self, env_state_action_dict, task_record):
