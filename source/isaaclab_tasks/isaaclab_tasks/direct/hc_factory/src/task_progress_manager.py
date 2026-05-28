@@ -234,7 +234,15 @@ class TaskManager:
             return task_record
         assert task_record["task_type"] == "processing", "now only processing task can decide the target area"
         #### decide the target area that the processed material will be put on
-        ###
+        ### 1. check next subtask target
+        task = task_record["task"]
+        if CfgProcessTaskToTargetMapping[task]["is_final_task"] == True:
+            
+        if task_to_target_mapping["is_final_task"] == True:
+            return task_record
+        else:
+            next_subtask_target = task_record["subtasks_dict"]["subtasks"][task_record["subtasks_dict"]["ongoing_index"]][task_record["subtasks_dict"]["index_to_decide_target_area_type"]]
+            task_record["subtasks_dict"]["target_area_type"] = next_subtask_target
         return task_record
 
     def _check_subtask_and_task_done(self, env_state_action_dict, task_record):
@@ -254,8 +262,5 @@ class TaskManager:
                 return False
 
     
-    def _is_the_last_one_task_done(self, task : str):
-        if task == "product_to_storage":
-            return True
-        else:
-            return False
+    def _is_the_last_one_task_done(self, task: str) -> bool:
+        return bool(CfgProcessTaskToTargetMapping.get(task, {}).get("final_task", False))
