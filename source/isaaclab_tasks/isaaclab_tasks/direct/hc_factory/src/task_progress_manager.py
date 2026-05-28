@@ -119,21 +119,7 @@ class TaskManager:
             # means no valuable record, including task, human, or robot, is set up
             return None
         assert self.decode_action_to_task_record["human_robot_allocation"]["human"] != "none", "Human availablity should be check by mask before the task can be selected"
-        #product
-        task_record["product"] = self.decode_action_to_task_record["product_selection"]["product"]
-        task_record["product_index"] = self.decode_action_to_task_record["product_selection"]["product_index"]
-        task_record["new_product_selected"] = self.decode_action_to_task_record["product_selection"]["new_product_selected"]
-        
-        #human and robot
-        task_record["human"] = self.decode_action_to_task_record["human_robot_allocation"]["human"]
-        task_record["human_index"] = self.decode_action_to_task_record["human_robot_allocation"]["human_index"]
-        task_record["robot"] = self.decode_action_to_task_record["human_robot_allocation"]["robot"]
-        task_record["robot_index"] = self.decode_action_to_task_record["human_robot_allocation"]["robot_index"]
-        #task
-        task_record["task_done"] = False #default is False, will be set to True when the task is done
-        task_record["task"] = self.decode_action_to_task_record["process_task_planning"]["task"]
-        task_record["task_index"] = self.decode_action_to_task_record["process_task_planning"]["task_index"]
-        task_record["task_type"] = CfgProcessTaskToTargetMapping[task_record["task"]]["task_type"]
+
         ##storage
         product_name = f"num_{task_record['product_index']:02d}_{task_record['product']}"
         storage_name = env_state_action_dict["material"][product_name]["storage_name"]
