@@ -158,12 +158,23 @@ class TaskManager:
             task_record["chosen_free_workstation_index"] = chosen_free_workstation_index
         task_record["logistic_machine"] = CfgProcessTaskToTargetMapping[task_record["task"]]["logistic_machine"]
         if task_record["logistic_machine"] != "none":
-            assert task_record["logistic_machine"] == "num07_gantry_group", "now only num07_gantry_group is valid logistic machine"
-            gantry_states = env_state_action_dict["machine"][task_record["logistic_machine"]]["state"]
-            chosen_free_gantry_index = gantry_states.index('free')
-            task_record["chosen_free_gantry_index"] = chosen_free_gantry_index
+            task_record = self._find_free_gantry(env_state_action_dict, task_record)
         
         task_record["subtasks"] : dict = copy.deepcopy(self.initialze_subtasks(env_state_action_dict, task_record))
+        return task_record
+
+    def _find_free_gantry(self, env_state_action_dict, task_record):
+        assert task_record["logistic_machine"] == "num07_gantry_group", "now only num07_gantry_group is valid logistic machine"
+        gantry_states : list[str] = env_state_action_dict["machine"][task_record["logistic_machine"]]["state"]
+
+        def index_of(value, in_list):
+            return next((idx for idx, item in enumerate(in_list) if item == value), -1)
+
+        chosen_free_gantry_index = index_of("free", gantry_states)
+        if chosen_free_gantry_index != -1:
+            task_record["chosen_free_gantry_index"] = chosen_free_gantry_index
+        else:
+            task_record["chosen_free_gantry_index"] = None
         return task_record
 
     def initialze_subtasks(self, env_state_action_dict, task_record):
@@ -213,8 +224,9 @@ class TaskManager:
 
         ongoing_task_records : dict = env_state_action_dict["progress"]["ongoing_task_records"]
         for product_index, task_record in ongoing_task_records.items():
+            task_record = self._update_task_record_when_doing_subtask(env_state_action_dict, task_record)
             product_type = task_record["product"]
-            if self._check_task_done(task_record):
+            if self._check_subtask_and_task_done(task_record):
                 #delete the task_record from ongoing_task_records
                 task = task_record["task"]
                 if self._is_the_last_one_task_done(task):
@@ -242,7 +254,21 @@ class TaskManager:
 
         return env_state_action_dict
 
-    def _check_task_done(self, task_record):
+    def _update_task_record_when_doing_subtask(self, env_state_action_dict, task_record):
+        if not task_record["for_logistic"]:
+            ## processing task, 1 is gantry, if gantry is none, means gantry is not needed
+            if task_record["subtasks"]["ongoing"][1] == "none":
+                return
+            elif task_record["subtasks"]["ongoing"][1] == "finding_free_gantry" and task_record["subtasks"]["finished"][1] == False:
+                if task_record["chosen_free_gantry_index"] is None:
+                    task_record = self._find_free_gantry(env_state_action_dict, task_record)
+                else:
+                    #finded the free gantry
+                    task_record["subtasks"]["finished"][1] = True
+        return task_record
+
+
+    def _check_subtask_and_task_done(self, task_record):
         finished : list[bool] =  task_record["subtasks"]["finished"]
         if all(finished) == True:
             if task_record["subtasks"]["ongoing_index"] == task_record["subtasks"]["num_subtasks"]:
@@ -256,7 +282,7 @@ class TaskManager:
                     bool_value = False
                 return False
 
-
+    
     def _is_the_last_one_task_done(self, task : str):
         if task == "product_to_storage":
             return True

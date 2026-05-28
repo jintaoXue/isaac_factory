@@ -151,15 +151,20 @@ CfgSubtaskGallery = {
     },
     "processing":{
             # human: 0, machine: 1
-            "ongoing": ["go_to_target_machine", "wait"],
+            "ongoing": ["go_to_target_machine", "none", "wait", "on_machine"],
             "ongoing_index": 0,
-            "num_subtasks": 2,
-            "finished": [False, True],
+            "num_subtasks": 8,
+            "finished": [False, None, True],
             "subtasks": [
-                #human: 0, machine: 1, material: -1
-                ["go_to_target_machine", "wait", "on_machine"],
-                ["control_machine", "process", "on_machine"],
-                ["done", "done", "on_machine"],
+                #human: 0, gantry: 1, machine: 2, material: -1
+                ["go_to_target_machine", "none", "wait", "on_machine"],
+                ["control_machine", "none", "process", "on_machine"],
+                ["wait", "finding_free_gantry", "wait", "on_machine"],
+                ["control_gantry", "move_to_target_area", "wait", "on_machine"],
+                ["material_on_gantry", "wait", "wait", "on_machine"],
+                ["control_gantry", "move_to_target_area", "done", "on_gantry"],
+                ["material_on_target_area", "wait", "done", "with_gantry"],
+                ["done", "done", "done", "on_{target_area_type}"],
             ],
     },
 }
