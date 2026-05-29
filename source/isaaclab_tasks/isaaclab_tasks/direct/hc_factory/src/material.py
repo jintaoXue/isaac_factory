@@ -100,6 +100,7 @@ class MaterialBatch:
         material_prims : dict = self.iter_integrated_material_prims()
         for material_type, material_prim in material_prims.items():
             material_name = f"num_{self.idx:02d}_{material_type}"
+            self.state["submaterials"][material_type]["storage_name"] = "disappear"
             position = material_prim.get_local_poses()[0]
             ### to set the material to underground
             position[0][2] = -100
@@ -130,7 +131,7 @@ class MaterialBatch:
                 if value["state"] == "partial" and material_type != value["material_type"]:
                     continue
                 # Otherwise, place material in this storage
-                self.state["storage_name"] = storage_name
+                self.state["submaterials"][material_type]["storage_name"] = storage_name
                 value["material_type"] = material_type
                 value["num_material"] += 1
                 value["material_idx_list"].append(self.idx)

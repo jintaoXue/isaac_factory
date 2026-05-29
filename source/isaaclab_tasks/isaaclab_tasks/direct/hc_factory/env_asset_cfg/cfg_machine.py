@@ -12,7 +12,8 @@ CfgMachine = {
         "num_registration_parts": 2,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
         "reset_state": {
-            ## state: free, ready_for_task_name, working_task_name
+            ## state: free, materialReadyFor_task_name, working_task_name
+            ## for example: state: ["working_MIG_welding_surface", "materialReadyFor_MIG_welding_surface"]
             "state": ["free", "free"],
             "processing_time_step": [0, 0],
             "target_joints_position": [None, None],

@@ -28,7 +28,7 @@ class TaskManager:
         self.decode_action_product_selection(env_state_action_dict, new_task_record)
         self.decode_action_process_task_planning(env_state_action_dict, new_task_record)
         self.decode_action_human_robot_allocation(env_state_action_dict, new_task_record)
-        self.step_new_generated_task_record(env_state_action_dict, new_task_record)
+        self.update_new_task_record(env_state_action_dict, new_task_record)
         self.step_task_records(env_state_action_dict)
         return env_state_action_dict
 
@@ -102,7 +102,7 @@ class TaskManager:
             new_task_record["robot_index"] = _index
         return new_task_record
 
-    def step_new_generated_task_record(self, env_state_action_dict, new_task_record):
+    def update_new_task_record(self, env_state_action_dict, new_task_record):
         if new_task_record["product"] is None or new_task_record["task"] == "none":
             return
             # means no valuable record, including task, human, or robot, is set up
@@ -113,15 +113,28 @@ class TaskManager:
         new_task_record["target_machine"] = CfgProcessTaskGalleryDetailedClassified[product_type][new_task_record["task"]]["target_machine"]
         # assert new_task_record["target_machine"] != None, "Target machine should be set"
         states = env_state_action_dict["machine"][new_task_record["target_machine"]]["state"]
-        chosen_free_workstation_index = states.index('free')
-        new_task_record["target_machine_workstation"] = \
-            list(env_state_action_dict["machine"][new_task_record["target_machine"]]["key_variables"]["working_area_ids"].keys())[chosen_free_workstation_index]
-        new_task_record["chosen_free_workstation_index"] = chosen_free_workstation_index
+        workstation_index = None
+        if new_task_record["task_type"] == "logistic":
+            ## find the free workstation index for logistic task
+            workstation_index = states.index('free')
+        elif new_task_record["task_type"] == "processing":
+            ## find the ready workstation index for logistic task
+            for i, state in enumerate(states):
+                pre_name = state.split('_')[0]
+                task_name = state.split('_')[1]
+                if pre_name == "materialReadyFor" and task_name == new_task_record["task"]:
+                    workstation_index = i
+                    break
+        else:
+            raise ValueError(f"Invalid task type: {new_task_record['task_type']}")
+        new_task_record["chosen_machine_workstation"] = \
+            list(env_state_action_dict["machine"][new_task_record["target_machine"]]["key_variables"]["working_area_ids"].keys())[workstation_index]
+        new_task_record["chosen_workstation_index"] = workstation_index
         new_task_record["logistic_machine"] = CfgProcessTaskGalleryDetailedClassified[product_type]["logistic_machine"]
         if new_task_record["task_type"] == "logistic":
             chosen_free_gantry_index = self._find_free_gantry(env_state_action_dict, new_task_record)
             assert chosen_free_gantry_index is not None, "Free gantry index should be found"
-            new_task_record["chosen_free_gantry_index"] = chosen_free_gantry_index
+            new_task_record["chosen_gantry_index"] = chosen_free_gantry_index
         #subtasks information
         new_task_record["subtasks_dict"] : dict = copy.deepcopy(self.initialze_subtasks(env_state_action_dict, new_task_record))
         
@@ -141,45 +154,50 @@ class TaskManager:
     def initialze_subtasks(self, env_state_action_dict, task_record):
         if task_record["task_type"] == "logistic":
             if task_record["robot"] != None:
-                subtasks = CfgSubtaskGallery["logistic"]["have_AGV"]
+                subtasks = copy.deepcopy(CfgSubtaskGallery[task_record["product"]][task_record["task"]]["have_AGV"])
             else:
-                subtasks = CfgSubtaskGallery["logistic"]["only_have_gantry"]
-            #1. set the material start area
-            material_name = f"num_{task_record['product_index']:02d}_{task_record['product']}"
-            material_state = env_state_action_dict["material"][material_name]
-            #the storage might be storage or machine 
-            material_start_area = material_state["storage_name"]
-            subtasks["material_start_area"] = material_start_area
-            #2. set the material goal area
-            product_type = task_record["product"]
-            if CfgProcessTaskGalleryDetailedClassified[product_type][task_record["task"]]["is_final_task"] == True:
-                subtasks["material_goal_area"] = "storage"
+                subtasks = copy.deepcopy(CfgSubtaskGallery[task_record["product"]][task_record["task"]]["only_have_gantry"])
+            #1. set the material start area for subtasks dict
+            product_name = f"num_{task_record['product_index']:02d}_{task_record['product']}"
+            required_logistic_material = subtasks["logistic_submaterial"]
+            state_material = env_state_action_dict["material"][product_name]["submaterials"][required_logistic_material]
+            assert state_material["storage_name"] is not None, "The storage name should be initialized in material.py"
+            assert state_material["storage_name"] != "disappear", "The material still not appeared"
+            assert subtasks["material_start_area"] != subtasks["material_goal_area"], "The material start area and goal area should be different, \
+                otherwise dont need to logistic this material"
+            subtasks["material_start_area"] = state_material["storage_name"]
+            #2. update the working area ids by specifying the machine type and workstation key
+            # (1) update the start area ids
+            if subtasks["material_start_area"] in env_state_action_dict["machine"]:
+                subtasks["start_area_ids"] = env_state_action_dict["machine"][subtasks["material_start_area"]]["key_variables"]["working_area_ids"]
+            elif subtasks["material_start_area"] in env_state_action_dict["storage"]:
+                subtasks["start_area_ids"] = env_state_action_dict["storage"][subtasks["material_start_area"]]["key_variables"]["working_area_ids"]
             else:
-                #check machine is free first
-                subtasks["material_goal_area"] = CfgProcessTaskGalleryDetailedClassified[product_type][task_record["task"]]["target_machine"]
+                raise ValueError(f"Invalid material start area: {subtasks['material_start_area']}")
+            # (2) update the goal area ids
+            machine_workstation_key = task_record["chosen_machine_workstation"]
+            subtasks["goal_area_ids"] = subtasks["goal_area_ids"][machine_workstation_key]
+
+        elif task_record["task_type"] == "processing":
+            #1. set the goal area for subtasks dict
+            subtasks = copy.deepcopy(CfgSubtaskGallery[task_record["product"]][task_record["task"]])
+            # only update the start area ids, the goal area ids is updated during the processing task
+            assert subtasks["material_start_area"] in env_state_action_dict["machine"]
+            machine_workstation_key = task_record["chosen_machine_workstation"]
+            subtasks["start_area_ids"] = subtasks["start_area_ids"][machine_workstation_key]
         else:
-            subtasks = CfgSubtaskGallery["processing"]
+            raise ValueError(f"Invalid task type: {task_record['task_type']}")
         return subtasks
-    
-    def _find_free_storage(self, env_state_action_dict, storage_class: str):
-        storages = env_state_action_dict["storage"]
-        for storage_name, value in storages.items():
-            if value["class_name"] == storage_class:
-                # If this material isn't supported, or storage is already full, skip
-                if material_type not in supporting_materials or value["state"] == "full":
-                    continue
-                # If storage is partially filled with a different material type, skip
-                if value["state"] == "partial" and material_type != value["material_type"]:
-                    continue
-                if storage is free or not full and have the same material type:
-                    return storage_name
-                else:
-                    continue
-        error_message = f"No free storage found for {storage_class}"
-        raise ValueError(error_message)
 
     def apply_new_task_record_to_human_robot_machine_material(self, env_state_action_dict, task_record):
         #apply the new task record to the human, robot, and machine
+
+        #machine
+        machine_type = task_record["target_machine"]
+        if machine_type != None:
+            assert env_state_action_dict["machine"][machine_type]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
+            chosen_workstation_index = task_record["chosen_workstation_index"]
+            env_state_action_dict["machine"][machine_type]["ongoing_task_record_index"][chosen_workstation_index] = task_record["product_index"]
         #human
         human_type = task_record["human"]
         if human_type != None:
@@ -194,12 +212,7 @@ class TaskManager:
             robot_key = f"num_{robot_idx:02d}_{robot_type}"
             assert env_state_action_dict["robot"][robot_key]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
             env_state_action_dict["robot"][robot_key]["ongoing_task_record_index"] = task_record["product_index"]
-        #machine
-        machine_type = task_record["target_machine"]
-        if machine_type != None:
-            assert env_state_action_dict["machine"][machine_type]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
-            chosen_free_workstation_index = task_record["chosen_free_workstation_index"]
-            env_state_action_dict["machine"][machine_type]["ongoing_task_record_index"][chosen_free_workstation_index] = task_record["product_index"]
+
         logistic_machine_type = task_record["logistic_machine"]
         if logistic_machine_type != None:
             assert logistic_machine_type == "num07_gantry_group", "now only num07_gantry_group is valid logistic machine"
@@ -294,3 +307,20 @@ class TaskManager:
         product_type = task_record["product"]
         task = task_record["task"]
         return bool(CfgProcessTaskGalleryDetailedClassified[product_type][task]["is_final_task"])
+
+    def _find_free_storage(self, env_state_action_dict, storage_class: str):
+        storages = env_state_action_dict["storage"]
+        for storage_name, value in storages.items():
+            if value["class_name"] == storage_class:
+                # If this material isn't supported, or storage is already full, skip
+                if material_type not in supporting_materials or value["state"] == "full":
+                    continue
+                # If storage is partially filled with a different material type, skip
+                if value["state"] == "partial" and material_type != value["material_type"]:
+                    continue
+                if storage is free or not full and have the same material type:
+                    return storage_name
+                else:
+                    continue
+        error_message = f"No free storage found for {storage_class}"
+        raise ValueError(error_message)

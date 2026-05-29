@@ -94,9 +94,11 @@ class Storage:
             "class_name": self.class_name,
             "capacity": self.capacity,
             "supporting_materials": self.supporting_materials,
-            "human_working_areas_ids": self.human_working_areas_ids,
-            "robot_parking_areas_ids": self.robot_parking_areas_ids,
-            "gantry_parking_areas_ids": self.gantry_parking_areas_ids,
+            "working_area_ids": {                
+                "human_working_areas_ids": self.human_working_areas_ids,
+                "robot_parking_areas_ids": self.robot_parking_areas_ids,
+                "gantry_parking_areas_ids": self.gantry_parking_areas_ids,
+            },
             "placement_type": self.placement_type,
             "placement_cfg": self.placement_cfg,
         }

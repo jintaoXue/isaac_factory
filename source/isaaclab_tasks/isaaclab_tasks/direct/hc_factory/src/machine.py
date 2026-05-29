@@ -62,7 +62,7 @@ class MachineManager:
                 else:
                     pre_name = state_name.split("_")[0]
                     task_name = state_name.split("_")[1]
-                    if pre_name == "ready_for":                        
+                    if pre_name == "materialReadyFor":                        
                         task_index = CfgProcessTaskGalleryInAll[task_name]
                         mask[task_index] = 1
                     elif pre_name == "working":
@@ -85,6 +85,7 @@ class Machine:
         self.corresponding_logistic_task = cfg["corresponding_logistic_task"]
         self.state_gallery = cfg["state_gallery"]
         self.reset_state = copy.deepcopy(cfg["reset_state"])
+        self.reset_state["key_variables"] = self.iter_key_variables()
         self.working_area_ids = cfg["working_area_ids"]
         ### dynmaic variables
         self.state : dict = {}

@@ -27,15 +27,24 @@ CfgProductProcess = {
         "reset_state_template": {
             "key_variables": {},
             "finished_task": "none",
-            "storage_name": "none",
             "ongoing_task_record_index": None,
             "submaterials": {
                 # task_step tracks the current production stage, indexed by CfgProcessTaskGalleryInAll (see cfg_process_task_gallery.py)
-                "product_00_pipe",
-                "product_00_flange",
-                "product_00_elbow",
-                "product_00_semi",
-                "product_00_maded", 
+                "product_00_pipe": {
+                    "storage_name": None,
+                },
+                "product_00_flange": {
+                    "storage_name": None,
+                },
+                "product_00_elbow": {
+                    "storage_name": None,
+                },
+                "product_00_semi": {
+                    "storage_name": None,
+                },
+                "product_00_maded": {
+                    "storage_name": None,
+                },
             },
         },
         "meta_registeration_info": {

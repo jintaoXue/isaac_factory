@@ -1,4 +1,5 @@
 import copy
+from .cfg_machine import CfgMachine
 
 CfgSubtaskPredefinedTimeGallery = {
    "material_on_gantry": 10,
@@ -21,6 +22,14 @@ CfgSubtaskGallery = {
                 # material_start_area need to be set in task_progress_manager.py
                 "material_start_area" : None,
                 "material_goal_area" : "num02_rollerbedCNCPipeIntersectionCuttingMachine",
+                "start_area_ids": None,
+                "goal_area_ids": {
+                    "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
+                        "human_working_areas_ids": [90],
+                        "robot_parking_areas_ids": [78],
+                        "gantry_parking_areas_ids": [78],
+                    },
+                },
                 "num_subtasks": 9,
                 "finished": [False,False,False],
                 "subtasks": [
@@ -50,6 +59,14 @@ CfgSubtaskGallery = {
                 "required_logistic_material": "product_00_pipe",
                 "material_start_area" : None,
                 "material_goal_area" : "num02_rollerbedCNCPipeIntersectionCuttingMachine",
+                "start_area_ids": None,
+                "goal_area_ids": {
+                    "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
+                        "human_working_areas_ids": [90],
+                        "robot_parking_areas_ids": [78],
+                        "gantry_parking_areas_ids": [78],
+                    },
+                },
                 "num_subtasks": 5,
                 "finished": [False,False],
                 "subtasks": [
@@ -79,6 +96,14 @@ CfgSubtaskGallery = {
                 "material_start_area" : "num02_rollerbedCNCPipeIntersectionCuttingMachine",
                 # material_goal_area need to be set in task_progress_manager.py after processing and needed to be carryed to a storage or machine
                 "material_goal_area" : None,
+                "start_area_ids": {
+                    "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
+                        "human_working_areas_ids": [90],
+                        "robot_parking_areas_ids": [78],
+                        "gantry_parking_areas_ids": [78],
+                    },
+                },
+                "goal_area_ids": None,
                 "index_to_decide_goal_area": 5,
                 "num_subtasks": 8,
                 "finished": [False, None, True],
@@ -109,12 +134,13 @@ CfgSubtaskGallery = {
 CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_pipe_grooving"] = copy.deepcopy(CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_pipe_cutting"])
 CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_pipe_grooving"]["have_AGV"]["material_goal_area"] = "num04_groovingMachineLarge"
 CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_pipe_grooving"]["only_have_gantry"]["material_goal_area"] = "num04_groovingMachineLarge"
-
+CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_pipe_grooving"]["have_AGV"]["goal_area_ids"] = CfgMachine["num04_groovingMachineLarge"]["working_area_ids"]
+CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_pipe_grooving"]["only_have_gantry"]["goal_area_ids"] = CfgMachine["num04_groovingMachineLarge"]["working_area_ids"]
 # task id 4
 # pipe_grooving
 CfgSubtaskGallery["ProductWaterPipe"]["pipe_grooving"] = copy.deepcopy(CfgSubtaskGallery["ProductWaterPipe"]["pipe_cutting"])
 CfgSubtaskGallery["ProductWaterPipe"]["pipe_grooving"]["material_start_area"] = "num04_groovingMachineLarge"
-
+CfgSubtaskGallery["ProductWaterPipe"]["pipe_grooving"]["start_area_ids"] = CfgMachine["num04_groovingMachineLarge"]["working_area_ids"]
 # task id 5
 # logistic_for_batch_spot_welding
 CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_batch_spot_welding"] = copy.deepcopy(
@@ -122,7 +148,8 @@ CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_batch_spot_welding"] = copy.
 )
 CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_batch_spot_welding"]["have_AGV"]["material_goal_area"] = "num08_workbench"
 CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_batch_spot_welding"]["only_have_gantry"]["material_goal_area"] = "num08_workbench"
-
+CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_batch_spot_welding"]["have_AGV"]["goal_area_ids"] = CfgMachine["num08_workbench"]["working_area_ids"]
+CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_batch_spot_welding"]["only_have_gantry"]["goal_area_ids"] = CfgMachine["num08_workbench"]["working_area_ids"]
 # task id 6
 # batch_spot_welding
 CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"] = copy.deepcopy(CfgSubtaskGallery["ProductWaterPipe"]["pipe_cutting"])
@@ -136,7 +163,7 @@ CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"]["material_states_in_
         "product_00_semi": ["disappear", "disappear", "on_machine", "on_machine", "on_machine", "on_gantry", "on_gantry", "on_goal_area"],
         "product_00_maded": ["disappear"]*8,
     }
-
+CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"]["start_area_ids"] = CfgMachine["num08_workbench"]["working_area_ids"]
 # task id 7
 # logistic_for_arc_welding_root
 CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_arc_welding_root"] = copy.deepcopy(
@@ -162,6 +189,7 @@ for _mode in ("have_AGV", "only_have_gantry"):
             "product_00_semi": ["on_start_area", "on_start_area", "on_gantry", "on_gantry", "on_goal_area"],
             "product_00_maded": ["disappear"]*5,
         }
+    _logistic["goal_area_ids"] = CfgMachine["num01_weldingRobot"]["working_area_ids"]
 # task id 8
 # arc_welding_root
 CfgSubtaskGallery["ProductWaterPipe"]["arc_welding_root"] = copy.deepcopy(CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"])
@@ -174,7 +202,7 @@ CfgSubtaskGallery["ProductWaterPipe"]["arc_welding_root"]["material_states_in_su
         "product_00_semi": ["on_machine", "on_machine", "on_machine", "on_machine", "on_machine", "on_gantry", "on_gantry", "on_goal_area"],
         "product_00_maded": ["disappear"]*8,
     }
-
+CfgSubtaskGallery["ProductWaterPipe"]["arc_welding_root"]["start_area_ids"] = CfgMachine["num01_weldingRobot"]["working_area_ids"]
 
 # task id 9
 # logistic_for_MIG_welding_surface
@@ -184,12 +212,12 @@ CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_MIG_welding_surface"] = copy
 for _mode in ("have_AGV", "only_have_gantry"):
     _logistic = CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_MIG_welding_surface"][_mode]
     _logistic["material_goal_area"] = "num00_rotaryPipeAutomaticWeldingMachine"
-
+    _logistic["goal_area_ids"] = CfgMachine["num00_rotaryPipeAutomaticWeldingMachine"]["working_area_ids"]
 # task id 10
 # MIG_welding_surface
 CfgSubtaskGallery["ProductWaterPipe"]["MIG_welding_surface"] = copy.deepcopy(CfgSubtaskGallery["ProductWaterPipe"]["arc_welding_root"])
 CfgSubtaskGallery["ProductWaterPipe"]["MIG_welding_surface"]["material_start_area"] = "num00_rotaryPipeAutomaticWeldingMachine"
-
+CfgSubtaskGallery["ProductWaterPipe"]["MIG_welding_surface"]["start_area_ids"] = CfgMachine["num00_rotaryPipeAutomaticWeldingMachine"]["working_area_ids"]
 
 # task id 11
 # logistic_for_paint_rust_proof
@@ -200,7 +228,7 @@ CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_paint_rust_proof"] = copy.de
 for _mode in ("have_AGV", "only_have_gantry"):
     _logistic = CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_paint_rust_proof"][_mode]
     _logistic["material_goal_area"] = "num08_workbench"
-
+    _logistic["goal_area_ids"] = CfgMachine["num08_workbench"]["working_area_ids"]
 # task id 12
 # paint_rust_proof
 CfgSubtaskGallery["ProductWaterPipe"]["paint_rust_proof"] = copy.deepcopy(CfgSubtaskGallery["ProductWaterPipe"]["arc_welding_root"])
@@ -213,3 +241,4 @@ CfgSubtaskGallery["ProductWaterPipe"]["paint_rust_proof"]["material_states_in_su
         "product_00_semi": ["on_machine"]*2 + ["disappear"]*6,
         "product_00_maded": ["disappear", "disappear", "on_machine", "on_machine", "on_machine", "on_gantry", "on_gantry", "on_goal_area"],
     }
+CfgSubtaskGallery["ProductWaterPipe"]["paint_rust_proof"]["start_area_ids"] = CfgMachine["num08_workbench"]["working_area_ids"]
