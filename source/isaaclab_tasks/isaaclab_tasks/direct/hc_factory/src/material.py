@@ -1,7 +1,7 @@
 from isaacsim.core.prims import RigidPrim
 from abc import abstractmethod
 from ..env_asset_cfg.cfg_material_product import CfgProductProcess, CfgProductOrder, CfgRegistrationInfos
-from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskGalleryClassified
+from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskGalleryDetailedClassified
 import copy
 import torch
 
@@ -37,7 +37,7 @@ class ProductMaterialManager:
     
     def update_task_availability_mask(self, env_state_action_dict: dict) -> dict:
         # CfgProcessTaskGalleryInAll. All product process tasks share a common encoded index space defined by CfgProcessTaskGallery.
-        # CfgProcessTaskGalleryClassified. This contains the task gallery for all product types; each product type has its own process gallery. 
+        # CfgProcessTaskGalleryDetailedClassified. This contains the task gallery for all product types; each product type has its own process gallery. 
         mask = torch.zeros(len(self.material_batch_list), len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
         mask[:, 0] = 1 # "none" task is always available
         ongoing_task_records : dict = env_state_action_dict["progress"]["ongoing_task_records"]
@@ -46,7 +46,7 @@ class ProductMaterialManager:
                 continue
             product_type = material_batch.type_name
             finished_task = material_batch.state["finished_task"]
-            one_ProcessTaskGallery = CfgProcessTaskGalleryClassified[product_type]
+            one_ProcessTaskGallery = CfgProcessTaskGalleryDetailedClassified[product_type]
             next_allowing_task_index = self.find_product_next_allowing_task_index(finished_task, one_ProcessTaskGallery)
             mask[material_batch_index][next_allowing_task_index] = 1
         env_state_action_dict["material"]["task_availability_mask"] = mask

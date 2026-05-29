@@ -53,11 +53,20 @@ class MachineManager:
         mask = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
         for machine, i in zip(self.iter_machines(), range(self.num_machine)):
             state : list = machine.state['state']
-            task_names : list = machine.corresponding_process_task
-            if "free" in state:
-                for task_name in task_names:
-                    task_index = CfgProcessTaskGalleryInAll[task_name]
-                    mask[task_index] = 1
+            can_do_logistic_task_names : list = machine.corresponding_logistic_task
+            for state_name in state:
+                if state_name == "free":
+                    for task_name in can_do_logistic_task_names:
+                        task_index = CfgProcessTaskGalleryInAll[task_name]
+                        mask[task_index] = 1
+                else:
+                    pre_name = state_name.split("_")[0]
+                    task_name = state_name.split("_")[1]
+                    if pre_name == "ready_for":                        
+                        task_index = CfgProcessTaskGalleryInAll[task_name]
+                        mask[task_index] = 1
+                    elif pre_name == "working":
+                        pass
         env_state_action_dict["machine"]["task_availability_mask"] = mask
 
 
@@ -73,6 +82,7 @@ class Machine:
         self.num_registration_parts = cfg["num_registration_parts"]
         self.registration_infos = cfg["registration_infos"]
         self.corresponding_process_task = cfg["corresponding_process_task"]
+        self.corresponding_logistic_task = cfg["corresponding_logistic_task"]
         self.state_gallery = cfg["state_gallery"]
         self.reset_state = copy.deepcopy(cfg["reset_state"])
         self.working_area_ids = cfg["working_area_ids"]

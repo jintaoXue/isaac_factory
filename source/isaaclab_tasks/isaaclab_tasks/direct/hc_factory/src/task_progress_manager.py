@@ -1,7 +1,7 @@
 
 from ..env_asset_cfg.cfg_storage import CfgStorage
 from ..env_asset_cfg.cfg_material_product import CfgRegistrationInfos, CfgProductOrder, CfgProductProcess
-from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskToTargetMapping, CfgSubtaskGallery, TaskRecordTemplate
+from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskGalleryDetailedClassified, CfgSubtaskGallery, TaskRecordTemplate
 import torch
 import copy
 
@@ -79,7 +79,7 @@ class TaskManager:
             _index = _index.item()
             new_task_record["task"] = self.inverse_index_to_task_name[_index]
             new_task_record["task_index"] = _index
-            new_task_record["task_type"] = CfgProcessTaskToTargetMapping[new_task_record["task"]]["task_type"]
+            new_task_record["task_type"] = CfgProcessTaskGalleryDetailedClassified[new_task_record["product"]][new_task_record["task"]]["task_type"]
         return new_task_record
     
     def decode_action_human_robot_allocation(self, env_state_action_dict, new_task_record):
@@ -108,16 +108,16 @@ class TaskManager:
             # means no valuable record, including task, human, or robot, is set up
         assert new_task_record["human"] != None, "Human availablity should be check by mask before the task can be selected"
         assert new_task_record["product_index"] not in env_state_action_dict["progress"]["ongoing_task_records"], "The product index should not be in the ongoing task records"
-
+        product_type = new_task_record["product"]
         ##machine information
-        new_task_record["target_machine"] = CfgProcessTaskToTargetMapping[new_task_record["task"]]["target_machine"]
+        new_task_record["target_machine"] = CfgProcessTaskGalleryDetailedClassified[product_type][new_task_record["task"]]["target_machine"]
         # assert new_task_record["target_machine"] != None, "Target machine should be set"
         states = env_state_action_dict["machine"][new_task_record["target_machine"]]["state"]
         chosen_free_workstation_index = states.index('free')
         new_task_record["target_machine_workstation"] = \
             list(env_state_action_dict["machine"][new_task_record["target_machine"]]["key_variables"]["working_area_ids"].keys())[chosen_free_workstation_index]
         new_task_record["chosen_free_workstation_index"] = chosen_free_workstation_index
-        new_task_record["logistic_machine"] = CfgProcessTaskToTargetMapping[new_task_record["task"]]["logistic_machine"]
+        new_task_record["logistic_machine"] = CfgProcessTaskGalleryDetailedClassified[product_type]["logistic_machine"]
         if new_task_record["task_type"] == "logistic":
             chosen_free_gantry_index = self._find_free_gantry(env_state_action_dict, new_task_record)
             assert chosen_free_gantry_index is not None, "Free gantry index should be found"
@@ -147,17 +147,36 @@ class TaskManager:
             #1. set the material start area
             material_name = f"num_{task_record['product_index']:02d}_{task_record['product']}"
             material_state = env_state_action_dict["material"][material_name]
+            #the storage might be storage or machine 
             material_start_area = material_state["storage_name"]
             subtasks["material_start_area"] = material_start_area
             #2. set the material goal area
-            if CfgProcessTaskToTargetMapping[task_record["task"]]["is_final_task"] == True:
+            product_type = task_record["product"]
+            if CfgProcessTaskGalleryDetailedClassified[product_type][task_record["task"]]["is_final_task"] == True:
                 subtasks["material_goal_area"] = "storage"
             else:
                 #check machine is free first
-                subtasks["material_goal_area"] = CfgProcessTaskToTargetMapping[task_record["task"]]["target_machine"]
+                subtasks["material_goal_area"] = CfgProcessTaskGalleryDetailedClassified[product_type][task_record["task"]]["target_machine"]
         else:
             subtasks = CfgSubtaskGallery["processing"]
         return subtasks
+    
+    def _find_free_storage(self, env_state_action_dict, storage_class: str):
+        storages = env_state_action_dict["storage"]
+        for storage_name, value in storages.items():
+            if value["class_name"] == storage_class:
+                # If this material isn't supported, or storage is already full, skip
+                if material_type not in supporting_materials or value["state"] == "full":
+                    continue
+                # If storage is partially filled with a different material type, skip
+                if value["state"] == "partial" and material_type != value["material_type"]:
+                    continue
+                if storage is free or not full and have the same material type:
+                    return storage_name
+                else:
+                    continue
+        error_message = f"No free storage found for {storage_class}"
+        raise ValueError(error_message)
 
     def apply_new_task_record_to_human_robot_machine_material(self, env_state_action_dict, task_record):
         #apply the new task record to the human, robot, and machine
@@ -199,8 +218,7 @@ class TaskManager:
             product_type = task_record["product"]
             if self._check_subtask_and_task_done(env_state_action_dict, task_record):
                 #delete the task_record from ongoing_task_records
-                task = task_record["task"]
-                if self._is_the_last_one_task_done(task):
+                if self._is_the_last_one_task_done(task_record):
                     # Remove only one occurrence of product_type from the producing list, even if there are duplicates
                     producing_list = env_state_action_dict["progress"]["producing"]
                     producing_indexs = env_state_action_dict["progress"]["producing_indexs"]
@@ -247,10 +265,9 @@ class TaskManager:
         #### decide the target area that the processed material will be put on
         ### 1. check next subtask target
         task = task_record["task"]
-        if CfgProcessTaskToTargetMapping[task]["is_final_task"] == True:
+        product_type = task_record["product"]
+        if CfgProcessTaskGalleryDetailedClassified[product_type][task]["is_final_task"] == True:
             task_record["subtasks_dict"]["target_area_type"] = "storage"
-        if task_to_target_mapping["is_final_task"] == True:
-            return task_record
         else:
             next_subtask_target = task_record["subtasks_dict"]["subtasks"][task_record["subtasks_dict"]["ongoing_index"]][task_record["subtasks_dict"]["index_to_decide_target_area_type"]]
             task_record["subtasks_dict"]["target_area_type"] = next_subtask_target
@@ -273,5 +290,7 @@ class TaskManager:
                 return False
 
     
-    def _is_the_last_one_task_done(self, task: str) -> bool:
-        return bool(CfgProcessTaskToTargetMapping.get(task, {}).get("final_task", False))
+    def _is_the_last_one_task_done(self, task_record: dict) -> bool:
+        product_type = task_record["product"]
+        task = task_record["task"]
+        return bool(CfgProcessTaskGalleryDetailedClassified[product_type][task]["is_final_task"])

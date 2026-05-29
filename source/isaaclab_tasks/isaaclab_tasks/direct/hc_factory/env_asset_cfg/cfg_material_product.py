@@ -24,41 +24,18 @@ CfgProductProcess = {
     "ProductWaterPipe": {
         "type_id": "00",
         "type_name": "ProductWaterPipe",
-        "state_gallery": {
-            "product_00_pipe": {"raw_pipe", "cutting", "cut_done", "integrated", "disappeared"},
-            "product_00_flange": {"raw_flange", "integrated", "disappeared"},
-            "product_00_elbow": {"raw_elbow", "integrated", "disappeared"},
-            "product_00_semi": {"unappeared", "appeared"},
-            "product_00_maded": {"unappeared", "appeared"},
-            "logistic_state": {"unappeared", "on_storage", "conveying", "on_machine", "on_workbench", "on_storage"},
-        },
         "reset_state_template": {
             "key_variables": {},
             "finished_task": "none",
             "storage_name": "none",
             "ongoing_task_record_index": None,
-            "substate": {
+            "submaterials": {
                 # task_step tracks the current production stage, indexed by CfgProcessTaskGalleryInAll (see cfg_process_task_gallery.py)
-                "product_00_pipe": {
-                    "state": "raw_pipe",
-                    "logistic_state": "on_storage",
-                },
-                "product_00_flange": {
-                    "state": "raw_flange",
-                    "logistic_state": "on_storage",
-                },
-                "product_00_elbow": {
-                    "state": "raw_elbow",
-                    "logistic_state": "on_storage",
-                },
-                "product_00_semi": {
-                    "state": "unappeared",
-                    "logistic_state": "unappeared",
-                },
-                "product_00_maded": {
-                    "state": "unappeared",
-                    "logistic_state": "unappeared",
-                },
+                "product_00_pipe",
+                "product_00_flange",
+                "product_00_elbow",
+                "product_00_semi",
+                "product_00_maded", 
             },
         },
         "meta_registeration_info": {
