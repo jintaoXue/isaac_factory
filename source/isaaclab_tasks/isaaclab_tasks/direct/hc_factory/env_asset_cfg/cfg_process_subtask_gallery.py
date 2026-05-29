@@ -92,7 +92,7 @@ CfgSubtaskGallery = {
                 "ongoing": ["go_to_target_machine", "none", "wait"],
                 "ongoing_index": 0,
                 "required_processing_material": "product_00_pipe",
-                "logistic_material_after_processing": "product_00_pipe",
+                "processed_material": "product_00_pipe",
                 "material_start_area" : "num02_rollerbedCNCPipeIntersectionCuttingMachine",
                 # material_goal_area need to be set in task_progress_manager.py after processing and needed to be carryed to a storage or machine
                 "material_goal_area" : None,
@@ -155,7 +155,7 @@ CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_batch_spot_welding"]["only_h
 CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"] = copy.deepcopy(CfgSubtaskGallery["ProductWaterPipe"]["pipe_cutting"])
 CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"]["material_start_area"] = "num08_workbench"
 CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"]["required_processing_material"] = ["product_00_pipe", "product_00_flange", "product_00_elbow"]
-CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"]["logistic_material_after_processing"] = "product_00_semi"
+CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"]["processed_material"] = "product_00_semi"
 CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"]["material_states_in_subtasks"] = {
         "product_00_pipe": ["on_machine"]*2 + ["disappear"]*6,
         "product_00_flange": ["on_start_area"]*2 + ["disappear"]*6,
@@ -233,7 +233,7 @@ for _mode in ("have_AGV", "only_have_gantry"):
 # paint_rust_proof
 CfgSubtaskGallery["ProductWaterPipe"]["paint_rust_proof"] = copy.deepcopy(CfgSubtaskGallery["ProductWaterPipe"]["arc_welding_root"])
 CfgSubtaskGallery["ProductWaterPipe"]["paint_rust_proof"]["material_start_area"] = "num08_workbench"
-CfgSubtaskGallery["ProductWaterPipe"]["paint_rust_proof"]["logistic_material_after_processing"] = "product_00_maded"
+CfgSubtaskGallery["ProductWaterPipe"]["paint_rust_proof"]["processed_material"] = "product_00_maded"
 CfgSubtaskGallery["ProductWaterPipe"]["paint_rust_proof"]["material_states_in_subtasks"] = {
         "product_00_pipe": ["disappear"]*8,
         "product_00_flange": ["disappear"]*8,

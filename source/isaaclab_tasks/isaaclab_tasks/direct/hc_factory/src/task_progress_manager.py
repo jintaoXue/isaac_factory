@@ -67,7 +67,7 @@ class TaskManager:
                 new_task_record["product"] = env_state_action_dict["progress"]["producing"][_index]
                 new_task_record["product_index"] = env_state_action_dict["progress"]["producing_indexs"][_index]
             material_name = f"num_{new_task_record['product_index']:02d}_{new_task_record['product']}"
-            new_task_record["storage_name"] = env_state_action_dict["material"][material_name]["storage_name"]
+            new_task_record["submaterials"] = env_state_action_dict["material"][material_name]["submaterials"]
         return new_task_record
 
     def decode_action_process_task_planning(self, env_state_action_dict, new_task_record):
@@ -102,16 +102,16 @@ class TaskManager:
             new_task_record["robot_index"] = _index
         return new_task_record
 
-    def update_new_task_record(self, env_state_action_dict, new_task_record):
+    def update_new_task_record(self, env_state_action_dict, new_task_record: dict):
+
         if new_task_record["product"] is None or new_task_record["task"] == "none":
             return
             # means no valuable record, including task, human, or robot, is set up
         assert new_task_record["human"] != None, "Human availablity should be check by mask before the task can be selected"
         assert new_task_record["product_index"] not in env_state_action_dict["progress"]["ongoing_task_records"], "The product index should not be in the ongoing task records"
         product_type = new_task_record["product"]
+        new_task_record.update(copy.deepcopy(CfgProcessTaskGalleryDetailedClassified[product_type][new_task_record["task"]]))
         ##machine information
-        new_task_record["target_machine"] = CfgProcessTaskGalleryDetailedClassified[product_type][new_task_record["task"]]["target_machine"]
-        # assert new_task_record["target_machine"] != None, "Target machine should be set"
         states = env_state_action_dict["machine"][new_task_record["target_machine"]]["state"]
         workstation_index = None
         if new_task_record["task_type"] == "logistic":
@@ -130,11 +130,10 @@ class TaskManager:
         new_task_record["chosen_machine_workstation"] = \
             list(env_state_action_dict["machine"][new_task_record["target_machine"]]["key_variables"]["working_area_ids"].keys())[workstation_index]
         new_task_record["chosen_workstation_index"] = workstation_index
-        new_task_record["logistic_machine"] = CfgProcessTaskGalleryDetailedClassified[product_type]["logistic_machine"]
         if new_task_record["task_type"] == "logistic":
-            chosen_free_gantry_index = self._find_free_gantry(env_state_action_dict, new_task_record)
-            assert chosen_free_gantry_index is not None, "Free gantry index should be found"
-            new_task_record["chosen_gantry_index"] = chosen_free_gantry_index
+            chosen_gantry_index = self._find_free_gantry(env_state_action_dict, new_task_record)
+            assert chosen_gantry_index is not None, "Free gantry index should be found"
+            new_task_record["chosen_gantry_index"] = chosen_gantry_index
         #subtasks information
         new_task_record["subtasks_dict"] : dict = copy.deepcopy(self.initialze_subtasks(env_state_action_dict, new_task_record))
         
@@ -144,12 +143,10 @@ class TaskManager:
     def _find_free_gantry(self, env_state_action_dict, task_record):
         assert task_record["logistic_machine"] == "num07_gantry_group", "now only num07_gantry_group is valid logistic machine"
         gantry_states : list[str] = env_state_action_dict["machine"][task_record["logistic_machine"]]["state"]
-
         def index_of(value, in_list):
             return next((idx for idx, item in enumerate(in_list) if item == value), None)
-
-        chosen_free_gantry_index = index_of("free", gantry_states)
-        return chosen_free_gantry_index
+        chosen_gantry_index = index_of("free", gantry_states)
+        return chosen_gantry_index
 
     def initialze_subtasks(self, env_state_action_dict, task_record):
         if task_record["task_type"] == "logistic":
@@ -226,26 +223,30 @@ class TaskManager:
 
     def step_task_records(self, env_state_action_dict):
 
-        ongoing_task_records : dict = env_state_action_dict["progress"]["ongoing_task_records"]
+        ongoing_task_records: dict = env_state_action_dict["progress"]["ongoing_task_records"]
+        completed_product_indices: list = []
+
         for product_index, task_record in ongoing_task_records.items():
             product_type = task_record["product"]
             if self._check_subtask_and_task_done(env_state_action_dict, task_record):
-                #delete the task_record from ongoing_task_records
-                if self._is_the_last_one_task_done(task_record):
+                if task_record["is_final_task"] == True:
                     # Remove only one occurrence of product_type from the producing list, even if there are duplicates
                     producing_list = env_state_action_dict["progress"]["producing"]
                     producing_indexs = env_state_action_dict["progress"]["producing_indexs"]
-                    assert len(producing_list) == len(producing_indexs), "The length of producing list and producing indexs should be the same"
-                    for i, prod in enumerate(producing_list):
-                        if prod == product_type:
-                            del producing_list[i]
-                            del producing_indexs[i]
-                            if product_type not in env_state_action_dict["progress"]["finished"]:
-                                env_state_action_dict["progress"]["finished"][product_type] = 0
-                            else:
-                                env_state_action_dict["progress"]["finished"][product_type] += 1
-                            break
-                del ongoing_task_records[product_index]
+                    assert len(producing_list) == len(producing_indexs), (
+                        "The length of producing list and producing indexs should be the same"
+                    )
+                    assert product_type in producing_list, (
+                        f"Product type {product_type} not found in producing list"
+                    )
+                    i = producing_list.index(product_type)
+                    del producing_list[i]
+                    del producing_indexs[i]
+                    finished = env_state_action_dict["progress"]["finished"]
+                    if product_type not in finished:
+                        finished[product_type] = []
+                    finished[product_type].append(product_index)
+                completed_product_indices.append(product_index)
             elif task_record["new_product_selected"] == True:
                 task_record['new_product_selected'] = False
                 env_state_action_dict["progress"]["producing"].append(product_type)
@@ -254,41 +255,13 @@ class TaskManager:
                 env_state_action_dict["progress"]["next_product_index"] = None
                 env_state_action_dict["progress"]["not_started"][product_type] -= 1
 
+        for product_index in completed_product_indices:
+            del ongoing_task_records[product_index]
+
         return env_state_action_dict
-
-    def _update_task_record_when_doing_subtask(self, env_state_action_dict, task_record):
-        if not task_record["for_logistic"]:
-            ## processing task, 1 is gantry, if gantry is none, means gantry is not needed
-            if task_record["subtasks_dict"]["ongoing"][1] == "none":
-                return
-            elif task_record["subtasks_dict"]["ongoing"][1] == "finding_free_gantry" and task_record["subtasks_dict"]["finished"][1] == False:
-                if task_record["chosen_free_gantry_index"] is None:
-                    task_record = self._find_free_gantry(env_state_action_dict, task_record)
-                else:
-                    #finded the free gantry
-                    task_record["subtasks_dict"]["finished"][1] = True
-        return task_record
-
-    def _check_target_area_update(self, env_state_action_dict, task_record):
-        if task_record["subtasks_dict"]["index_to_decide_target_area_type"] is None:
-            return task_record
-        if task_record["subtasks_dict"]["target_area_type"] is not None:
-            return task_record
-        assert task_record["task_type"] == "processing", "now only processing task can decide the target area"
-        #### decide the target area that the processed material will be put on
-        ### 1. check next subtask target
-        task = task_record["task"]
-        product_type = task_record["product"]
-        if CfgProcessTaskGalleryDetailedClassified[product_type][task]["is_final_task"] == True:
-            task_record["subtasks_dict"]["target_area_type"] = "storage"
-        else:
-            next_subtask_target = task_record["subtasks_dict"]["subtasks"][task_record["subtasks_dict"]["ongoing_index"]][task_record["subtasks_dict"]["index_to_decide_target_area_type"]]
-            task_record["subtasks_dict"]["target_area_type"] = next_subtask_target
-        return task_record
 
     def _check_subtask_and_task_done(self, env_state_action_dict, task_record):
         task_record = self._update_task_record_when_doing_subtask(env_state_action_dict, task_record)
-        task_record = self._check_target_area_update(env_state_action_dict, task_record)
         finished : list[bool] =  task_record["subtasks_dict"]["finished"]
         if all(finished) == True:
             if task_record["subtasks_dict"]["ongoing_index"] == task_record["subtasks_dict"]["num_subtasks"]:
@@ -302,25 +275,52 @@ class TaskManager:
                     bool_value = False
                 return False
 
-    
-    def _is_the_last_one_task_done(self, task_record: dict) -> bool:
-        product_type = task_record["product"]
-        task = task_record["task"]
-        return bool(CfgProcessTaskGalleryDetailedClassified[product_type][task]["is_final_task"])
-
-    def _find_free_storage(self, env_state_action_dict, storage_class: str):
-        storages = env_state_action_dict["storage"]
-        for storage_name, value in storages.items():
-            if value["class_name"] == storage_class:
-                # If this material isn't supported, or storage is already full, skip
-                if material_type not in supporting_materials or value["state"] == "full":
-                    continue
-                # If storage is partially filled with a different material type, skip
-                if value["state"] == "partial" and material_type != value["material_type"]:
-                    continue
-                if storage is free or not full and have the same material type:
-                    return storage_name
+    def _update_task_record_when_doing_subtask(self, env_state_action_dict, task_record):
+        if task_record["task_type"] == "processing":
+            ## processing task, 1 is gantry, if gantry is none, means gantry is not needed
+            if task_record["subtasks_dict"]["ongoing"][1] == "none":
+                return
+            ### update the logistic machine and gantry index
+            elif task_record["subtasks_dict"]["ongoing"][1] == "finding_free_gantry" and task_record["subtasks_dict"]["finished"][1] == False:
+                if task_record["chosen_gantry_index"] is None:
+                    task_record["chosen_gantry_index"] = self._find_free_gantry(env_state_action_dict, task_record)
                 else:
-                    continue
-        error_message = f"No free storage found for {storage_class}"
-        raise ValueError(error_message)
+                    #finded the free gantry
+                    task_record["subtasks_dict"]["finished"][1] = True
+            ### where the processed material will be put on
+            elif task_record["subtasks_dict"]["ongoing"][1] == "move_to_goal_area" and task_record["subtasks_dict"]["goal_area_ids"] is None:
+                if task_record["is_final_task"] == True:
+                    goal_storage_name = self._find_free_storage(env_state_action_dict, task_record)
+                    task_record["subtasks_dict"]["goal_area_ids"] = env_state_action_dict["storage"][goal_storage_name]["key_variables"]["working_area_ids"]
+                else:
+                    current_task = task_record["task"]
+                    product_type = task_record["product"]
+                    keys = list(CfgProcessTaskGalleryDetailedClassified[product_type].keys())
+                    current_task_index = keys.index(current_task)
+                    next_task = keys[current_task_index + 1]
+                    next_target_machine = CfgProcessTaskGalleryDetailedClassified[product_type][next_task]["target_machine"]
+                    machine_state = env_state_action_dict["machine"][next_target_machine]["state"]
+                    if "free" in machine_state:
+                        workstation_key = list(env_state_action_dict["machine"][next_target_machine]["key_variables"]["working_area_ids"].keys())[machine_state.index("free")]
+                        task_record["subtasks_dict"]["goal_area_ids"] = env_state_action_dict["machine"][next_target_machine]["key_variables"]["working_area_ids"][workstation_key]
+                    else:
+                        goal_storage_name = self._find_free_storage(env_state_action_dict, task_record)
+                        task_record["subtasks_dict"]["goal_area_ids"] = env_state_action_dict["storage"][goal_storage_name]["key_variables"]["working_area_ids"]
+               
+        return task_record
+
+    
+    def _find_free_storage(self, env_state_action_dict, task_record):
+        storages = env_state_action_dict["storage"]
+        processed_material = task_record["processed_material"]
+
+        for storage_name, value in storages.items():
+            supporting_materials = value["key_variables"]["supporting_materials"]
+            # If this material isn't supported, or storage is already full, skip
+            if processed_material not in supporting_materials or value["state"] == "full":
+                continue
+            # If storage is partially filled with a different material type, skip
+            if value["state"] == "partial" and processed_material != value["material_type"]:
+                continue
+            return storage_name
+        raise ValueError(f"No free storage found for {processed_material}")

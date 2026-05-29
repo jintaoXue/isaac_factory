@@ -8,12 +8,16 @@ TaskRecordTemplate = {
     "task_index": None,
     #processing, logistic
     "task_type": None,
+    "is_final_task": None,
 
     "product": None,  
     "product_index": None,
     "new_product_selected": False,
-    "storage_name": None,
-
+    "submaterials": None,
+    "logistic_submaterial": None,
+    "processing_submaterials": None,
+    "processed_material": None,
+    
     "human": None,
     "human_index": None,
     "robot": None,
@@ -106,6 +110,7 @@ CfgProcessTaskGalleryDetailedClassified = {
             "is_final_task": False,
             "logistic_submaterial": None,
             "processing_submaterials": None,
+            "processed_material": None,
             "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["none"],
         },
         "logistic_for_pipe_cutting": {
