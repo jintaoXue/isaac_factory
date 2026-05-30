@@ -171,6 +171,9 @@ class Machine:
         ### animation
         chosen_workstation_index = task_record["chosen_workstation_index"]
         chosen_machine_workstation = task_record["chosen_machine_workstation"]
+        workstation_state = self.state["state"][chosen_workstation_index]
+        task_name = workstation_state.split("_")[1]
+        assert task_name == task_record["task"], "The workstation ready for task should be the same as the task in the task record"
         if self.type_name != "num08_workbench":
             obj_animation : PoseAnimation = getattr(self, f"animation_{chosen_machine_workstation}", None)
             if self.state["target_joints_position"][chosen_workstation_index] is None:

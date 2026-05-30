@@ -2,6 +2,7 @@ from isaacsim.core.prims import RigidPrim
 from abc import abstractmethod
 from ..env_asset_cfg.cfg_material_product import CfgProductProcess, CfgProductOrder, CfgRegistrationInfos
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskGalleryDetailedClassified
+from ..env_asset_cfg.cfg_machine import CfgMachine
 import copy
 import torch
 
@@ -167,9 +168,44 @@ class MaterialBatch:
     def iter_integrated_material_prims(self):
         pass
     
-    @abstractmethod
+    
     def step(self, env_state_action_dict: dict) -> dict:
-        pass
+        task_record_index : int = env_state_action_dict["material"][f"num_{self.idx:02d}_{self.type_name}"]["ongoing_task_record_index"]
+        if task_record_index is None:
+            return
+        task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
+        assert task_record["product_index"] == self.idx, "The product index should be the same as the product index in the task record"
+        subtasks = task_record["subtasks_dict"]
+        material_subtask = subtasks["material_states_in_subtasks"]
+        ongoing_index = subtasks["ongoing_index"]
+        all_materials = {**self.iter_integrated_material_prims(), **self.iter_raw_material_prims()}
+        for material_type, material_prim in all_materials.items():
+            material_name = f"num_{self.idx:02d}_{material_type}"
+            material_state = material_subtask[material_type][ongoing_index]
+            position = env_state_action_dict["rigid_prims"][material_name]["position"]
+            if material_state == "on_start_area":
+                pass
+            elif material_state == "disappear":
+                pass
+            elif material_state == "on_gantry":
+                gantry_index = subtasks["chosen_gantry_index"]
+                gantry_indexs = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]["gantry_indexs"]
+                joint_position = env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"].clone()[gantry_indexs == gantry_index]
+                xy_position_reset = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]["xy_position_reset"].to(self.cuda_device)[gantry_indexs == gantry_index]
+                joint_positions_reset = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]["joint_positions_reset"].to(self.cuda_device)[gantry_indexs == gantry_index]  
+                fixed_hook_height : int = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]["fixed_hook_height"]
+                xy_target = joint_position - joint_positions_reset + xy_position_reset
+                position = torch.cat([xy_target, torch.tensor([fixed_hook_height], device=self.cuda_device)])
+            elif material_state == "on_robot":
+                pass
+            elif material_state == "on_goal_area":
+                pass
+            elif material_state == "on_machine":
+                pass
+            else:
+                raise ValueError(f"Invalid material state: {material_state}")
+            env_state_action_dict["rigid_prims"][material_name]["position"] = position
+
 
 
 class ProductWaterPipe(MaterialBatch):
@@ -180,10 +216,6 @@ class ProductWaterPipe(MaterialBatch):
         self.product_00_semi : RigidPrim = None
         self.product_00_maded : RigidPrim = None
         super().__init__(idx, cfg, env_id, cuda_device)
-
-    def step(self, env_state_action_dict: dict) -> dict:
-        # trace the material batch's state, and update the position
-        return env_state_action_dict
 
     def iter_raw_material_prims(self):
         return {
