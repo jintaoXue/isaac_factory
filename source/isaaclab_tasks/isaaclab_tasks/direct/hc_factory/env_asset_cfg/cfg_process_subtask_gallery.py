@@ -15,8 +15,8 @@ CfgSubtaskGallery = {
         # task id 1
         "logistic_for_pipe_cutting":{
             "have_AGV":{
-                # human: 0, gantry: 1, robot: 2
-                "ongoing": ["go_to_material", "go_to_material", "go_to_material"],
+                # human: 0, gantry: 1, machine: 2, robot: 3, 
+                "ongoing": ["go_to_material", "go_to_material", "go_to_material", "wait"],
                 "ongoing_index": 0,
                 "required_logistic_material": "product_00_pipe",
                 # material_start_area need to be set in task_progress_manager.py
@@ -31,18 +31,18 @@ CfgSubtaskGallery = {
                     },
                 },
                 "num_subtasks": 9,
-                "finished": [False,False,False],
+                "finished": [False, False, False, False],
                 "subtasks": [
-                    # human: 0, gantry: 1, robot: 2
-                    ["go_to_material", "go_to_material", "go_to_material"],
-                    ["material_on_gantry", "wait", "wait"],
-                    ["control_gantry", "carry_to_robot", "wait"],
-                    ["material_on_robot", "wait", "wait"],
-                    ["go_to_goal_area", "move_to_goal_area", "carry_to_goal_area"],
-                    ["material_on_gantry", "wait", "wait"],
-                    ["control_gantry", "move_to_goal_area", "wait"],
-                    ["material_on_goal_area", "wait", "done"],
-                    ["done", "done", "done"],
+                    # human: 0, gantry: 1, machine: 2, robot: 3
+                    ["go_to_material", "go_to_material", "wait", "go_to_material"],
+                    ["material_on_gantry", "wait", "wait", "wait"],
+                    ["control_gantry", "carry_to_robot", "wait", "wait"],
+                    ["material_on_robot", "wait", "wait", "wait"],
+                    ["go_to_goal_area", "move_to_goal_area", "wait", "carry_to_goal_area"],
+                    ["material_on_gantry", "wait", "wait", "wait"],
+                    ["control_gantry", "move_to_goal_area", "wait", "wait"],
+                    ["material_on_goal_area", "wait", "wait", "done"],
+                    ["done", "done", "done", "done"],
                 ],
                 "material_states_in_subtasks": {
                     "product_00_pipe": ["on_start_area", "on_start_area", "on_gantry", "on_gantry", "on_robot", "on_robot", "on_gantry", "on_gantry", "on_goal_area"],
@@ -53,8 +53,8 @@ CfgSubtaskGallery = {
                 }    
             },
             "only_have_gantry":{
-                # human: 0, gantry: 1
-                "ongoing": ["go_to_material", "go_to_material"],
+                # human: 0, gantry: 1, machine: 2
+                "ongoing": ["go_to_material", "go_to_material", "wait"],
                 "ongoing_index": 0,
                 "required_logistic_material": "product_00_pipe",
                 "material_start_area" : None,
@@ -68,14 +68,14 @@ CfgSubtaskGallery = {
                     },
                 },
                 "num_subtasks": 5,
-                "finished": [False,False],
+                "finished": [False, False, False],
                 "subtasks": [
-                    #human: 0, gantry: 1
-                    ["go_to_material", "go_to_material"],
-                    ["material_on_gantry", "wait"],
-                    ["control_gantry_while_going_to_goal_area", "carry_to_goal_area"],
-                    ["material_on_goal_area", "wait"],
-                    ["done", "done"],
+                    #human: 0, gantry: 1, machine: 2
+                    ["go_to_material", "go_to_material", "wait"],
+                    ["material_on_gantry", "wait", "wait"],
+                    ["go_to_goal_area", "carry_to_goal_area", "wait"],
+                    ["material_on_goal_area", "wait", "wait"],
+                    ["done", "done", "done"],
                 ],
                 "material_states_in_subtasks": {
                     "product_00_pipe": ["on_start_area", "on_start_area", "on_gantry", "on_gantry", "on_goal_area"],
@@ -108,7 +108,7 @@ CfgSubtaskGallery = {
                 "num_subtasks": 8,
                 "finished": [False, None, True],
                 "subtasks": [
-                    #human: 0, gantry: 1, machine: 2, material: -1
+                    #human: 0, gantry: 1, machine: 2,
                     ["go_to_target_machine", "none", "wait"],
                     ["control_machine", "none", "process"],
                     ["wait", "finding_free_gantry", "wait"],

@@ -185,7 +185,7 @@ class TaskManager:
         else:
             raise ValueError(f"Invalid task type: {task_record['task_type']}")
         return subtasks
-
+    
     def apply_new_task_record_to_human_robot_machine_material(self, env_state_action_dict, task_record):
         #apply the new task record to the human, robot, and machine
 
@@ -271,8 +271,11 @@ class TaskManager:
             else:
                 task_record["subtasks_dict"]["ongoing_index"] += 1
                 task_record["subtasks_dict"]["ongoing"] = task_record["subtasks_dict"]["subtasks"][task_record["subtasks_dict"]["ongoing_index"]]
-                for bool_value in finished:
-                    bool_value = False
+                for task_name, index in zip(task_record["subtasks_dict"]["ongoing"], range(len(finished))):
+                    if task_name == "done":
+                        finished[index] = True
+                    else:
+                        finished[index] = False
                 return False
 
     def _update_task_record_when_doing_subtask(self, env_state_action_dict, task_record):

@@ -122,7 +122,6 @@ class Robot:
         if task_record_index is None:
             return
         task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
-
         assert task_record["robot_index"] == self.idx, "The robot index should be the same as the robot index in the task record"
     
         if self.state["state"] == "free":
@@ -137,33 +136,39 @@ class Robot:
         subtasks = task_record["subtasks_dict"]
         subtask = subtasks["ongoing"]
         robot_subtask = subtask[2]
-        if robot_subtask == "go_to_storage":
-            self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_type="storage")
+        if robot_subtask == "go_to_material":
+            self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "start")
         elif robot_subtask == "wait":
             subtasks["finished"][2] = True
-        elif robot_subtask == "carry_to_target_area":
-            self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_type="machine")
+        elif robot_subtask == "carry_to_goal_area":
+            self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type="goal")
         elif robot_subtask == "done":
-            self._subtask_done(env_state_action_dict, task_record, subtasks)
+            self._task_done(env_state_action_dict, task_record, subtasks)
         else:
             raise ValueError(f"Invalid robot subtask for logistic: {robot_subtask}")
         return env_state_action_dict
             
-    def _subtask_go_to_target(self, env_state_action_dict: dict, task_record: dict, subtasks: dict, target_type: str) -> None:
-        
-        if self.state["target_area_id"] is None:
-            if target_type == "machine":
-                workstation_areas = env_state_action_dict["machine"][task_record["target_machine"]]["key_variables"]["working_area_ids"][task_record["target_machine_workstation_key"]]
-                self.state["target_area_id"] = random.choice(workstation_areas["human_working_areas_ids"])
-            elif target_type == "storage":
-                storage_key_variables = env_state_action_dict["storage"][task_record["storage_name"]]["key_variables"]
-                self.state["target_area_id"] = random.choice(storage_key_variables["human_working_areas_ids"])
+    def _subtask_go_to_target(self, env_state_action_dict: dict, task_record: dict, subtasks: dict, target_area_type: str) -> None:
+        if subtasks["finished"][2] == True:
+            return
+        elif self.state["target_area_id"] is None:
+            if target_area_type == "start":
+                assert task_record["subtasks_dict"]["start_area_ids"] is not None, "The start area ids should be initialized in task_progress_manager.py"
+                target_area_id = task_record["subtasks_dict"]["start_area_ids"]["human_working_areas_ids"][0]
+            elif target_area_type == "goal":
+                assert task_record["subtasks_dict"]["goal_area_ids"] is not None, "The goal area ids should be initialized in task_progress_manager.py"
+                target_area_id = task_record["subtasks_dict"]["goal_area_ids"]["human_working_areas_ids"][0]
             else:
-                raise ValueError(f"Invalid target type: {target_type}")
-        if self.state["target_area_id"] == self.state["current_area_id"]:
+                raise ValueError(f"Invalid target area type: {target_area_type}")
+            self.state["target_area_id"] = target_area_id
+        elif self.state["target_area_id"] == self.state["current_area_id"]:
             subtasks["finished"][2] = True
+        else:
+            # the human is going to the target area by route planner in route.py
+            pass
+        return env_state_action_dict
 
-    def _subtask_done(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
+    def _task_done(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
         subtasks["finished"][2] = True
         ### reset the robot in advance
         current_area_id = self.state["current_area_id"]

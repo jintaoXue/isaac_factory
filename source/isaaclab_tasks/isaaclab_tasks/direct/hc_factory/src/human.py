@@ -3,7 +3,8 @@ import omni.usd
 from pxr import Usd, UsdSkel, Gf, Sdf
 from ..env_asset_cfg.cfg_human import CfgHuman, CfgHumanRegistrationInfos
 from ..env_asset_cfg.cfg_route.cfg_route import RouteOptionalInitPointsInMap, OptionalInitPointIds
-from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgSubtaskPredefinedTimeGallery
+from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
+from ..env_asset_cfg.cfg_process_subtask_gallery import CfgSubtaskPredefinedTimeGallery
 import torch
 import copy
 import random
@@ -142,85 +143,66 @@ class Human:
             #human is chosen to work on the task
             self.state["state"] = 'working_' + task_record["task"]
         
-        if task_record["for_logistic"]:
-            self.step_logistic(env_state_action_dict, task_record)
-        else:
-            self.step_processing(env_state_action_dict, task_record)
-        return env_state_action_dict
-    
-    def step_logistic(self, env_state_action_dict: dict, task_record: dict) -> dict:
         subtasks = task_record["subtasks_dict"]
         subtask = subtasks["ongoing"]
         human_subtask = subtask[0]
-        #type 1, only have human and gantry + Type
         #TODO: check change subtasks value can change task records value
-        if human_subtask == "go_to_storage":
-            self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_type="storage")
+        if human_subtask == "go_to_material":
+            self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "start")
         elif human_subtask == "material_on_gantry":
             self._time_counting_subtask(subtasks, human_subtask)
-        elif human_subtask == "control_gantry_while_going_to_target_machine":
-            self._subtask_control_gantry_while_going_to_target_machine(
-                env_state_action_dict, task_record, subtasks, human_subtask)
-        elif human_subtask == "material_on_target_area":
-            self._time_counting_subtask(subtasks, human_subtask)
-        elif human_subtask == "done":
-            self._subtask_done(env_state_action_dict, task_record, subtasks)
-        #type 2, extra subtasks have human, AGV, and gantry
         elif human_subtask == "control_gantry":
             self._time_counting_subtask(subtasks, human_subtask)
         elif human_subtask == "material_on_robot":
             self._time_counting_subtask(subtasks, human_subtask)
+        elif human_subtask == "go_to_goal_area":
+            self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "goal")
+        elif human_subtask == "material_on_goal_area":
+            self._time_counting_subtask(subtasks, human_subtask)    
         elif human_subtask == "go_to_target_machine":
-            self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_type="machine")
-        else:
-            raise ValueError(f"Invalid human subtask for logistic with robot: {human_subtask}")
-
-    def step_processing(self, env_state_action_dict: dict, task_record: dict) -> dict:
-        subtasks = task_record["subtasks_dict"]
-        subtask = subtasks["ongoing"]
-        human_subtask = subtask[0]
-        
-        if human_subtask == "go_to_target_machine":
-            self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_type="machine")
+            self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "start")
         elif human_subtask == "control_machine":
-            self._time_counting_subtask(env_state_action_dict, task_record, subtasks, human_subtask)
+            self._time_counting_subtask(subtasks, human_subtask)
+        elif human_subtask == "wait":
+            subtasks["finished"][0] = True
+        elif human_subtask == "done":
+            self._task_done(env_state_action_dict, subtasks)
         else:
             raise ValueError(f"Invalid human subtask for processing: {human_subtask}")
+        return env_state_action_dict
 
-    def _subtask_go_to_target(self, env_state_action_dict: dict, task_record: dict, subtasks: dict, target_type: str) -> None:
-        if self.state["target_area_id"] is None:
-            if target_type == "machine":
-                workstation_areas = env_state_action_dict["machine"][task_record["target_machine"]]["key_variables"]["working_area_ids"][task_record["target_machine_workstation_key"]]
-                self.state["target_area_id"] = random.choice(workstation_areas["human_working_areas_ids"])
-            elif target_type == "storage":
-                storage_key_variables = env_state_action_dict["storage"][task_record["storage_name"]]["key_variables"]
-                self.state["target_area_id"] = random.choice(storage_key_variables["human_working_areas_ids"])
+    def _subtask_go_to_target(self, env_state_action_dict: dict, task_record: dict, subtasks: dict, target_area_type: str) -> None:
+        if subtasks["finished"][0] == True:
+            return
+        elif self.state["target_area_id"] is None:
+            if target_area_type == "start":
+                assert task_record["subtasks_dict"]["start_area_ids"] is not None, "The start area ids should be initialized in task_progress_manager.py"
+                target_area_id = task_record["subtasks_dict"]["start_area_ids"]["human_working_areas_ids"][0]
+            elif target_area_type == "goal":
+                assert task_record["subtasks_dict"]["goal_area_ids"] is not None, "The goal area ids should be initialized in task_progress_manager.py"
+                target_area_id = task_record["subtasks_dict"]["goal_area_ids"]["human_working_areas_ids"][0]
             else:
-                raise ValueError(f"Invalid target type: {target_type}")
-        if self.state["target_area_id"] == self.state["current_area_id"]:
-            subtasks["finished"][1] = True
-
-    def _subtask_control_gantry_while_going_to_target_machine(
-        self, env_state_action_dict: dict, task_record: dict, subtasks: dict, human_subtask: str
-    ) -> None:
-        if self.state["target_area_id"] is None:
-            workstation_areas = env_state_action_dict["machine"][task_record["target_machine"]]["key_variables"]["working_area_ids"][task_record["target_machine_workstation_key"]]
-            self.state["target_area_id"] = random.choice(workstation_areas["human_working_areas_ids"])
-        if self.state["subtask_time_counter"] < CfgSubtaskPredefinedTimeGallery[human_subtask] and not subtasks["finished"][1]:
-            self.state["subtask_time_counter"] += 1
+                raise ValueError(f"Invalid target area type: {target_area_type}")
+            self.state["target_area_id"] = target_area_id
         elif self.state["target_area_id"] == self.state["current_area_id"]:
-            subtasks["finished"][1] = True
-            self.state["subtask_time_counter"] = 0
-            
-    def _time_counting_subtask(self, subtasks: dict, human_subtask: str, finished_index: int = 0) -> None:
-        if self.state["subtask_time_counter"] < CfgSubtaskPredefinedTimeGallery[human_subtask] and not subtasks["finished"][finished_index]:
+            subtasks["finished"][0] = True
+        else:
+            # the human is going to the target area by route planner in route.py
+            pass
+        return env_state_action_dict
+
+    def _time_counting_subtask(self, subtasks: dict, human_subtask: str) -> None:
+        if subtasks["finished"][0] == True:
+            return
+        elif self.state["subtask_time_counter"] < CfgSubtaskPredefinedTimeGallery[human_subtask]:
             self.state["subtask_time_counter"] += 1
         else:
-            subtasks["finished"][finished_index] = True
+            subtasks["finished"][0] = True
             self.state["subtask_time_counter"] = 0
 
-    def _subtask_done(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
+    def _task_done(self, env_state_action_dict: dict, subtasks: dict) -> None:
         subtasks["finished"][0] = True
+        #TODO, check reset successfully
         current_area_id = self.state["current_area_id"]
         self.state : str = copy.deepcopy(self.reset_state)
         self.state["current_area_id"] = current_area_id

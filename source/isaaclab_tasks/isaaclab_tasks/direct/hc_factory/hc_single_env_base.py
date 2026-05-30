@@ -62,12 +62,12 @@ class HcSingleEnvBase():
         return (
             self.storage_manager,
             self.product_material_manager,
-            self.machine_manager,
             self.human_manager,
             self.robot_manager,
+            self.route_manager,
+            self.machine_manager,
             self.algo_multiagent_masker,
             self.task_manager,
-            self.route_manager,
         )
 
     def reset_env(self):
