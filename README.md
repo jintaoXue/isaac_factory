@@ -92,6 +92,7 @@ Aligned with a 4-layer real-time factory operations stack (formal academic/indus
 
 
 #一定要检查是否是原址引用 
-machine state material state要修改 _check_subtask_and_task_done函数
 
 storage 的"robot_parking_areas_ids": [9], 不太对
+
+del task record in task manager
