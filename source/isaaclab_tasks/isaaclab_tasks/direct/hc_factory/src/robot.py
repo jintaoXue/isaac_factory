@@ -58,7 +58,7 @@ class RobotManager:
             if robot.state['state'] == "free":
                 mask[:] = 1
                 break
-        env_state_action_dict["robot"]["task_availability_mask"] = mask
+        env_state_action_dict["agent_action_mask"]["robot"]["task_availability_mask"] = mask
         return env_state_action_dict
 
     def update_self_availability_mask(self, env_state_action_dict: dict) -> dict:
@@ -68,7 +68,7 @@ class RobotManager:
         for robot, i in zip(self.robot_list, range(len(self.robot_list))):
             if robot.state['state'] == "free":
                 mask[i] = 1
-        env_state_action_dict["robot"]["self_availability_mask"] = mask
+        env_state_action_dict["agent_action_mask"]["robot"]["self_availability_mask"] = mask
         return env_state_action_dict
 
 

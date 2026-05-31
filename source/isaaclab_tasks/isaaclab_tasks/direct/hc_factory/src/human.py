@@ -55,7 +55,7 @@ class HumanManager:
             if human.state['state'] == "free":
                 mask[:] = 1
                 break
-        env_state_action_dict["human"]["task_availability_mask"] = mask
+        env_state_action_dict["agent_action_mask"]["human"]["task_availability_mask"] = mask
         return env_state_action_dict
 
     def update_self_availability_mask(self, env_state_action_dict: dict) -> dict:
@@ -65,7 +65,7 @@ class HumanManager:
         for human, i in zip(self.human_list, range(len(self.human_list))):
             if human.state['state'] == "free":
                 mask[i] = 1
-        env_state_action_dict["human"]["self_availability_mask"] = mask
+        env_state_action_dict["agent_action_mask"]["human"]["self_availability_mask"] = mask
         return env_state_action_dict
 
     def _register_human_list(self):

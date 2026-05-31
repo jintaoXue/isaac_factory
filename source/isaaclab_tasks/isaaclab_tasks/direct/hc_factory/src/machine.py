@@ -69,7 +69,7 @@ class MachineManager:
                         mask[task_index] = 1
                     elif pre_name == "working":
                         pass
-        env_state_action_dict["machine"]["task_availability_mask"] = mask
+        env_state_action_dict["agent_action_mask"]["machine"]["task_availability_mask"] = mask
 
 
 class Machine:

@@ -18,8 +18,8 @@ class HumanRobotMachineAllocationAgent(AgentBase):
 
     def act(self, env_state_action_dict: dict, product_selection_action: torch.Tensor | None, process_task_planning_action: torch.Tensor | None) -> dict:
         
-        human_availability_mask = env_state_action_dict["human"]["self_availability_mask"]
-        robot_availability_mask = env_state_action_dict["robot"]["self_availability_mask"]
+        human_availability_mask = env_state_action_dict["agent_action_mask"]["human"]["self_availability_mask"]
+        robot_availability_mask = env_state_action_dict["agent_action_mask"]["robot"]["self_availability_mask"]
         count = (process_task_planning_action == 1).sum().item()
         assert count == 1, "There should be only one task selected for human-robot-machine allocation, but got multiple."
         if process_task_planning_action[0] == 1: # "none" task is selected, no allocation needed

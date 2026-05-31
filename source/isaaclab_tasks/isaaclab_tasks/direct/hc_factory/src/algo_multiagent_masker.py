@@ -132,8 +132,8 @@ class HumanRobotMachineAllocatorAgentMasker:
     def generate_mask(self, env_state_action_dict) -> None:
         #mask for human-robot-machine allocation agent
         #output shape (len(CfgProcessTaskGalleryInAll),)
-        human_mask = env_state_action_dict["human"]["self_availability_mask"]
-        robot_mask = env_state_action_dict["robot"]["self_availability_mask"]
+        human_mask = env_state_action_dict["agent_action_mask"]["human"]["self_availability_mask"]
+        robot_mask = env_state_action_dict["agent_action_mask"]["robot"]["self_availability_mask"]
 
         env_state_action_dict["agent_action_mask"]["agent_D_human_robot_allocator"] = {
             "human_mask": human_mask,

@@ -298,8 +298,7 @@ class RouteManagerVectorEnv:
 
     @staticmethod
     def _update_agent_routes(agent_states: dict, route_generator) -> None:
-        for agent_state in agent_states.values():
-            state = agent_state["state"]
+        for state in agent_states.values():
             if state["ongoing_task_record_index"] is None:
                 continue
             if (

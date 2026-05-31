@@ -78,6 +78,20 @@ SingleEnvStateActionDictTemplate : dict = {
         "agent_C_process_task_planner": torch.Tensor([]),
         #human: (upper_bound_num_human,) robot: (upper_bound_num_robot,)
         "agent_D_human_robot_allocator": {},
+        "human": {
+            "task_availability_mask": torch.Tensor([]),
+            "self_availability_mask": torch.Tensor([]),
+        },
+        "robot": {
+            "task_availability_mask": torch.Tensor([]),
+            "self_availability_mask": torch.Tensor([]),
+        },
+        "machine": {
+            "task_availability_mask": torch.Tensor([]),
+        },
+        "material": {
+            "task_availability_mask": torch.Tensor([]),
+        },
     },
     "action": {
         "product_sequencing": torch.Tensor([]),
