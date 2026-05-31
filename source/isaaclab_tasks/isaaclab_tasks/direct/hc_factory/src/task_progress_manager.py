@@ -92,13 +92,13 @@ class TaskManager:
             _index = action_human.nonzero()[0][0]
             _index = _index.item()
             key_name = list(env_state_action_dict["human"].keys())[_index]
-            new_task_record["human"] = env_state_action_dict["human"][key_name]["key_variables"]["type_name"]
+            new_task_record["human"] = key_name
             new_task_record["human_index"] = _index
         if action_robot.sum() != 0 and new_task_record["task_type"] == "logistic":
             _index = action_robot.nonzero()[0][0]
             _index = _index.item()
             key_name = list(env_state_action_dict["robot"].keys())[_index]
-            new_task_record["robot"] = env_state_action_dict["robot"][key_name]["key_variables"]["type_name"]
+            new_task_record["robot"] = key_name
             new_task_record["robot_index"] = _index
         return new_task_record
 
@@ -174,7 +174,7 @@ class TaskManager:
             # (2) update the goal area ids
             machine_workstation_key = task_record["chosen_machine_workstation"]
             subtasks["goal_area_ids"] = subtasks["goal_area_ids"][machine_workstation_key]
-
+            subtasks["goal_area_workstation_key"] = machine_workstation_key
         elif task_record["task_type"] == "processing":
             #1. set the goal area for subtasks dict
             subtasks = copy.deepcopy(CfgSubtaskGallery[task_record["product"]][task_record["task"]])
@@ -213,7 +213,7 @@ class TaskManager:
         logistic_machine_type = task_record["logistic_machine"]
         if logistic_machine_type != None:
             assert logistic_machine_type == "num07_gantry_group", "now only num07_gantry_group is valid logistic machine"
-            env_state_action_dict["machine"][logistic_machine_type]["ongoing_task_record_index"] = task_record["product_index"]
+            env_state_action_dict["machine"][logistic_machine_type]["ongoing_task_record_index"][0] = task_record["product_index"]
         #material
         material_type = task_record["product"]
         assert material_type != None, "The material type should not be none"
@@ -289,6 +289,7 @@ class TaskManager:
                     task_record["chosen_gantry_index"] = self._find_free_gantry(env_state_action_dict, task_record)
                 else:
                     #finded the free gantry
+                    env_state_action_dict["machine"]["num07_gantry_group"]["ongoing_task_record_index"][0] = task_record["product_index"]
                     task_record["subtasks_dict"]["finished"][1] = True
             ### where the processed material will be put on
             elif task_record["subtasks_dict"]["ongoing"][1] == "move_to_goal_area" and task_record["subtasks_dict"]["goal_area_ids"] is None:
@@ -306,10 +307,12 @@ class TaskManager:
                     if "free" in machine_state:
                         workstation_key = list(env_state_action_dict["machine"][next_target_machine]["key_variables"]["working_area_ids"].keys())[machine_state.index("free")]
                         task_record["subtasks_dict"]["goal_area_ids"] = env_state_action_dict["machine"][next_target_machine]["key_variables"]["working_area_ids"][workstation_key]
+                        task_record["subtasks_dict"]["material_goal_area"] = next_target_machine
+                        task_record["subtasks_dict"]["goal_area_workstation_key"] = workstation_key
                     else:
                         goal_storage_name = self._find_free_storage(env_state_action_dict, task_record)
                         task_record["subtasks_dict"]["goal_area_ids"] = env_state_action_dict["storage"][goal_storage_name]["key_variables"]["working_area_ids"]
-               
+                        task_record["subtasks_dict"]["material_goal_area"] = goal_storage_name
         return task_record
 
     

@@ -350,15 +350,15 @@ class num07_gantry_group(Machine):
 
             if gantry_subtask == "go_to_material":
                 self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "start")
-            if gantry_subtask == "wait":
+            elif gantry_subtask == "wait":
                 subtasks["finished"][1] = True
-            if gantry_subtask == "carry_to_robot":
+            elif gantry_subtask == "carry_to_robot":
                 self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type="robot_start")
-            if gantry_subtask == "carry_to_goal_area":
+            elif gantry_subtask == "carry_to_goal_area":
                 self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type="goal")
-            if gantry_subtask == "move_to_goal_area":
+            elif gantry_subtask == "move_to_goal_area":
                 self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type="goal")
-            if gantry_subtask == "done":
+            elif gantry_subtask == "done":
                 self._task_done(env_state_action_dict, task_record, 0)
             else:
                 raise ValueError(f"Invalid gantry subtask for logistic: {gantry_subtask}")

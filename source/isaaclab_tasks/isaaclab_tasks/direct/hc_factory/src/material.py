@@ -183,6 +183,7 @@ class MaterialBatch:
             material_name = f"num_{self.idx:02d}_{material_type}"
             material_state = material_subtask[material_type][ongoing_index]
             position = env_state_action_dict["rigid_prims"][material_name]["position"]
+            storage_name = self.state["submaterials"][material_type]["storage_name"]
             if material_state == "on_start_area":
                 pass
             elif material_state == "disappear":
@@ -196,16 +197,30 @@ class MaterialBatch:
                 fixed_hook_height : int = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]["fixed_hook_height"]
                 xy_target = joint_position - joint_positions_reset + xy_position_reset
                 position = torch.cat([xy_target, torch.tensor([fixed_hook_height], device=self.cuda_device)])
+                storage_name = "num07_gantry_group"
             elif material_state == "on_robot":
-                pass
+                robot_name = task_record["robot"]
+                position = env_state_action_dict["rigid_prims"][robot_name]["position"].clone()
+                position[0][2] = position[0][2] + 0.1
+                storage_name = "robot_name"
             elif material_state == "on_goal_area":
-                pass
+                storage_name = subtasks["material_goal_area"]
+                if "Machine" in storage_name:
+                    workstation_key = subtasks["goal_area_workstation_key"]
+                    position = env_state_action_dict["articulations"][workstation_key]["object"].get_local_poses()[0]
+                elif "Storage" in storage_name:
+                    storage = env_state_action_dict["storage"][storage_name]
+                    pose_list = storage["key_variables"]["placement_cfg"]["pose_list"]
+                    storage["num_material"] += 1
+                    position = pose_list[storage["num_material"] - 1]["position"]
+                    # orientation = pose_list[value["num_material"] - 1]["orientation"]
             elif material_state == "on_machine":
-                pass
+                workstation_key = subtasks["goal_area_workstation_key"]
+                position = env_state_action_dict["articulations"][workstation_key]["object"].get_local_poses()[0]
             else:
                 raise ValueError(f"Invalid material state: {material_state}")
             env_state_action_dict["rigid_prims"][material_name]["position"] = position
-
+            self.state["submaterials"][material_type]["storage_name"] = storage_name
 
 
 class ProductWaterPipe(MaterialBatch):

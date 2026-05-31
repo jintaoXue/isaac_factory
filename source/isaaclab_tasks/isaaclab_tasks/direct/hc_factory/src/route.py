@@ -274,7 +274,8 @@ class RouteManagerVectorEnv:
     def step(self, env_state_action_dict: dict) -> dict:
         self._update_agent_routes(env_state_action_dict["human"], self.generate_human_route)
         self._update_agent_routes(env_state_action_dict["robot"], self.generate_robot_route)
-        self._step_next_pose
+        self._step_next_pose(env_state_action_dict["human"])
+        self._step_next_pose(env_state_action_dict["robot"])
         
         return env_state_action_dict
 

@@ -22,6 +22,7 @@ CfgSubtaskGallery = {
                 # material_start_area need to be set in task_progress_manager.py
                 "material_start_area" : None,
                 "material_goal_area" : "num02_rollerbedCNCPipeIntersectionCuttingMachine",
+                "goal_area_workstation_key" : None,
                 "start_area_ids": None,
                 "goal_area_ids": {
                     "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
@@ -59,6 +60,7 @@ CfgSubtaskGallery = {
                 "required_logistic_material": "product_00_pipe",
                 "material_start_area" : None,
                 "material_goal_area" : "num02_rollerbedCNCPipeIntersectionCuttingMachine",
+                "goal_area_workstation_key" : None,
                 "start_area_ids": None,
                 "goal_area_ids": {
                     "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
@@ -96,6 +98,8 @@ CfgSubtaskGallery = {
                 "material_start_area" : "num02_rollerbedCNCPipeIntersectionCuttingMachine",
                 # material_goal_area need to be set in task_progress_manager.py after processing and needed to be carryed to a storage or machine
                 "material_goal_area" : None,
+                ### if goal_area is a machine, then goal_area_workstation_key is the workstation key of the machine
+                "goal_area_workstation_key" : None,
                 "start_area_ids": {
                     "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
                         "human_working_areas_ids": [90],
@@ -114,7 +118,7 @@ CfgSubtaskGallery = {
                     ["wait", "finding_free_gantry", "wait"],
                     ["control_gantry", "move_to_target_machine", "wait"],
                     ["material_on_gantry", "wait", "wait"],
-                    ["control_gantry", "move_to_goal_area", "done"],
+                    ["control_gantry", "carry_to_goal_area", "done"],
                     ["material_on_goal_area", "wait", "done"],
                     ["done", "done", "done"],
                 ],
