@@ -63,6 +63,7 @@ SingleEnvStateActionDictTemplate : dict = {
         # str, for example 'ProductWaterPipe'
         "next_product": None,
         "next_product_index": None,
+        #
         "producing": [],
         #producing_indexs, value is the index in the material batch list in material manager, 
         # e.g., [0, 1]

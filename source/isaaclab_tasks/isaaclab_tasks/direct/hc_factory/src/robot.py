@@ -1,7 +1,8 @@
 from isaacsim.core.prims import RigidPrim
 from ..env_asset_cfg.cfg_robot import CfgRobot, CfgRobotRegistrationInfos
 from ..env_asset_cfg.cfg_route.cfg_route import RouteOptionalInitPointsInMap, OptionalInitPointIds
-from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgSubtaskPredefinedTimeGallery
+from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
+
 import copy
 import torch
 import random
@@ -27,7 +28,8 @@ class RobotManager:
             )
         perm = torch.randperm(num_points, device=self.optional_init_points_in_map.device)
         shuffled_init_points_in_map = self.optional_init_points_in_map[perm]
-        shuffled_init_points_ids = self.optional_init_points_ids[perm]
+        # self.optional_init_points_ids is a list (Python, not a torch tensor) so use list comprehension, not tensor indexing
+        shuffled_init_points_ids: list[int] = [self.optional_init_points_ids[i] for i in perm.tolist()]
         for robot, i in zip(self.robot_list, range(num_robots)):
             robot.reset(env_state_action_dict, shuffled_init_points_in_map[i].unsqueeze(0), shuffled_init_points_ids[i])
         
@@ -154,10 +156,10 @@ class Robot:
         elif self.state["target_area_id"] is None:
             if target_area_type == "start":
                 assert task_record["subtasks_dict"]["start_area_ids"] is not None, "The start area ids should be initialized in task_progress_manager.py"
-                target_area_id = task_record["subtasks_dict"]["start_area_ids"]["human_working_areas_ids"][0]
+                target_area_id = task_record["subtasks_dict"]["start_area_ids"]["robot_parking_areas_ids"][0]
             elif target_area_type == "goal":
                 assert task_record["subtasks_dict"]["goal_area_ids"] is not None, "The goal area ids should be initialized in task_progress_manager.py"
-                target_area_id = task_record["subtasks_dict"]["goal_area_ids"]["human_working_areas_ids"][0]
+                target_area_id = task_record["subtasks_dict"]["goal_area_ids"]["robot_parking_areas_ids"][0]
             else:
                 raise ValueError(f"Invalid target area type: {target_area_type}")
             self.state["target_area_id"] = target_area_id

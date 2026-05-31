@@ -85,8 +85,8 @@ class Machine:
         self.corresponding_logistic_task = cfg["corresponding_logistic_task"]
         self.state_gallery = cfg["state_gallery"]
         self.reset_state = copy.deepcopy(cfg["reset_state"])
-        self.reset_state["key_variables"] = self.iter_key_variables()
         self.working_area_ids = cfg["working_area_ids"]
+        self.reset_state["key_variables"] = self.iter_key_variables()
         ### dynmaic variables
         self.state : dict = {}
         self._register_articulation_animation()

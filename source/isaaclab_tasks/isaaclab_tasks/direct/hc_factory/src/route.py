@@ -279,6 +279,8 @@ class RouteManagerVectorEnv:
         
         return env_state_action_dict
 
+    def reset(self, env_state_action_dict: dict) -> dict:
+        pass
 
     def _step_next_pose(self, agent_states: dict) -> dict:
         for agent_name, agent_state in agent_states.items():
