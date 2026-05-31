@@ -137,11 +137,11 @@ class Robot:
     def step_logistic(self, env_state_action_dict: dict, task_record: dict) -> dict:
         subtasks = task_record["subtasks_dict"]
         subtask = subtasks["ongoing"]
-        robot_subtask = subtask[2]
+        robot_subtask = subtask[3]
         if robot_subtask == "go_to_material":
             self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "start")
         elif robot_subtask == "wait":
-            subtasks["finished"][2] = True
+            subtasks["finished"][3] = True
         elif robot_subtask == "carry_to_goal_area":
             self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type="goal")
         elif robot_subtask == "done":
@@ -151,7 +151,7 @@ class Robot:
         return env_state_action_dict
             
     def _subtask_go_to_target(self, env_state_action_dict: dict, task_record: dict, subtasks: dict, target_area_type: str) -> None:
-        if subtasks["finished"][2] == True:
+        if subtasks["finished"][3] == True:
             return
         elif self.state["target_area_id"] is None:
             if target_area_type == "start":
@@ -164,14 +164,14 @@ class Robot:
                 raise ValueError(f"Invalid target area type: {target_area_type}")
             self.state["target_area_id"] = target_area_id
         elif self.state["target_area_id"] == self.state["current_area_id"]:
-            subtasks["finished"][2] = True
+            subtasks["finished"][3] = True
         else:
             # the human is going to the target area by route planner in route.py
             pass
         return env_state_action_dict
 
     def _task_done(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
-        subtasks["finished"][2] = True
+        subtasks["finished"][3] = True
         ### reset the robot in advance
         current_area_id = self.state["current_area_id"]
         self.state : str = copy.deepcopy(self.reset_state)

@@ -1,4 +1,11 @@
+import math
 import torch
+
+
+def yaw_to_quaternion_wxyz(yaw: float, device: torch.device, dtype: torch.dtype = torch.float32) -> torch.Tensor:
+    """Z-axis yaw (rad) -> unit quaternion [w, x, y, z]."""
+    half = 0.5 * float(yaw)
+    return torch.tensor([math.cos(half), 0.0, 0.0, math.sin(half)], dtype=dtype, device=device)
 
 
 class PoseAnimation:
@@ -17,8 +24,7 @@ class PoseAnimation:
         return next_pose
 
     def is_done(self):
-        dis = torch.norm(self.start_pose - self.end_pose)
-        return dis < 0.01
+        return self.step_time >= self.animation_time
 
     def set_target_pose(self, target_pose: torch.Tensor):
         self.start_pose = self.end_pose

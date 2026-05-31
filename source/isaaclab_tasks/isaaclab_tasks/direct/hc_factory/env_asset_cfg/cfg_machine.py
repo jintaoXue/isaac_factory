@@ -301,7 +301,7 @@ CfgMachine = {
             "ongoing_task_record_index": [None, None, None, None],
             "key_variables": {},
             "target_area_id": None,
-            "target_area_xyz": None,
+            "target_area_xy": None,
             "target_joints_position": None,
         },
         "working_area_ids": {
@@ -337,7 +337,7 @@ CfgMachine = {
                 "gantry_indexs": torch.tensor([0, 1, 2, 3, 0, 1, 2, 3]),
                 ### to simplify the problem, we set the z of hook to be fixed, and only control the x and y movement of the gantry, so the joint position of z axis is not used for calculating the reward and is not included in the observation, but it is still needed for animation and calculating the offset between the hook and the material when gripping.
                 "fixed_hook_height": 8.90808,
-                "animation_time": 20,
+                "animation_time": 100,
             },
         },
     },

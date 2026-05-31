@@ -16,7 +16,7 @@ CfgSubtaskGallery = {
         "logistic_for_pipe_cutting":{
             "have_AGV":{
                 # human: 0, gantry: 1, machine: 2, robot: 3, 
-                "ongoing": ["go_to_material", "go_to_material", "go_to_material", "wait"],
+                "ongoing": ["go_to_material", "go_to_material", "wait", "go_to_material"],
                 "ongoing_index": 0,
                 "required_logistic_material": "product_00_pipe",
                 # material_start_area need to be set in task_progress_manager.py

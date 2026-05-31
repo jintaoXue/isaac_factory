@@ -1,4 +1,5 @@
 from ..env_asset_cfg.cfg_route.cfg_route import CfgRoute, OptionalInitPointIds
+from .utils import yaw_to_quaternion_wxyz
 import heapq
 import json
 import math
@@ -174,6 +175,18 @@ class _RoadmapGraph:
                 path_cost += float(edge.get("length", 0.0))
         return path_cost
 
+    def get_xy_at_area_id(self, area_id: int) -> tuple[float, float]:
+        """Map point id -> Isaac Sim (x, y). Uses exact id first, then nearest graph node."""
+        area_id = int(area_id)
+        point_xy = self.point_xy_by_id.get(area_id)
+        if point_xy is not None:
+            return point_xy
+        nearest_node_id = self._find_nearest_graph_node_id(area_id)
+        node_xy = self.point_xy_by_id.get(nearest_node_id)
+        if node_xy is not None:
+            return node_xy
+        raise ValueError(f"Unknown {self.agent_label} map point id: {area_id}")
+
     def _pose_at_node(self, node_id: int) -> dict[str, float]:
         node_xy = self.point_xy_by_id.get(node_id)
         if node_xy is not None:
@@ -274,15 +287,40 @@ class RouteManagerVectorEnv:
     def step(self, env_state_action_dict: dict) -> dict:
         self._update_agent_routes(env_state_action_dict["human"], self.generate_human_route)
         self._update_agent_routes(env_state_action_dict["robot"], self.generate_robot_route)
-        self._step_next_pose(env_state_action_dict["human"])
-        self._step_next_pose(env_state_action_dict["robot"])
-        
+        self._step_next_pose(
+            env_state_action_dict["rigid_prims"], env_state_action_dict["human"], self.default_z_human
+        )
+        self._step_next_pose(
+            env_state_action_dict["rigid_prims"], env_state_action_dict["robot"], self.default_z_robot
+        )
+        self._step_gantry(env_state_action_dict)
         return env_state_action_dict
+
+    def _step_gantry(self, env_state_action_dict: dict) -> None:
+        """Resolve gantry target_area_xy from map point id (gantry/robot parking area)."""
+        gantry_state = env_state_action_dict["machine"]["num07_gantry_group"]
+        target_area_id = gantry_state["target_area_id"]
+        if target_area_id is None or gantry_state["target_area_xy"] is not None:
+            return
+
+        area_id = int(target_area_id)
+        # gantry_parking_areas_ids come from robot map (see cfg_machine comments)
+        x, y = self.human_roadmap.get_xy_at_area_id(area_id)
+
+        gantry_state["target_area_xy"] = torch.tensor(
+            [x, y],
+            dtype=torch.float32,
+            device=self.cuda_device,
+        )
 
     def reset(self, env_state_action_dict: dict) -> dict:
         pass
 
-    def _step_next_pose(self, agent_states: dict) -> dict:
+    def _orientation_from_route_pose(self, yaw: float) -> torch.Tensor:
+        """Route waypoint yaw (rad) -> RigidPrim orientation tensor (1, 4) in wxyz."""
+        return yaw_to_quaternion_wxyz(yaw, self.cuda_device).unsqueeze(0)
+
+    def _step_next_pose(self, agent_prims_dict: dict, agent_states: dict, default_z: float) -> dict:
         for agent_name, agent_state in agent_states.items():
             route_index = agent_state["route_index"]
             route_length = agent_state["route_length"]
@@ -295,8 +333,12 @@ class RouteManagerVectorEnv:
                 return
             route = agent_state["generated_route"]
             xy_yaw = route[route_index]
-            agent_state["position"] = torch.tensor([xy_yaw[0], xy_yaw[1], self.default_z_human], dtype=torch.float32, device=self.cuda_device)
-            agent_state["orientation"] = torch.tensor([0, 0, xy_yaw[2]], dtype=torch.float32, device=self.cuda_device)
+            agent_prims_dict[agent_name]["position"] = torch.tensor(
+                [xy_yaw["x"], xy_yaw["y"], default_z],
+                dtype=torch.float32,
+                device=self.cuda_device,
+            ).unsqueeze(0)
+            agent_prims_dict[agent_name]["orientation"] = self._orientation_from_route_pose(xy_yaw["yaw"])
             agent_state["route_index"] += 1
 
     @staticmethod

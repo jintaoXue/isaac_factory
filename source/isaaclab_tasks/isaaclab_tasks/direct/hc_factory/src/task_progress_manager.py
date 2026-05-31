@@ -49,7 +49,8 @@ class TaskManager:
             for material_name, material_state in material_states_dict.items():
                 key_variables = material_state["key_variables"]
                 finished_task = material_state["finished_task"]
-                if key_variables["type_name"] == product_type and finished_task == "none":
+                ongoing_task_record_index = material_state["ongoing_task_record_index"]
+                if key_variables["type_name"] == product_type and finished_task == "none" and ongoing_task_record_index is None:
                     env_state_action_dict["progress"]["next_product"] = product_type
                     env_state_action_dict["progress"]["next_product_index"] = key_variables["idx"]
                     break

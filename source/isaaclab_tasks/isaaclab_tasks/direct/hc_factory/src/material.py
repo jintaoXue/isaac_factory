@@ -178,6 +178,10 @@ class MaterialBatch:
         subtasks = task_record["subtasks_dict"]
         material_subtask = subtasks["material_states_in_subtasks"]
         ongoing_index = subtasks["ongoing_index"]
+        if ongoing_index == subtasks["num_subtasks"] - 1:
+            ## task done, set the finished task and ongoing task record index to none
+            self.state["finished_task"] = task_record["task"]
+            self.state["ongoing_task_record_index"] = None
         all_materials = {**self.iter_integrated_material_prims(), **self.iter_raw_material_prims()}
         for material_type, material_prim in all_materials.items():
             material_name = f"num_{self.idx:02d}_{material_type}"
@@ -189,14 +193,14 @@ class MaterialBatch:
             elif material_state == "disappear":
                 pass
             elif material_state == "on_gantry":
-                gantry_index = subtasks["chosen_gantry_index"]
+                gantry_index = task_record["chosen_gantry_index"]
                 gantry_indexs = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]["gantry_indexs"]
                 joint_position = env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"].clone()[gantry_indexs == gantry_index]
                 xy_position_reset = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]["xy_position_reset"].to(self.cuda_device)[gantry_indexs == gantry_index]
                 joint_positions_reset = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]["joint_positions_reset"].to(self.cuda_device)[gantry_indexs == gantry_index]  
                 fixed_hook_height : int = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]["fixed_hook_height"]
                 xy_target = joint_position - joint_positions_reset + xy_position_reset
-                position = torch.cat([xy_target, torch.tensor([fixed_hook_height], device=self.cuda_device)])
+                position = torch.tensor([xy_target[0], xy_target[1], fixed_hook_height], device=self.cuda_device).unsqueeze(0)
                 storage_name = "num07_gantry_group"
             elif material_state == "on_robot":
                 robot_name = task_record["robot"]
@@ -212,8 +216,9 @@ class MaterialBatch:
                     storage = env_state_action_dict["storage"][storage_name]
                     pose_list = storage["key_variables"]["placement_cfg"]["pose_list"]
                     storage["num_material"] += 1
-                    position = pose_list[storage["num_material"] - 1]["position"]
-                    # orientation = pose_list[value["num_material"] - 1]["orientation"]
+                    slot_pose = pose_list[storage["num_material"] - 1]
+                    position = slot_pose["position"]
+                    env_state_action_dict["rigid_prims"][material_name]["orientation"] = slot_pose["orientation"]
             elif material_state == "on_machine":
                 workstation_key = subtasks["goal_area_workstation_key"]
                 position = env_state_action_dict["articulations"][workstation_key]["object"].get_local_poses()[0]

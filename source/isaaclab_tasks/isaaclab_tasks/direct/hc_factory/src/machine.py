@@ -385,14 +385,17 @@ class num07_gantry_group(Machine):
                 raise ValueError(f"Invalid target area type: {target_area_type}")
 
         if self.state["target_joints_position"] == None:
-            if self.state["target_area_xyz"] == None:
-                ### Wait for the route manager (route.py) to generate the XYZ by giving the self.state["target_area_id"]
+            if self.state["target_area_xy"] == None:
+                ### Wait for the route manager (route.py) to generate the XY by giving the self.state["target_area_id"]
                 pass
             else:
-                joint_position = env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"]
-                self.state["target_joints_position"] = self.get_joint_pose_from_xy_target(joint_position.clone(), self.state["target_area_xyz"][:2], gantry_index = 0)
-                ### Move to the target joint position
-                self.animation_num07_gantry_group.set_target_pose(self.state["target_joints_position"])
+                if self.state["target_joints_position"] is None:
+                    joint_position = env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"]
+                    self.state["target_joints_position"] = self._get_joint_pose_from_xy_target(
+                        joint_position.clone(), self.state["target_area_xy"], gantry_index=0
+                    )
+                    ### Move to the target joint position
+                    self.animation_num07_gantry_group.set_target_pose(self.state["target_joints_position"])
         else:
             ### Move to the target joint position
             if self.animation_num07_gantry_group.is_done():
@@ -416,7 +419,7 @@ class num07_gantry_group(Machine):
         self.state["state"][chosen_gantry_index] = "free"
         self.state["ongoing_task_record_index"][chosen_gantry_index] = None
         self.state["target_area_id"] = None
-        self.state["target_area_xyz"] = None
+        self.state["target_area_xy"] = None
         self.state["target_joints_position"] = None
         self.animation_num07_gantry_group.set_target_pose(self.joint_position_reset)
         return env_state_action_dict
