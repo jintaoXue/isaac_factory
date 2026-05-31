@@ -24,13 +24,7 @@ CfgSubtaskGallery = {
                 "material_goal_area" : "num02_rollerbedCNCPipeIntersectionCuttingMachine",
                 "goal_area_workstation_key" : None,
                 "start_area_ids": None,
-                "goal_area_ids": {
-                    "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
-                        "human_working_areas_ids": [90],
-                        "robot_parking_areas_ids": [78],
-                        "gantry_parking_areas_ids": [78],
-                    },
-                },
+                "goal_area_ids": CfgMachine["num02_rollerbedCNCPipeIntersectionCuttingMachine"]["working_area_ids"],
                 "num_subtasks": 9,
                 "finished": [False, False, False, False],
                 "subtasks": [
@@ -62,13 +56,7 @@ CfgSubtaskGallery = {
                 "material_goal_area" : "num02_rollerbedCNCPipeIntersectionCuttingMachine",
                 "goal_area_workstation_key" : None,
                 "start_area_ids": None,
-                "goal_area_ids": {
-                    "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
-                        "human_working_areas_ids": [90],
-                        "robot_parking_areas_ids": [78],
-                        "gantry_parking_areas_ids": [78],
-                    },
-                },
+                "goal_area_ids": CfgMachine["num02_rollerbedCNCPipeIntersectionCuttingMachine"]["working_area_ids"],
                 "num_subtasks": 5,
                 "finished": [False, False, False],
                 "subtasks": [
@@ -100,13 +88,7 @@ CfgSubtaskGallery = {
                 "material_goal_area" : None,
                 ### if goal_area is a machine, then goal_area_workstation_key is the workstation key of the machine
                 "goal_area_workstation_key" : None,
-                "start_area_ids": {
-                    "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
-                        "human_working_areas_ids": [90],
-                        "robot_parking_areas_ids": [78],
-                        "gantry_parking_areas_ids": [78],
-                    },
-                },
+                "start_area_ids": CfgMachine["num02_rollerbedCNCPipeIntersectionCuttingMachine"]["working_area_ids"],
                 "goal_area_ids": None,
                 "index_to_decide_goal_area": 5,
                 "num_subtasks": 8,

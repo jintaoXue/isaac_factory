@@ -105,6 +105,7 @@ class Machine:
                 start_pose=info["joint_positions_reset"],
                 end_pose=info["joint_positions_reset"],
                 animation_time=info["animation_time"],
+                device=self.cuda_device,
             ))
 
     def reset(self, env_state_action_dict: dict) -> dict:
@@ -315,19 +316,19 @@ class num07_gantry_group(Machine):
         self.joint_position_reset = self.registration_infos["num07_gantry_group"]["joint_positions_reset"].to(self.cuda_device)
         self.xy_position_reset = self.registration_infos["num07_gantry_group"]["xy_position_reset"].to(self.cuda_device)
         #"gantry_indexs": torch.tensor([0, 1, 2, 3, 0, 1, 2, 3]), number 4 subgantrys in total, each subgantry has a gantry and a hook, the gantry moves in xy plane and the hook moves in z axis, the subgantry indexs indicate which subgantry each joint belongs to
-        self.gantry_indexs = self.registration_infos["num07_gantry_group"]["gantry_indexs"]
+        self.gantry_indexs = self.registration_infos["num07_gantry_group"]["gantry_indexs"].to(self.cuda_device)
         self.fixed_hook_height : float = self.registration_infos["num07_gantry_group"]["fixed_hook_height"]
 
     def step(self, env_state_action_dict):
         ###1. This part is for set gantry group index 1,2,3 subgantrys to move to the side, means invalid state
         joint_position = env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"]
-        xyz_1 : list = [-50.45092570343084, 10.18675, 0.5]
-        xyz_2 : list = [-46, 10.18675, 0.5]
-        xyz_3 : list = [-42, 10.18675, 0.5]
+        xyz_1 : torch.tensor = torch.tensor([-50.45092570343084, 10.18675, 0.5]).to(self.cuda_device)
+        xyz_2 : torch.tensor = torch.tensor([-46, 10.18675, 0.5]).to(self.cuda_device)
+        xyz_3 : torch.tensor = torch.tensor([-42, 10.18675, 0.5]).to(self.cuda_device)
 
-        target_joint_position_1 = self.get_joint_pose_from_xy_target(joint_position, xyz_1[:2], gantry_index = 1)
-        target_joint_position_2 = self.get_joint_pose_from_xy_target(joint_position, xyz_2[:2], gantry_index = 2)
-        target_joint_position_3 = self.get_joint_pose_from_xy_target(joint_position, xyz_3[:2], gantry_index = 3)
+        target_joint_position_1 = self._get_joint_pose_from_xy_target(joint_position, xyz_1[:2], gantry_index = 1)
+        target_joint_position_2 = self._get_joint_pose_from_xy_target(joint_position, xyz_2[:2], gantry_index = 2)
+        target_joint_position_3 = self._get_joint_pose_from_xy_target(joint_position, xyz_3[:2], gantry_index = 3)
 
         final_target_joint_position = joint_position.clone()
         final_target_joint_position[self.gantry_indexs == 1] = target_joint_position_1[self.gantry_indexs == 1]
@@ -397,7 +398,7 @@ class num07_gantry_group(Machine):
             if self.animation_num07_gantry_group.is_done():
                 subtasks["finished"][1] = True
 
-    def _get_joint_pose_from_xy_target(self, joint_position: torch.tensor, xy_target: list, gantry_index: int) -> torch.tensor:
+    def _get_joint_pose_from_xy_target(self, joint_position: torch.tensor, xy_target: torch.tensor, gantry_index: int) -> torch.tensor:
         #input xy_target is a list of 2 elements, [x, y], the gantry_index-th gantry should move to the xy_target
         # having the self.gantry_indexs to get the joint position of the gantry_index-th gantry
         # having the self.xy_position_reset to get the xy_position_reset of the gantry_index-th gantry
@@ -406,7 +407,6 @@ class num07_gantry_group(Machine):
 
         reset = self.joint_position_reset[self.gantry_indexs == gantry_index]
         xy_reset = self.xy_position_reset[self.gantry_indexs == gantry_index]
-        xy_target = torch.tensor(xy_target)
         target = reset + (xy_target - xy_reset)
         joint_position[self.gantry_indexs == gantry_index] = target
         return joint_position

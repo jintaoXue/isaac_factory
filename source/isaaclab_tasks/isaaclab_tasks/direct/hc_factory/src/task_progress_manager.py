@@ -23,12 +23,16 @@ class TaskManager:
         env_state_action_dict["progress"]["ongoing_task_records"] = {}
     
     def step(self, env_state_action_dict: dict) -> dict:
-        new_task_record = copy.deepcopy(TaskRecordTemplate)
+        
         self.decode_action_product_sequencing(env_state_action_dict)
-        self.decode_action_product_selection(env_state_action_dict, new_task_record)
-        self.decode_action_process_task_planning(env_state_action_dict, new_task_record)
-        self.decode_action_human_robot_allocation(env_state_action_dict, new_task_record)
-        self.update_new_task_record(env_state_action_dict, new_task_record)
+
+        new_task_record = copy.deepcopy(TaskRecordTemplate)
+        if self.decode_action_product_selection(env_state_action_dict, new_task_record):
+            have_new_task = self.decode_action_process_task_planning(env_state_action_dict, new_task_record)
+            if have_new_task:
+                self.decode_action_human_robot_allocation(env_state_action_dict, new_task_record)
+                self.update_new_task_record(env_state_action_dict, new_task_record)
+        
         self.step_task_records(env_state_action_dict)
         return env_state_action_dict
 
@@ -55,7 +59,7 @@ class TaskManager:
         action_product_selection = env_state_action_dict["action"]["product_selection"]
         
         if action_product_selection.sum() == 0:
-            return
+            return False
         else:
             _index = action_product_selection.nonzero()[0][0]
             _index = _index.item()
@@ -68,21 +72,25 @@ class TaskManager:
                 new_task_record["product_index"] = env_state_action_dict["progress"]["producing_indexs"][_index]
             material_name = f"num_{new_task_record['product_index']:02d}_{new_task_record['product']}"
             new_task_record["submaterials"] = env_state_action_dict["material"][material_name]["submaterials"]
-        return new_task_record
+        return True
 
     def decode_action_process_task_planning(self, env_state_action_dict, new_task_record):
         action_process_task_planning = env_state_action_dict["action"]["process_task_planning"]
         if action_process_task_planning.sum() == 0:
             action_process_task_planning[0] = 1
-        else:
-            _index = action_process_task_planning.nonzero()[0][0]
-            _index = _index.item()
-            new_task_record["task"] = self.inverse_index_to_task_name[_index]
-            new_task_record["task_index"] = _index
-            new_task_record["task_type"] = CfgProcessTaskGalleryDetailedClassified[new_task_record["product"]][new_task_record["task"]]["task_type"]
-        return new_task_record
+        _index = action_process_task_planning.nonzero()[0][0]
+        _index = _index.item()
+        new_task_record["task"] = self.inverse_index_to_task_name[_index]
+        new_task_record["task_index"] = _index
+        new_task_record["task_type"] = CfgProcessTaskGalleryDetailedClassified[new_task_record["product"]][new_task_record["task"]]["task_type"]
+        if new_task_record["task"] == "none":
+            return False
+        return True
     
     def decode_action_human_robot_allocation(self, env_state_action_dict, new_task_record):
+        if new_task_record["task"] is None or new_task_record["task"] == "none":
+            #no task is selected, means no human or robot allocation is needed
+            return
         action_human_robot_allocation = env_state_action_dict["action"]["human_robot_allocation"]
         #shape is (upper_bound_num_human,)
         action_human = action_human_robot_allocation["human"]
@@ -103,12 +111,9 @@ class TaskManager:
         return new_task_record
 
     def update_new_task_record(self, env_state_action_dict, new_task_record: dict):
-
-        if new_task_record["product"] is None or new_task_record["task"] == "none":
-            return
-            # means no valuable record, including task, human, or robot, is set up
         assert new_task_record["human"] != None, "Human availablity should be check by mask before the task can be selected"
         assert new_task_record["product_index"] not in env_state_action_dict["progress"]["ongoing_task_records"], "The product index should not be in the ongoing task records"
+        assert new_task_record["task"] != "none", "The task should not be none"
         product_type = new_task_record["product"]
         new_task_record.update(copy.deepcopy(CfgProcessTaskGalleryDetailedClassified[product_type][new_task_record["task"]]))
         ##machine information
@@ -156,7 +161,7 @@ class TaskManager:
                 subtasks = copy.deepcopy(CfgSubtaskGallery[task_record["product"]][task_record["task"]]["only_have_gantry"])
             #1. set the material start area for subtasks dict
             product_name = f"num_{task_record['product_index']:02d}_{task_record['product']}"
-            required_logistic_material = subtasks["logistic_submaterial"]
+            required_logistic_material = task_record["logistic_submaterial"]
             state_material = env_state_action_dict["material"][product_name]["submaterials"][required_logistic_material]
             assert state_material["storage_name"] is not None, "The storage name should be initialized in material.py"
             assert state_material["storage_name"] != "disappear", "The material still not appeared"
@@ -192,23 +197,20 @@ class TaskManager:
         #machine
         machine_type = task_record["target_machine"]
         if machine_type != None:
-            assert env_state_action_dict["machine"][machine_type]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
             chosen_workstation_index = task_record["chosen_workstation_index"]
-            env_state_action_dict["machine"][machine_type]["ongoing_task_record_index"][chosen_workstation_index] = task_record["product_index"]
+            ongoing_task_record_index = env_state_action_dict["machine"][machine_type]["ongoing_task_record_index"]
+            assert ongoing_task_record_index[chosen_workstation_index] is None, "The ongoing task record should be empty"
+            ongoing_task_record_index[chosen_workstation_index] = task_record["product_index"]
         #human
-        human_type = task_record["human"]
-        if human_type != None:
-            human_idx = task_record["human_index"]
-            human_key = f"num_{human_idx:02d}_{human_type}"
-            assert env_state_action_dict["human"][human_key]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
-            env_state_action_dict["human"][human_key]["ongoing_task_record_index"] = task_record["product_index"]
+        human = task_record["human"]
+        if human != None:
+            assert env_state_action_dict["human"][human]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
+            env_state_action_dict["human"][human]["ongoing_task_record_index"] = task_record["product_index"]
         #robot
-        robot_type = task_record["robot"]
-        if robot_type != None:
-            robot_idx = task_record["robot_index"]
-            robot_key = f"num_{robot_idx:02d}_{robot_type}"
-            assert env_state_action_dict["robot"][robot_key]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
-            env_state_action_dict["robot"][robot_key]["ongoing_task_record_index"] = task_record["product_index"]
+        robot = task_record["robot"]
+        if robot != None:
+            assert env_state_action_dict["robot"][robot]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
+            env_state_action_dict["robot"][robot]["ongoing_task_record_index"] = task_record["product_index"]
 
         logistic_machine_type = task_record["logistic_machine"]
         if logistic_machine_type != None:
@@ -254,9 +256,6 @@ class TaskManager:
                 env_state_action_dict["progress"]["next_product"] = None
                 env_state_action_dict["progress"]["next_product_index"] = None
                 env_state_action_dict["progress"]["not_started"][product_type] -= 1
-
-        for product_index in completed_product_indices:
-            del ongoing_task_records[product_index]
 
         return env_state_action_dict
 

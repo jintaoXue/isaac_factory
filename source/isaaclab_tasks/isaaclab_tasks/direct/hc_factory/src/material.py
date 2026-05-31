@@ -50,7 +50,7 @@ class ProductMaterialManager:
             one_ProcessTaskGallery = CfgProcessTaskGalleryDetailedClassified[product_type]
             next_allowing_task_index = self.find_product_next_allowing_task_index(finished_task, one_ProcessTaskGallery)
             mask[material_batch_index][next_allowing_task_index] = 1
-        env_state_action_dict["material"]["task_availability_mask"] = mask
+        env_state_action_dict["agent_action_mask"]["material"]["task_availability_mask"] = mask
         return env_state_action_dict
     
     def find_product_next_allowing_task_index(self, finished_task, one_ProcessTaskGallery):

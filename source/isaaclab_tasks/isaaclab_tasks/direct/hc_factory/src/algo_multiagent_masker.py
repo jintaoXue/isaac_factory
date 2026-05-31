@@ -107,13 +107,13 @@ class ProcessTaskPlannerAgentMasker:
 
     def get_task_mask_for_all_products(self, env_state_action_dict: dict) -> torch.Tensor:
         #shape of human task_availability_mask (len(CfgProcessTaskGalleryInAll),)
-        human_task_availability_mask = env_state_action_dict["human"]["task_availability_mask"]
+        human_task_availability_mask = env_state_action_dict["agent_action_mask"]["human"]["task_availability_mask"]
         #shape of machine task_availability_mask (len(CfgProcessTaskGalleryInAll),)
-        machine_task_availability_mask = env_state_action_dict["machine"]["task_availability_mask"]
+        machine_task_availability_mask = env_state_action_dict["agent_action_mask"]["machine"]["task_availability_mask"]
         #shape of robot task_availability_mask (len(CfgProcessTaskGalleryInAll),)
-        robot_task_availability_mask = env_state_action_dict["robot"]["task_availability_mask"]
+        robot_task_availability_mask = env_state_action_dict["agent_action_mask"]["robot"]["task_availability_mask"]
         #shape of material_task_availability_mask (upper_bound_num_material_batch, len(CfgProcessTaskGalleryInAll))
-        material_task_availability_mask = env_state_action_dict["material"]["task_availability_mask"]
+        material_task_availability_mask = env_state_action_dict["agent_action_mask"]["material"]["task_availability_mask"]
 
         # First, perform bitwise AND on human, robot, machine masks
         combined_mask = human_task_availability_mask & robot_task_availability_mask & machine_task_availability_mask

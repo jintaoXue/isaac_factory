@@ -26,12 +26,12 @@ CfgMachine = {
         "working_area_ids": {
             "num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
                 "human_working_areas_ids": [56],
-                "robot_parking_areas_ids": [56],
+                "robot_parking_areas_ids": [57],
                 "gantry_parking_areas_ids": [56],
             },
             "num00_rotaryPipeAutomaticWeldingMachine_part_02_station": {
                 "human_working_areas_ids": [60],
-                "robot_parking_areas_ids": [60],
+                "robot_parking_areas_ids": [61],
                 "gantry_parking_areas_ids": [60],
             },
         },
@@ -71,7 +71,7 @@ CfgMachine = {
             "num01_weldingRobot_part02_robot_arm_and_base": {
                 "human_working_areas_ids": [66],
                 "robot_parking_areas_ids": [65],
-                "gantry_parking_areas_ids": [65],
+                "gantry_parking_areas_ids": [66],
             },
         },
         "registration_infos": {
@@ -103,7 +103,7 @@ CfgMachine = {
             "state": ["free"],
             "processing_time_step": [0],
             "target_joints_position": [None],
-            "ongoing_task_record_index": None,
+            "ongoing_task_record_index": [None],
             "key_variables": {},
         },
         "working_area_ids": {

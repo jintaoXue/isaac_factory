@@ -2,13 +2,10 @@ import torch
 
 
 class PoseAnimation:
-    def __init__(self, start_pose: torch.Tensor, end_pose: torch.Tensor, animation_time: int):
+    def __init__(self, start_pose: torch.Tensor, end_pose: torch.Tensor, animation_time: int, device: torch.device):
         self.animation_time = animation_time
-        self.start_pose = None
-        self.end_pose = None
-        self.step_time = None
-        self.done = None
-        self.reinitialize(start_pose, end_pose)
+        self.device = device
+        self.reinitialize(start_pose.to(device), end_pose.to(device))
 
     def step_next_pose(self):
         self.done = self.is_done()
