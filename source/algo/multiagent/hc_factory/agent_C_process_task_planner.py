@@ -1,7 +1,8 @@
 from __future__ import annotations
+import torch
+from .agent_base import AgentBase
 
-
-class ProcessTaskPlanningAgent:
+class ProcessTaskPlanningAgent(AgentBase):
     """Process's Task Planning Agent.
 
     Input:
@@ -15,9 +16,28 @@ class ProcessTaskPlanningAgent:
     Output:
     - The next task to be executed, including the predefined sequence of subtasks to be executed.
     """
-
-    def act(self, env_state_action_dict: dict, product_sequencing_action: str | None) -> dict:
+    def __init__(self, cuda_device: torch.device):
+        self.cuda_device = cuda_device
+        
+    def act(self, env_state_action_dict: dict, product_selection_action: torch.Tensor | None) -> dict:
         ## env start, generate first process task planning
-        next_product : str | None = product_sequencing_action or env_state_action_dict["progress"]["next_product"]
-        # check available human and robot resource
-        return None
+        ##shape (self.parallel_producing_limit + 1, len(CfgProcessTaskGalleryInAll)) mask for process task planning agent.
+        task_mask_for_products = env_state_action_dict["agent_action_mask"]["agent_C_process_task_planner"]
+        
+        count = (product_selection_action == 1).sum().item()
+        if count == 0:
+            action = torch.zeros((task_mask_for_products.shape[1]), dtype=torch.int32, device=self.cuda_device)
+            action[0] = 1 # only "none" task is available when there is no product selected for process task planning
+        else:
+            assert count == 1, "There should be only one product selected for process task planning, but got multiple."
+            mask = task_mask_for_products[product_selection_action.nonzero()[0][0]] # get the task mask for the selected product
+            if mask.sum() == 1:
+                #only "none" task is available for the selected product
+                action = torch.zeros((task_mask_for_products.shape[1]), dtype=torch.int32, device=self.cuda_device)
+                action[0] = 1
+            else:
+                #select the second available task for the selected product according to the task mask
+                mask[0] = 0 #set "none" task is not available
+                action = self.keep_first_one(mask)
+        return action
+

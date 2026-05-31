@@ -115,3 +115,8 @@ class HcVectorEnvBase(DirectRLEnv):
         for single_env in self.env_list:
             single_env.apply_data_to_sim()
     
+
+    def get_env_info(self):
+        env_info = {}
+        env_info["cuda_device"] = self.cuda_device
+        return env_info

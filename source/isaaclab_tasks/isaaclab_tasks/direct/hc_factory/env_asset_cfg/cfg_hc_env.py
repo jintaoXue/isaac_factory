@@ -27,27 +27,63 @@ from isaaclab.envs.common import ViewerCfg
 
 
 SingleEnvStateActionDictTemplate : dict = {
+    "time_step": 0,
     "machine": {},
     "material": {},
     "human": {},
     "robot": {},
     "storage": {},
-    "route": {},
+    "route": {
+        "human": {
+            "current_area_id": "none",
+            "target_area_id": "none",
+            "generated_route": [],
+            "route_index": 0,
+            "route_length": 0,
+        },
+        "robot": {
+            "current_area_id": "none",
+            "target_area_id": "none",
+            "generated_route": [],
+            "route_index": 0,
+            "route_length": 0,
+        },
+        "gantry": {
+            "current_joints_position": "none",
+            "target_joints_position": "none",
+        },
+    },
     "articulations": {},
     "rigid_prims": {},
     "progress": {
+        #product_type: quantity, e.g., "ProductWaterPipe": 5
         "product_order": {},
-        "not_started": [],
+        #products that have not started production, with the corresponding material batch index, e.g., "ProductWaterPipe": [0, 1, 2, 3, 4]
+        "not_started": {},
+        # str, for example 'ProductWaterPipe'
         "next_product": None,
+        "next_product_index": None,
         "producing": [],
-        "finished": [],
+        #producing_indexs, value is the index in the material batch list in material manager, 
+        # e.g., [0, 1]
+        "producing_indexs": [],
+        #finished products with indexs list, e.g., "ProductWaterPipe": [0, 1, 2]
+        "finished": {},
+        "ongoing_task_records": {},
     },
     "agent_action_mask": {
-        "agent_A_product_sequencer": {},
-        "agent_B_product_selector": {},
-        "agent_C_process_task_planner": {},
-        "agent_D_human_robot_machine_allocator": {},
-    }
+        "agent_A_product_sequencer": torch.Tensor([]),
+        "agent_B_product_selector": torch.Tensor([]),
+        "agent_C_process_task_planner": torch.Tensor([]),
+        #human: (upper_bound_num_human,) robot: (upper_bound_num_robot,)
+        "agent_D_human_robot_allocator": {},
+    },
+    "action": {
+        "product_sequencing": torch.Tensor([]),
+        "product_selection": torch.Tensor([]),
+        "process_task_planning": torch.Tensor([]),
+        "human_robot_allocation": torch.Tensor([]),
+    },
 }
 
 
@@ -81,6 +117,10 @@ class HcViewerCfg(ViewerCfg):
     #Number envs = 4, look at env_0
     eye: tuple[float, float, float] = (60, -25, 100)
     lookat: tuple[float, float, float] = (60, -45, 10)
+
+    #Number envs = 1, look at env_0
+    eye: tuple[float, float, float] = (0, 30, 100)
+    lookat: tuple[float, float, float] = (0, 10, 10)
 
 # @configclass
 # class HcSingleEnvCfg():
@@ -122,8 +162,10 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     # rendering_resolution = (3840, 2160)
     rendering_resolution = (1920, 1080)
 
-    parallel_producing_limit = 5
+    single_env_parallel_producing_limit = 5
     human_number_upper_bound = 10
+    robot_upper_bound = 2
+    material_batch_upper_bound = 5
 
 
 

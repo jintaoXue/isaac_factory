@@ -1,27 +1,60 @@
+from .cfg_process_subtask_gallery import CfgSubtaskGallery
+
+
+TaskRecordTemplate = {
+
+    "task_done": False,
+    "task": None,
+    "task_index": None,
+    #processing, logistic
+    "task_type": None,
+    "is_final_task": None,
+
+    "product": None,  
+    "product_index": None,
+    "new_product_selected": False,
+    "submaterials": None,
+    "logistic_submaterial": None,
+    "processing_submaterials": None,
+    "processed_material": None,
+    
+    "human": None,
+    "human_index": None,
+    "robot": None,
+    "robot_index": None,
+
+    "target_machine": None,
+    "chosen_machine_workstation": None,
+    "chosen_workstation_index": None,
+    "logistic_machine": None,
+    "chosen_gantry_index": None,
+
+    "subtasks_dict": None,
+}
+
+
 CfgProductProcessGallery = {
+    #Currently we only have one product type "ProductWaterPipe", but we can easily add more product types in the future
     "ProductWaterPipe": {
-        "num_process_steps": 7,
+        "num_process_steps": 6,
         "process_steps": {
             "pipe_cutting": {
                 "machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine",
                 "required_materials": {"pipe": 1},
                 "process_time": 100,
                 "gaussian_random_time": 10,
-                "material_state_sequence": ["on_machine", "cutting", "cut_done"],
             },
             "pipe_grooving": {
                 "machine": "num04_groovingMachineLarge",
                 "required_materials": {"pipe": 1},
                 "process_time": 100,
                 "gaussian_random_time": 10,
-                "material_state_sequence": ["on_machine", "grooving", "grooved"],
             },
             "batch_spot_welding": {
                 "machine": "num08_workbench",
                 "required_materials": {"pipe": 1, "flange": 1, "elbow": 1},
                 "process_time": 100,
                 "gaussian_random_time": 10,
-                "material_state_sequence": ["on_workbench", "spot_welding_flange", "spot_welding_elbow", "spot_welded"],
             },
             # This process step refers to "Argon arc welding root" (氩弧焊底焊 in Chinese)
             "arc_welding_root": {
@@ -29,7 +62,6 @@ CfgProductProcessGallery = {
                 "required_materials": {"product_water_pipe": 1},
                 "process_time": 100,
                 "gaussian_random_time": 10,
-                "material_state_sequence": ["on_machine", "welding_root", "welded_root"],
             },
             # This process step refers to "MIG welding surface" (MIG焊面焊 in Chinese), MIG full name is Metal Inert Gas welding
             "MIG_welding_surface": {
@@ -37,30 +69,21 @@ CfgProductProcessGallery = {
                 "required_materials": {"product_water_pipe": 1},
                 "process_time": 100,
                 "gaussian_random_time": 10,
-                "material_state_sequence": ["on_machine", "welding_surface", "welded_surface"],
             },
             "paint_rust_proof": {
                 "machine": "num08_workbench",
                 "required_materials": {"product_water_pipe": 1},
                 "process_time": 100,
                 "gaussian_random_time": 10,
-                "material_state_sequence": ["on_machine", "painting_rust_proof", "painted_rust_proof"],
-            },
-            # 运存放区
-            "product_to_storage": {
-                "machine": "num07_gantry_group",
-                "alternative_robot": "AGV",
-                "required_materials": {"product_water_pipe": 1},
-                "process_time": 100,
-                "gaussian_random_time": 10,
-                "material_state_sequence": ["on_machine", "conveying", "in_storage"],
             },
         }
     }
 }
 
 
-CfgProcessTaskGallery = {
+# This contains the task gallery for all product types; each product type has its own process gallery.
+# All product process tasks share a common encoded index space defined by CfgProcessTaskGallery.
+CfgProcessTaskGalleryInAll = {
     "none": 0,
     "logistic_for_pipe_cutting": 1,
     "pipe_cutting": 2,
@@ -74,44 +97,144 @@ CfgProcessTaskGallery = {
     "MIG_welding_surface": 10,
     "logistic_for_paint_rust_proof": 11,
     "paint_rust_proof": 12,
-    "product_to_storage": 13,
 }
 
 
-CfgTask2SubtaskGallery = {
-    "none": [],
-    "logistic_for_pipe_cutting": ["human go to storage to get raw pipe and gantry move it to storage", 
-                                  "human use rope to lock pipe on gantry, gantry move pipe to num02_rollerbedCNCPipeIntersectionCuttingMachine"
-                                  "or put it on AGV, AGV move it to num02_rollerbedCNCPipeIntersectionCuttingMachine "
-                                  "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
-    "pipe_cutting": ["human operate num02_rollerbedCNCPipeIntersectionCuttingMachine to cut the pipe", "done, material on machine and human are free"],
-    "logistic_for_pipe_grooving": ["human go to storage to get raw pipe and gantry move it to storage", 
-                                   "human use rope to lock pipe on gantry, gantry move pipe to num03_rollerbedCNCPipeGroovingMachine"
-                                   "or put it on AGV, AGV move it to num03_rollerbedCNCPipeGroovingMachine "
-                                   "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
-    "pipe_grooving": ["human operate num03_rollerbedCNCPipeGroovingMachine to groove the pipe", "done, material on machine and human are free"],
-    "logistic_for_batch_spot_welding": ["human go to storage to get raw materials and gantry move them to storage", 
-                                        "human use rope to lock materials on gantry, gantry move materials to num04_batchSpotWeldingMachine"
-                                        "or put them on AGV, AGV move them to num04_batchSpotWeldingMachine "
-                                        "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
-    "batch_spot_welding": ["human operate num04_batchSpotWeldingMachine to weld the materials", "done, material on machine and human are free"],
-    "logistic_for_arc_welding_root": ["human go to storage to get raw materials and gantry move them to storage", 
-                                      "human use rope to lock materials on gantry, gantry move materials to num05_arcWeldingRootMachine"
-                                      "or put them on AGV, AGV move them to num05_arcWeldingRootMachine "
-                                      "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
-    "arc_welding_root": ["human operate num05_arcWeldingRootMachine to weld the materials", "done, material on machine and human are free"],
-    "logistic_for_MIG_welding_surface": ["human go to storage to get raw materials and gantry move them to storage", 
-                                         "human use rope to lock materials on gantry, gantry move materials to num06_MIGWeldingSurfaceMachine"
-                                         "or put them on AGV, AGV move them to num06_MIGWeldingSurfaceMachine "
-                                         "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
-    "MIG_welding_surface": ["human operate num06_MIGWeldingSurfaceMachine to weld the materials", "done, material on machine and human are free"],
-    "logistic_for_paint_rust_proof": ["human go to storage to get raw materials and gantry move them to storage", 
-                                      "human use rope to lock materials on gantry, gantry move materials to num08_workbench"
-                                      "or put them on AGV, AGV move them to num08_workbench "
-                                      "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
-    "paint_rust_proof": ["human operate num08_workbench to paint the materials", "done, material on machine and human are free"],
-    "product_to_storage": ["human go to storage to get finished products and gantry move them to storage", 
-                           "human use rope to lock products on gantry, gantry move products to num07_gantry_group"
-                           "or put them on AGV, AGV move them to num07_gantry_group "
-                           "and wait for gantry and human to release the lock", "done, material on machine and human and gantry are free"],
+
+CfgProcessTaskGalleryDetailedClassified = {
+    "ProductWaterPipe": {
+        "none": {
+            "task_type": "none",
+            "target_machine": None,
+            "logistic_machine": None,
+            "is_final_task": False,
+            "logistic_submaterial": None,
+            "processing_submaterials": None,
+            "processed_material": None,
+            "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["none"],
+        },
+        "logistic_for_pipe_cutting": {
+            "task_type": "logistic",
+            "target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine",
+            "logistic_machine": "num07_gantry_group",
+            "is_final_task": False,
+            "logistic_submaterial": "product_00_pipe",
+            "processing_submaterials": None,
+            "processed_material": None,
+            "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_pipe_cutting"],
+        },
+        "pipe_cutting": {
+            "task_type": "processing",
+            "target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine",
+            "logistic_machine": None,
+            "is_final_task": False,
+            "logistic_submaterial": None,
+            "processing_submaterials": ["product_00_pipe"],
+            "processed_material": "product_00_pipe",
+            "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["pipe_cutting"],
+        },
+        "logistic_for_pipe_grooving": {
+            "task_type": "logistic",
+            "target_machine": "num04_groovingMachineLarge",
+            "logistic_machine": "num07_gantry_group",
+            "is_final_task": False,
+            "logistic_submaterial": "product_00_pipe",
+            "processing_submaterials": None,
+            "processed_material": None,
+            "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_pipe_grooving"],
+        },
+        "pipe_grooving": {
+            "task_type": "processing",
+            "target_machine": "num04_groovingMachineLarge",
+            "logistic_machine": None,
+            "is_final_task": False,
+            "logistic_submaterial": None,
+            "processing_submaterials": ["product_00_pipe"],
+            "processed_material": "product_00_pipe",
+            "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["pipe_grooving"],
+        },
+        "logistic_for_batch_spot_welding": {
+            "task_type": "logistic",
+            "target_machine": "num08_workbench",
+            "logistic_machine": "num07_gantry_group",
+            "is_final_task": False,
+            "logistic_submaterial": "product_00_pipe",
+            "processing_submaterials": None,
+            "processed_material": None,
+            "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_batch_spot_welding"],
+        },
+        "batch_spot_welding": {
+            "task_type": "processing",
+            "target_machine": "num08_workbench",
+            "logistic_machine": None,
+            "is_final_task": False,
+            "logistic_submaterial": None,
+            "processing_submaterials": ["product_00_pipe", "product_00_flange", "product_00_elbow"],
+            "processed_material": "product_00_semi",
+            "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"],
+        },
+        "logistic_for_arc_welding_root": {
+            "task_type": "logistic",
+            "target_machine": "num01_weldingRobot",
+            "logistic_machine": "num07_gantry_group",
+            "is_final_task": False,
+            "logistic_submaterial": "product_00_semi",
+            "processing_submaterials": None,
+            "processed_material": None,
+            "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_arc_welding_root"],
+        },
+        "arc_welding_root": {
+            "task_type": "processing",
+            "target_machine": "num01_weldingRobot",
+            "logistic_machine": None,
+            "is_final_task": False,
+            "logistic_submaterial": None,
+            "processing_submaterials": ["product_00_semi"],
+            "processed_material": "product_00_semi",
+            "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["arc_welding_root"],
+        },
+        "logistic_for_MIG_welding_surface": {
+            "task_type": "logistic",
+            "target_machine": "num00_rotaryPipeAutomaticWeldingMachine",
+            "logistic_machine": "num07_gantry_group",
+            "is_final_task": False,
+            "logistic_submaterial": "product_00_semi",
+            "processing_submaterials": None,
+            "processed_material": None,
+            "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_MIG_welding_surface"],
+        },
+        "MIG_welding_surface": {
+            "task_type": "processing",
+            "target_machine": "num00_rotaryPipeAutomaticWeldingMachine",
+            "logistic_machine": None,
+            "is_final_task": False,
+            "logistic_submaterial": None,
+            "processing_submaterials": ["product_00_semi"],
+            "processed_material": "product_00_semi",
+            "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["MIG_welding_surface"],
+        },
+        "logistic_for_paint_rust_proof": {
+            "task_type": "logistic",
+            "target_machine": "num08_workbench",
+            "logistic_machine": "num07_gantry_group",
+            "is_final_task": False,
+            "logistic_submaterial": "product_00_semi",
+            "processing_submaterials": None,
+            "processed_material": None,
+            "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_paint_rust_proof"],
+        },
+        "paint_rust_proof": {
+            "task_type": "processing",
+            "target_machine": "num08_workbench",
+            "logistic_machine": None,
+            "is_final_task": True,
+            "logistic_submaterial": None,
+            "processing_submaterials": ["product_00_semi"],
+            "processed_material": "product_00_maded",
+            "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["paint_rust_proof"],
+        },
+    },
 }
+
+
+

@@ -359,6 +359,9 @@ class RlGamesVecEnvWrapperHRTPA(RlGamesVecEnvWrapper):
     
     def step(self, actions, action_extra = None):  # noqa: D102
         return self.env.step(actions, action_extra)
+    
+    def get_env_info(self):
+        return self.env.get_env_info()
 
 class RlGamesGpuEnvHRTPA(RlGamesGpuEnv):
 

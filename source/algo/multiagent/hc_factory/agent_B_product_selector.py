@@ -1,8 +1,9 @@
 from __future__ import annotations
 from pydoc import doc
 import torch
+from .agent_base import AgentBase
 
-class ProductSelectionAgent:
+class ProductSelectionAgent(AgentBase):
     """
     Product Selection Agent
 
@@ -16,21 +17,14 @@ class ProductSelectionAgent:
     Outputs:
         - The focusing product in producing list.
     """
+    def __init__(self, cuda_device: torch.device):
+        self.cuda_device = cuda_device
 
-    def act(self, env_state_action_dict: dict) -> str | None:
-        # mask is a tensor shaped (1 + num_product_types,)
+    def act(self, env_state_action_dict: dict, product_sequencing_action: torch.Tensor) -> torch.Tensor | None:
+        # mask is a tensor shaped (1 + self.parallel_producing_limit,)
         # Each entry is binary: 1 means the corresponding product type may be selected,
         # 0 means it is not eligible right now.
-        # The extra first entry mask[0] is reserved for not selecting any product for production in current step.
-        producing_products : list[str] = env_state_action_dict["progress"]["producing"]
-        next_product : str = env_state_action_dict["progress"]["next_product"]
         mask: torch.Tensor = env_state_action_dict["agent_action_mask"]["agent_B_product_selector"]
         assert mask is not None, "Agent action mask for agent_B_product_selector is None"
-        nonzero = mask.nonzero(as_tuple=True)[0]
-        if nonzero.numel() == 0:
-            return mask
-        # The cuurent strategy is simply select the first product in the action space 
-        # that is eligible according to the mask
-        action = mask.clone().detach()
-        action[nonzero[0]+1:] = 0
+        action = self.keep_first_one(mask)
         return action

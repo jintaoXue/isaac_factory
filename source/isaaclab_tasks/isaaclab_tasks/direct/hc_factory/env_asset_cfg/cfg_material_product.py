@@ -7,46 +7,43 @@ CfgRegistrationInfos = {
 }
 
 CfgProductOrder = {
-    #The production order is a list of products to be produced
-    "ProductWaterPipe": 5, #idx: 00-04
-    
+    # The production order is a map of product type to requested quantity.
+    "ProductWaterPipe": 5, # idx: 00-04
 }
 
+for product_type, quantity in CfgProductOrder.items():
+    if product_type not in CfgRegistrationInfos:
+        raise ValueError(f"Unknown product type in CfgProductOrder: {product_type}")
+    if quantity > CfgRegistrationInfos[product_type]:
+        raise ValueError(
+            f"Requested quantity for {product_type} ({quantity}) exceeds registered max "
+            f"({CfgRegistrationInfos[product_type]})"
+        )
 
-CfgProductProcess= {
+CfgProductProcess = {
     "ProductWaterPipe": {
         "type_id": "00",
         "type_name": "ProductWaterPipe",
-        "state_gallery": {
-            "product_00_pipe": {"raw_pipe", "cutting", "cut_done", "integrated", "disappeared"},
-            "product_00_flange": {"raw_flange", "integrated", "disappeared"},
-            "product_00_elbow": {"raw_elbow", "integrated", "disappeared"},
-            "product_00_semi": {"unappeared", "appeared"},
-            "product_00_maded": {"unappeared", "appeared"},
-            "logistic_state": {"unappeared", "in_storage", "conveying", "on_machine", "on_workbench", "on_storage"},
-        },
         "reset_state_template": {
             "key_variables": {},
-            "state": {
+            "finished_task": "none",
+            "ongoing_task_record_index": None,
+            "submaterials": {
+                # task_step tracks the current production stage, indexed by CfgProcessTaskGalleryInAll (see cfg_process_task_gallery.py)
                 "product_00_pipe": {
-                    "state": "raw_pipe",
-                    "logistic_state": "in_storage",
+                    "storage_name": None,
                 },
                 "product_00_flange": {
-                    "state": "raw_flange",
-                    "logistic_state": "in_storage",
+                    "storage_name": None,
                 },
                 "product_00_elbow": {
-                    "state": "raw_elbow",
-                    "logistic_state": "in_storage",
+                    "storage_name": None,
                 },
                 "product_00_semi": {
-                    "state": "unappeared",
-                    "logistic_state": "unappeared",
+                    "storage_name": None,
                 },
                 "product_00_maded": {
-                    "state": "unappeared",
-                    "logistic_state": "unappeared",
+                    "storage_name": None,
                 },
             },
         },

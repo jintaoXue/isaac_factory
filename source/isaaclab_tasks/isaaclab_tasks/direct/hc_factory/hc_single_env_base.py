@@ -35,7 +35,8 @@ from .src.storage import StorageManager
 from .src.route import RouteManagerVectorEnv
 from .env_asset_cfg.cfg_hc_env import SingleEnvStateActionDictTemplate, HcVectorEnvCfg
 from .src.algo_multiagent_masker import AlgoMultiAgentMasker
-
+from .src.task_progress_manager import TaskManager
+from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.src import algo_multiagent_masker
 
 class HcSingleEnvBase():
     def __init__(self, env_id: int, cuda_device: torch.device):
@@ -46,7 +47,6 @@ class HcSingleEnvBase():
         # 每个 env 持有独立的 state dict，避免多 env 共享引用导致状态串扰
         self.env_state_action_dict = copy.deepcopy(SingleEnvStateActionDictTemplate)
         self.register_env_assets()
-        self.algo_multiagent_masker = AlgoMultiAgentMasker(self.cuda_device)
     
     def register_env_assets(self):
         self.storage_manager = StorageManager(env_id=self.env_id, cuda_device=self.cuda_device)
@@ -54,24 +54,26 @@ class HcSingleEnvBase():
         self.machine_manager = MachineManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.human_manager = HumanManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.robot_manager = RobotManager(env_id=self.env_id, cuda_device=self.cuda_device)
-        self.route_manager = RouteManagerVectorEnv(env_id=self.env_id, cuda_device=self.cuda_device)
+        self.algo_multiagent_masker = AlgoMultiAgentMasker(self.cuda_device)
+        self.task_manager = TaskManager(self.cuda_device)
+        self.route_manager = RouteManagerVectorEnv(cuda_device=self.cuda_device)
 
     def iter_managers(self):
         return (
             self.storage_manager,
             self.product_material_manager,
-            self.route_manager,
-            self.machine_manager,
             self.human_manager,
             self.robot_manager,
+            self.route_manager,
+            self.machine_manager,
+            self.algo_multiagent_masker,
+            self.task_manager,
         )
 
     def reset_env(self):
         for m in self.iter_managers():
             m.reset(self.env_state_action_dict)
-        #production progress reset
-        self.env_state_action_dict["progress"]["not_started"] = copy.deepcopy(self.product_material_manager.cfg_product_order)
-        self.algo_multiagent_masker.generate_agents_mask(self.env_state_action_dict)
+        self.env_state_action_dict["time_step"] = 0
         return self.env_state_action_dict
 
     def apply_data_to_sim(self) -> None:
@@ -90,17 +92,11 @@ class HcSingleEnvBase():
             rigid_prim.set_local_poses(translations=data["position"], orientations=data["orientation"])
             rigid_prim.set_velocities(torch.zeros((1,6), device=self.cuda_device))
 
-    def step_env_logic(self, action: list[dict] | None = None, action_extra: list[dict] | None = None) -> None:
-        action_product_sequencing = action["product_sequencing"]
-        action_process_task_planning = action["process_task_planning"]
-        action_human_robot_machine_allocation = action["human_robot_machine_allocation"]
-        if action_product_sequencing:
-            self.env_state_action_dict["progress"]["next_product"] = action_product_sequencing
-        if action_process_task_planning:
-            pass
-        if action_human_robot_machine_allocation:
-            pass
+    def step_env_logic(self, action: dict | None = None, action_extra: list[dict] | None = None) -> None:
+        
+        self.env_state_action_dict['action'] = action
         for m in self.iter_managers():
             m.step(self.env_state_action_dict)
-        self.algo_multiagent_masker.generate_agents_mask(self.env_state_action_dict)
+        self.env_state_action_dict["time_step"] += 1
         return
+

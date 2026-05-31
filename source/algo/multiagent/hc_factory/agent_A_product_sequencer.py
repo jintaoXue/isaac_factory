@@ -1,8 +1,9 @@
 from __future__ import annotations
 from pydoc import doc
 import torch
+from .agent_base import AgentBase
 
-class ProductSequencingAgent:
+class ProductSequencingAgent(AgentBase):
     """
     Product Sequence Planner Agent
 
@@ -18,19 +19,14 @@ class ProductSequencingAgent:
         - The next product (or list of products) to be prioritized for production. 
         - Or the schedule of products to be produced in the future.
     """
+    def __init__(self, cuda_device: torch.device):
+        self.cuda_device = cuda_device
 
-    def act(self, env_state_action_dict: dict) -> str | None:
-        # mask is a tensor shaped (1 + num_product_types,)
+    def act(self, env_state_action_dict: dict) -> torch.Tensor | None:
+        # mask is a tensor shaped (num_product_types,)
         # Each entry is binary: 1 means the corresponding product type may be selected,
         # 0 means it is not eligible right now.
-        # The extra first entry mask[0] is reserved for not selecting any product for production in current step.
         mask: torch.Tensor = env_state_action_dict["agent_action_mask"]["agent_A_product_sequencer"]
         assert mask is not None, "Agent action mask for agent_A_product_sequencer is None"
-        nonzero = mask.nonzero(as_tuple=True)[0]
-        if nonzero.numel() == 0:
-            return mask
-        # The current strategy is simply select the first product type in the action space 
-        # that is eligible according to the mask
-        action = mask.clone().detach()
-        action[nonzero[0]+1:] = 0
+        action = self.keep_first_one(mask)
         return action

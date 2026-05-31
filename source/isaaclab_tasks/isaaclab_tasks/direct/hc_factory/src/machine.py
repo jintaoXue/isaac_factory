@@ -1,15 +1,17 @@
 from isaacsim.core.prims import Articulation
 from abc import abstractmethod
 from ..env_asset_cfg.cfg_machine import CfgMachine
+from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
 from .utils import PoseAnimation
 import copy
 import torch
-
+import random
 class MachineManager:
     def __init__(self, env_id: int, cuda_device: torch.device):
         self.env_id = env_id
         self.cuda_device = cuda_device
         self.cfg_machine = CfgMachine
+        self.num_machine = len(self.cfg_machine)
         self.num00_rotaryPipeAutomaticWeldingMachine = num00_rotaryPipeAutomaticWeldingMachine(env_id=self.env_id, cuda_device=self.cuda_device)
         self.num01_weldingRobot = num01_weldingRobot(env_id=self.env_id, cuda_device=self.cuda_device)
         self.num02_rollerbedCNCPipeIntersectionCuttingMachine = num02_rollerbedCNCPipeIntersectionCuttingMachine(env_id=self.env_id, cuda_device=self.cuda_device)
@@ -23,11 +25,13 @@ class MachineManager:
     def reset(self, env_state_action_dict: dict) -> dict:
         for machine in self.iter_machines():
             machine.reset(env_state_action_dict)
+        self.update_task_availability_mask(env_state_action_dict)
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
         for machine in self.iter_machines():
             machine.step(env_state_action_dict)
+        self.update_task_availability_mask(env_state_action_dict)
         return env_state_action_dict
     
     def iter_machines(self):
@@ -43,6 +47,28 @@ class MachineManager:
             self.num08_workbench,
         )
 
+    def update_task_availability_mask(self, env_state_action_dict: dict) -> dict:
+        # mask for machine availability for selection by human-robot machine allocator agent
+        # output shape (len(CfgProcessTaskGalleryInAll))
+        mask = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
+        for machine, i in zip(self.iter_machines(), range(self.num_machine)):
+            state : list = machine.state['state']
+            can_do_logistic_task_names : list = machine.corresponding_logistic_task
+            for state_name in state:
+                if state_name == "free":
+                    for task_name in can_do_logistic_task_names:
+                        task_index = CfgProcessTaskGalleryInAll[task_name]
+                        mask[task_index] = 1
+                else:
+                    pre_name = state_name.split("_")[0]
+                    task_name = state_name.split("_")[1]
+                    if pre_name == "materialReadyFor":                        
+                        task_index = CfgProcessTaskGalleryInAll[task_name]
+                        mask[task_index] = 1
+                    elif pre_name == "working":
+                        pass
+        env_state_action_dict["machine"]["task_availability_mask"] = mask
+
 
 class Machine:
     def __init__(self, cfg: dict, env_id: int, cuda_device: torch.device):
@@ -55,10 +81,14 @@ class Machine:
         self.num_workstations = cfg["num_workstations"]
         self.num_registration_parts = cfg["num_registration_parts"]
         self.registration_infos = cfg["registration_infos"]
+        self.corresponding_process_task = cfg["corresponding_process_task"]
+        self.corresponding_logistic_task = cfg["corresponding_logistic_task"]
         self.state_gallery = cfg["state_gallery"]
         self.reset_state = copy.deepcopy(cfg["reset_state"])
+        self.reset_state["key_variables"] = self.iter_key_variables()
+        self.working_area_ids = cfg["working_area_ids"]
         ### dynmaic variables
-        self.state : dict = None
+        self.state : dict = {}
         self._register_articulation_animation()
 
     def _register_articulation_animation(self):
@@ -76,7 +106,8 @@ class Machine:
             ))
 
     def reset(self, env_state_action_dict: dict) -> dict:
-        env_state_action_dict["machine"][self.type_name] = copy.deepcopy(self.reset_state)
+        self.state : dict = copy.deepcopy(self.reset_state)
+        env_state_action_dict["machine"][self.type_name] = self.state
         articulations_values = self.reset_articulations()
         env_state_action_dict["articulations"].update(articulations_values)
         return env_state_action_dict
@@ -92,10 +123,92 @@ class Machine:
             }
         return articulations_values
 
-    @abstractmethod
-    def step(self, env_state_action_dict: dict) -> dict:
-        pass
+    def iter_key_variables(self):
+        return {
+            "type_name": self.type_name, 
+            "working_area_ids": self.working_area_ids,
+            "num_workstations": self.num_workstations,
+        }
 
+    def step(self, env_state_action_dict: dict) -> dict:
+        assert self.type_name != "num07_gantry_group", "num07_gantry_group have its own step function"
+        task_record_index_list : list[int] = env_state_action_dict["machine"][self.type_name]["ongoing_task_record_index"]
+        for task_record_index, workstation_index in zip(task_record_index_list, range(self.num_workstations)):
+            if task_record_index is None:
+                continue
+            self._step_one_workstation(env_state_action_dict, task_record_index, workstation_index)
+    
+    def _step_one_workstation(self, env_state_action_dict: dict, task_record_index: int, workstation_index: int) -> None:
+        task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
+        chosen_workstation_index = task_record["chosen_workstation_index"]
+        assert chosen_workstation_index == workstation_index, "The chosen workstation index should be the same as the workstation index in the task record"
+        workstation_state = self.state["state"][chosen_workstation_index]
+        task_type = task_record["task_type"]
+        subtasks = task_record["subtasks_dict"]
+        machine_subtask = subtasks["ongoing"][2]
+
+        if workstation_state == "free":
+                #subgantry index = 0 is chosen to work on the task
+                self.state["state"][chosen_workstation_index] = 'working_' + task_record["task"]
+
+        if machine_subtask == "done":
+            self._task_done(env_state_action_dict, task_record)
+        elif machine_subtask == "process":
+            self._subtask_process(env_state_action_dict, task_record, subtasks)
+        elif machine_subtask == "wait":
+            subtasks["finished"][2] = True
+        else:
+            raise ValueError(f"Invalid machine subtask for processing: {machine_subtask}")
+        ## animation
+        chosen_machine_workstation = task_record["chosen_machine_workstation"]
+        animation_obj : PoseAnimation = getattr(self, f"animation_{chosen_machine_workstation}", None)
+        env_state_action_dict["articulations"][chosen_machine_workstation]["joint_position"] = animation_obj.step_next_pose()
+
+
+    def _subtask_process(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
+        if subtasks["finished"][2] == True:
+            return
+        ### animation
+        chosen_workstation_index = task_record["chosen_workstation_index"]
+        chosen_machine_workstation = task_record["chosen_machine_workstation"]
+        workstation_state = self.state["state"][chosen_workstation_index]
+        task_name = workstation_state.split("_")[1]
+        assert task_name == task_record["task"], "The workstation ready for task should be the same as the task in the task record"
+        if self.type_name != "num08_workbench":
+            obj_animation : PoseAnimation = getattr(self, f"animation_{chosen_machine_workstation}", None)
+            if self.state["target_joints_position"][chosen_workstation_index] is None:
+                self.state["target_joints_position"][chosen_workstation_index] = self.registration_infos[chosen_machine_workstation]["joint_positions_working"].to(self.cuda_device)
+                obj_animation.set_target_pose(self.state["target_joints_position"][chosen_workstation_index])
+        ## processing the material on the machine
+        self.state["processing_time_step"][chosen_workstation_index] += 1
+        if self.state["processing_time_step"][chosen_workstation_index] >= self.registration_infos[chosen_machine_workstation]["animation_time"]:
+            subtasks["finished"][2] = True
+            self.state["processing_time_step"][chosen_workstation_index] = 0
+    
+    def _task_done(self, env_state_action_dict: dict, task_record: dict) -> None:
+        task_record["subtasks_dict"]["finished"][2] = True
+        task_type = task_record["task_type"]
+        chosen_workstation_index = task_record["chosen_workstation_index"]
+        self.state["ongoing_task_record_index"][chosen_workstation_index] = None
+        if task_type == "logistic":
+            self.state["state"][chosen_workstation_index] = "materialReadyFor_" + task_record["task"]
+            env_state_action_dict["machine"][self.type_name] = self.state
+            return
+        elif task_type == "processing":
+            self.state["state"][chosen_workstation_index] = "free"
+        else:
+            raise ValueError(f"Invalid task type: {task_type}")
+        
+        chosen_machine_workstation = task_record["chosen_machine_workstation"]
+        # self.state["processing_time_step"][chosen_workstation_index] = 0
+        if self.type_name != "num07_gantry_group" and self.type_name != "num08_workbench":
+            self.state["target_joints_position"][chosen_workstation_index] = None
+            animation_obj : PoseAnimation = getattr(self, f"animation_{chosen_machine_workstation}", None)
+            animation_obj.set_target_pose(self.registration_infos[chosen_machine_workstation]["joint_positions_reset"])
+        
+        #TODO check can omit the following line or not
+        env_state_action_dict["machine"][self.type_name] = self.state
+        return env_state_action_dict
 
 class num00_rotaryPipeAutomaticWeldingMachine(Machine):
 
@@ -196,7 +309,115 @@ class num07_gantry_group(Machine):
         self.num07_gantry_group = None
         self.animation_num07_gantry_group: PoseAnimation = None
         super().__init__(cfg=CfgMachine["num07_gantry_group"], env_id=env_id, cuda_device=cuda_device)
+        # shape 8x1 tensor and joint_position has 8 elements: [x0, x1, x2, x3, y0, y1, y2, y3] for 4 subgantrys
+        self.joint_position_reset = self.registration_infos["num07_gantry_group"]["joint_positions_reset"].to(self.cuda_device)
+        self.xy_position_reset = self.registration_infos["num07_gantry_group"]["xy_position_reset"].to(self.cuda_device)
+        #"gantry_indexs": torch.tensor([0, 1, 2, 3, 0, 1, 2, 3]), number 4 subgantrys in total, each subgantry has a gantry and a hook, the gantry moves in xy plane and the hook moves in z axis, the subgantry indexs indicate which subgantry each joint belongs to
+        self.gantry_indexs = self.registration_infos["num07_gantry_group"]["gantry_indexs"]
+        self.fixed_hook_height : float = self.registration_infos["num07_gantry_group"]["fixed_hook_height"]
 
+    def step(self, env_state_action_dict):
+        ###1. This part is for set gantry group index 1,2,3 subgantrys to move to the side, means invalid state
+        joint_position = env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"]
+        xyz_1 : list = [-50.45092570343084, 10.18675, 0.5]
+        xyz_2 : list = [-46, 10.18675, 0.5]
+        xyz_3 : list = [-42, 10.18675, 0.5]
+
+        target_joint_position_1 = self.get_joint_pose_from_xy_target(joint_position, xyz_1[:2], gantry_index = 1)
+        target_joint_position_2 = self.get_joint_pose_from_xy_target(joint_position, xyz_2[:2], gantry_index = 2)
+        target_joint_position_3 = self.get_joint_pose_from_xy_target(joint_position, xyz_3[:2], gantry_index = 3)
+
+        final_target_joint_position = joint_position.clone()
+        final_target_joint_position[self.gantry_indexs == 1] = target_joint_position_1[self.gantry_indexs == 1]
+        final_target_joint_position[self.gantry_indexs == 2] = target_joint_position_2[self.gantry_indexs == 2]
+        final_target_joint_position[self.gantry_indexs == 3] = target_joint_position_3[self.gantry_indexs == 3]
+        env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"] = final_target_joint_position
+        
+        ####2. This index = 0 gantry is only valid machine
+        task_record_index : int = env_state_action_dict["machine"][self.type_name]["ongoing_task_record_index"][0]
+        if task_record_index is None:
+            pass
+        else:
+            task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
+            chosen_gantry_index = task_record["chosen_gantry_index"]
+            assert chosen_gantry_index == 0, "The chosen gantry index should be 0"
+            if self.state["state"][0] == "free":
+                #subgantry index = 0 is chosen to work on the task
+                self.state["state"][0] = 'working_' + task_record["task"]
+            subtasks = task_record["subtasks_dict"]
+            subtask = subtasks["ongoing"]
+            gantry_subtask = subtask[1]
+
+            if gantry_subtask == "go_to_material":
+                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "start")
+            if gantry_subtask == "wait":
+                subtasks["finished"][1] = True
+            if gantry_subtask == "carry_to_robot":
+                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type="robot_start")
+            if gantry_subtask == "carry_to_goal_area":
+                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type="goal")
+            if gantry_subtask == "move_to_goal_area":
+                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type="goal")
+            if gantry_subtask == "done":
+                self._task_done(env_state_action_dict, task_record, 0)
+            else:
+                raise ValueError(f"Invalid gantry subtask for logistic: {gantry_subtask}")
+        # 3. This is for the gantry group to move to the target area
+        env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"] = self.animation_num07_gantry_group.step_next_pose()
+        
+        return env_state_action_dict
+    
+    def _subtask_go_to_target(self, env_state_action_dict: dict, task_record: dict, subtasks: dict, target_area_type: str) -> None:
+        if self.state["target_area_id"] is None:
+            if target_area_type == "start":
+                assert task_record["subtasks_dict"]["start_area_ids"] is not None, "The start area ids should be initialized in task_progress_manager.py"
+                self.state["target_area_id"] = task_record["subtasks_dict"]["start_area_ids"]["gantry_parking_areas_ids"][0]
+            elif target_area_type == "robot_start":
+                assert task_record["subtasks_dict"]["start_area_ids"] is not None, "The start area ids should be initialized in task_progress_manager.py"
+                self.state["target_area_id"] = task_record["subtasks_dict"]["start_area_ids"]["robot_parking_areas_ids"][0]
+            elif target_area_type == "goal":
+                assert task_record["subtasks_dict"]["goal_area_ids"] is not None, "The goal area ids should be initialized in task_progress_manager.py"
+                self.state["target_area_id"] = task_record["subtasks_dict"]["goal_area_ids"]["gantry_parking_areas_ids"][0]
+            else:
+                raise ValueError(f"Invalid target area type: {target_area_type}")
+
+        if self.state["target_joints_position"] == None:
+            if self.state["target_area_xyz"] == None:
+                ### Wait for the route manager (route.py) to generate the XYZ by giving the self.state["target_area_id"]
+                pass
+            else:
+                joint_position = env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"]
+                self.state["target_joints_position"] = self.get_joint_pose_from_xy_target(joint_position.clone(), self.state["target_area_xyz"][:2], gantry_index = 0)
+                ### Move to the target joint position
+                self.animation_num07_gantry_group.set_target_pose(self.state["target_joints_position"])
+        else:
+            ### Move to the target joint position
+            if self.animation_num07_gantry_group.is_done():
+                subtasks["finished"][1] = True
+
+    def _get_joint_pose_from_xy_target(self, joint_position: torch.tensor, xy_target: list, gantry_index: int) -> torch.tensor:
+        #input xy_target is a list of 2 elements, [x, y], the gantry_index-th gantry should move to the xy_target
+        # having the self.gantry_indexs to get the joint position of the gantry_index-th gantry
+        # having the self.xy_position_reset to get the xy_position_reset of the gantry_index-th gantry
+        # having the self.fixed_hook_height to get the fixed_hook_height of the gantry_index-th gantry
+        # return the joint position of the gantry_index-th gantry
+
+        reset = self.joint_position_reset[self.gantry_indexs == gantry_index]
+        xy_reset = self.xy_position_reset[self.gantry_indexs == gantry_index]
+        xy_target = torch.tensor(xy_target)
+        target = reset + (xy_target - xy_reset)
+        joint_position[self.gantry_indexs == gantry_index] = target
+        return joint_position
+
+    def _task_done(self, env_state_action_dict: dict, task_record: dict, chosen_gantry_index: int) -> None:
+        task_record["subtasks_dict"]["finished"][1] = True
+        self.state["state"][chosen_gantry_index] = "free"
+        self.state["ongoing_task_record_index"][chosen_gantry_index] = None
+        self.state["target_area_id"] = None
+        self.state["target_area_xyz"] = None
+        self.state["target_joints_position"] = None
+        self.animation_num07_gantry_group.set_target_pose(self.joint_position_reset)
+        return env_state_action_dict
 
 class num08_workbench(Machine):
 

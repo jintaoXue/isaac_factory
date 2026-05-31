@@ -78,6 +78,21 @@ Aligned with a 4-layer real-time factory operations stack (formal academic/indus
 - Product Sequencing Agent: determine the optimal production order from the current manufacturing request
 - Product Selector Agent: choose which product should be prioritized next for detailed task planning
 - Process Task Planning Agent: real-time planning of the next key process task for the selected product 
-- Human–Robot–Machine Allocation Agent: assign each planned task to the most suitable human, robot, or machine resource for execution
+- Human–Robot Allocation Agent: assign each planned task to the most suitable human, robot, or machine resource for execution
 
 #记录gantry的关节位置和local位置的相对偏移关系
+
+#when to set processed_task_record["task_done"] = True? update ongoing task records
+
+#task excution and route generation
+
+#缩短 多层决策带来的时间增加
+
+#还剩带来的route planner 和material 状态， product_to_storage 的任务描述， material的update_task_availability_mask要确保，current task是完成的
+
+
+#一定要检查是否是原址引用 
+
+storage 的"robot_parking_areas_ids": [9], 不太对
+
+del task record in task manager
