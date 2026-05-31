@@ -59,6 +59,8 @@ class MachineManager:
                     for task_name in can_do_logistic_task_names:
                         task_index = CfgProcessTaskGalleryInAll[task_name]
                         mask[task_index] = 1
+                elif state_name == "invalid":
+                    pass
                 else:
                     pre_name = state_name.split("_")[0]
                     task_name = state_name.split("_")[1]
