@@ -26,7 +26,7 @@ class RuleBasedMultiAgent():
         self.env_info = config.get('env_info')
         if self.env_info is None:
             self.vec_env = vecenv.create_vec_env(self.env_name, self.num_actors, **self.env_config)
-            self.env_info = self.vec_env.get_env_info()
+            self.env_info : dict = self.vec_env.get_env_info()
 
         self.cuda_device = self.env_info["cuda_device"]
         self.agent_A_product_sequencer = ProductSequencingAgent(self.cuda_device)

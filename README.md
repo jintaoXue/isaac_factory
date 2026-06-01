@@ -98,3 +98,6 @@ storage 的"robot_parking_areas_ids": [9], 不太对
 del task record in task manager
 
 storage 的管理
+
+
+#route manager 需要节省运算空间，只放在vector env里面生成一个就可以
