@@ -26,12 +26,12 @@ CfgMachine = {
         "working_area_ids": {
             "num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
                 "human_working_areas_ids": [56],
-                "robot_parking_areas_ids": [56],
+                "robot_parking_areas_ids": [57],
                 "gantry_parking_areas_ids": [56],
             },
             "num00_rotaryPipeAutomaticWeldingMachine_part_02_station": {
                 "human_working_areas_ids": [60],
-                "robot_parking_areas_ids": [60],
+                "robot_parking_areas_ids": [61],
                 "gantry_parking_areas_ids": [60],
             },
         },
@@ -71,7 +71,7 @@ CfgMachine = {
             "num01_weldingRobot_part02_robot_arm_and_base": {
                 "human_working_areas_ids": [66],
                 "robot_parking_areas_ids": [65],
-                "gantry_parking_areas_ids": [65],
+                "gantry_parking_areas_ids": [66],
             },
         },
         "registration_infos": {
@@ -103,7 +103,7 @@ CfgMachine = {
             "state": ["free"],
             "processing_time_step": [0],
             "target_joints_position": [None],
-            "ongoing_task_record_index": None,
+            "ongoing_task_record_index": [None],
             "key_variables": {},
         },
         "working_area_ids": {
@@ -301,7 +301,7 @@ CfgMachine = {
             "ongoing_task_record_index": [None, None, None, None],
             "key_variables": {},
             "target_area_id": None,
-            "target_area_xyz": None,
+            "target_area_xy": None,
             "target_joints_position": None,
         },
         "working_area_ids": {
@@ -337,7 +337,7 @@ CfgMachine = {
                 "gantry_indexs": torch.tensor([0, 1, 2, 3, 0, 1, 2, 3]),
                 ### to simplify the problem, we set the z of hook to be fixed, and only control the x and y movement of the gantry, so the joint position of z axis is not used for calculating the reward and is not included in the observation, but it is still needed for animation and calculating the offset between the hook and the material when gripping.
                 "fixed_hook_height": 8.90808,
-                "animation_time": 20,
+                "animation_time": 100,
             },
         },
     },

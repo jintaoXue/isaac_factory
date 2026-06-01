@@ -1,7 +1,8 @@
 from isaacsim.core.prims import RigidPrim
 from ..env_asset_cfg.cfg_robot import CfgRobot, CfgRobotRegistrationInfos
 from ..env_asset_cfg.cfg_route.cfg_route import RouteOptionalInitPointsInMap, OptionalInitPointIds
-from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgSubtaskPredefinedTimeGallery
+from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
+
 import copy
 import torch
 import random
@@ -27,7 +28,8 @@ class RobotManager:
             )
         perm = torch.randperm(num_points, device=self.optional_init_points_in_map.device)
         shuffled_init_points_in_map = self.optional_init_points_in_map[perm]
-        shuffled_init_points_ids = self.optional_init_points_ids[perm]
+        # self.optional_init_points_ids is a list (Python, not a torch tensor) so use list comprehension, not tensor indexing
+        shuffled_init_points_ids: list[int] = [self.optional_init_points_ids[i] for i in perm.tolist()]
         for robot, i in zip(self.robot_list, range(num_robots)):
             robot.reset(env_state_action_dict, shuffled_init_points_in_map[i].unsqueeze(0), shuffled_init_points_ids[i])
         
@@ -56,7 +58,7 @@ class RobotManager:
             if robot.state['state'] == "free":
                 mask[:] = 1
                 break
-        env_state_action_dict["robot"]["task_availability_mask"] = mask
+        env_state_action_dict["agent_action_mask"]["robot"]["task_availability_mask"] = mask
         return env_state_action_dict
 
     def update_self_availability_mask(self, env_state_action_dict: dict) -> dict:
@@ -66,7 +68,7 @@ class RobotManager:
         for robot, i in zip(self.robot_list, range(len(self.robot_list))):
             if robot.state['state'] == "free":
                 mask[i] = 1
-        env_state_action_dict["robot"]["self_availability_mask"] = mask
+        env_state_action_dict["agent_action_mask"]["robot"]["self_availability_mask"] = mask
         return env_state_action_dict
 
 
@@ -135,11 +137,11 @@ class Robot:
     def step_logistic(self, env_state_action_dict: dict, task_record: dict) -> dict:
         subtasks = task_record["subtasks_dict"]
         subtask = subtasks["ongoing"]
-        robot_subtask = subtask[2]
+        robot_subtask = subtask[3]
         if robot_subtask == "go_to_material":
             self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "start")
         elif robot_subtask == "wait":
-            subtasks["finished"][2] = True
+            subtasks["finished"][3] = True
         elif robot_subtask == "carry_to_goal_area":
             self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type="goal")
         elif robot_subtask == "done":
@@ -149,27 +151,27 @@ class Robot:
         return env_state_action_dict
             
     def _subtask_go_to_target(self, env_state_action_dict: dict, task_record: dict, subtasks: dict, target_area_type: str) -> None:
-        if subtasks["finished"][2] == True:
+        if subtasks["finished"][3] == True:
             return
         elif self.state["target_area_id"] is None:
             if target_area_type == "start":
                 assert task_record["subtasks_dict"]["start_area_ids"] is not None, "The start area ids should be initialized in task_progress_manager.py"
-                target_area_id = task_record["subtasks_dict"]["start_area_ids"]["human_working_areas_ids"][0]
+                target_area_id = task_record["subtasks_dict"]["start_area_ids"]["robot_parking_areas_ids"][0]
             elif target_area_type == "goal":
                 assert task_record["subtasks_dict"]["goal_area_ids"] is not None, "The goal area ids should be initialized in task_progress_manager.py"
-                target_area_id = task_record["subtasks_dict"]["goal_area_ids"]["human_working_areas_ids"][0]
+                target_area_id = task_record["subtasks_dict"]["goal_area_ids"]["robot_parking_areas_ids"][0]
             else:
                 raise ValueError(f"Invalid target area type: {target_area_type}")
             self.state["target_area_id"] = target_area_id
         elif self.state["target_area_id"] == self.state["current_area_id"]:
-            subtasks["finished"][2] = True
+            subtasks["finished"][3] = True
         else:
             # the human is going to the target area by route planner in route.py
             pass
         return env_state_action_dict
 
     def _task_done(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
-        subtasks["finished"][2] = True
+        subtasks["finished"][3] = True
         ### reset the robot in advance
         current_area_id = self.state["current_area_id"]
         self.state : str = copy.deepcopy(self.reset_state)

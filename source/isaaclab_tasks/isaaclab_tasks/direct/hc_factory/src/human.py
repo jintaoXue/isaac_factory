@@ -30,7 +30,9 @@ class HumanManager:
             )
         perm = torch.randperm(num_points, device=self.optional_init_points_in_map.device)
         shuffled_init_points_in_map = self.optional_init_points_in_map[perm]
-        shuffled_init_points_ids = self.optional_init_points_ids[perm]
+        # self.optional_init_points_ids is a list (Python, not a torch tensor) so use list comprehension, not tensor indexing
+        shuffled_init_points_ids: list[int] = [self.optional_init_points_ids[i] for i in perm.tolist()]
+ 
         for human, i in zip(self.human_list, range(num_humans)):
             human.reset(env_state_action_dict, shuffled_init_points_in_map[i].unsqueeze(0), shuffled_init_points_ids[i])
         
@@ -53,7 +55,7 @@ class HumanManager:
             if human.state['state'] == "free":
                 mask[:] = 1
                 break
-        env_state_action_dict["human"]["task_availability_mask"] = mask
+        env_state_action_dict["agent_action_mask"]["human"]["task_availability_mask"] = mask
         return env_state_action_dict
 
     def update_self_availability_mask(self, env_state_action_dict: dict) -> dict:
@@ -63,7 +65,7 @@ class HumanManager:
         for human, i in zip(self.human_list, range(len(self.human_list))):
             if human.state['state'] == "free":
                 mask[i] = 1
-        env_state_action_dict["human"]["self_availability_mask"] = mask
+        env_state_action_dict["agent_action_mask"]["human"]["self_availability_mask"] = mask
         return env_state_action_dict
 
     def _register_human_list(self):

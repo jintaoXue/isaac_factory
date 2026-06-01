@@ -63,6 +63,7 @@ SingleEnvStateActionDictTemplate : dict = {
         # str, for example 'ProductWaterPipe'
         "next_product": None,
         "next_product_index": None,
+        #
         "producing": [],
         #producing_indexs, value is the index in the material batch list in material manager, 
         # e.g., [0, 1]
@@ -77,6 +78,20 @@ SingleEnvStateActionDictTemplate : dict = {
         "agent_C_process_task_planner": torch.Tensor([]),
         #human: (upper_bound_num_human,) robot: (upper_bound_num_robot,)
         "agent_D_human_robot_allocator": {},
+        "human": {
+            "task_availability_mask": torch.Tensor([]),
+            "self_availability_mask": torch.Tensor([]),
+        },
+        "robot": {
+            "task_availability_mask": torch.Tensor([]),
+            "self_availability_mask": torch.Tensor([]),
+        },
+        "machine": {
+            "task_availability_mask": torch.Tensor([]),
+        },
+        "material": {
+            "task_availability_mask": torch.Tensor([]),
+        },
     },
     "action": {
         "product_sequencing": torch.Tensor([]),

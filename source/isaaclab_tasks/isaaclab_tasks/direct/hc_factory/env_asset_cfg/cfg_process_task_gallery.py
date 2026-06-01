@@ -17,7 +17,7 @@ TaskRecordTemplate = {
     "logistic_submaterial": None,
     "processing_submaterials": None,
     "processed_material": None,
-    
+
     "human": None,
     "human_index": None,
     "robot": None,
@@ -111,7 +111,7 @@ CfgProcessTaskGalleryDetailedClassified = {
             "logistic_submaterial": None,
             "processing_submaterials": None,
             "processed_material": None,
-            "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["none"],
+            "subtasks_dict": None,
         },
         "logistic_for_pipe_cutting": {
             "task_type": "logistic",

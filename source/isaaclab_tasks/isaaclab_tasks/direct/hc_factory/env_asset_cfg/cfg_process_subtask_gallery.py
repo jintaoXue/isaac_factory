@@ -16,20 +16,15 @@ CfgSubtaskGallery = {
         "logistic_for_pipe_cutting":{
             "have_AGV":{
                 # human: 0, gantry: 1, machine: 2, robot: 3, 
-                "ongoing": ["go_to_material", "go_to_material", "go_to_material", "wait"],
+                "ongoing": ["go_to_material", "go_to_material", "wait", "go_to_material"],
                 "ongoing_index": 0,
                 "required_logistic_material": "product_00_pipe",
                 # material_start_area need to be set in task_progress_manager.py
                 "material_start_area" : None,
                 "material_goal_area" : "num02_rollerbedCNCPipeIntersectionCuttingMachine",
+                "goal_area_workstation_key" : None,
                 "start_area_ids": None,
-                "goal_area_ids": {
-                    "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
-                        "human_working_areas_ids": [90],
-                        "robot_parking_areas_ids": [78],
-                        "gantry_parking_areas_ids": [78],
-                    },
-                },
+                "goal_area_ids": CfgMachine["num02_rollerbedCNCPipeIntersectionCuttingMachine"]["working_area_ids"],
                 "num_subtasks": 9,
                 "finished": [False, False, False, False],
                 "subtasks": [
@@ -59,14 +54,9 @@ CfgSubtaskGallery = {
                 "required_logistic_material": "product_00_pipe",
                 "material_start_area" : None,
                 "material_goal_area" : "num02_rollerbedCNCPipeIntersectionCuttingMachine",
+                "goal_area_workstation_key" : None,
                 "start_area_ids": None,
-                "goal_area_ids": {
-                    "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
-                        "human_working_areas_ids": [90],
-                        "robot_parking_areas_ids": [78],
-                        "gantry_parking_areas_ids": [78],
-                    },
-                },
+                "goal_area_ids": CfgMachine["num02_rollerbedCNCPipeIntersectionCuttingMachine"]["working_area_ids"],
                 "num_subtasks": 5,
                 "finished": [False, False, False],
                 "subtasks": [
@@ -96,13 +86,9 @@ CfgSubtaskGallery = {
                 "material_start_area" : "num02_rollerbedCNCPipeIntersectionCuttingMachine",
                 # material_goal_area need to be set in task_progress_manager.py after processing and needed to be carryed to a storage or machine
                 "material_goal_area" : None,
-                "start_area_ids": {
-                    "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
-                        "human_working_areas_ids": [90],
-                        "robot_parking_areas_ids": [78],
-                        "gantry_parking_areas_ids": [78],
-                    },
-                },
+                ### if goal_area is a machine, then goal_area_workstation_key is the workstation key of the machine
+                "goal_area_workstation_key" : None,
+                "start_area_ids": CfgMachine["num02_rollerbedCNCPipeIntersectionCuttingMachine"]["working_area_ids"],
                 "goal_area_ids": None,
                 "index_to_decide_goal_area": 5,
                 "num_subtasks": 8,
@@ -114,7 +100,7 @@ CfgSubtaskGallery = {
                     ["wait", "finding_free_gantry", "wait"],
                     ["control_gantry", "move_to_target_machine", "wait"],
                     ["material_on_gantry", "wait", "wait"],
-                    ["control_gantry", "move_to_goal_area", "done"],
+                    ["control_gantry", "carry_to_goal_area", "done"],
                     ["material_on_goal_area", "wait", "done"],
                     ["done", "done", "done"],
                 ],

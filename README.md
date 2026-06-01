@@ -96,3 +96,5 @@ Aligned with a 4-layer real-time factory operations stack (formal academic/indus
 storage 的"robot_parking_areas_ids": [9], 不太对
 
 del task record in task manager
+
+storage 的管理

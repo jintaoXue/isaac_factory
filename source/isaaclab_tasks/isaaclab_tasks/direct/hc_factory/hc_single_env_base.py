@@ -66,8 +66,8 @@ class HcSingleEnvBase():
             self.robot_manager,
             self.route_manager,
             self.machine_manager,
-            self.algo_multiagent_masker,
             self.task_manager,
+            self.algo_multiagent_masker,
         )
 
     def reset_env(self):
