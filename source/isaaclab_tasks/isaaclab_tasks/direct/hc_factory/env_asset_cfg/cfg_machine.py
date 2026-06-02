@@ -278,12 +278,12 @@ CfgMachine = {
         "type_name": "num07_gantry_group",
         "registration_type": "articulation",
         "corresponding_process_task": [
-            "logistic_for_pipe_cutting",
-            "logistic_for_pipe_grooving",
-            "logistic_for_batch_spot_welding",
-            "logistic_for_arc_welding_root",
-            "logistic_for_MIG_welding_surface",
-            "logistic_for_paint_rust_proof",
+            "pipe_cutting",
+            "pipe_grooving",
+            "batch_spot_welding",
+            "arc_welding_root",
+            "MIG_welding_surface",
+            "paint_rust_proof",
         ],
         "corresponding_logistic_task": [
             "logistic_for_pipe_cutting",

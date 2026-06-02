@@ -2,15 +2,9 @@
 import math
 
 
-# State Gallery
-CfgStateGallery = {
-        0: "empty",
-        1: "partial",
-        2: "full",
-}
-
 CfgResetStateTemplate = {
     "key_variables": {},
+    # state gallery: empty, partial, full
     "state": "empty",
     "num_material": 0,
     "material_type": None,

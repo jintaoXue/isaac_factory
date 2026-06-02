@@ -1,6 +1,6 @@
 
 from ..env_asset_cfg.cfg_storage import CfgStorage
-from ..env_asset_cfg.cfg_material_product import CfgRegistrationInfos, CfgProductOrder, CfgProductProcess
+from ..env_asset_cfg.cfg_material_product import CfgProductOrder, CfgProductProcess
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskGalleryDetailedClassified, CfgSubtaskGallery, TaskRecordTemplate
 import torch
 import copy
@@ -14,7 +14,7 @@ class TaskManager:
     def reset(self, env_state_action_dict) -> dict:
         #production progress reset
         env_state_action_dict["progress"]["product_order"] = copy.deepcopy(CfgProductOrder)
-        env_state_action_dict["progress"]["not_started"] = copy.deepcopy(CfgRegistrationInfos)
+        env_state_action_dict["progress"]["not_started"] = copy.deepcopy(CfgProductOrder)
         env_state_action_dict["progress"]["next_product"] = None
         env_state_action_dict["progress"]["next_product_index"] = None
         env_state_action_dict["progress"]["producing"] = []
