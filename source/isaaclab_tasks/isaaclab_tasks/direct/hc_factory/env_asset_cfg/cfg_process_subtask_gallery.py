@@ -2,12 +2,16 @@ import copy
 from .cfg_machine import CfgMachine
 
 CfgSubtaskPredefinedTimeGallery = {
+   "go_to_material": 10,
    "material_on_gantry": 10,
    "control_gantry": 10,
    "material_on_robot": 10,
-   "material_on_target_area": 10,
-   "control_gantry_while_going_to_target_machine": 10,
+   "go_to_goal_area": 10,
+   "material_on_goal_area": 10,
+   "go_to_target_machine": 10,
    "control_machine": 10,
+   "wait": None,
+   "done": None,
 }
 
 CfgSubtaskGallery = {

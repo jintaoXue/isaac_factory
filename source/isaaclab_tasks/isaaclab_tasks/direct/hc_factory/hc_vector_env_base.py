@@ -28,7 +28,7 @@ import torch
 from .hc_single_env import HcSingleEnv
 
 from omni.kit.viewport.utility import get_active_viewport_window
-
+from .src.route import RouteManagerVectorEnv
 
 
 class HcVectorEnvBase(DirectRLEnv):
@@ -40,6 +40,7 @@ class HcVectorEnvBase(DirectRLEnv):
         super().__init__(cfg, render_mode, **kwargs)
         self.reward_buf = torch.zeros(self.num_envs, dtype=torch.float32, device=self.sim.device)
         self._setup_rendering_resolution()
+        
 
     def _setup_rendering_resolution(self):
         # 1. Get the active Viewport window
@@ -55,7 +56,7 @@ class HcVectorEnvBase(DirectRLEnv):
     def _setup_scene(self):
         # assert self.num_envs == 2, "Temporary testing num_envs == 2"
         assert self.cfg_vector_env._valid_train_cfg()
-
+        self.route_manager = RouteManagerVectorEnv(cuda_device=self.cuda_device)
         for i in range(self.num_envs):
             sub_env_path = f"/World/envs/env_{i}"
             # the usd file already has a ground plane
@@ -70,7 +71,7 @@ class HcVectorEnvBase(DirectRLEnv):
         light_cfg.func("/World/Light", light_cfg)
 
     def setup_one_env(self, env_id: int):
-        single_env = HcSingleEnv(env_id=env_id, cuda_device=self.cuda_device)
+        single_env = HcSingleEnv(env_id=env_id, route_manager=self.route_manager, cuda_device=self.cuda_device)
         self.env_list.append(single_env)
 
     def reset(self, num_worker=None, num_robot=None, evaluate=False):

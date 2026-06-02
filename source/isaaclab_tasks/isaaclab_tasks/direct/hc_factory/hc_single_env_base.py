@@ -39,13 +39,14 @@ from .src.task_progress_manager import TaskManager
 from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.src import algo_multiagent_masker
 
 class HcSingleEnvBase():
-    def __init__(self, env_id: int, cuda_device: torch.device):
+    def __init__(self, env_id: int, route_manager: RouteManagerVectorEnv, cuda_device: torch.device):
         self.env_id : int = env_id
         self.env_id_str : str = f"env_{env_id}"
         self.cuda_device = cuda_device
         self.reward_buf = torch.zeros(1, dtype=torch.float32, device=self.cuda_device)
         # 每个 env 持有独立的 state dict，避免多 env 共享引用导致状态串扰
         self.env_state_action_dict = copy.deepcopy(SingleEnvStateActionDictTemplate)
+        self.route_manager = route_manager
         self.register_env_assets()
     
     def register_env_assets(self):
@@ -56,7 +57,7 @@ class HcSingleEnvBase():
         self.robot_manager = RobotManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.algo_multiagent_masker = AlgoMultiAgentMasker(self.cuda_device)
         self.task_manager = TaskManager(self.cuda_device)
-        self.route_manager = RouteManagerVectorEnv(cuda_device=self.cuda_device)
+        # self.route_manager = RouteManagerVectorEnv(cuda_device=self.cuda_device)
 
     def iter_managers(self):
         return (

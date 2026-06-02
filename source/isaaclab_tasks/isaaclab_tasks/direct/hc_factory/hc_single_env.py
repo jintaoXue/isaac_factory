@@ -25,12 +25,12 @@ from isaacsim.core.api.world import World
 from .hc_single_env_base import HcSingleEnvBase
 from abc import abstractmethod
 import numpy as np
-
+from .src.route import RouteManagerVectorEnv
 
 import torch
 
 
 class HcSingleEnv(HcSingleEnvBase):
     
-    def __init__(self, env_id: int, cuda_device: torch.device):
-        super().__init__(env_id, cuda_device)
+    def __init__(self, env_id: int, route_manager: RouteManagerVectorEnv, cuda_device: torch.device):
+        super().__init__(env_id, route_manager, cuda_device)

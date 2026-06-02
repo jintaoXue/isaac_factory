@@ -63,7 +63,7 @@ class MachineManager:
                     pass
                 else:
                     pre_name = state_name.split("_")[0]
-                    task_name = state_name.split("_")[1]
+                    task_name = state_name.split("_", 1)[1]
                     if pre_name == "materialReadyFor":                        
                         task_index = CfgProcessTaskGalleryInAll[task_name]
                         mask[task_index] = 1

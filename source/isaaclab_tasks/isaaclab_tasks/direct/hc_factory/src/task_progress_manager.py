@@ -264,7 +264,7 @@ class TaskManager:
         task_record = self._update_task_record_when_doing_subtask(env_state_action_dict, task_record)
         finished : list[bool] =  task_record["subtasks_dict"]["finished"]
         if all(finished) == True:
-            if task_record["subtasks_dict"]["ongoing_index"] == task_record["subtasks_dict"]["num_subtasks"]:
+            if task_record["subtasks_dict"]["ongoing_index"] == task_record["subtasks_dict"]["num_subtasks"] - 1:
                 ## all subtasks are done
                 task_record["task_done"] = True
                 return True
