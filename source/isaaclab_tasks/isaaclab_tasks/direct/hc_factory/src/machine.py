@@ -371,6 +371,9 @@ class num07_gantry_group(Machine):
         return env_state_action_dict
     
     def _subtask_go_to_target(self, env_state_action_dict: dict, task_record: dict, subtasks: dict, target_area_type: str) -> None:
+        if subtasks["finished"][1] == True:
+            return
+        # if the target area id is not set, set it
         if self.state["target_area_id"] is None:
             if target_area_type == "start":
                 assert task_record["subtasks_dict"]["start_area_ids"] is not None, "The start area ids should be initialized in task_progress_manager.py"
@@ -400,6 +403,9 @@ class num07_gantry_group(Machine):
             ### Move to the target joint position
             if self.animation_num07_gantry_group.is_done():
                 subtasks["finished"][1] = True
+                self.state["target_area_id"] = None
+                self.state["target_area_xy"] = None
+                self.state["target_joints_position"] = None
 
     def _get_joint_pose_from_xy_target(self, joint_position: torch.tensor, xy_target: torch.tensor, gantry_index: int) -> torch.tensor:
         #input xy_target is a list of 2 elements, [x, y], the gantry_index-th gantry should move to the xy_target

@@ -176,7 +176,8 @@ class Human:
     def _subtask_go_to_target(self, env_state_action_dict: dict, task_record: dict, subtasks: dict, target_area_type: str) -> None:
         if subtasks["finished"][0] == True:
             return
-        elif self.state["target_area_id"] is None:
+        
+        if self.state["target_area_id"] is None:
             if target_area_type == "start":
                 assert task_record["subtasks_dict"]["start_area_ids"] is not None, "The start area ids should be initialized in task_progress_manager.py"
                 target_area_id = task_record["subtasks_dict"]["start_area_ids"]["human_working_areas_ids"][0]
@@ -188,6 +189,10 @@ class Human:
             self.state["target_area_id"] = target_area_id
         elif self.state["target_area_id"] == self.state["current_area_id"]:
             subtasks["finished"][0] = True
+            self.state["target_area_id"] = None
+            self.state["route_index"] = 0
+            self.state["route_length"] = 0
+            self.state["generated_route"] = []
         else:
             # the human is going to the target area by route planner in route.py
             pass
