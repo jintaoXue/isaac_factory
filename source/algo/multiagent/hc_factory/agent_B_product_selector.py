@@ -20,7 +20,7 @@ class ProductSelectionAgent(AgentBase):
     def __init__(self, cuda_device: torch.device):
         self.cuda_device = cuda_device
 
-    def act(self, env_state_action_dict: dict, product_sequencing_action: torch.Tensor) -> torch.Tensor | None:
+    def act(self, env_state_action_dict: dict) -> torch.Tensor | None:
         # mask is a tensor shaped (1 + self.parallel_producing_limit,)
         # Each entry is binary: 1 means the corresponding product type may be selected,
         # 0 means it is not eligible right now.

@@ -182,7 +182,7 @@ class MaterialBatch:
             ## task done, set the finished task and ongoing task record index to none
             self.state["finished_task"] = task_record["task"]
             self.state["ongoing_task_record_index"] = None
-        all_materials = {**self.iter_integrated_material_prims(), **self.iter_raw_material_prims()}
+        all_materials = {**self.iter_raw_material_prims(), **self.iter_integrated_material_prims()}
         for material_type, material_prim in all_materials.items():
             material_name = f"num_{self.idx:02d}_{material_type}"
             material_state = material_subtask[material_type][ongoing_index]

@@ -227,7 +227,7 @@ class TaskManager:
     def step_task_records(self, env_state_action_dict):
 
         ongoing_task_records: dict = env_state_action_dict["progress"]["ongoing_task_records"]
-        completed_product_indices: list = []
+        completed_task_records_indexs: list = []
 
         for product_index, task_record in ongoing_task_records.items():
             product_type = task_record["product"]
@@ -249,7 +249,7 @@ class TaskManager:
                     if product_type not in finished:
                         finished[product_type] = []
                     finished[product_type].append(product_index)
-                completed_product_indices.append(product_index)
+                completed_task_records_indexs.append(product_index)
             elif task_record["new_product_selected"] == True:
                 task_record['new_product_selected'] = False
                 env_state_action_dict["progress"]["producing"].append(product_type)
@@ -257,6 +257,9 @@ class TaskManager:
                 env_state_action_dict["progress"]["next_product"] = None
                 env_state_action_dict["progress"]["next_product_index"] = None
                 env_state_action_dict["progress"]["not_started"][product_type] -= 1
+        
+        for task_record_index in completed_task_records_indexs:
+            del ongoing_task_records[task_record_index]
 
         return env_state_action_dict
 
@@ -272,9 +275,6 @@ class TaskManager:
                 task_record["subtasks_dict"]["ongoing_index"] += 1
                 task_record["subtasks_dict"]["ongoing"] = task_record["subtasks_dict"]["subtasks"][task_record["subtasks_dict"]["ongoing_index"]]
                 for task_name, index in zip(task_record["subtasks_dict"]["ongoing"], range(len(finished))):
-                    if task_name == "done":
-                        finished[index] = True
-                    else:
                         finished[index] = False
                 return False
 
