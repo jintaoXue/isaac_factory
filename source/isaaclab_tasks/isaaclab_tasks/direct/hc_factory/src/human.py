@@ -161,7 +161,7 @@ class Human:
             self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "goal")
         elif human_subtask == "material_on_goal_area":
             self._time_counting_subtask(subtasks, human_subtask)    
-        elif human_subtask == "go_to_target_machine":
+        elif human_subtask == "go_to_processing_machine":
             self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "start")
         elif human_subtask == "control_machine":
             self._time_counting_subtask(subtasks, human_subtask)

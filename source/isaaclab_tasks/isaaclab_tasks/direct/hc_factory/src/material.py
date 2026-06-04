@@ -220,7 +220,8 @@ class MaterialBatch:
                     position = slot_pose["position"]
                     env_state_action_dict["rigid_prims"][material_name]["orientation"] = slot_pose["orientation"]
             elif material_state == "on_machine":
-                workstation_key = subtasks["goal_area_workstation_key"]
+                ### on_machine currently only for processing task, and is the start area for processing task
+                workstation_key = task_record["chosen_machine_workstation"]
                 position = env_state_action_dict["articulations"][workstation_key]["object"].get_local_poses()[0]
             else:
                 raise ValueError(f"Invalid material state: {material_state}")

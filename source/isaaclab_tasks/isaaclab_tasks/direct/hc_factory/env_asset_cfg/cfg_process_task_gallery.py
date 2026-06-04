@@ -26,7 +26,7 @@ TaskRecordTemplate = {
     "target_machine": None,
     "chosen_machine_workstation": None,
     "chosen_workstation_index": None,
-    "logistic_machine": None,
+    "logistic_machine": "num07_gantry_group",
     "chosen_gantry_index": None,
 
     "subtasks_dict": None,
@@ -106,7 +106,7 @@ CfgProcessTaskGalleryDetailedClassified = {
         "none": {
             "task_type": "none",
             "target_machine": None,
-            "logistic_machine": None,
+            "logistic_machine": "num07_gantry_group",
             "is_final_task": False,
             "logistic_submaterial": None,
             "processing_submaterials": None,
@@ -126,7 +126,7 @@ CfgProcessTaskGalleryDetailedClassified = {
         "pipe_cutting": {
             "task_type": "processing",
             "target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine",
-            "logistic_machine": None,
+            "logistic_machine": "num07_gantry_group",
             "is_final_task": False,
             "logistic_submaterial": None,
             "processing_submaterials": ["product_00_pipe"],
@@ -146,7 +146,7 @@ CfgProcessTaskGalleryDetailedClassified = {
         "pipe_grooving": {
             "task_type": "processing",
             "target_machine": "num04_groovingMachineLarge",
-            "logistic_machine": None,
+            "logistic_machine": "num07_gantry_group",
             "is_final_task": False,
             "logistic_submaterial": None,
             "processing_submaterials": ["product_00_pipe"],
@@ -166,7 +166,7 @@ CfgProcessTaskGalleryDetailedClassified = {
         "batch_spot_welding": {
             "task_type": "processing",
             "target_machine": "num08_workbench",
-            "logistic_machine": None,
+            "logistic_machine": "num07_gantry_group",
             "is_final_task": False,
             "logistic_submaterial": None,
             "processing_submaterials": ["product_00_pipe", "product_00_flange", "product_00_elbow"],
@@ -186,7 +186,7 @@ CfgProcessTaskGalleryDetailedClassified = {
         "arc_welding_root": {
             "task_type": "processing",
             "target_machine": "num01_weldingRobot",
-            "logistic_machine": None,
+            "logistic_machine": "num07_gantry_group",
             "is_final_task": False,
             "logistic_submaterial": None,
             "processing_submaterials": ["product_00_semi"],
@@ -206,7 +206,7 @@ CfgProcessTaskGalleryDetailedClassified = {
         "MIG_welding_surface": {
             "task_type": "processing",
             "target_machine": "num00_rotaryPipeAutomaticWeldingMachine",
-            "logistic_machine": None,
+            "logistic_machine": "num07_gantry_group",
             "is_final_task": False,
             "logistic_submaterial": None,
             "processing_submaterials": ["product_00_semi"],
@@ -226,7 +226,7 @@ CfgProcessTaskGalleryDetailedClassified = {
         "paint_rust_proof": {
             "task_type": "processing",
             "target_machine": "num08_workbench",
-            "logistic_machine": None,
+            "logistic_machine": "num07_gantry_group",
             "is_final_task": True,
             "logistic_submaterial": None,
             "processing_submaterials": ["product_00_semi"],

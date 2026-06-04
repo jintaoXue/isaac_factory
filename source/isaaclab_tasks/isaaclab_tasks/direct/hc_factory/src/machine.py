@@ -53,32 +53,28 @@ class MachineManager:
         # mask for machine availability for selection by human-robot machine allocator agent
         # output shape (len(CfgProcessTaskGalleryInAll))
         mask = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
-        mask_logistic = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
-        mask_logistic[0] = 1 # "none" task is always available
+        mask[0] = 1 # "none" task is always available
+        have_free_gantry = False
         for machine in self.iter_logistic_machines():
             state : list = machine.state['state']
-            can_do_logistic_task_names : list = machine.corresponding_logistic_task
             for state_name in state:
                 if state_name == "free":
-                    for task_name in can_do_logistic_task_names:
-                        task_index = CfgProcessTaskGalleryInAll[task_name]
-                        mask_logistic[task_index] = 1
+                    have_free_gantry = True
                     break
-                elif state_name == "invalid":
-                    pass
-                else:
-                    pass
         for machine in self.iter_machines():
             state : list = machine.state['state']
             can_do_logistic_task_names : list = machine.corresponding_logistic_task
             for state_name in state:
                 if state_name == "free":
-                    for task_name in can_do_logistic_task_names:
-                        task_index = CfgProcessTaskGalleryInAll[task_name]
-                        mask[task_index] = 1
+                    if have_free_gantry:
+                        for task_name in can_do_logistic_task_names:
+                            task_index = CfgProcessTaskGalleryInAll[task_name]
+                            mask[task_index] = 1
                 elif state_name == "invalid":
                     pass
                 else:
+                    # Though processing task contains logistic subtasks, 
+                    # but will be defined in task_progress_manager.py, so here dont need to consider it
                     pre_name = state_name.split("_")[0]
                     task_name = state_name.split("_", 1)[1]
                     if pre_name == "materialReadyFor":                        
@@ -86,7 +82,7 @@ class MachineManager:
                         mask[task_index] = 1
                     elif pre_name == "working":
                         pass
-        env_state_action_dict["agent_action_mask"]["machine"]["task_availability_mask"] = mask & mask_logistic
+        env_state_action_dict["agent_action_mask"]["machine"]["task_availability_mask"] = mask
 
 
 class Machine:
@@ -367,6 +363,8 @@ class num07_gantry_group(Machine):
 
             if gantry_subtask == "go_to_material":
                 self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "start")
+            elif gantry_subtask == "go_to_processing_machine":
+                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type="start")
             elif gantry_subtask == "wait":
                 subtasks["finished"][1] = True
             elif gantry_subtask == "carry_to_robot":
