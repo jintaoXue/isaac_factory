@@ -80,7 +80,7 @@ class MachineManager:
                     if pre_name == "materialReadyFor":                        
                         task_index = CfgProcessTaskGalleryInAll[task_name]
                         mask[task_index] = 1
-                    elif pre_name == "working":
+                    elif pre_name == "working" or pre_name == "waiting":
                         pass
         env_state_action_dict["agent_action_mask"]["machine"]["task_availability_mask"] = mask
 

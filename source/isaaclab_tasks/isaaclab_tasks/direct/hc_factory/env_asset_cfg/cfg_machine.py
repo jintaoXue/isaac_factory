@@ -10,9 +10,9 @@ CfgMachine = {
         "corresponding_logistic_task": ["logistic_for_MIG_welding_surface"],
         "num_workstations": 2,
         "num_registration_parts": 2,
-        "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
+        
         "reset_state": {
-            ## state: free, materialReadyFor_task_name, working_task_name
+            ## state: free, materialReadyFor_task_name, working_task_name, waiting_processing_task
             ## for example: state: ["working_MIG_welding_surface", "materialReadyFor_MIG_welding_surface"]
             "state": ["free", "free"],
             "processing_time_step": [0, 0],
@@ -59,7 +59,7 @@ CfgMachine = {
         "corresponding_logistic_task": ["logistic_for_arc_welding_root"],
         "num_workstations": 1,
         "num_registration_parts": 2,
-        "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
+        
         "reset_state": {
             "state": ["free"],
             "processing_time_step": [0],
@@ -98,7 +98,7 @@ CfgMachine = {
         "corresponding_logistic_task": ["logistic_for_pipe_cutting"],
         "num_workstations": 1,
         "num_registration_parts": 2,
-        "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
+        
         "reset_state": {
             "state": ["free"],
             "processing_time_step": [0],
@@ -137,7 +137,7 @@ CfgMachine = {
         "corresponding_logistic_task": ["none"],
         "num_workstations": 1,
         "num_registration_parts": 1,
-        "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
+        
         "reset_state": {
             "state": ["free"],
             "processing_time_step": [0],
@@ -170,7 +170,7 @@ CfgMachine = {
         "corresponding_logistic_task": ["logistic_for_pipe_grooving"],
         "num_workstations": 1,
         "num_registration_parts": 2,
-        "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
+        
         "reset_state": {
             "state": ["free"],
             "processing_time_step": [0],
@@ -209,7 +209,7 @@ CfgMachine = {
         "corresponding_logistic_task": ["none"],
         "num_workstations": 1,
         "num_registration_parts": 2,
-        "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
+        
         "reset_state": {
             "state": ["free"],
             "processing_time_step": [0],
@@ -248,7 +248,7 @@ CfgMachine = {
         "corresponding_logistic_task": ["none"],
         "num_workstations": 1,
         "num_registration_parts": 1,
-        "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
+        
         "reset_state": {
             "state": ["free"],
             "processing_time_step": [0],
@@ -353,7 +353,7 @@ CfgMachine = {
         ],
         "num_workstations": 2,
         "num_registration_parts": 1,
-        "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting"},
+        
         "reset_state": {
             "state": ["free", "free"],
             "processing_time_step": [0, 0],

@@ -279,6 +279,13 @@ class TaskManager:
                 task_record["task_done"] = True
                 return True
             else:
+                if task_record["task_type"] == "processing":
+                    if task_record["next_target_machine"] is not None:
+                        #the material is already on the machine, so no need to do logistic task for next processing task
+                        workstation_index = task_record["next_chosen_workstation_index"]
+                        machine_state = env_state_action_dict["machine"][task_record["next_target_machine"]]["state"]
+                        machine_state[workstation_index] = "materialReadyFor_" + task_record["next_task"]
+
                 task_record["subtasks_dict"]["ongoing_index"] += 1
                 task_record["subtasks_dict"]["ongoing"] = task_record["subtasks_dict"]["subtasks"][task_record["subtasks_dict"]["ongoing_index"]]
                 for sub_task_name, index in zip(task_record["subtasks_dict"]["ongoing"], range(len(finished))):
@@ -308,15 +315,14 @@ class TaskManager:
                     goal_storage_name = self._find_free_storage(env_state_action_dict, task_record)
                     task_record["subtasks_dict"]["goal_area_ids"] = env_state_action_dict["storage"][goal_storage_name]["key_variables"]["working_area_ids"]
                 else:
-                    current_task = task_record["task"]
-                    product_type = task_record["product"]
-                    keys = list(CfgProcessTaskGalleryDetailedClassified[product_type].keys())
-                    current_task_index = keys.index(current_task)
-                    next_task = keys[current_task_index + 1]
-                    next_target_machine = CfgProcessTaskGalleryDetailedClassified[product_type][next_task]["target_machine"]
+                    next_target_machine = task_record["next_target_machine"]
                     machine_state = env_state_action_dict["machine"][next_target_machine]["state"]
                     if "free" in machine_state:
-                        workstation_key = list(env_state_action_dict["machine"][next_target_machine]["key_variables"]["working_area_ids"].keys())[machine_state.index("free")]
+                        # the processed material will be put on the free workstation of the next target machine
+                        task_record["next_chosen_workstation_index"] = machine_state.index("free")
+                        machine_state[task_record["next_chosen_workstation_index"]] = "waiting" + task_record["task"]
+                        workstation_key = list(env_state_action_dict["machine"][next_target_machine]["key_variables"]["working_area_ids"].keys())[task_record["next_chosen_workstation_index"]]
+                        task_record["next_chosen_machine_workstation"] = workstation_key
                         task_record["subtasks_dict"]["goal_area_ids"] = env_state_action_dict["machine"][next_target_machine]["key_variables"]["working_area_ids"][workstation_key]
                         task_record["subtasks_dict"]["material_goal_area"] = next_target_machine
                         task_record["subtasks_dict"]["goal_area_workstation_key"] = workstation_key
