@@ -44,7 +44,9 @@ class HumanManager:
     def step(self, env_state_action_dict: dict) -> dict:
         for human in self.human_list:
             human.step(env_state_action_dict)
-        self.update_task_availability_mask(env_state_action_dict)
+        # self.update_task_availability_mask(env_state_action_dict)
+        # self.update_self_availability_mask(env_state_action_dict)
+
         return env_state_action_dict
     
     def update_task_availability_mask(self, env_state_action_dict: dict) -> dict:

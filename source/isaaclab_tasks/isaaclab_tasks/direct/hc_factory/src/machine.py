@@ -62,6 +62,7 @@ class MachineManager:
                     have_free_gantry = True
                     break
         for machine in self.iter_machines():
+            assert machine.type_name != "num07_gantry_group", "num07_gantry_group is logistic machine"
             state : list = machine.state['state']
             can_do_logistic_task_names : list = machine.corresponding_logistic_task
             for state_name in state:
@@ -82,6 +83,8 @@ class MachineManager:
                         mask[task_index] = 1
                     elif pre_name == "working" or pre_name == "waiting":
                         pass
+                    else:
+                        raise ValueError(f"Invalid machine state: {state_name}")
         env_state_action_dict["agent_action_mask"]["machine"]["task_availability_mask"] = mask
 
 
@@ -98,7 +101,6 @@ class Machine:
         self.registration_infos = cfg["registration_infos"]
         # self.corresponding_process_task = cfg["corresponding_process_task"]
         self.corresponding_logistic_task = cfg["corresponding_logistic_task"]
-        self.state_gallery = cfg["state_gallery"]
         self.reset_state = copy.deepcopy(cfg["reset_state"])
         self.working_area_ids = cfg["working_area_ids"]
         self.reset_state["key_variables"] = self.iter_key_variables()
@@ -162,10 +164,11 @@ class Machine:
         task_type = task_record["task_type"]
         subtasks = task_record["subtasks_dict"]
         machine_subtask = subtasks["ongoing"][2]
-
-        if workstation_state == "free":
-                #subgantry index = 0 is chosen to work on the task
-                self.state["state"][chosen_workstation_index] = 'working_' + task_record["task"]
+        
+        pre_name = workstation_state.split("_")[0]
+        # free, materialReadyFor_task_name, working_task_name, waiting_processing_task, invalid
+        if pre_name != "working":
+            self.state["state"][chosen_workstation_index] = 'working_' + task_record["task"]
         if machine_subtask == "done":
             self._task_done(env_state_action_dict, task_record)
         elif machine_subtask == "process":
@@ -233,9 +236,6 @@ class num00_rotaryPipeAutomaticWeldingMachine(Machine):
         self.num00_rotaryPipeAutomaticWeldingMachine_part_02_station = None
         self.animation_num00_rotaryPipeAutomaticWeldingMachine_part_02_station: PoseAnimation = None        
         super().__init__(cfg=CfgMachine["num00_rotaryPipeAutomaticWeldingMachine"], env_id=env_id, cuda_device=cuda_device)
-
-    def step(self, env_state_action_dict: dict) -> dict:
-        return env_state_action_dict
 
 
 class num01_weldingRobot(Machine):

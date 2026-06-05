@@ -277,15 +277,14 @@ class TaskManager:
             if task_record["subtasks_dict"]["ongoing_index"] == task_record["subtasks_dict"]["num_subtasks"] - 1:
                 ## all subtasks are done
                 task_record["task_done"] = True
-                return True
-            else:
                 if task_record["task_type"] == "processing":
-                    if task_record["next_target_machine"] is not None:
+                    if task_record["next_chosen_workstation_index"] is not None:
                         #the material is already on the machine, so no need to do logistic task for next processing task
                         workstation_index = task_record["next_chosen_workstation_index"]
                         machine_state = env_state_action_dict["machine"][task_record["next_target_machine"]]["state"]
-                        machine_state[workstation_index] = "materialReadyFor_" + task_record["next_task"]
-
+                        machine_state[workstation_index] = "materialReadyFor_" + task_record["next_processing_task"]
+                return True
+            else:
                 task_record["subtasks_dict"]["ongoing_index"] += 1
                 task_record["subtasks_dict"]["ongoing"] = task_record["subtasks_dict"]["subtasks"][task_record["subtasks_dict"]["ongoing_index"]]
                 for sub_task_name, index in zip(task_record["subtasks_dict"]["ongoing"], range(len(finished))):
@@ -320,7 +319,7 @@ class TaskManager:
                     if "free" in machine_state:
                         # the processed material will be put on the free workstation of the next target machine
                         task_record["next_chosen_workstation_index"] = machine_state.index("free")
-                        machine_state[task_record["next_chosen_workstation_index"]] = "waiting" + task_record["task"]
+                        machine_state[task_record["next_chosen_workstation_index"]] = "waiting_" + task_record["task"]
                         workstation_key = list(env_state_action_dict["machine"][next_target_machine]["key_variables"]["working_area_ids"].keys())[task_record["next_chosen_workstation_index"]]
                         task_record["next_chosen_machine_workstation"] = workstation_key
                         task_record["subtasks_dict"]["goal_area_ids"] = env_state_action_dict["machine"][next_target_machine]["key_variables"]["working_area_ids"][workstation_key]

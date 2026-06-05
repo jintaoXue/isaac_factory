@@ -70,6 +70,16 @@ class HcSingleEnvBase():
             self.task_manager,
             self.algo_multiagent_masker,
         )
+    
+    # def update_task_availability_mask(self):
+    #     self.machine_manager.update_task_availability_mask(self.env_state_action_dict)
+    #     self.product_material_manager.update_task_availability_mask(self.env_state_action_dict)
+    #     self.human_manager.update_task_availability_mask(self.env_state_action_dict)
+    #     self.robot_manager.update_task_availability_mask(self.env_state_action_dict)
+    
+    # def update_self_availability_mask(self):
+    #     self.human_manager.update_self_availability_mask(self.env_state_action_dict)
+    #     self.robot_manager.update_self_availability_mask(self.env_state_action_dict)
 
     def reset_env(self):
         for m in self.iter_managers():
@@ -99,5 +109,7 @@ class HcSingleEnvBase():
         for m in self.iter_managers():
             m.step(self.env_state_action_dict)
         self.env_state_action_dict["time_step"] += 1
+        # self.update_task_availability_mask()
+        # self.update_self_availability_mask()
         return
 

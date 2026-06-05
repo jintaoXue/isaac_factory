@@ -38,6 +38,6 @@ class ProcessTaskPlanningAgent(AgentBase):
             else:
                 #select the second available task for the selected product according to the task mask
                 mask[0] = 0 #set "none" task is not available
-                action = self.keep_first_one(mask)
+                action = self.keep_last_one(mask)
         return action
 

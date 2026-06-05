@@ -21,3 +21,13 @@ class AgentBase(ABC):
             result[first_one_idx] = 1
             
         return result
+    
+    def keep_last_one(self, t):
+        ones_indices = (t == 1).nonzero(as_tuple=True)[0]
+        result = torch.zeros_like(t)
+        
+        if ones_indices.numel() > 0:
+            last_one_idx = ones_indices[-1]
+            result[last_one_idx] = 1
+            
+        return result
