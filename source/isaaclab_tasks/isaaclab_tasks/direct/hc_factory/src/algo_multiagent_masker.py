@@ -17,7 +17,8 @@ class AlgoMultiAgentMasker:
         return self.generate_agents_mask(env_state_action_dict)
 
     def step(self, env_state_action_dict):
-        return self.generate_agents_mask(env_state_action_dict)
+        self.generate_agents_mask(env_state_action_dict)
+        return 
 
     def generate_agents_mask(self, env_state_action_dict):
         for agent in self.iter_agents():
