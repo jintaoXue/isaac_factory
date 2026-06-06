@@ -325,12 +325,12 @@ class RouteManagerVectorEnv:
             route_index = agent_state["route_index"]
             route_length = agent_state["route_length"]
             if route_length == 0:
-                return
+                continue
             if route_index >= route_length:
                 #arrived at the target area
                 assert agent_state["current_area_id"] is not None, "The current area id should be set before the agent arrives at the target area"
                 agent_state["current_area_id"] = agent_state["target_area_id"]
-                return
+                continue
             route = agent_state["generated_route"]
             xy_yaw = route[route_index]
             agent_prims_dict[agent_name]["position"] = torch.tensor(

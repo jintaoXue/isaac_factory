@@ -1,13 +1,21 @@
 from ..algo_cfg.cfg_multiagent import CfgProductSequencerAgent
-from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
+from ..env_asset_cfg.cfg_process_task_gallery import (
+    CfgProcessTaskGalleryDetailedClassified,
+    CfgProcessTaskGalleryInAll,
+)
 from ..env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
+from ..env_asset_cfg.cfg_human import CfgHuman
+from ..env_asset_cfg.cfg_robot import CfgRobot
+from ..env_asset_cfg.cfg_machine import CfgMachine
 import torch
-import copy
+
 
 class AlgoMultiAgentMasker:
     def __init__(self, cuda_device: torch.device) -> None:
         self.cuda_device = cuda_device
         self.parallel_producing_limit = HcVectorEnvCfg().single_env_parallel_producing_limit
+        self.upper_bound_num_human = CfgHuman["NumUpperBound"]
+        self.upper_bound_num_robot = CfgRobot["NumUpperBound"]
         self.agent_A_Product_sequencer = ProductSequencerAgentMasker(self.cuda_device)
         self.agent_B_Product_selection = ProductSelectorAgentMasker(self.cuda_device)
         self.agent_C_Process_task_planning = ProcessTaskPlannerAgentMasker(self.cuda_device)
@@ -18,9 +26,15 @@ class AlgoMultiAgentMasker:
 
     def step(self, env_state_action_dict):
         self.generate_agents_mask(env_state_action_dict)
-        return 
+        return
 
     def generate_agents_mask(self, env_state_action_dict):
+        self.update_human_task_availability_mask(env_state_action_dict)
+        self.update_human_self_availability_mask(env_state_action_dict)
+        self.update_robot_task_availability_mask(env_state_action_dict)
+        self.update_robot_self_availability_mask(env_state_action_dict)
+        self.update_machine_task_availability_mask(env_state_action_dict)
+        self.update_material_task_availability_mask(env_state_action_dict)
         for agent in self.iter_agents():
             agent.generate_mask(env_state_action_dict)
 
@@ -31,6 +45,105 @@ class AlgoMultiAgentMasker:
             self.agent_C_Process_task_planning,
             self.agent_D_Human_robot_machine_allocation,
         )
+
+    def update_human_task_availability_mask(self, env_state_action_dict: dict) -> dict:
+        mask = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
+        mask[0] = 1  # "none" task is always available
+        for human_state in env_state_action_dict["human"].values():
+            if human_state["state"] == "free":
+                mask[:] = 1
+                break
+        env_state_action_dict["agent_action_mask"]["human"]["task_availability_mask"] = mask
+        return env_state_action_dict
+
+    def update_human_self_availability_mask(self, env_state_action_dict: dict) -> dict:
+        mask = torch.zeros(self.upper_bound_num_human, dtype=torch.int32, device=self.cuda_device)
+        for i, human_state in enumerate(env_state_action_dict["human"].values()):
+            if human_state["state"] == "free":
+                mask[i] = 1
+        env_state_action_dict["agent_action_mask"]["human"]["self_availability_mask"] = mask
+        return env_state_action_dict
+
+    def update_robot_task_availability_mask(self, env_state_action_dict: dict) -> dict:
+        mask = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
+        mask[0] = 1  # "none" task is always available
+        for robot_state in env_state_action_dict["robot"].values():
+            if robot_state["state"] == "free":
+                mask[:] = 1
+                break
+        env_state_action_dict["agent_action_mask"]["robot"]["task_availability_mask"] = mask
+        return env_state_action_dict
+
+    def update_robot_self_availability_mask(self, env_state_action_dict: dict) -> dict:
+        mask = torch.zeros(self.upper_bound_num_robot, dtype=torch.int32, device=self.cuda_device)
+        for i, robot_state in enumerate(env_state_action_dict["robot"].values()):
+            if robot_state["state"] == "free":
+                mask[i] = 1
+        env_state_action_dict["agent_action_mask"]["robot"]["self_availability_mask"] = mask
+        return env_state_action_dict
+
+    def update_machine_task_availability_mask(self, env_state_action_dict: dict) -> dict:
+        mask = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
+        mask[0] = 1  # "none" task is always available
+        have_free_gantry = any(
+            state_name == "free"
+            for state_name in env_state_action_dict["machine"]["num07_gantry_group"]["state"]
+        )
+        for machine_name, machine_cfg in CfgMachine.items():
+            if machine_name == "num07_gantry_group":
+                continue
+            state = env_state_action_dict["machine"][machine_name]["state"]
+            can_do_logistic_task_names = machine_cfg["corresponding_logistic_task"]
+            for state_name in state:
+                if state_name == "free":
+                    if have_free_gantry:
+                        for task_name in can_do_logistic_task_names:
+                            task_index = CfgProcessTaskGalleryInAll[task_name]
+                            mask[task_index] = 1
+                elif state_name == "invalid":
+                    pass
+                else:
+                    pre_name = state_name.split("_")[0]
+                    task_name = state_name.split("_", 1)[1]
+                    if pre_name == "materialReadyFor":
+                        task_index = CfgProcessTaskGalleryInAll[task_name]
+                        mask[task_index] = 1
+                    elif pre_name == "working" or pre_name == "waiting":
+                        pass
+                    else:
+                        raise ValueError(f"Invalid machine state: {state_name}")
+        env_state_action_dict["agent_action_mask"]["machine"]["task_availability_mask"] = mask
+        return env_state_action_dict
+
+    def update_material_task_availability_mask(self, env_state_action_dict: dict) -> dict:
+        num_material_batches = len(env_state_action_dict["material"])
+        mask = torch.zeros(num_material_batches, len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
+        mask[:, 0] = 1  # "none" task is always available
+        ongoing_task_records = env_state_action_dict["progress"]["ongoing_task_records"]
+        for material_state in env_state_action_dict["material"].values():
+            material_batch_index = material_state["key_variables"]["idx"]
+            if material_batch_index in ongoing_task_records:
+                continue
+            product_type = material_state["key_variables"]["type_name"]
+            finished_task = material_state["finished_task"]
+            one_process_task_gallery = CfgProcessTaskGalleryDetailedClassified[product_type]
+            next_allowing_task_index = self._find_product_next_allowing_task_index(
+                finished_task, one_process_task_gallery
+            )
+            mask[material_batch_index][next_allowing_task_index] = 1
+        env_state_action_dict["agent_action_mask"]["material"]["task_availability_mask"] = mask
+        return env_state_action_dict
+
+    @staticmethod
+    def _find_product_next_allowing_task_index(finished_task, one_process_task_gallery):
+        keys = list(one_process_task_gallery.keys())
+        assert finished_task in keys, f"Current task {finished_task} not found in the product's process task gallery."
+        current_index = keys.index(finished_task)
+        next_index = current_index + 1
+        if next_index >= len(keys):
+            return CfgProcessTaskGalleryInAll["none"]
+        next_task = keys[next_index]
+        return CfgProcessTaskGalleryInAll[next_task]
 
 class ProductSequencerAgentMasker:
     def __init__(self, cuda_device: torch.device) -> None:
