@@ -167,8 +167,8 @@ class Machine:
         
         pre_name = workstation_state.split("_")[0]
         # free, materialReadyFor_task_name, working_task_name, waiting_processing_task, invalid
-        if pre_name != "working":
-            self.state["state"][chosen_workstation_index] = 'working_' + task_record["task"]
+        assert pre_name == "working", "The machine should be working on the task, and be defined in task_progress_manager.py"
+
         if machine_subtask == "done":
             self._task_done(env_state_action_dict, task_record)
         elif machine_subtask == "process":
@@ -214,6 +214,13 @@ class Machine:
             return
         elif task_type == "processing":
             self.state["state"][chosen_workstation_index] = "free"
+            # the next processing task is ready for the next workstation
+            if task_record["next_chosen_workstation_index"] is not None:
+                #the material is already on the machine, so no need to do logistic task for next processing task
+                next_target_machine = task_record["next_target_machine"]
+                next_chosen_workstation_index = task_record["next_chosen_workstation_index"]
+                machine_state = env_state_action_dict["machine"][next_target_machine]["state"]
+                machine_state[next_chosen_workstation_index] = "materialReadyFor_" + task_record["next_processing_task"]
         else:
             raise ValueError(f"Invalid task type: {task_type}")
         

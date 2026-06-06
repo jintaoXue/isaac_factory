@@ -180,7 +180,15 @@ class MaterialBatch:
         ongoing_index = subtasks["ongoing_index"]
         if ongoing_index == subtasks["num_subtasks"] - 1:
             ## task done, set the finished task and ongoing task record index to none
-            self.state["finished_task"] = task_record["task"]
+            if task_record["task_type"] == "processing":
+                if task_record["already_done_next_logistic_task"] == True:
+                    self.state["finished_task"] = task_record["next_logistic_task"]
+                else:
+                    self.state["finished_task"] = task_record["task"]
+            elif task_record["task_type"] == "logistic":
+                self.state["finished_task"] = task_record["task"]
+            else:
+                raise ValueError(f"Invalid task type: {task_record['task_type']}")
             self.state["ongoing_task_record_index"] = None
         all_materials = {**self.iter_raw_material_prims(), **self.iter_integrated_material_prims()}
         for material_type, material_prim in all_materials.items():

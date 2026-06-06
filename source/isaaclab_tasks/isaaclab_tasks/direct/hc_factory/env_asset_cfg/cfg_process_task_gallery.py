@@ -32,9 +32,11 @@ TaskRecordTemplate = {
     "subtasks_dict": None,
 
     "next_processing_task": None,
+    "next_logistic_task": None,
     "next_target_machine": None,
     "next_chosen_machine_workstation": None,
     "next_chosen_workstation_index": None,
+    "already_done_next_logistic_task": None,
 }
 
 
@@ -88,6 +90,7 @@ CfgProductProcessGallery = {
 
 # This contains the task gallery for all product types; each product type has its own process gallery.
 # All product process tasks share a common encoded index space defined by CfgProcessTaskGallery.
+
 CfgProcessTaskGalleryInAll = {
     "none": 0,
     "logistic_for_pipe_cutting": 1,
@@ -117,10 +120,12 @@ CfgProcessTaskGalleryDetailedClassified = {
             "processing_submaterials": None,
             "processed_material": None,
             "subtasks_dict": None,
+            "next_logistic_task": None,
             "next_processing_task": None,
             "next_target_machine": None,
             "next_chosen_machine_workstation": None,
             "next_chosen_workstation_index": None,
+            "already_done_next_logistic_task": None,
         },
         "logistic_for_pipe_cutting": {
             "task_type": "logistic",
@@ -131,10 +136,12 @@ CfgProcessTaskGalleryDetailedClassified = {
             "processing_submaterials": None,
             "processed_material": None,
             "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_pipe_cutting"],
+            "next_logistic_task": "logistic_for_pipe_grooving",
             "next_processing_task": "pipe_cutting",
             "next_target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine",
             "next_chosen_machine_workstation": None,
             "next_chosen_workstation_index": None,
+            "already_done_next_logistic_task": None,
         },
         "pipe_cutting": {
             "task_type": "processing",
@@ -145,10 +152,12 @@ CfgProcessTaskGalleryDetailedClassified = {
             "processing_submaterials": ["product_00_pipe"],
             "processed_material": "product_00_pipe",
             "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["pipe_cutting"],
+            "next_logistic_task": "logistic_for_pipe_grooving",
             "next_processing_task": "pipe_grooving",
             "next_target_machine": "num04_groovingMachineLarge",
             "next_chosen_machine_workstation": None,
             "next_chosen_workstation_index": None,
+            "already_done_next_logistic_task": None,
         },
         "logistic_for_pipe_grooving": {
             "task_type": "logistic",
@@ -159,10 +168,12 @@ CfgProcessTaskGalleryDetailedClassified = {
             "processing_submaterials": None,
             "processed_material": None,
             "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_pipe_grooving"],
+            "next_logistic_task": "logistic_for_batch_spot_welding",
             "next_processing_task": "pipe_grooving",
             "next_target_machine": "num04_groovingMachineLarge",
             "next_chosen_machine_workstation": None,
             "next_chosen_workstation_index": None,
+            "already_done_next_logistic_task": None,
         },
         "pipe_grooving": {
             "task_type": "processing",
@@ -173,10 +184,12 @@ CfgProcessTaskGalleryDetailedClassified = {
             "processing_submaterials": ["product_00_pipe"],
             "processed_material": "product_00_pipe",
             "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["pipe_grooving"],
+            "next_logistic_task": "logistic_for_batch_spot_welding",
             "next_processing_task": "batch_spot_welding",
             "next_target_machine": "num08_workbench",
             "next_chosen_machine_workstation": None,
             "next_chosen_workstation_index": None,
+            "already_done_next_logistic_task": None,
         },
         "logistic_for_batch_spot_welding": {
             "task_type": "logistic",
@@ -187,10 +200,12 @@ CfgProcessTaskGalleryDetailedClassified = {
             "processing_submaterials": None,
             "processed_material": None,
             "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_batch_spot_welding"],
+            "next_logistic_task": "logistic_for_arc_welding_root",
             "next_processing_task": "batch_spot_welding",
             "next_target_machine": "num08_workbench",
             "next_chosen_machine_workstation": None,
             "next_chosen_workstation_index": None,
+            "already_done_next_logistic_task": None,
         },
         "batch_spot_welding": {
             "task_type": "processing",
@@ -201,10 +216,12 @@ CfgProcessTaskGalleryDetailedClassified = {
             "processing_submaterials": ["product_00_pipe", "product_00_flange", "product_00_elbow"],
             "processed_material": "product_00_semi",
             "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"],
+            "next_logistic_task": "logistic_for_arc_welding_root",
             "next_processing_task": "arc_welding_root",
             "next_target_machine": "num01_weldingRobot",
             "next_chosen_machine_workstation": None,
             "next_chosen_workstation_index": None,
+            "already_done_next_logistic_task": None,
         },
         "logistic_for_arc_welding_root": {
             "task_type": "logistic",
@@ -215,10 +232,12 @@ CfgProcessTaskGalleryDetailedClassified = {
             "processing_submaterials": None,
             "processed_material": None,
             "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_arc_welding_root"],
+            "next_logistic_task": "logistic_for_MIG_welding_surface",
             "next_processing_task": "arc_welding_root",
             "next_target_machine": "num01_weldingRobot",
             "next_chosen_machine_workstation": None,
             "next_chosen_workstation_index": None,
+            "already_done_next_logistic_task": None,
         },
         "arc_welding_root": {
             "task_type": "processing",
@@ -229,10 +248,12 @@ CfgProcessTaskGalleryDetailedClassified = {
             "processing_submaterials": ["product_00_semi"],
             "processed_material": "product_00_semi",
             "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["arc_welding_root"],
+            "next_logistic_task": "logistic_for_MIG_welding_surface",
             "next_processing_task": "MIG_welding_surface",
             "next_target_machine": "num00_rotaryPipeAutomaticWeldingMachine",
             "next_chosen_machine_workstation": None,
             "next_chosen_workstation_index": None,
+            "already_done_next_logistic_task": None,
         },
         "logistic_for_MIG_welding_surface": {
             "task_type": "logistic",
@@ -243,10 +264,12 @@ CfgProcessTaskGalleryDetailedClassified = {
             "processing_submaterials": None,
             "processed_material": None,
             "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_MIG_welding_surface"],
+            "next_logistic_task": "logistic_for_paint_rust_proof",
             "next_processing_task": "MIG_welding_surface",
             "next_target_machine": "num00_rotaryPipeAutomaticWeldingMachine",
             "next_chosen_machine_workstation": None,
             "next_chosen_workstation_index": None,
+            "already_done_next_logistic_task": None,
         },
         "MIG_welding_surface": {
             "task_type": "processing",
@@ -257,10 +280,12 @@ CfgProcessTaskGalleryDetailedClassified = {
             "processing_submaterials": ["product_00_semi"],
             "processed_material": "product_00_semi",
             "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["MIG_welding_surface"],
+            "next_logistic_task": "logistic_for_paint_rust_proof",
             "next_processing_task": "paint_rust_proof",
             "next_target_machine": "num08_workbench",
             "next_chosen_machine_workstation": None,
             "next_chosen_workstation_index": None,
+            "already_done_next_logistic_task": None,
         },
         "logistic_for_paint_rust_proof": {
             "task_type": "logistic",
@@ -271,10 +296,12 @@ CfgProcessTaskGalleryDetailedClassified = {
             "processing_submaterials": None,
             "processed_material": None,
             "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_paint_rust_proof"],
+            "next_logistic_task": None,
             "next_processing_task": "paint_rust_proof",
             "next_target_machine": "num08_workbench",
             "next_chosen_machine_workstation": None,
             "next_chosen_workstation_index": None,
+            "already_done_next_logistic_task": None,
         },
         "paint_rust_proof": {
             "task_type": "processing",
@@ -285,10 +312,12 @@ CfgProcessTaskGalleryDetailedClassified = {
             "processing_submaterials": ["product_00_semi"],
             "processed_material": "product_00_maded",
             "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["paint_rust_proof"],
+            "next_logistic_task": None,
             "next_processing_task": None,
             "next_target_machine": None,
             "next_chosen_machine_workstation": None,
             "next_chosen_workstation_index": None,
+            "already_done_next_logistic_task": None,
         },
     },
 }

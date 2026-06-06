@@ -126,9 +126,7 @@ class Robot:
         task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
         assert task_record["robot_index"] == self.idx, "The robot index should be the same as the robot index in the task record"
     
-        if self.state["state"] == "free":
-            #robot is chosen to work on the task
-            self.state["state"] = 'working_' + task_record["task"]
+        assert self.state["state"] != "free", "The robot should be working on the task, and be defined in task_progress_manager.py"
         
         #now robot is only for logistic
         self.step_logistic(env_state_action_dict, task_record)

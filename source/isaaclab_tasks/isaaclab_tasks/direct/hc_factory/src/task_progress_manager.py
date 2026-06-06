@@ -97,7 +97,7 @@ class TaskManager:
         action_human = action_human_robot_allocation["human"]
         #shape is (upper_bound_num_robot,)
         action_robot = action_human_robot_allocation["robot"]   
-        if action_human.sum() != 0:
+        if action_human.sum() == 1:
             _index = action_human.nonzero()[0][0]
             _index = _index.item()
             key_name = list(env_state_action_dict["human"].keys())[_index]
@@ -128,10 +128,10 @@ class TaskManager:
             for i, state in enumerate(states):
                 pre_name = state.split('_')[0]
                 task_name = state.split('_', 1)[1]
-                assert pre_name == "materialReadyFor", "The pre_name should be materialReadyFor, but got {pre_name}"
-                if task_name == new_task_record["task"]:
-                    workstation_index = i
-                    break
+                if pre_name == "materialReadyFor":
+                    if task_name == new_task_record["task"]:
+                        workstation_index = i
+                        break
         else:
             raise ValueError(f"Invalid task type: {new_task_record['task_type']}")
         new_task_record["chosen_machine_workstation"] = \
@@ -196,7 +196,6 @@ class TaskManager:
     
     def apply_new_task_record_to_human_robot_machine_material(self, env_state_action_dict, task_record):
         #apply the new task record to the human, robot, and machine
-
         #machine
         machine_type = task_record["target_machine"]
         if machine_type != None:
@@ -204,17 +203,23 @@ class TaskManager:
             ongoing_task_record_index = env_state_action_dict["machine"][machine_type]["ongoing_task_record_index"]
             assert ongoing_task_record_index[chosen_workstation_index] is None, "The ongoing task record should be empty"
             ongoing_task_record_index[chosen_workstation_index] = task_record["product_index"]
+            env_state_action_dict["machine"][machine_type]["state"][chosen_workstation_index] = "working_" + task_record["task"]
+        elif task_record["task"] == "logistic_for_paint_rust_proof":
+            env_state_action_dict["machine"]["num07_gantry_group"]["state"][5] = "working_" + task_record["task"]
+        else:
+            raise ValueError(f"Invalid task: {task_record['task']}")
         #human
         human = task_record["human"]
         if human != None:
             assert env_state_action_dict["human"][human]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
             env_state_action_dict["human"][human]["ongoing_task_record_index"] = task_record["product_index"]
+            env_state_action_dict["human"][human]["state"] = "working_" + task_record["task"]
         #robot
         robot = task_record["robot"]
         if robot != None:
             assert env_state_action_dict["robot"][robot]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
             env_state_action_dict["robot"][robot]["ongoing_task_record_index"] = task_record["product_index"]
-
+            env_state_action_dict["robot"][robot]["state"] = "working_" + task_record["task"]
         logistic_machine_type = task_record["logistic_machine"]
         if logistic_machine_type != None:
             if task_record["task_type"] == "logistic":
@@ -277,12 +282,6 @@ class TaskManager:
             if task_record["subtasks_dict"]["ongoing_index"] == task_record["subtasks_dict"]["num_subtasks"] - 1:
                 ## all subtasks are done
                 task_record["task_done"] = True
-                if task_record["task_type"] == "processing":
-                    if task_record["next_chosen_workstation_index"] is not None:
-                        #the material is already on the machine, so no need to do logistic task for next processing task
-                        workstation_index = task_record["next_chosen_workstation_index"]
-                        machine_state = env_state_action_dict["machine"][task_record["next_target_machine"]]["state"]
-                        machine_state[workstation_index] = "materialReadyFor_" + task_record["next_processing_task"]
                 return True
             else:
                 task_record["subtasks_dict"]["ongoing_index"] += 1
@@ -311,13 +310,15 @@ class TaskManager:
             elif task_record["subtasks_dict"]["ongoing_index"] == task_record["subtasks_dict"]["index_to_decide_goal_area"] and \
                   task_record["subtasks_dict"]["goal_area_ids"] is None:
                 if task_record["is_final_task"] == True:
+                    #no processing task after this task, so the processed material will be put on a storage
                     goal_storage_name = self._find_free_storage(env_state_action_dict, task_record)
                     task_record["subtasks_dict"]["goal_area_ids"] = env_state_action_dict["storage"][goal_storage_name]["key_variables"]["working_area_ids"]
                 else:
                     next_target_machine = task_record["next_target_machine"]
                     machine_state = env_state_action_dict["machine"][next_target_machine]["state"]
                     if "free" in machine_state:
-                        # the processed material will be put on the free workstation of the next target machine
+                        # the processed material will be put on the free workstation of the next target machine, no need to do logistic task for next processing task
+                        task_record["already_done_next_logistic_task"] = True
                         task_record["next_chosen_workstation_index"] = machine_state.index("free")
                         machine_state[task_record["next_chosen_workstation_index"]] = "waiting_" + task_record["task"]
                         workstation_key = list(env_state_action_dict["machine"][next_target_machine]["key_variables"]["working_area_ids"].keys())[task_record["next_chosen_workstation_index"]]
@@ -326,6 +327,7 @@ class TaskManager:
                         task_record["subtasks_dict"]["material_goal_area"] = next_target_machine
                         task_record["subtasks_dict"]["goal_area_workstation_key"] = workstation_key
                     else:
+                        task_record["already_done_next_logistic_task"] = False
                         goal_storage_name = self._find_free_storage(env_state_action_dict, task_record)
                         task_record["subtasks_dict"]["goal_area_ids"] = env_state_action_dict["storage"][goal_storage_name]["key_variables"]["working_area_ids"]
 

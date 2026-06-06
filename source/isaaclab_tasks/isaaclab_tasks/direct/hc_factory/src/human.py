@@ -44,8 +44,8 @@ class HumanManager:
     def step(self, env_state_action_dict: dict) -> dict:
         for human in self.human_list:
             human.step(env_state_action_dict)
-        # self.update_task_availability_mask(env_state_action_dict)
-        # self.update_self_availability_mask(env_state_action_dict)
+        self.update_task_availability_mask(env_state_action_dict)
+        self.update_self_availability_mask(env_state_action_dict)
 
         return env_state_action_dict
     
@@ -93,7 +93,7 @@ class Human:
         self._register_skeleton()
         self._register_rigid_prim()
         ### dynmaic variables
-        self.state : str = None
+        self.state : dict = {}
 
     def _register_skeleton(self):
         meta = self.meta_registeration_info
@@ -121,7 +121,7 @@ class Human:
         }
 
     def reset(self, env_state_action_dict: dict, init_point_in_map: torch.tensor, init_point_id: int) -> dict:
-        self.state : str = copy.deepcopy(self.reset_state)
+        self.state : dict = copy.deepcopy(self.reset_state)
         self.state["current_area_id"] = init_point_id
         env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"] = self.state
         self.reset_to_random_map_point(env_state_action_dict, init_point_in_map)
@@ -143,9 +143,7 @@ class Human:
         task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
         assert task_record["human_index"] == self.idx, "The human index should be the same as the human index in the task record"
 
-        if self.state["state"] == "free":
-            #human is chosen to work on the task
-            self.state["state"] = 'working_' + task_record["task"]
+        assert self.state["state"] != "free", "The human should be working on the task, and be defined in task_progress_manager.py"
         
         subtasks = task_record["subtasks_dict"]
         subtask = subtasks["ongoing"]
