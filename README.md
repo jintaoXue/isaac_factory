@@ -105,3 +105,5 @@ storage 的管理
 #6.4 logistic 的goal area id的initialize其实可以完善一下（好像也不用）
 
 ##6.5 material 的state update 有问题在processing task完成之后不一定就是next task可能是next processing task
+
+6.6 mask要删掉 route函数要检查
