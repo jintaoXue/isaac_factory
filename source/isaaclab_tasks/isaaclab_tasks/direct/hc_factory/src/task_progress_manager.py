@@ -302,17 +302,18 @@ class TaskManager:
             elif task_record["subtasks_dict"]["ongoing"][1] == "finding_free_gantry" and task_record["subtasks_dict"]["finished"][1] == False:
                 if task_record["chosen_gantry_index"] is None:
                     task_record["chosen_gantry_index"] = self._find_free_gantry(env_state_action_dict, task_record)
-                else:
-                    #finded the free gantry
-                    env_state_action_dict["machine"]["num07_gantry_group"]["ongoing_task_record_index"][0] = task_record["product_index"]
-                    task_record["subtasks_dict"]["finished"][1] = True
+                    if task_record["chosen_gantry_index"] is not None:
+                        env_state_action_dict["machine"]["num07_gantry_group"]["ongoing_task_record_index"][0] = task_record["product_index"]
+                        env_state_action_dict["machine"]["num07_gantry_group"]["state"][0] = "working_" + task_record["task"]
+                        task_record["subtasks_dict"]["finished"][1] = True
             ### where the processed material will be put on
-            elif task_record["subtasks_dict"]["ongoing_index"] == task_record["subtasks_dict"]["index_to_decide_goal_area"] and \
+            elif task_record["subtasks_dict"]["ongoing_index"] >= task_record["subtasks_dict"]["index_to_decide_goal_area"] and \
                   task_record["subtasks_dict"]["goal_area_ids"] is None:
                 if task_record["is_final_task"] == True:
                     #no processing task after this task, so the processed material will be put on a storage
                     goal_storage_name = self._find_free_storage(env_state_action_dict, task_record)
                     task_record["subtasks_dict"]["goal_area_ids"] = env_state_action_dict["storage"][goal_storage_name]["key_variables"]["working_area_ids"]
+                    task_record["subtasks_dict"]["material_goal_area"] = goal_storage_name
                 else:
                     next_target_machine = task_record["next_target_machine"]
                     machine_state = env_state_action_dict["machine"][next_target_machine]["state"]
@@ -330,7 +331,7 @@ class TaskManager:
                         task_record["already_done_next_logistic_task"] = False
                         goal_storage_name = self._find_free_storage(env_state_action_dict, task_record)
                         task_record["subtasks_dict"]["goal_area_ids"] = env_state_action_dict["storage"][goal_storage_name]["key_variables"]["working_area_ids"]
-
+                        task_record["subtasks_dict"]["material_goal_area"] = goal_storage_name
     
     def _find_free_storage(self, env_state_action_dict, task_record):
         storages = env_state_action_dict["storage"]

@@ -230,7 +230,11 @@ class MaterialBatch:
             elif material_state == "on_machine":
                 ### on_machine currently only for processing task, and is the start area for processing task
                 workstation_key = task_record["chosen_machine_workstation"]
-                position = env_state_action_dict["articulations"][workstation_key]["object"].get_local_poses()[0]
+                if task_record["target_machine"] == "num08_workbench":
+                    position = CfgMachine["num08_workbench"]["material_placement_cfg"][workstation_key]["position"]
+                    position = position.to(self.cuda_device).unsqueeze(0)
+                else:
+                    position = env_state_action_dict["articulations"][workstation_key]["object"].get_local_poses()[0]
             else:
                 raise ValueError(f"Invalid material state: {material_state}")
             env_state_action_dict["rigid_prims"][material_name]["position"] = position

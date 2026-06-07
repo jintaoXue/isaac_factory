@@ -103,6 +103,7 @@ class Machine:
         self.corresponding_logistic_task = cfg["corresponding_logistic_task"]
         self.reset_state = copy.deepcopy(cfg["reset_state"])
         self.working_area_ids = cfg["working_area_ids"]
+        self.material_placement_cfg = cfg["material_placement_cfg"]
         self.reset_state["key_variables"] = self.iter_key_variables()
         ### dynmaic variables
         self.state : dict = {}
@@ -146,6 +147,7 @@ class Machine:
             "type_name": self.type_name, 
             "working_area_ids": self.working_area_ids,
             "num_workstations": self.num_workstations,
+            "material_placement_cfg": self.material_placement_cfg,
         }
 
     def step(self, env_state_action_dict: dict) -> dict:
@@ -178,9 +180,10 @@ class Machine:
         else:
             raise ValueError(f"Invalid machine subtask for processing: {machine_subtask}")
         ## animation
-        chosen_machine_workstation = task_record["chosen_machine_workstation"]
-        animation_obj : PoseAnimation = getattr(self, f"animation_{chosen_machine_workstation}", None)
-        env_state_action_dict["articulations"][chosen_machine_workstation]["joint_position"] = animation_obj.step_next_pose()
+        if self.type_name != "num08_workbench":
+            chosen_machine_workstation = task_record["chosen_machine_workstation"]
+            animation_obj : PoseAnimation = getattr(self, f"animation_{chosen_machine_workstation}", None)
+            env_state_action_dict["articulations"][chosen_machine_workstation]["joint_position"] = animation_obj.step_next_pose()
 
 
     def _subtask_process(self, env_state_action_dict: dict, task_record: dict, subtasks: dict) -> None:
@@ -199,7 +202,12 @@ class Machine:
                 obj_animation.set_target_pose(self.state["target_joints_position"][chosen_workstation_index])
         ## processing the material on the machine
         self.state["processing_time_step"][chosen_workstation_index] += 1
-        if self.state["processing_time_step"][chosen_workstation_index] >= self.registration_infos[chosen_machine_workstation]["animation_time"]:
+        animation_time = None
+        if self.type_name != "num08_workbench":
+            animation_time = self.registration_infos[chosen_machine_workstation]["animation_time"]
+        elif self.type_name == "num08_workbench":
+            animation_time = self.registration_infos["num08_workbench"]["animation_time"]
+        if self.state["processing_time_step"][chosen_workstation_index] >= animation_time:
             subtasks["finished"][2] = True
             self.state["processing_time_step"][chosen_workstation_index] = 0
     
@@ -457,3 +465,23 @@ class num08_workbench(Machine):
         self.num08_workbench = None
         self.animation_num08_workbench: PoseAnimation = None
         super().__init__(cfg=CfgMachine["num08_workbench"], env_id=env_id, cuda_device=cuda_device)
+    
+    def reset_articulations(self) -> dict:
+        # The num08_workbench has 2 workstations, but they share the same articulation
+        articulations_values: dict = {}
+        obj_name = "num08_workbench"
+        obj = getattr(self, obj_name, None)
+        workstation_names = ["num08_workbench_station_00", "num08_workbench_station_01"]
+        joint_positions_reset : torch.Tensor = self.registration_infos[obj_name]["joint_positions_reset"].to(self.cuda_device)
+        # The num08_workbench is actually a manual workbench, so the joint positions are not important.
+        # We simply set them to the reset positions to maintain a consistent format.
+        articulations_values[workstation_names[0]] = {
+            "object": obj,
+            "joint_position": joint_positions_reset,
+        }
+        articulations_values[workstation_names[1]] = {
+            "object": obj,
+            "joint_position": joint_positions_reset,
+        }
+        
+        return articulations_values

@@ -35,13 +35,23 @@ CfgMachine = {
                 "gantry_parking_areas_ids": [60],
             },
         },
+        "material_placement_cfg": {
+            "num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
+                "position": torch.tensor([0.0, 0.0, 0.0]),
+                "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0]),
+            },
+            "num00_rotaryPipeAutomaticWeldingMachine_part_02_station": {
+                "position": torch.tensor([0.0, 0.0, 0.0]),
+                "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0]),
+            },
+        },
         "registration_infos": {
             "num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
                 #prim_paths_expr is the path in .usd file
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num00_rotaryPipeAutomaticWeldingMachine/part_01_station/track_for_mobile_base",
                 "joint_positions_working": torch.tensor([0.0, 2.0]),
                 "joint_positions_reset": torch.tensor([0.0, 0.0]),
-                "animation_time": 100,
+                "animation_time": 20,
             },
             "num00_rotaryPipeAutomaticWeldingMachine_part_02_station": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num00_rotaryPipeAutomaticWeldingMachine/part_02_station/track_for_mobile_base_001",
@@ -74,18 +84,24 @@ CfgMachine = {
                 "gantry_parking_areas_ids": [66],
             },
         },
+        "material_placement_cfg": {
+            "num01_weldingRobot_part02_robot_arm_and_base": {
+                "position": torch.tensor([0.0, 0.0, 0.0]),
+                "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0]),
+            },
+        },
         "registration_infos": {
             "num01_weldingRobot_part02_robot_arm_and_base": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num01_weldingRobot/part02_robot_arm_and_base",
                 "joint_positions_working": torch.tensor([3.2, -1.5, -0.3, 0.1, 0.2, 0.0]),
                 "joint_positions_reset": torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-                "animation_time": 100,
+                "animation_time": 20,
             },
             "num01_weldingRobot_part04_mobile_base_for_material": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num01_weldingRobot/part04_mobile_base_for_material",
                 "joint_positions_working": torch.tensor([-2.0]),
                 "joint_positions_reset": torch.tensor([0.0]),
-                "animation_time": 100,
+                "animation_time": 20,
             },
         },
     },
@@ -113,18 +129,24 @@ CfgMachine = {
                 "gantry_parking_areas_ids": [78],
             },
         },
+        "material_placement_cfg": {
+            "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
+                "position": torch.tensor([0.0, 0.0, 0.0]),
+                "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0]),
+            },
+        },
         "registration_infos": {
             "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num02_rollerbedCNCPipeIntersectionCuttingMachine/part01_station",
                 "joint_positions_working": torch.tensor([1.0]),
                 "joint_positions_reset": torch.tensor([0.0]),
-                "animation_time": 100,
+                "animation_time": 20,
             },
             "num02_rollerbedCNCPipeIntersectionCuttingMachine_part05_cutting_machine": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num02_rollerbedCNCPipeIntersectionCuttingMachine/part05_cutting_machine",
                 "joint_positions_working": torch.tensor([-2.0, 0.3, 0.5]),
                 "joint_positions_reset": torch.tensor([0.0, 0.0, 0.0]),
-                "animation_time": 100,
+                "animation_time": 20,
             },
         },
     },
@@ -152,12 +174,18 @@ CfgMachine = {
                 "gantry_parking_areas_ids": [111],
             },
         },
+        "material_placement_cfg": {
+            "num03_laserCuttingMachine": {
+                "position": torch.tensor([0.0, 0.0, 0.0]),
+                "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0]),
+            },
+        },
         "registration_infos": {
             "num03_laserCuttingMachine": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num03_laserCuttingMachine",
                 "joint_positions_working": torch.tensor([-3.5]),
                 "joint_positions_reset": torch.tensor([0.0]),
-                "animation_time": 100,
+                "animation_time": 20,
             },
         },
     },
@@ -185,18 +213,24 @@ CfgMachine = {
                 "gantry_parking_areas_ids": [136],
             },
         },
+        "material_placement_cfg": {
+            "num04_groovingMachineLarge_part01_large_fixed_base": {
+                "position": torch.tensor([0.0, 0.0, 0.0]),
+                "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0]),
+            },
+        },
         "registration_infos": {
             "num04_groovingMachineLarge_part01_large_fixed_base": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num04_groovingMachineLarge/part01_large_fixed_base",
                 "joint_positions_working": torch.tensor([-0.2, 0.0]),
                 "joint_positions_reset": torch.tensor([0.0, 0.0]),
-                "animation_time": 100,
+                "animation_time": 20,
             },
             "num04_groovingMachineLarge_part02_large_mobile_base": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num04_groovingMachineLarge/part02_large_mobile_base",
                 "joint_positions_working": torch.tensor([-1.0]),
                 "joint_positions_reset": torch.tensor([0.0]),
-                "animation_time": 100,
+                "animation_time": 20,
             },
         },
     },
@@ -224,18 +258,24 @@ CfgMachine = {
                 "gantry_parking_areas_ids": [139],
             },
         },
+        "material_placement_cfg": {
+            "num05_groovingMachineSmall_part01_small_fixed_base": {
+                "position": torch.tensor([0.0, 0.0, 0.0]),
+                "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0]),
+            },
+        },
         "registration_infos": {
             "num05_groovingMachineSmall_part01_small_fixed_base": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num05_groovingMachineSmall/part01_small_fixed_base",
                 "joint_positions_working": torch.tensor([-0.3, -0.5]),
                 "joint_positions_reset": torch.tensor([0.0, 0.0]),
-                "animation_time": 100,
+                "animation_time": 20,
             },
             "num05_groovingMachineSmall_part02_small_mobile_handle": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num05_groovingMachineSmall/part02_small_mobile_handle",
                 "joint_positions_working": torch.tensor([-0.3, -0.5]),
                 "joint_positions_reset": torch.tensor([0.0, 0.0]),
-                "animation_time": 100,
+                "animation_time": 20,
             },
         },
     },
@@ -263,12 +303,18 @@ CfgMachine = {
                 "gantry_parking_areas_ids": [131],
             },
         },
+        "material_placement_cfg": {
+            "num06_highPressureFoamingMachine": {
+                "position": torch.tensor([0.0, 0.0, 0.0]),
+                "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0]),
+            },
+        },
         "registration_infos": {
             "num06_highPressureFoamingMachine": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num06_highPressureFoamingMachine",
                 "joint_positions_working": torch.tensor([-0.7]),
                 "joint_positions_reset": torch.tensor([0.0]),
-                "animation_time": 100,
+                "animation_time": 20,
             },
         },
     },
@@ -326,6 +372,7 @@ CfgMachine = {
                 "gantry_parking_areas_ids": [],
             },
         },
+        "material_placement_cfg": {},
         "registration_infos": {
             "num07_gantry_group": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num07_gantry_group/gantry_00",
@@ -337,7 +384,7 @@ CfgMachine = {
                 "gantry_indexs": torch.tensor([0, 1, 2, 3, 0, 1, 2, 3]),
                 ### to simplify the problem, we set the z of hook to be fixed, and only control the x and y movement of the gantry, so the joint position of z axis is not used for calculating the reward and is not included in the observation, but it is still needed for animation and calculating the offset between the hook and the material when gripping.
                 "fixed_hook_height": 8.90808,
-                "animation_time": 100,
+                "animation_time": 20,
             },
         },
     },
@@ -372,12 +419,24 @@ CfgMachine = {
                 "gantry_parking_areas_ids": [47],
             },
         },
+        "material_placement_cfg": {
+            "num08_workbench_station_00": {
+                "position": torch.tensor([0.0, 0.0, 0.0]), 
+                "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0])
+            },
+            "num08_workbench_station_01": {
+                "position": torch.tensor([0.0, 0.0, 0.0]),
+                "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0]),
+            },
+        },
+        # The num08_workbench is actually a manual workbench, so the joint positions are not important.
+        # We simply set them to the reset positions to maintain a consistent format.
         "registration_infos": {
             "num08_workbench": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/num08_workbench",
                 "joint_positions_working": torch.tensor([0.0]),
                 "joint_positions_reset": torch.tensor([0.0]),
-                "animation_time": 100,
+                "animation_time": 20,
             },
         },
     },
