@@ -39,8 +39,8 @@ OptionalInitPointIds = {
 # 可选初始化点集合 in map points (template refined with correct structure and type hints)
 RouteOptionalInitPointsInMap: dict = {
     # Lists of initialization points (xyz[x,y,z])
-    "human_xyz": [],
-    "robot_xyz": [],
+    "human_xyz": torch.tensor([], dtype=torch.float32),
+    "robot_xyz": torch.tensor([], dtype=torch.float32),
 }
 
 

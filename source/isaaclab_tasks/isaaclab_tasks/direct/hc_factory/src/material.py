@@ -180,9 +180,17 @@ class MaterialBatch:
         ongoing_index = subtasks["ongoing_index"]
         if ongoing_index == subtasks["num_subtasks"] - 1:
             ## task done, set the finished task and ongoing task record index to none
-            self.state["finished_task"] = task_record["task"]
+            if task_record["task_type"] == "processing":
+                if task_record["already_done_next_logistic_task"] == True:
+                    self.state["finished_task"] = task_record["next_logistic_task"]
+                else:
+                    self.state["finished_task"] = task_record["task"]
+            elif task_record["task_type"] == "logistic":
+                self.state["finished_task"] = task_record["task"]
+            else:
+                raise ValueError(f"Invalid task type: {task_record['task_type']}")
             self.state["ongoing_task_record_index"] = None
-        all_materials = {**self.iter_integrated_material_prims(), **self.iter_raw_material_prims()}
+        all_materials = {**self.iter_raw_material_prims(), **self.iter_integrated_material_prims()}
         for material_type, material_prim in all_materials.items():
             material_name = f"num_{self.idx:02d}_{material_type}"
             material_state = material_subtask[material_type][ongoing_index]
@@ -220,8 +228,13 @@ class MaterialBatch:
                     position = slot_pose["position"]
                     env_state_action_dict["rigid_prims"][material_name]["orientation"] = slot_pose["orientation"]
             elif material_state == "on_machine":
-                workstation_key = subtasks["goal_area_workstation_key"]
-                position = env_state_action_dict["articulations"][workstation_key]["object"].get_local_poses()[0]
+                ### on_machine currently only for processing task, and is the start area for processing task
+                workstation_key = task_record["chosen_machine_workstation"]
+                if task_record["target_machine"] == "num08_workbench":
+                    position = CfgMachine["num08_workbench"]["material_placement_cfg"][workstation_key]["position"]
+                    position = position.to(self.cuda_device).unsqueeze(0)
+                else:
+                    position = env_state_action_dict["articulations"][workstation_key]["object"].get_local_poses()[0]
             else:
                 raise ValueError(f"Invalid material state: {material_state}")
             env_state_action_dict["rigid_prims"][material_name]["position"] = position

@@ -45,6 +45,8 @@ class HumanManager:
         for human in self.human_list:
             human.step(env_state_action_dict)
         self.update_task_availability_mask(env_state_action_dict)
+        self.update_self_availability_mask(env_state_action_dict)
+
         return env_state_action_dict
     
     def update_task_availability_mask(self, env_state_action_dict: dict) -> dict:
@@ -91,7 +93,7 @@ class Human:
         self._register_skeleton()
         self._register_rigid_prim()
         ### dynmaic variables
-        self.state : str = None
+        self.state : dict = {}
 
     def _register_skeleton(self):
         meta = self.meta_registeration_info
@@ -119,7 +121,7 @@ class Human:
         }
 
     def reset(self, env_state_action_dict: dict, init_point_in_map: torch.tensor, init_point_id: int) -> dict:
-        self.state : str = copy.deepcopy(self.reset_state)
+        self.state : dict = copy.deepcopy(self.reset_state)
         self.state["current_area_id"] = init_point_id
         env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"] = self.state
         self.reset_to_random_map_point(env_state_action_dict, init_point_in_map)
@@ -141,9 +143,7 @@ class Human:
         task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
         assert task_record["human_index"] == self.idx, "The human index should be the same as the human index in the task record"
 
-        if self.state["state"] == "free":
-            #human is chosen to work on the task
-            self.state["state"] = 'working_' + task_record["task"]
+        assert self.state["state"] != "free", "The human should be working on the task, and be defined in task_progress_manager.py"
         
         subtasks = task_record["subtasks_dict"]
         subtask = subtasks["ongoing"]
@@ -161,7 +161,7 @@ class Human:
             self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "goal")
         elif human_subtask == "material_on_goal_area":
             self._time_counting_subtask(subtasks, human_subtask)    
-        elif human_subtask == "go_to_target_machine":
+        elif human_subtask == "go_to_processing_machine":
             self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "start")
         elif human_subtask == "control_machine":
             self._time_counting_subtask(subtasks, human_subtask)
@@ -176,7 +176,8 @@ class Human:
     def _subtask_go_to_target(self, env_state_action_dict: dict, task_record: dict, subtasks: dict, target_area_type: str) -> None:
         if subtasks["finished"][0] == True:
             return
-        elif self.state["target_area_id"] is None:
+        
+        if self.state["target_area_id"] is None:
             if target_area_type == "start":
                 assert task_record["subtasks_dict"]["start_area_ids"] is not None, "The start area ids should be initialized in task_progress_manager.py"
                 target_area_id = task_record["subtasks_dict"]["start_area_ids"]["human_working_areas_ids"][0]
@@ -188,6 +189,10 @@ class Human:
             self.state["target_area_id"] = target_area_id
         elif self.state["target_area_id"] == self.state["current_area_id"]:
             subtasks["finished"][0] = True
+            self.state["target_area_id"] = None
+            self.state["route_index"] = 0
+            self.state["route_length"] = 0
+            self.state["generated_route"] = []
         else:
             # the human is going to the target area by route planner in route.py
             pass

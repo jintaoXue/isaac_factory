@@ -26,7 +26,7 @@ class RuleBasedMultiAgent():
         self.env_info = config.get('env_info')
         if self.env_info is None:
             self.vec_env = vecenv.create_vec_env(self.env_name, self.num_actors, **self.env_config)
-            self.env_info = self.vec_env.get_env_info()
+            self.env_info : dict = self.vec_env.get_env_info()
 
         self.cuda_device = self.env_info["cuda_device"]
         self.agent_A_product_sequencer = ProductSequencingAgent(self.cuda_device)
@@ -42,7 +42,7 @@ class RuleBasedMultiAgent():
         actions_extra : list[dict] = []
         for env_id in range(num_envs):
             product_sequencing_action = self.agent_A_product_sequencer.act(obs[env_id])
-            product_selection_action = self.agent_B_product_selector.act(obs[env_id], product_sequencing_action)
+            product_selection_action = self.agent_B_product_selector.act(obs[env_id])
             process_task_planning_action = self.agent_C_process_task_planner.act(obs[env_id], product_selection_action)
             human_robot_allocation_action = self.agent_D_human_robot_allocator.act(obs[env_id], 
                                                         product_selection_action, process_task_planning_action)

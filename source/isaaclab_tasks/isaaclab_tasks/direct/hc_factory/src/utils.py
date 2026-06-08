@@ -12,7 +12,7 @@ class PoseAnimation:
     def __init__(self, start_pose: torch.Tensor, end_pose: torch.Tensor, animation_time: int, device: torch.device):
         self.animation_time = animation_time
         self.device = device
-        self.reinitialize(start_pose.to(device), end_pose.to(device))
+        self.initialize(start_pose.to(device), end_pose.to(device))
 
     def step_next_pose(self):
         self.done = self.is_done()
@@ -28,11 +28,11 @@ class PoseAnimation:
 
     def set_target_pose(self, target_pose: torch.Tensor):
         self.start_pose = self.end_pose
-        self.end_pose = target_pose
+        self.end_pose = target_pose.to(self.device)
         self.step_time = 0
         self.done = self.is_done()
     
-    def reinitialize(self, start_pose: torch.Tensor, end_pose: torch.Tensor):
+    def initialize(self, start_pose: torch.Tensor, end_pose: torch.Tensor):
         self.start_pose = start_pose
         self.end_pose = end_pose
         self.step_time = 0

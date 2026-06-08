@@ -33,26 +33,6 @@ SingleEnvStateActionDictTemplate : dict = {
     "human": {},
     "robot": {},
     "storage": {},
-    "route": {
-        "human": {
-            "current_area_id": "none",
-            "target_area_id": "none",
-            "generated_route": [],
-            "route_index": 0,
-            "route_length": 0,
-        },
-        "robot": {
-            "current_area_id": "none",
-            "target_area_id": "none",
-            "generated_route": [],
-            "route_index": 0,
-            "route_length": 0,
-        },
-        "gantry": {
-            "current_joints_position": "none",
-            "target_joints_position": "none",
-        },
-    },
     "articulations": {},
     "rigid_prims": {},
     "progress": {

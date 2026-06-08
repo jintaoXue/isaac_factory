@@ -126,9 +126,7 @@ class Robot:
         task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
         assert task_record["robot_index"] == self.idx, "The robot index should be the same as the robot index in the task record"
     
-        if self.state["state"] == "free":
-            #robot is chosen to work on the task
-            self.state["state"] = 'working_' + task_record["task"]
+        assert self.state["state"] != "free", "The robot should be working on the task, and be defined in task_progress_manager.py"
         
         #now robot is only for logistic
         self.step_logistic(env_state_action_dict, task_record)
@@ -153,7 +151,8 @@ class Robot:
     def _subtask_go_to_target(self, env_state_action_dict: dict, task_record: dict, subtasks: dict, target_area_type: str) -> None:
         if subtasks["finished"][3] == True:
             return
-        elif self.state["target_area_id"] is None:
+        
+        if self.state["target_area_id"] is None:
             if target_area_type == "start":
                 assert task_record["subtasks_dict"]["start_area_ids"] is not None, "The start area ids should be initialized in task_progress_manager.py"
                 target_area_id = task_record["subtasks_dict"]["start_area_ids"]["robot_parking_areas_ids"][0]
@@ -165,6 +164,10 @@ class Robot:
             self.state["target_area_id"] = target_area_id
         elif self.state["target_area_id"] == self.state["current_area_id"]:
             subtasks["finished"][3] = True
+            self.state["target_area_id"] = None
+            self.state["route_index"] = 0
+            self.state["route_length"] = 0
+            self.state["generated_route"] = []
         else:
             # the human is going to the target area by route planner in route.py
             pass

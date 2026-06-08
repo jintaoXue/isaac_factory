@@ -164,12 +164,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     algo_cfg["params"]["config"]["device"] = args_cli.device if args_cli.device is not None else algo_cfg["params"]["config"]["device"]
     algo_cfg["params"]["config"]["device_name"] = args_cli.device if args_cli.device is not None else algo_cfg["params"]["config"]["device_name"]
     env_cfg.cuda_device_str = args_cli.device if args_cli.device is not None else env_cfg.cuda_device_str
-    if args_cli.ftg_thresh_phy is not None:
-        env_cfg.ftg_thresh_phy = args_cli.ftg_thresh_phy
-    if args_cli.num_particles is not None:
-        env_cfg.num_particles = args_cli.num_particles
-    if args_cli.measure_noise_sigma is not None:
-        env_cfg.measure_noise_sigma = args_cli.measure_noise_sigma
     # randomly sample a seed if seed = -1
     if args_cli.seed == -1:
         args_cli.seed = random.randint(0, 10000)

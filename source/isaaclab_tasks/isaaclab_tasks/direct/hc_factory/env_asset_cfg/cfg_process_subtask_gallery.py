@@ -2,12 +2,16 @@ import copy
 from .cfg_machine import CfgMachine
 
 CfgSubtaskPredefinedTimeGallery = {
+   "go_to_material": 10,
    "material_on_gantry": 10,
    "control_gantry": 10,
    "material_on_robot": 10,
-   "material_on_target_area": 10,
-   "control_gantry_while_going_to_target_machine": 10,
+   "go_to_goal_area": 10,
+   "material_on_goal_area": 10,
+   "go_to_processing_machine": 10,
    "control_machine": 10,
+   "wait": None,
+   "done": None,
 }
 
 CfgSubtaskGallery = {
@@ -79,7 +83,7 @@ CfgSubtaskGallery = {
         #task id 2
         "pipe_cutting":{
                 # human: 0, gantry: 1, machine: 2
-                "ongoing": ["go_to_target_machine", "none", "wait"],
+                "ongoing": ["go_to_processing_machine", "none", "wait"],
                 "ongoing_index": 0,
                 "required_processing_material": "product_00_pipe",
                 "processed_material": "product_00_pipe",
@@ -90,15 +94,15 @@ CfgSubtaskGallery = {
                 "goal_area_workstation_key" : None,
                 "start_area_ids": CfgMachine["num02_rollerbedCNCPipeIntersectionCuttingMachine"]["working_area_ids"],
                 "goal_area_ids": None,
-                "index_to_decide_goal_area": 5,
+                "index_to_decide_goal_area": 4,
                 "num_subtasks": 8,
-                "finished": [False, None, True],
+                "finished": [False, True, True],
                 "subtasks": [
                     #human: 0, gantry: 1, machine: 2,
-                    ["go_to_target_machine", "none", "wait"],
+                    ["go_to_processing_machine", "none", "wait"],
                     ["control_machine", "none", "process"],
                     ["wait", "finding_free_gantry", "wait"],
-                    ["control_gantry", "move_to_target_machine", "wait"],
+                    ["control_gantry", "go_to_processing_machine", "wait"],
                     ["material_on_gantry", "wait", "wait"],
                     ["control_gantry", "carry_to_goal_area", "done"],
                     ["material_on_goal_area", "wait", "done"],

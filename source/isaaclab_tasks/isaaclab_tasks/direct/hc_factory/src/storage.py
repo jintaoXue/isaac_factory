@@ -1,7 +1,7 @@
 import omni.usd
 from pxr import PhysxSchema
 from isaacsim.core.prims import RigidPrim
-from ..env_asset_cfg.cfg_storage import CfgStorage, CfgResetStateTemplate, CfgStateGallery,_quat_multiply, _quat_conjugate
+from ..env_asset_cfg.cfg_storage import CfgStorage, CfgResetStateTemplate,_quat_multiply, _quat_conjugate
 import json
 import torch
 from abc import abstractmethod
@@ -49,7 +49,6 @@ class Storage:
         self.human_working_areas_ids = cfg["human_working_areas_ids"]
         self.robot_parking_areas_ids = cfg["robot_parking_areas_ids"]
         self.gantry_parking_areas_ids = cfg["gantry_parking_areas_ids"]
-        self.state_gallery = CfgStateGallery
         self.reset_state = copy.deepcopy(CfgResetStateTemplate)
         self.prim: RigidPrim = None
         self._register_rigid_prim()
@@ -73,7 +72,7 @@ class Storage:
         )
         
         # Since the storage's local pose is not updated by apply_data_to_sim at each step, we need to lock its position and rotation.
-        # Get the stage and the prim
+        # Get the stage and the prim, to disable the gravity and lock the position and rotation
         stage = omni.usd.get_context().get_stage()
         prim_path = self.prim.prim_paths[0]
         usd_prim = stage.GetPrimAtPath(prim_path)
