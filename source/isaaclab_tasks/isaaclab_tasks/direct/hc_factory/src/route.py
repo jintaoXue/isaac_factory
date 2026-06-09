@@ -14,7 +14,9 @@ class _RoadmapGraph:
         self.routes_data = routes_data
         self.agent_label = agent_label
         self.map_path = routes_data.get("map_path")
-        self.points_path = routes_data.get("points_path", default_points_path)
+        self.points_path = self._resolve_existing_path(
+            default_points_path, routes_data.get("points_path")
+        )
         self.num_nodes = int(routes_data.get("num_nodes", 0))
         self.coordinate_frame = routes_data.get("coordinate_frame", "isaac_sim")
 
@@ -60,6 +62,19 @@ class _RoadmapGraph:
             for dst_id in self.paths[src_id].keys():
                 node_ids.add(int(dst_id))
         return node_ids
+
+    @staticmethod
+    def _resolve_existing_path(*candidates: str | None) -> str:
+        for candidate in candidates:
+            if not candidate:
+                continue
+            resolved = Path(candidate).expanduser()
+            if resolved.is_file():
+                return str(resolved)
+        for candidate in candidates:
+            if candidate:
+                return str(Path(candidate).expanduser())
+        raise FileNotFoundError("No valid points_path candidate was provided.")
 
     @staticmethod
     def _load_point_xy_by_id(points_path: str) -> dict[int, tuple[float, float]]:
