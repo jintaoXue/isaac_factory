@@ -5,7 +5,7 @@ from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
 from .utils import PoseAnimation
 import copy
 import torch
-import random
+
 class MachineManager:
     def __init__(self, env_id: int, cuda_device: torch.device):
         self.env_id = env_id
@@ -328,6 +328,39 @@ class num06_highPressureFoamingMachine(Machine):
             cuda_device=cuda_device,
         )
 
+class num08_workbench(Machine):
+
+    def __init__(self, env_id: int, cuda_device: torch.device):
+        # ===== 显式声明（更直观：一眼能看到有哪些对象会挂到 self 上）=====
+        # 这些名称来自 cfg.py 的 registeration_infos_combined keys
+        self.num08_workbench = None
+        self.animation_num08_workbench: PoseAnimation = None
+        super().__init__(cfg=CfgMachine["num08_workbench"], env_id=env_id, cuda_device=cuda_device)
+    
+    def reset_articulations(self) -> dict:
+        # The num08_workbench has 2 workstations, but they share the same articulation
+        articulations_values: dict = {}
+        obj_name = "num08_workbench"
+        obj = getattr(self, obj_name, None)
+        workstation_names = ["num08_workbench_station_00", "num08_workbench_station_01"]
+        joint_positions_reset : torch.Tensor = self.registration_infos[obj_name]["joint_positions_reset"].to(self.cuda_device)
+        # The num08_workbench is actually a manual workbench, so the joint positions are not important.
+        # We simply set them to the reset positions to maintain a consistent format.
+        articulations_values[workstation_names[0]] = {
+            "object": obj,
+            "joint_position": joint_positions_reset,
+        }
+        articulations_values[workstation_names[1]] = {
+            "object": obj,
+            "joint_position": joint_positions_reset,
+        }
+        
+        return articulations_values
+
+
+######### logistic machines #########
+
+
 
 class num07_gantry_group(Machine):
 
@@ -456,32 +489,3 @@ class num07_gantry_group(Machine):
         self.state["target_joints_position"] = None
         self.animation_num07_gantry_group.set_target_pose(self.joint_position_reset)
         return env_state_action_dict
-
-class num08_workbench(Machine):
-
-    def __init__(self, env_id: int, cuda_device: torch.device):
-        # ===== 显式声明（更直观：一眼能看到有哪些对象会挂到 self 上）=====
-        # 这些名称来自 cfg.py 的 registeration_infos_combined keys
-        self.num08_workbench = None
-        self.animation_num08_workbench: PoseAnimation = None
-        super().__init__(cfg=CfgMachine["num08_workbench"], env_id=env_id, cuda_device=cuda_device)
-    
-    def reset_articulations(self) -> dict:
-        # The num08_workbench has 2 workstations, but they share the same articulation
-        articulations_values: dict = {}
-        obj_name = "num08_workbench"
-        obj = getattr(self, obj_name, None)
-        workstation_names = ["num08_workbench_station_00", "num08_workbench_station_01"]
-        joint_positions_reset : torch.Tensor = self.registration_infos[obj_name]["joint_positions_reset"].to(self.cuda_device)
-        # The num08_workbench is actually a manual workbench, so the joint positions are not important.
-        # We simply set them to the reset positions to maintain a consistent format.
-        articulations_values[workstation_names[0]] = {
-            "object": obj,
-            "joint_position": joint_positions_reset,
-        }
-        articulations_values[workstation_names[1]] = {
-            "object": obj,
-            "joint_position": joint_positions_reset,
-        }
-        
-        return articulations_values

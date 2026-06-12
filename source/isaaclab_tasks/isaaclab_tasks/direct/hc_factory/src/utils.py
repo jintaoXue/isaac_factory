@@ -58,3 +58,17 @@ class PoseAnimation:
         self.end_pose = end_pose
         self.step_time = 0
         self.done = self.is_done()
+
+
+class GantryGroupAnimation(PoseAnimation):
+    def __init__(self, start_pose: torch.Tensor, end_pose: torch.Tensor, animation_time: int, device: torch.device):
+        self.animation_time = animation_time
+        self.device = device
+        self.initialize(start_pose.to(device), end_pose.to(device))
+
+    def step_next_pose(self):
+        self.done = self.is_done()
+        if self.done:
+            return self.end_pose
+        self.step_time += 1.0
+        self.step_time = min(self.step_time, self.animation_time)
