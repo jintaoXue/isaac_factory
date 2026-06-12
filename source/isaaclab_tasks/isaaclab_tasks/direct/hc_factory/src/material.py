@@ -194,8 +194,12 @@ class MaterialBatch:
         for material_type, material_prim in all_materials.items():
             material_name = f"num_{self.idx:02d}_{material_type}"
             material_state = material_subtask[material_type][ongoing_index]
+            
+            ## the following three variables might be updated in the following code
             position = env_state_action_dict["rigid_prims"][material_name]["position"]
+            orientation = env_state_action_dict["rigid_prims"][material_name]["orientation"]
             storage_name = self.state["submaterials"][material_type]["storage_name"]
+            
             if material_state == "on_start_area":
                 pass
             elif material_state == "disappear":
@@ -215,29 +219,34 @@ class MaterialBatch:
                 position = env_state_action_dict["rigid_prims"][robot_name]["position"].clone()
                 position[0][2] = position[0][2] + 0.1
                 storage_name = "robot_name"
-            elif material_state == "on_goal_area":
-                storage_name = subtasks["material_goal_area"]
-                if "Machine" in storage_name:
+                orientation = env_state_action_dict["rigid_prims"][robot_name]["orientation"].clone()
+            elif (material_state == "on_goal_area" and (subtasks["material_goal_area"] in CfgMachine)) or \
+                (material_state == "on_machine"):
+                # Both "material on goal area which is a machine" or material_state == "on_machine" are handled here
+                if material_state == "on_goal_area":
+                    machine_name = subtasks["material_goal_area"]
                     workstation_key = subtasks["goal_area_workstation_key"]
-                    position = env_state_action_dict["articulations"][workstation_key]["object"].get_local_poses()[0]
-                elif "Storage" in storage_name:
-                    storage = env_state_action_dict["storage"][storage_name]
-                    pose_list = storage["key_variables"]["placement_cfg"]["pose_list"]
-                    storage["num_material"] += 1
-                    slot_pose = pose_list[storage["num_material"] - 1]
-                    position = slot_pose["position"]
-                    env_state_action_dict["rigid_prims"][material_name]["orientation"] = slot_pose["orientation"]
-            elif material_state == "on_machine":
-                ### on_machine currently only for processing task, and is the start area for processing task
-                workstation_key = task_record["chosen_machine_workstation"]
-                if task_record["target_machine"] == "num08_workbench":
-                    position = CfgMachine["num08_workbench"]["material_placement_cfg"][workstation_key]["position"]
-                    position = position.to(self.cuda_device).unsqueeze(0)
-                else:
-                    position = env_state_action_dict["articulations"][workstation_key]["object"].get_local_poses()[0]
+                else:  # material_state == "on_machine"
+                    workstation_key = task_record["chosen_machine_workstation"]
+                    machine_name = task_record["target_machine"]
+                position = CfgMachine[machine_name]["material_placement_cfg"][workstation_key]["position"]
+                position = position.to(self.cuda_device).unsqueeze(0)
+                orientation = CfgMachine[machine_name]["material_placement_cfg"][workstation_key]["orientation"]
+                orientation = orientation.to(self.cuda_device).unsqueeze(0)
+                storage_name = workstation_key
+            elif material_state == "on_goal_area" and "Storage" in subtasks["material_goal_area"]:
+                storage_name = subtasks["material_goal_area"]
+                storage = env_state_action_dict["storage"][storage_name]
+                pose_list = storage["key_variables"]["placement_cfg"]["pose_list"]
+                storage["num_material"] += 1
+                slot_pose = pose_list[storage["num_material"] - 1]
+                position = slot_pose["position"]
+                orientation = slot_pose["orientation"]
             else:
                 raise ValueError(f"Invalid material state: {material_state}")
+       
             env_state_action_dict["rigid_prims"][material_name]["position"] = position
+            env_state_action_dict["rigid_prims"][material_name]["orientation"] = orientation
             self.state["submaterials"][material_type]["storage_name"] = storage_name
 
 
