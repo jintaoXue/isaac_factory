@@ -37,11 +37,11 @@ CfgMachine = {
         },
         "material_placement_cfg": {
             "num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
-                "position": torch.tensor([0.0, 0.0, 0.0]),
+                "position": torch.tensor([43.12303, 15.73721, 1.146]),
                 "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0]),
             },
             "num00_rotaryPipeAutomaticWeldingMachine_part_02_station": {
-                "position": torch.tensor([0.0, 0.0, 0.0]),
+                "position": torch.tensor([35.14321, 15.73721, 1.146]),
                 "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0]),
             },
         },
@@ -86,7 +86,7 @@ CfgMachine = {
         },
         "material_placement_cfg": {
             "num01_weldingRobot_part02_robot_arm_and_base": {
-                "position": torch.tensor([0.0, 0.0, 0.0]),
+                "position": torch.tensor([24.68707, 14.36929, 1.146]),
                 "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0]),
             },
         },
@@ -131,7 +131,7 @@ CfgMachine = {
         },
         "material_placement_cfg": {
             "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
-                "position": torch.tensor([0.0, 0.0, 0.0]),
+                "position": torch.tensor([10.06736, 16.86987, 1.146]),
                 "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0]),
             },
         },
@@ -215,7 +215,7 @@ CfgMachine = {
         },
         "material_placement_cfg": {
             "num04_groovingMachineLarge_part01_large_fixed_base": {
-                "position": torch.tensor([0.0, 0.0, 0.0]),
+                "position": torch.tensor([-7.64795, 15.33569, 1.45811]),
                 "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0]),
             },
         },
@@ -421,11 +421,11 @@ CfgMachine = {
         },
         "material_placement_cfg": {
             "num08_workbench_station_00": {
-                "position": torch.tensor([0.0, 0.0, 0.0]), 
+                "position": torch.tensor([28.44292, -2.08669, 0.53412]), 
                 "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0])
             },
             "num08_workbench_station_01": {
-                "position": torch.tensor([0.0, 0.0, 0.0]),
+                "position": torch.tensor([25.16699, -3.05047, 0.53412]),
                 "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0]),
             },
         },

@@ -186,12 +186,12 @@ BlackStorage_parallel_example_data_from_isaac = {
     },
     "capacity": 6,
     "placement_type": "parallel, the storage is parallel to the material by default, so their local coordinate xyz is parallel",
-    "storage_pose_00": {"position": [30.76917, 2.65819, 0.56230], "orientation": [1.0, 0.0, 0.0, 0.0]},
-    "storage_pose_01": {"position": [30.76917, 2.22427, 0.56230], "orientation": [1.0, 0.0, 0.0, 0.0]},
-    "storage_pose_02": {"position": [30.76917, 1.78928, 0.56230], "orientation": [1.0, 0.0, 0.0, 0.0]},
-    "storage_pose_03": {"position": [30.76917, 2.43246, 0.93627], "orientation": [1.0, 0.0, 0.0, 0.0]},
-    "storage_pose_04": {"position": [30.76917, 2.01911, 0.93681], "orientation": [1.0, 0.0, 0.0, 0.0]},
-    "storage_pose_05": {"position": [30.76917, 2.21886, 1.29129], "orientation": [1.0, 0.0, 0.0, 0.0]},
+    "storage_pose_00": {"position": [30.76917, 1.83501, 0.56230], "orientation": [1.0, 0.0, 0.0, 0.0]},
+    "storage_pose_01": {"position": [30.76917, 1.40109, 0.56230], "orientation": [1.0, 0.0, 0.0, 0.0]},
+    "storage_pose_02": {"position": [30.76917, 0.96610, 0.56230], "orientation": [1.0, 0.0, 0.0, 0.0]},
+    "storage_pose_03": {"position": [30.76917, 1.60928, 0.93627], "orientation": [1.0, 0.0, 0.0, 0.0]},
+    "storage_pose_04": {"position": [30.76917, 1.19593, 0.93681], "orientation": [1.0, 0.0, 0.0, 0.0]},
+    "storage_pose_05": {"position": [30.76917, 1.39568, 1.29129], "orientation": [1.0, 0.0, 0.0, 0.0]},
 }
 
 
@@ -210,10 +210,10 @@ YellowStorage_parallel_example_data_from_isaac = {
         "orientation": [1.0, 0.0, 0.0, 0.0],
     },
     "capacity": 4,
-    "storage_pose_00": {"position": [-21.31862, 15.90933, 0.56230], "orientation": [1.0, 0.0, 0.0, 0.0]},
-    "storage_pose_01": {"position": [-21.31862, 15.47541, 0.56230], "orientation": [1.0, 0.0, 0.0, 0.0]},
-    "storage_pose_02": {"position": [-21.31862, 15.87804, 0.93627], "orientation": [1.0, 0.0, 0.0, 0.0]},
-    "storage_pose_03": {"position": [-21.31862, 15.46469, 0.93681], "orientation": [1.0, 0.0, 0.0, 0.0]},
+    "storage_pose_00": {"position": [-21.31862, 15.08615, 0.56230], "orientation": [1.0, 0.0, 0.0, 0.0]},
+    "storage_pose_01": {"position": [-21.31862, 14.65223, 0.56230], "orientation": [1.0, 0.0, 0.0, 0.0]},
+    "storage_pose_02": {"position": [-21.31862, 15.05486, 0.93627], "orientation": [1.0, 0.0, 0.0, 0.0]},
+    "storage_pose_03": {"position": [-21.31862, 14.64151, 0.93681], "orientation": [1.0, 0.0, 0.0, 0.0]},
 }
 
 YellowStorage_vertical_example_data_from_isaac = YellowStorage_parallel_example_data_from_isaac.copy()
@@ -238,13 +238,13 @@ GroundStorage_example_elbow_poses_from_isaac = {
     # x: [33.72357, 30.67677]
     # y: [-3.88112, -0.51596]
     # z: [0.3, 0.3]
-    "start_storage_pose_00": {"position": [33.72357, -3.88112, 0.3], "orientation": [1.0, 0.0, 0.0, 0.0]},
+    "start_storage_pose_00": {"position": [33.72357, -3.88112 - 0.82318, 0.3], "orientation": [1.0, 0.0, 0.0, 0.0]},
     # one step "y" from start
     "one_step_y": {"position": [33.72357, -3.32026, 0.3], "orientation": [1.0, 0.0, 0.0, 0.0]},
     # one step "x" from start
     "one_step_x": {"position": [33.11421, -3.88112, 0.3], "orientation": [1.0, 0.0, 0.0, 0.0]},
     # end pose (might not be integer multiple of one_step_x and one_step_y)
-    "end_storage_pose_00": {"position": [30.67677, -0.51596, 0.3], "orientation": [1.0, 0.0, 0.0, 0.0]},
+    "end_storage_pose_00": {"position": [30.67677, -0.51596 - 0.82318, 0.3], "orientation": [1.0, 0.0, 0.0, 0.0]},
     ### the following are inferred from the start_storage_pose_00, one_step_x, one_step_y, end_storage_pose_00
     # "per_length_x": none,
     # "per_length_y": none,
@@ -259,13 +259,13 @@ GroundStorage_example_flange_poses_from_isaac = {
     # x: [19.20972, 22.5889]
     # y: [-3.50812, -1.13456]
     # z: [0.2177, 0.2177]
-    "start_storage_pose_00": {"position": [19.20972, -3.50812, 0.2177], "orientation": [1.0, 0.0, 0.0, 0.0]},
+    "start_storage_pose_00": {"position": [19.20972, -3.50812 - 0.82318, 0.2177], "orientation": [1.0, 0.0, 0.0, 0.0]},
     # one step forward in the x direction from the start pose
     "one_step_x": {"position": [19.88115, -3.45602, 0.2177], "orientation": [1.0, 0.0, 0.0, 0.0]},
     # one step forward in the y direction from the start pose
     "one_step_y": {"position": [19.18498, -2.83761, 0.2177], "orientation": [1.0, 0.0, 0.0, 0.0]},
     # end pose (might not be integer multiple of one_step_x and one_step_y)
-    "end_storage_pose_00": {"position": [22.5889, -1.13456,  0.2177], "orientation": [1.0, 0.0, 0.0, 0.0]},
+    "end_storage_pose_00": {"position": [22.5889, -1.13456 - 0.82318, 0.2177], "orientation": [1.0, 0.0, 0.0, 0.0]},
     ### the following are inferred from the start_storage_pose_00, one_step_x, one_step_y, end_storage_pose_00
     # "per_length_x": none,
     # "per_length_y": none,
