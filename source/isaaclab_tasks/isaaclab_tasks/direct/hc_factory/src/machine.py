@@ -2,7 +2,7 @@ from isaacsim.core.prims import Articulation
 from abc import abstractmethod
 from ..env_asset_cfg.cfg_machine import CfgMachine
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
-from .utils import PoseAnimation
+from .utils import GantryGroupAnimation, PoseAnimation
 import copy
 import torch
 
@@ -368,7 +368,7 @@ class num07_gantry_group(Machine):
         # ===== 显式声明（更直观：一眼能看到有哪些对象会挂到 self 上）=====
         # 这些名称来自 cfg.py 的 registeration_infos_combined keys
         self.num07_gantry_group = None
-        self.animation_num07_gantry_group: PoseAnimation = None
+        self.animation_num07_gantry_group: GantryGroupAnimation = None
         super().__init__(cfg=CfgMachine["num07_gantry_group"], env_id=env_id, cuda_device=cuda_device)
         # shape 8x1 tensor and joint_position has 8 elements: [x0, x1, x2, x3, y0, y1, y2, y3] for 4 subgantrys
         self.joint_position_reset = self.registration_infos["num07_gantry_group"]["joint_positions_reset"].to(self.cuda_device)
@@ -376,6 +376,26 @@ class num07_gantry_group(Machine):
         #"gantry_indexs": torch.tensor([0, 1, 2, 3, 0, 1, 2, 3]), number 4 subgantrys in total, each subgantry has a gantry and a hook, the gantry moves in xy plane and the hook moves in z axis, the subgantry indexs indicate which subgantry each joint belongs to
         self.gantry_indexs = self.registration_infos["num07_gantry_group"]["gantry_indexs"].to(self.cuda_device)
         self.fixed_hook_height : float = self.registration_infos["num07_gantry_group"]["fixed_hook_height"]
+
+    def _register_articulation_animation(self):
+        for obj_name, info in self.registration_infos.items():
+            articulation = Articulation(
+                prim_paths_expr=info["prim_paths_expr"].format(i=self.env_id),
+                name=f"env_{self.env_id}_{obj_name}",
+                reset_xform_properties=False,
+            )
+            setattr(self, obj_name, articulation)
+            setattr(
+                self,
+                f"animation_{obj_name}",
+                GantryGroupAnimation(
+                    start_pose=info["joint_positions_reset"],
+                    end_pose=info["joint_positions_reset"],
+                    animation_time=info["animation_time"],
+                    device=self.cuda_device,
+                    num_gantrys=self.num_workstations,
+                ),
+            )
 
     def step(self, env_state_action_dict):
         ###1. This part is for set gantry group index 1,2,3 subgantrys to move to the side, means invalid state
@@ -388,12 +408,11 @@ class num07_gantry_group(Machine):
         target_joint_position_2 = self._get_joint_pose_from_xy_target(joint_position, xyz_2[:2], gantry_index = 2)
         target_joint_position_3 = self._get_joint_pose_from_xy_target(joint_position, xyz_3[:2], gantry_index = 3)
 
-        final_target_joint_position = joint_position.clone()
-        final_target_joint_position[self.gantry_indexs == 1] = target_joint_position_1[self.gantry_indexs == 1]
-        final_target_joint_position[self.gantry_indexs == 2] = target_joint_position_2[self.gantry_indexs == 2]
-        final_target_joint_position[self.gantry_indexs == 3] = target_joint_position_3[self.gantry_indexs == 3]
-        env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"] = final_target_joint_position
-        
+        animation = self.animation_num07_gantry_group
+        animation.sync_gantry_pose(target_joint_position_1, gantry_index=1)
+        animation.sync_gantry_pose(target_joint_position_2, gantry_index=2)
+        animation.sync_gantry_pose(target_joint_position_3, gantry_index=3)
+
         ####2. This index = 0 gantry is only valid machine
         task_record_index : int = env_state_action_dict["machine"][self.type_name]["ongoing_task_record_index"][0]
         if task_record_index is None:
@@ -453,15 +472,17 @@ class num07_gantry_group(Machine):
                 pass
             else:
                 if self.state["target_joints_position"] is None:
+                    chosen_gantry_index = task_record["chosen_gantry_index"]
                     joint_position = env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"]
                     self.state["target_joints_position"] = self._get_joint_pose_from_xy_target(
-                        joint_position.clone(), self.state["target_area_xy"], gantry_index=0
+                        joint_position.clone(), self.state["target_area_xy"], gantry_index=chosen_gantry_index
                     )
-                    ### Move to the target joint position
-                    self.animation_num07_gantry_group.set_target_pose(self.state["target_joints_position"])
+                    self.animation_num07_gantry_group.set_target_pose(
+                        self.state["target_joints_position"], gantry_index=chosen_gantry_index
+                    )
         else:
-            ### Move to the target joint position
-            if self.animation_num07_gantry_group.is_done():
+            chosen_gantry_index = task_record["chosen_gantry_index"]
+            if self.animation_num07_gantry_group.is_done(gantry_index=chosen_gantry_index):
                 subtasks["finished"][1] = True
                 self.state["target_area_id"] = None
                 self.state["target_area_xy"] = None
@@ -487,5 +508,7 @@ class num07_gantry_group(Machine):
         self.state["target_area_id"] = None
         self.state["target_area_xy"] = None
         self.state["target_joints_position"] = None
-        self.animation_num07_gantry_group.set_target_pose(self.joint_position_reset)
+        self.animation_num07_gantry_group.set_target_pose(
+            self.joint_position_reset, gantry_index=chosen_gantry_index
+        )
         return env_state_action_dict

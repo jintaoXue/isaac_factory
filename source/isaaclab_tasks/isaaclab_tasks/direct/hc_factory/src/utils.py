@@ -1,6 +1,6 @@
 import math
 import torch
-
+from ..env_asset_cfg.cfg_machine import CfgMachine
 
 def yaw_to_quaternion_wxyz(yaw: float, device: torch.device, dtype: torch.dtype = torch.float32) -> torch.Tensor:
     """Z-axis yaw (rad) -> unit quaternion [w, x, y, z]."""
@@ -61,14 +61,63 @@ class PoseAnimation:
 
 
 class GantryGroupAnimation(PoseAnimation):
-    def __init__(self, start_pose: torch.Tensor, end_pose: torch.Tensor, animation_time: int, device: torch.device):
+    def __init__(self, start_pose: torch.Tensor, end_pose: torch.Tensor, animation_time: int, device: torch.device, num_gantrys: int):
         self.animation_time = animation_time
         self.device = device
+        self.num_gantrys = num_gantrys
+        gantry_cfg = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]
+        self.gantry_indexs = gantry_cfg["gantry_indexs"].to(device)
         self.initialize(start_pose.to(device), end_pose.to(device))
+
+    def initialize(self, start_pose: torch.Tensor, end_pose: torch.Tensor):
+        self.start_pose = start_pose
+        self.end_pose = end_pose
+        self.step_time = [0.0] * self.num_gantrys
+        self.done = self.is_done()
+
+    def _gantry_mask(self, gantry_index: int) -> torch.Tensor:
+        if gantry_index < 0 or gantry_index >= self.num_gantrys:
+            raise ValueError(f"gantry_index must be in [0, {self.num_gantrys}), got {gantry_index}")
+        return self.gantry_indexs == gantry_index
 
     def step_next_pose(self):
         self.done = self.is_done()
-        if self.done:
+        if all(self.done):
             return self.end_pose
-        self.step_time += 1.0
-        self.step_time = min(self.step_time, self.animation_time)
+        next_pose = self.start_pose.clone()
+        for gantry_index in range(self.num_gantrys):
+            gantry_mask = self._gantry_mask(gantry_index)
+            if not self.done[gantry_index]:
+                self.step_time[gantry_index] += 1.0
+                self.step_time[gantry_index] = min(self.step_time[gantry_index], self.animation_time)
+                t = self.step_time[gantry_index] / self.animation_time
+                next_pose[gantry_mask] = self.start_pose[gantry_mask] + (
+                    self.end_pose[gantry_mask] - self.start_pose[gantry_mask]
+                ) * t
+            else:
+                next_pose[gantry_mask] = self.end_pose[gantry_mask]
+        return next_pose
+
+    def is_done(self, gantry_index: int | None = None):
+        done_list = [step_time >= self.animation_time for step_time in self.step_time]
+        if gantry_index is None:
+            return done_list
+        return done_list[gantry_index]
+
+    def set_target_pose(self, target_pose: torch.Tensor, gantry_index: int) -> None:
+        """Start animation for one gantry. target_pose is the full 8-d joint vector."""
+        target_pose = target_pose.to(self.device)
+        gantry_mask = self._gantry_mask(gantry_index)
+        self.start_pose[gantry_mask] = self.end_pose[gantry_mask]
+        self.end_pose[gantry_mask] = target_pose[gantry_mask]
+        self.step_time[gantry_index] = 0.0
+        self.done[gantry_index] = False
+
+    def sync_gantry_pose(self, pose: torch.Tensor, gantry_index: int) -> None:
+        """Snap one gantry to pose immediately (no animation)."""
+        pose = pose.to(self.device)
+        gantry_mask = self._gantry_mask(gantry_index)
+        self.start_pose[gantry_mask] = pose[gantry_mask]
+        self.end_pose[gantry_mask] = pose[gantry_mask]
+        self.step_time[gantry_index] = float(self.animation_time)
+        self.done[gantry_index] = True
