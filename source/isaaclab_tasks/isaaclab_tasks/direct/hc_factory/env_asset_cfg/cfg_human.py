@@ -1,5 +1,6 @@
 
 from .cfg_hc_env import HcVectorEnvCfg
+import torch
 CfgHuman = {
     "NumUpperBound": HcVectorEnvCfg().human_number_upper_bound,
     "NormalHuman": {
@@ -24,6 +25,9 @@ CfgHuman = {
             "generated_route": [],
             "route_index": 0,
             "route_length": 0,
+        },
+        "human_route_orientation_offset": {
+            "orientation": torch.tensor([0.7071, 0, 0, 0.7071]),
         },
     }
 }

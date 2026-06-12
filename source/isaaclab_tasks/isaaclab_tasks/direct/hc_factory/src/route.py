@@ -1,10 +1,13 @@
 from ..env_asset_cfg.cfg_route.cfg_route import CfgRoute, OptionalInitPointIds
-from .utils import yaw_to_quaternion_wxyz
+from .utils import quat_multiply_wxyz, yaw_to_quaternion_wxyz
 import heapq
 import json
 import math
 from pathlib import Path
 import torch
+from ..env_asset_cfg.cfg_human import CfgHuman
+
+_CPU_DEVICE = torch.device("cpu")
 
 
 class _RoadmapGraph:
@@ -24,7 +27,8 @@ class _RoadmapGraph:
         self.graph_adjacency = self._build_adjacency_from_edges(self.edges)
         self.graph_node_ids = self._collect_graph_node_ids()
         self.point_xy_by_id = self._load_point_xy_by_id(self.points_path)
-
+        
+        
     @staticmethod
     def _index_edges_by_uv(edges: list[dict]) -> dict[tuple[int, int], dict]:
         edge_by_uv: dict[tuple[int, int], dict] = {}
@@ -187,10 +191,14 @@ class _RoadmapGraph:
             return node_xy
         raise ValueError(f"Unknown {self.agent_label} map point id: {area_id}")
 
-    def _pose_at_node(self, node_id: int) -> dict[str, float]:
+    def _pose_at_node(self, node_id: int) -> dict:
         node_xy = self.point_xy_by_id.get(node_id)
         if node_xy is not None:
-            return {"x": node_xy[0], "y": node_xy[1], "yaw": 0.0}
+            return {
+                "x": node_xy[0],
+                "y": node_xy[1],
+                "orientation": yaw_to_quaternion_wxyz(0.0, _CPU_DEVICE),
+            }
 
         for edge in self.edges:
             if int(edge["u"]) == node_id:
@@ -199,8 +207,8 @@ class _RoadmapGraph:
                 return self._sample_to_pose(edge["samples"][-1], forward=False)
         raise ValueError(f"Unknown {self.agent_label} map node id: {node_id}")
 
-    def _stitch_route_from_node_ids(self, node_ids: list[int]) -> list[dict[str, float]]:
-        route: list[dict[str, float]] = []
+    def _stitch_route_from_node_ids(self, node_ids: list[int]) -> list[dict]:
+        route: list[dict] = []
         for segment_idx in range(len(node_ids) - 1):
             node_from = node_ids[segment_idx]
             node_to = node_ids[segment_idx + 1]
@@ -225,8 +233,7 @@ class _RoadmapGraph:
             return self.edge_by_uv[(node_to, node_from)], False
         return None, True
 
-    @staticmethod
-    def _sample_to_pose(sample: dict, forward: bool) -> dict[str, float]:
+    def _sample_to_pose(self, sample: dict, forward: bool) -> dict:
         yaw = float(sample.get("yaw", 0.0))
         if not forward:
             yaw += math.pi
@@ -237,7 +244,7 @@ class _RoadmapGraph:
         return {
             "x": float(sample["x"]),
             "y": float(sample["y"]),
-            "yaw": yaw,
+            "orientation": yaw_to_quaternion_wxyz(yaw, _CPU_DEVICE),
         }
 
     @staticmethod
@@ -247,7 +254,7 @@ class _RoadmapGraph:
         start_node_id: int,
         end_node_id: int,
         node_ids: list[int],
-        route: list[dict[str, float]],
+        route: list[dict],
         path_cost: float,
     ) -> dict:
         return {
@@ -267,7 +274,7 @@ class RouteManagerVectorEnv:
     def __init__(self, cuda_device: torch.device):
         self.cuda_device = cuda_device
         self.cfg_route = CfgRoute
-
+        self.human_route_orientation_offset = CfgHuman["NormalHuman"]["human_route_orientation_offset"]["orientation"].to(_CPU_DEVICE)
         routes_human = json.load(Path(self.cfg_route["routes_path_human"]).expanduser().open("r", encoding="utf-8"))
         routes_robot = json.load(Path(self.cfg_route["routes_path_robot"]).expanduser().open("r", encoding="utf-8"))
 
@@ -316,10 +323,6 @@ class RouteManagerVectorEnv:
     def reset(self, env_state_action_dict: dict) -> dict:
         pass
 
-    def _orientation_from_route_pose(self, yaw: float) -> torch.Tensor:
-        """Route waypoint yaw (rad) -> RigidPrim orientation tensor (1, 4) in wxyz."""
-        return yaw_to_quaternion_wxyz(yaw, self.cuda_device).unsqueeze(0)
-
     def _step_next_pose(self, agent_prims_dict: dict, agent_states: dict, default_z: float) -> dict:
         for agent_name, agent_state in agent_states.items():
             route_index = agent_state["route_index"]
@@ -332,17 +335,34 @@ class RouteManagerVectorEnv:
                 agent_state["current_area_id"] = agent_state["target_area_id"]
                 continue
             route = agent_state["generated_route"]
-            xy_yaw = route[route_index]
+            waypoint = route[route_index]
             agent_prims_dict[agent_name]["position"] = torch.tensor(
-                [xy_yaw["x"], xy_yaw["y"], default_z],
+                [waypoint["x"], waypoint["y"], default_z],
                 dtype=torch.float32,
                 device=self.cuda_device,
             ).unsqueeze(0)
-            agent_prims_dict[agent_name]["orientation"] = self._orientation_from_route_pose(xy_yaw["yaw"])
+            orientation = waypoint["orientation"]
+            if orientation.dim() == 1:
+                orientation = orientation.unsqueeze(0)
+            agent_prims_dict[agent_name]["orientation"] = orientation
             agent_state["route_index"] += 1
 
-    @staticmethod
-    def _update_agent_routes(agent_states: dict, route_generator) -> None:
+    def _move_route_to_device(self, route: list[dict]) -> list[dict]:
+        gpu_route: list[dict] = []
+        for waypoint in route:
+            orientation = waypoint["orientation"]
+            if not isinstance(orientation, torch.Tensor):
+                orientation = torch.tensor(orientation, dtype=torch.float32, device=_CPU_DEVICE)
+            gpu_route.append(
+                {
+                    "x": waypoint["x"],
+                    "y": waypoint["y"],
+                    "orientation": orientation.to(self.cuda_device),
+                }
+            )
+        return gpu_route
+
+    def _update_agent_routes(self, agent_states: dict, route_generator) -> None:
         for state in agent_states.values():
             if state["ongoing_task_record_index"] is None:
                 continue
@@ -352,12 +372,26 @@ class RouteManagerVectorEnv:
                 and len(state["generated_route"]) == 0
             ):
                 route_info = route_generator(state["current_area_id"], state["target_area_id"])
-                state["generated_route"] = route_info["route"]
+                state["generated_route"] = self._move_route_to_device(route_info["route"])
                 state["route_index"] = 0
                 state["route_length"] = len(route_info["route"])
 
     def generate_human_route(self, start_id: int, end_id: int) -> dict:
-        return self.human_roadmap.generate_route(start_id, end_id)
+        route_info = self.human_roadmap.generate_route(start_id, end_id)
+        offset_orientation = self.human_route_orientation_offset
+        updated_route: list[dict] = []
+        for waypoint in route_info["route"]:
+            # path heading first, then apply human model orientation offset in local frame
+            composed_orientation = quat_multiply_wxyz(waypoint["orientation"], offset_orientation)
+            updated_route.append(
+                {
+                    "x": waypoint["x"],
+                    "y": waypoint["y"],
+                    "orientation": composed_orientation,
+                }
+            )
+        route_info["route"] = updated_route
+        return route_info
 
     def generate_robot_route(self, start_id: int, end_id: int) -> dict:
         return self.robot_roadmap.generate_route(start_id, end_id)

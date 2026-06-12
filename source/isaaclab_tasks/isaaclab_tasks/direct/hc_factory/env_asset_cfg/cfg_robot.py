@@ -1,6 +1,6 @@
 
 from .cfg_hc_env import HcVectorEnvCfg
-
+import torch
 CfgRobot = {
     "NumUpperBound": HcVectorEnvCfg().robot_upper_bound,
     "AGV": {
@@ -23,6 +23,9 @@ CfgRobot = {
             "generated_route": [],
             "route_index": 0,
             "route_length": 0,
+        },
+        "offset_for_material_placement": {
+            "position": torch.tensor([-1, -0.4, 0.2]),
         },
     }
 }

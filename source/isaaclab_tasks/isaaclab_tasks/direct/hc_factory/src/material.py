@@ -3,6 +3,7 @@ from abc import abstractmethod
 from ..env_asset_cfg.cfg_material_product import CfgProductProcess, CfgProductOrder, CfgRegistrationInfos
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskGalleryDetailedClassified
 from ..env_asset_cfg.cfg_machine import CfgMachine
+from ..env_asset_cfg.cfg_robot import CfgRobot
 import copy
 import torch
 
@@ -80,6 +81,7 @@ class MaterialBatch:
         self._register_rigid_prim()
         ### dynmaic variables
         self.state : dict = None
+        self.offset_for_AGV_placement = CfgRobot["AGV"]["offset_for_material_placement"]["position"].to(self.cuda_device)
 
     def _register_rigid_prim(self):
         for obj_name, info in self.meta_registeration_info.items():
@@ -218,8 +220,9 @@ class MaterialBatch:
                 robot_name = task_record["robot"]
                 position = env_state_action_dict["rigid_prims"][robot_name]["position"].clone()
                 position[0][2] = position[0][2] + 0.1
-                storage_name = "robot_name"
+                position += self.offset_for_AGV_placement
                 orientation = env_state_action_dict["rigid_prims"][robot_name]["orientation"].clone()
+                storage_name = robot_name
             elif (material_state == "on_goal_area" and (subtasks["material_goal_area"] in CfgMachine)) or \
                 (material_state == "on_machine"):
                 # Both "material on goal area which is a machine" or material_state == "on_machine" are handled here

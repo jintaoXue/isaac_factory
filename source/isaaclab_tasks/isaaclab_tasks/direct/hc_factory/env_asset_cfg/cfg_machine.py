@@ -216,7 +216,7 @@ CfgMachine = {
         "material_placement_cfg": {
             "num04_groovingMachineLarge_part01_large_fixed_base": {
                 "position": torch.tensor([-7.64795, 15.33569, 1.45811]),
-                "orientation": torch.tensor([0.0, 0.0, 0.0, 1.0]),
+                "orientation": torch.tensor([0.7071, 0, 0, -0.7071]),
             },
         },
         "registration_infos": {
