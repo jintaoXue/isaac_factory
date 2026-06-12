@@ -133,6 +133,8 @@ class Storage:
         return env_state_action_dict
     
     def step(self, env_state_action_dict: dict) -> dict:
+        assert self.state["num_material"] <= self.capacity, "The number of material in the storage should be less than or equal to the capacity"
+        self.state["state"] = "empty" if self.state["num_material"] == 0 else "partial" if self.state["num_material"] < self.capacity else "full"
         return env_state_action_dict
 
 class BlackStorage(Storage):
