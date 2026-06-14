@@ -37,6 +37,7 @@ from .env_asset_cfg.cfg_hc_env import SingleEnvStateActionDictTemplate, HcVector
 from .src.algo_multiagent_masker import AlgoMultiAgentMasker
 from .src.task_progress_manager import TaskManager
 from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.src import algo_multiagent_masker
+import time
 
 class HcSingleEnvBase():
     def __init__(self, env_id: int, route_manager: RouteManagerVectorEnv, cuda_device: torch.device):
@@ -104,12 +105,12 @@ class HcSingleEnvBase():
             rigid_prim.set_velocities(torch.zeros((1,6), device=self.cuda_device))
 
     def step_env_logic(self, action: dict | None = None, action_extra: list[dict] | None = None) -> None:
-        
+        # time_start = time.time()
         self.env_state_action_dict['action'] = action
         for m in self.iter_managers():
             m.step(self.env_state_action_dict)
         self.env_state_action_dict["time_step"] += 1
-        # self.update_task_availability_mask()
-        # self.update_self_availability_mask()
+        # time_end = time.time()
+        # print(f"step_env_logic time: {time_end - time_start}")
         return
 
