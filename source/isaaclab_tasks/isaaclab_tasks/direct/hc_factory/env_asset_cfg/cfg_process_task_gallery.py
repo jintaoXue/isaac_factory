@@ -28,6 +28,7 @@ TaskRecordTemplate = {
     "chosen_workstation_index": None,
     "logistic_machine": "num07_gantry_group",
     "chosen_gantry_index": None,
+    "task_start_time_step": None,
 
     "subtasks_dict": None,
 

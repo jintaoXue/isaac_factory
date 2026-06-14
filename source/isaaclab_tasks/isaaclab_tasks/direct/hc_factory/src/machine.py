@@ -55,12 +55,15 @@ class MachineManager:
         mask = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
         mask[0] = 1 # "none" task is always available
         have_free_gantry = False
+        active_gantry_indices = CfgMachine["num07_gantry_group"]["active_gantry_indices"]
         for machine in self.iter_logistic_machines():
-            state : list = machine.state['state']
-            for state_name in state:
-                if state_name == "free":
+            state: list = machine.state["state"]
+            for gantry_index in active_gantry_indices:
+                if state[gantry_index] == "free":
                     have_free_gantry = True
                     break
+            if have_free_gantry:
+                break
         for machine in self.iter_machines():
             assert machine.type_name != "num07_gantry_group", "num07_gantry_group is logistic machine"
             state : list = machine.state['state']
@@ -364,18 +367,24 @@ class num08_workbench(Machine):
 
 class num07_gantry_group(Machine):
 
+    ACTIVE_GANTRY_INDICES = CfgMachine["num07_gantry_group"]["active_gantry_indices"]
+    INVALID_GANTRY_PARKING_XY = {
+        2: torch.tensor([-46.0, 10.18675]),
+        3: torch.tensor([-42.0, 10.18675]),
+    }
+
     def __init__(self, env_id: int, cuda_device: torch.device):
-        # ===== 显式声明（更直观：一眼能看到有哪些对象会挂到 self 上）=====
-        # 这些名称来自 cfg.py 的 registeration_infos_combined keys
         self.num07_gantry_group = None
         self.animation_num07_gantry_group: GantryGroupAnimation = None
         super().__init__(cfg=CfgMachine["num07_gantry_group"], env_id=env_id, cuda_device=cuda_device)
-        # shape 8x1 tensor and joint_position has 8 elements: [x0, x1, x2, x3, y0, y1, y2, y3] for 4 subgantrys
-        self.joint_position_reset = self.registration_infos["num07_gantry_group"]["joint_positions_reset"].to(self.cuda_device)
-        self.xy_position_reset = self.registration_infos["num07_gantry_group"]["xy_position_reset"].to(self.cuda_device)
-        #"gantry_indexs": torch.tensor([0, 1, 2, 3, 0, 1, 2, 3]), number 4 subgantrys in total, each subgantry has a gantry and a hook, the gantry moves in xy plane and the hook moves in z axis, the subgantry indexs indicate which subgantry each joint belongs to
-        self.gantry_indexs = self.registration_infos["num07_gantry_group"]["gantry_indexs"].to(self.cuda_device)
-        self.fixed_hook_height : float = self.registration_infos["num07_gantry_group"]["fixed_hook_height"]
+        gantry_info = self.registration_infos["num07_gantry_group"]
+        self.joint_position_reset = gantry_info["joint_positions_reset"].to(self.cuda_device)
+        self.xy_position_reset = gantry_info["xy_position_reset"].to(self.cuda_device)
+        self.gantry_indexs = gantry_info["gantry_indexs"].to(self.cuda_device)
+        self.fixed_hook_height: float = gantry_info["fixed_hook_height"]
+        self.safe_x_gap: float = gantry_info["safe_x_gap"]
+        self._yielding = [False] * self.num_workstations
+        self._yield_target_x: list[float | None] = [None] * self.num_workstations
 
     def _register_articulation_animation(self):
         for obj_name, info in self.registration_infos.items():
@@ -397,118 +406,295 @@ class num07_gantry_group(Machine):
                 ),
             )
 
-    def step(self, env_state_action_dict):
-        ###1. This part is for set gantry group index 1,2,3 subgantrys to move to the side, means invalid state
-        joint_position = env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"]
-        xyz_1 : torch.tensor = torch.tensor([-50.45092570343084, 10.18675, 0.5]).to(self.cuda_device)
-        xyz_2 : torch.tensor = torch.tensor([-46, 10.18675, 0.5]).to(self.cuda_device)
-        xyz_3 : torch.tensor = torch.tensor([-42, 10.18675, 0.5]).to(self.cuda_device)
+    def _joint_to_world_x(self, joint_position: torch.Tensor, gantry_index: int) -> float:
+        joint_x = float(joint_position[gantry_index].item())
+        reset_joint_x = float(self.joint_position_reset[gantry_index].item())
+        reset_world_x = float(self.xy_position_reset[gantry_index].item())
+        return joint_x - reset_joint_x + reset_world_x
 
-        target_joint_position_1 = self._get_joint_pose_from_xy_target(joint_position, xyz_1[:2], gantry_index = 1)
-        target_joint_position_2 = self._get_joint_pose_from_xy_target(joint_position, xyz_2[:2], gantry_index = 2)
-        target_joint_position_3 = self._get_joint_pose_from_xy_target(joint_position, xyz_3[:2], gantry_index = 3)
+    def _joint_to_world_y(self, joint_position: torch.Tensor, gantry_index: int) -> float:
+        y_joint_index = self.num_workstations + gantry_index
+        joint_y = float(joint_position[y_joint_index].item())
+        reset_joint_y = float(self.joint_position_reset[y_joint_index].item())
+        reset_world_y = float(self.xy_position_reset[y_joint_index].item())
+        return joint_y - reset_joint_y + reset_world_y
 
+    def _forbidden_corridor(self, joint_position: torch.Tensor, gantry_index: int) -> tuple[float, float] | None:
+        """X interval the gantry occupies or will traverse; None if effectively stationary."""
         animation = self.animation_num07_gantry_group
-        animation.sync_gantry_pose(target_joint_position_1, gantry_index=1)
-        animation.sync_gantry_pose(target_joint_position_2, gantry_index=2)
-        animation.sync_gantry_pose(target_joint_position_3, gantry_index=3)
+        current_x = self._joint_to_world_x(joint_position, gantry_index)
+        if animation.is_done(gantry_index=gantry_index):
+            return current_x, current_x
+        target_x = self._joint_to_world_x(animation.end_pose, gantry_index)
+        if abs(current_x - target_x) < 0.05:
+            return current_x, current_x
+        return min(current_x, target_x), max(current_x, target_x)
 
-        ####2. This index = 0 gantry is only valid machine
-        task_record_index : int = env_state_action_dict["machine"][self.type_name]["ongoing_task_record_index"][0]
+    def _corridor_clear_low_x(self, corridor: tuple[float, float]) -> float:
+        lo, _ = corridor
+        return lo - 2.0 * self.safe_x_gap
+
+    def _corridor_clear_high_x(self, corridor: tuple[float, float]) -> float:
+        _, hi = corridor
+        return hi + 2.0 * self.safe_x_gap
+
+    def _x_blocks_corridor(self, world_x: float, corridor: tuple[float, float]) -> bool:
+        lo, hi = corridor
+        return (lo - self.safe_x_gap) <= world_x <= (hi + self.safe_x_gap)
+
+    def _x_clears_corridor(self, world_x: float, corridor: tuple[float, float]) -> bool:
+        return not self._x_blocks_corridor(world_x, corridor)
+
+    def _yield_moves_away(self, low_x: float, yield_x: float, high_x: float) -> bool:
+        """True when yield_x is on the side of low_x away from the higher-priority gantry."""
+        if low_x <= high_x:
+            return yield_x <= low_x
+        return yield_x >= low_x
+
+    def _compute_yield_world_x(
+        self, current_x: float, corridor: tuple[float, float], high_x: float
+    ) -> float:
+        """Yield outside the forbidden corridor, on the side away from the higher-priority gantry."""
+        low_side = self._corridor_clear_low_x(corridor)
+        high_side = self._corridor_clear_high_x(corridor)
+        preferred = low_side if current_x <= high_x else high_side
+        alternate = high_side if current_x <= high_x else low_side
+        if self._x_clears_corridor(preferred, corridor):
+            return preferred
+        return alternate
+
+    def _clear_yield(self, gantry_index: int, joint_position: torch.Tensor) -> None:
+        if not self._yielding[gantry_index]:
+            return
+        self._yielding[gantry_index] = False
+        self._yield_target_x[gantry_index] = None
+        animation = self.animation_num07_gantry_group
+        animation.is_yield_move[gantry_index] = False
+        task_target = self.state["target_joints_position"][gantry_index]
+        if task_target is not None:
+            animation.set_target_pose(task_target, gantry_index=gantry_index, current_joint_position=joint_position)
+
+    def _update_yield(self, joint_position: torch.Tensor, env_state_action_dict: dict) -> None:
+        animation = self.animation_num07_gantry_group
+        priorities = {
+            gantry_index: self._gantry_priority(gantry_index, env_state_action_dict)
+            for gantry_index in self.ACTIVE_GANTRY_INDICES
+        }
+        ordered = sorted(self.ACTIVE_GANTRY_INDICES, key=lambda idx: priorities[idx])
+
+        for high_idx in ordered:
+            corridor = self._forbidden_corridor(joint_position, high_idx)
+            if corridor is None:
+                continue
+            for low_idx in ordered:
+                if priorities[low_idx] <= priorities[high_idx]:
+                    continue
+                low_x = self._joint_to_world_x(joint_position, low_idx)
+                high_x = self._joint_to_world_x(joint_position, high_idx)
+                too_close = abs(low_x - high_x) < self.safe_x_gap
+                in_corridor = self._x_blocks_corridor(low_x, corridor)
+                if not too_close and not in_corridor:
+                    continue
+                if too_close and not in_corridor:
+                    corridor = (high_x, high_x)
+
+                if self._x_clears_corridor(low_x, corridor):
+                    if self._yielding[low_idx]:
+                        self._clear_yield(low_idx, joint_position)
+                    continue
+
+                locked_x = self._yield_target_x[low_idx]
+                if (
+                    self._yielding[low_idx]
+                    and locked_x is not None
+                    and not self._x_blocks_corridor(locked_x, corridor)
+                    and self._yield_moves_away(low_x, locked_x, high_x)
+                ):
+                    return
+
+                yield_x = self._compute_yield_world_x(low_x, corridor, high_x)
+                if (
+                    self._yielding[low_idx]
+                    and locked_x is not None
+                    and abs(locked_x - yield_x) < 0.05
+                ):
+                    return
+
+                current_y = self._joint_to_world_y(joint_position, low_idx)
+                yield_xy = torch.tensor([yield_x, current_y], dtype=torch.float32, device=self.cuda_device)
+                yield_pose = self._get_joint_pose_from_xy_target(
+                    joint_position.clone(), yield_xy, gantry_index=low_idx
+                )
+                animation.set_yield_target_pose(
+                    yield_pose, gantry_index=low_idx, current_joint_position=joint_position
+                )
+                self._yielding[low_idx] = True
+                self._yield_target_x[low_idx] = yield_x
+                return
+
+        for gantry_index in self.ACTIVE_GANTRY_INDICES:
+            if self._yielding[gantry_index]:
+                self._clear_yield(gantry_index, joint_position)
+
+    def _gantry_priority(self, gantry_index: int, env_state_action_dict: dict) -> tuple[int, int]:
+        task_record_index = self.state["ongoing_task_record_index"][gantry_index]
         if task_record_index is None:
-            pass
-        else:
-            task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
-            chosen_gantry_index = task_record["chosen_gantry_index"]
-            assert chosen_gantry_index == 0, "The chosen gantry index should be 0"
-            if self.state["state"][0] == "free":
-                #subgantry index = 0 is chosen to work on the task
-                self.state["state"][0] = 'working_' + task_record["task"]
-            subtasks = task_record["subtasks_dict"]
-            subtask = subtasks["ongoing"]
-            gantry_subtask = subtask[1]
+            return (1, gantry_index)
+        task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
+        start_step = task_record.get("task_start_time_step")
+        if start_step is None:
+            start_step = 1_000_000_000
+        return (0, int(start_step))
 
+    def _sync_invalid_gantries(self, joint_position: torch.Tensor) -> None:
+        animation = self.animation_num07_gantry_group
+        for gantry_index, parking_xy in self.INVALID_GANTRY_PARKING_XY.items():
+            self.state["state"][gantry_index] = "invalid"
+            self.state["ongoing_task_record_index"][gantry_index] = None
+            parking_xy = parking_xy.to(self.cuda_device)
+            current_x = self._joint_to_world_x(joint_position, gantry_index)
+            if abs(current_x - float(parking_xy[0].item())) < 0.05 and animation.is_done(gantry_index=gantry_index):
+                continue
+            parked_pose = self._get_joint_pose_from_xy_target(
+                joint_position.clone(), parking_xy, gantry_index=gantry_index
+            )
+            animation.sync_gantry_pose(parked_pose, gantry_index=gantry_index)
+            gantry_mask = self.gantry_indexs == gantry_index
+            joint_position[gantry_mask] = parked_pose[gantry_mask]
+
+    def step(self, env_state_action_dict):
+        joint_position = env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"]
+        self._sync_invalid_gantries(joint_position)
+
+        for gantry_index in self.ACTIVE_GANTRY_INDICES:
+            task_record_index = self.state["ongoing_task_record_index"][gantry_index]
+            if task_record_index is None:
+                continue
+
+            task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
+            assert task_record["chosen_gantry_index"] == gantry_index
+            if self.state["state"][gantry_index] == "free":
+                self.state["state"][gantry_index] = "working_" + task_record["task"]
+
+            subtasks = task_record["subtasks_dict"]
+            gantry_subtask = subtasks["ongoing"][1]
             if gantry_subtask == "go_to_material":
-                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "start")
+                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, gantry_index, "start")
             elif gantry_subtask == "go_to_processing_machine":
-                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type="start")
+                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, gantry_index, "start")
             elif gantry_subtask == "wait":
                 subtasks["finished"][1] = True
             elif gantry_subtask == "carry_to_robot":
-                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type="robot_start")
+                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, gantry_index, "robot_start")
             elif gantry_subtask == "carry_to_goal_area":
-                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type="goal")
+                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, gantry_index, "goal")
             elif gantry_subtask == "move_to_goal_area":
-                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type="goal")
+                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, gantry_index, "goal")
             elif gantry_subtask == "done":
-                self._task_done(env_state_action_dict, task_record, 0)
+                self._task_done(env_state_action_dict, task_record, gantry_index, joint_position)
             else:
                 raise ValueError(f"Invalid gantry subtask for logistic: {gantry_subtask}")
-        # 3. This is for the gantry group to move to the target area
-        env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"] = self.animation_num07_gantry_group.step_next_pose()
-        
+
+        self._update_yield(joint_position, env_state_action_dict)
+        priority_fn = lambda gantry_index: self._gantry_priority(gantry_index, env_state_action_dict)
+        world_x_fn = lambda gantry_index, pose: self._joint_to_world_x(pose, gantry_index)
+        env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"] = (
+            self.animation_num07_gantry_group.step_next_pose(
+                joint_position,
+                self.ACTIVE_GANTRY_INDICES,
+                self.safe_x_gap,
+                world_x_fn,
+                priority_fn,
+            )
+        )
         return env_state_action_dict
-    
-    def _subtask_go_to_target(self, env_state_action_dict: dict, task_record: dict, subtasks: dict, target_area_type: str) -> None:
-        if subtasks["finished"][1] == True:
+
+    def _subtask_go_to_target(
+        self,
+        env_state_action_dict: dict,
+        task_record: dict,
+        subtasks: dict,
+        gantry_index: int,
+        target_area_type: str,
+    ) -> None:
+        if subtasks["finished"][1]:
             return
-        # if the target area id is not set, set it
-        if self.state["target_area_id"] is None:
+
+        if self.state["target_area_id"][gantry_index] is None:
             if target_area_type == "start":
-                assert task_record["subtasks_dict"]["start_area_ids"] is not None, "The start area ids should be initialized in task_progress_manager.py"
-                self.state["target_area_id"] = task_record["subtasks_dict"]["start_area_ids"]["gantry_parking_areas_ids"][0]
+                self.state["target_area_id"][gantry_index] = task_record["subtasks_dict"]["start_area_ids"][
+                    "gantry_parking_areas_ids"
+                ][0]
             elif target_area_type == "robot_start":
-                assert task_record["subtasks_dict"]["start_area_ids"] is not None, "The start area ids should be initialized in task_progress_manager.py"
-                self.state["target_area_id"] = task_record["subtasks_dict"]["start_area_ids"]["robot_parking_areas_ids"][0]
+                self.state["target_area_id"][gantry_index] = task_record["subtasks_dict"]["start_area_ids"][
+                    "robot_parking_areas_ids"
+                ][0]
             elif target_area_type == "goal":
-                assert task_record["subtasks_dict"]["goal_area_ids"] is not None, "The goal area ids should be initialized in task_progress_manager.py"
-                self.state["target_area_id"] = task_record["subtasks_dict"]["goal_area_ids"]["gantry_parking_areas_ids"][0]
+                self.state["target_area_id"][gantry_index] = task_record["subtasks_dict"]["goal_area_ids"][
+                    "gantry_parking_areas_ids"
+                ][0]
             else:
                 raise ValueError(f"Invalid target area type: {target_area_type}")
 
-        if self.state["target_joints_position"] == None:
-            if self.state["target_area_xy"] == None:
-                ### Wait for the route manager (route.py) to generate the XY by giving the self.state["target_area_id"]
-                pass
-            else:
-                if self.state["target_joints_position"] is None:
-                    chosen_gantry_index = task_record["chosen_gantry_index"]
-                    joint_position = env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"]
-                    self.state["target_joints_position"] = self._get_joint_pose_from_xy_target(
-                        joint_position.clone(), self.state["target_area_xy"], gantry_index=chosen_gantry_index
-                    )
-                    self.animation_num07_gantry_group.set_target_pose(
-                        self.state["target_joints_position"], gantry_index=chosen_gantry_index
-                    )
-        else:
-            chosen_gantry_index = task_record["chosen_gantry_index"]
-            if self.animation_num07_gantry_group.is_done(gantry_index=chosen_gantry_index):
-                subtasks["finished"][1] = True
-                self.state["target_area_id"] = None
-                self.state["target_area_xy"] = None
-                self.state["target_joints_position"] = None
+        if self.state["target_joints_position"][gantry_index] is None:
+            if self.state["target_area_xy"][gantry_index] is None:
+                return
+            if self._yielding[gantry_index]:
+                return
+            joint_position = env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"]
+            self.state["target_joints_position"][gantry_index] = self._get_joint_pose_from_xy_target(
+                joint_position.clone(),
+                self.state["target_area_xy"][gantry_index],
+                gantry_index=gantry_index,
+            )
+            self.animation_num07_gantry_group.set_target_pose(
+                self.state["target_joints_position"][gantry_index],
+                gantry_index=gantry_index,
+                current_joint_position=joint_position,
+            )
+            return
 
-    def _get_joint_pose_from_xy_target(self, joint_position: torch.tensor, xy_target: torch.tensor, gantry_index: int) -> torch.tensor:
-        #input xy_target is a list of 2 elements, [x, y], the gantry_index-th gantry should move to the xy_target
-        # having the self.gantry_indexs to get the joint position of the gantry_index-th gantry
-        # having the self.xy_position_reset to get the xy_position_reset of the gantry_index-th gantry
-        # having the self.fixed_hook_height to get the fixed_hook_height of the gantry_index-th gantry
-        # return the joint position of the gantry_index-th gantry
+        if self.animation_num07_gantry_group.is_done(gantry_index=gantry_index):
+            subtasks["finished"][1] = True
+            self.state["target_area_id"][gantry_index] = None
+            self.state["target_area_xy"][gantry_index] = None
+            self.state["target_joints_position"][gantry_index] = None
 
+    def _get_joint_pose_from_xy_target(
+        self, joint_position: torch.Tensor, xy_target: torch.Tensor, gantry_index: int
+    ) -> torch.Tensor:
         reset = self.joint_position_reset[self.gantry_indexs == gantry_index]
         xy_reset = self.xy_position_reset[self.gantry_indexs == gantry_index]
         target = reset + (xy_target - xy_reset)
         joint_position[self.gantry_indexs == gantry_index] = target
         return joint_position
 
-    def _task_done(self, env_state_action_dict: dict, task_record: dict, chosen_gantry_index: int) -> None:
+    def _task_done(
+        self,
+        env_state_action_dict: dict,
+        task_record: dict,
+        chosen_gantry_index: int,
+        joint_position: torch.Tensor,
+    ) -> None:
         task_record["subtasks_dict"]["finished"][1] = True
         self.state["state"][chosen_gantry_index] = "free"
         self.state["ongoing_task_record_index"][chosen_gantry_index] = None
-        self.state["target_area_id"] = None
-        self.state["target_area_xy"] = None
-        self.state["target_joints_position"] = None
-        self.animation_num07_gantry_group.set_target_pose(
-            self.joint_position_reset, gantry_index=chosen_gantry_index
+        self.state["target_area_id"][chosen_gantry_index] = None
+        self.state["target_area_xy"][chosen_gantry_index] = None
+        self.state["target_joints_position"][chosen_gantry_index] = None
+        self._yielding[chosen_gantry_index] = False
+        self._yield_target_x[chosen_gantry_index] = None
+        home_xy = torch.tensor(
+            [
+                float(self.xy_position_reset[chosen_gantry_index].item()),
+                float(self.xy_position_reset[self.num_workstations + chosen_gantry_index].item()),
+            ],
+            dtype=torch.float32,
+            device=self.cuda_device,
         )
-        return env_state_action_dict
+        home_pose = self._get_joint_pose_from_xy_target(
+            joint_position.clone(), home_xy, gantry_index=chosen_gantry_index
+        )
+        self.animation_num07_gantry_group.set_target_pose(
+            home_pose, gantry_index=chosen_gantry_index, current_joint_position=joint_position
+        )

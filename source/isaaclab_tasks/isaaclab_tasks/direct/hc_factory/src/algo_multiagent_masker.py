@@ -86,8 +86,8 @@ class AlgoMultiAgentMasker:
         mask = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
         mask[0] = 1  # "none" task is always available
         have_free_gantry = any(
-            state_name == "free"
-            for state_name in env_state_action_dict["machine"]["num07_gantry_group"]["state"]
+            env_state_action_dict["machine"]["num07_gantry_group"]["state"][idx] == "free"
+            for idx in CfgMachine["num07_gantry_group"]["active_gantry_indices"]
         )
         for machine_name, machine_cfg in CfgMachine.items():
             if machine_name == "num07_gantry_group":

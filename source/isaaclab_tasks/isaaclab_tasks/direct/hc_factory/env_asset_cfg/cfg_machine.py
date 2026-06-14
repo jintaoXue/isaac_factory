@@ -340,15 +340,16 @@ CfgMachine = {
             "logistic_for_paint_rust_proof",
         ],
         "num_workstations": 4,
+        "active_gantry_indices": [0, 1],
         "num_registration_parts": 1,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting", 4: "invalid"},
         "reset_state": {
-            "state": ["free", "invalid", "invalid", "invalid"],
+            "state": ["free", "free", "invalid", "invalid"],
             "ongoing_task_record_index": [None, None, None, None],
             "key_variables": {},
-            "target_area_id": None,
-            "target_area_xy": None,
-            "target_joints_position": None,
+            "target_area_id": [None, None, None, None],
+            "target_area_xy": [None, None, None, None],
+            "target_joints_position": [None, None, None, None],
         },
         "working_area_ids": {
             "num07_gantry_group_station_00": {
@@ -384,6 +385,7 @@ CfgMachine = {
                 "gantry_indexs": torch.tensor([0, 1, 2, 3, 0, 1, 2, 3]),
                 ### to simplify the problem, we set the z of hook to be fixed, and only control the x and y movement of the gantry, so the joint position of z axis is not used for calculating the reward and is not included in the observation, but it is still needed for animation and calculating the offset between the hook and the material when gripping.
                 "fixed_hook_height": 8.90808,
+                "safe_x_gap": 4.0,
                 "animation_time": 20,
             },
         },

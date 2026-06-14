@@ -2,6 +2,7 @@
 from ..env_asset_cfg.cfg_storage import CfgStorage
 from ..env_asset_cfg.cfg_material_product import CfgProductOrder, CfgProductProcess
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskGalleryDetailedClassified, CfgSubtaskGallery, TaskRecordTemplate
+from ..env_asset_cfg.cfg_machine import CfgMachine
 import torch
 import copy
 
@@ -126,6 +127,8 @@ class TaskManager:
         elif new_task_record["task_type"] == "processing":
             ## find the ready workstation index for logistic task
             for i, state in enumerate(states):
+                if state == "free":
+                    continue
                 pre_name = state.split('_')[0]
                 task_name = state.split('_', 1)[1]
                 if pre_name == "materialReadyFor":
@@ -137,6 +140,7 @@ class TaskManager:
         new_task_record["chosen_machine_workstation"] = \
             list(env_state_action_dict["machine"][new_task_record["target_machine"]]["key_variables"]["working_area_ids"].keys())[workstation_index]
         new_task_record["chosen_workstation_index"] = workstation_index
+        new_task_record["task_start_time_step"] = int(env_state_action_dict["time_step"])
         if new_task_record["task_type"] == "logistic":
             chosen_gantry_index = self._find_free_gantry(env_state_action_dict, new_task_record)
             assert chosen_gantry_index is not None, "Free gantry index should be found"
@@ -148,12 +152,12 @@ class TaskManager:
         self.apply_new_task_record_to_human_robot_machine_material(env_state_action_dict, new_task_record)
 
     def _find_free_gantry(self, env_state_action_dict, task_record):
-
-        gantry_states : list[str] = env_state_action_dict["machine"][task_record["logistic_machine"]]["state"]
-        def index_of(value, in_list):
-            return next((idx for idx, item in enumerate(in_list) if item == value), None)
-        chosen_gantry_index = index_of("free", gantry_states)
-        return chosen_gantry_index
+        gantry_states: list[str] = env_state_action_dict["machine"][task_record["logistic_machine"]]["state"]
+        active_indices = CfgMachine["num07_gantry_group"]["active_gantry_indices"]
+        for gantry_index in active_indices:
+            if gantry_states[gantry_index] == "free":
+                return gantry_index
+        return None
 
     def initialze_subtasks(self, env_state_action_dict, task_record):
         if task_record["task_type"] == "logistic":
@@ -224,7 +228,9 @@ class TaskManager:
         if logistic_machine_type != None:
             if task_record["task_type"] == "logistic":
                 assert logistic_machine_type == "num07_gantry_group", "now only num07_gantry_group is valid logistic machine"
-                env_state_action_dict["machine"][logistic_machine_type]["ongoing_task_record_index"][0] = task_record["product_index"]
+                chosen_gantry_index = task_record["chosen_gantry_index"]
+                env_state_action_dict["machine"][logistic_machine_type]["ongoing_task_record_index"][chosen_gantry_index] = task_record["product_index"]
+                env_state_action_dict["machine"][logistic_machine_type]["state"][chosen_gantry_index] = "working_" + task_record["task"]
             elif task_record["task_type"] == "processing":
                 pass #processing task dont need to update logistic machine now, will be updated after the during the processing task
             else:
@@ -302,10 +308,13 @@ class TaskManager:
             elif task_record["subtasks_dict"]["ongoing"][1] == "finding_free_gantry" and task_record["subtasks_dict"]["finished"][1] == False:
                 if task_record["chosen_gantry_index"] is None:
                     task_record["chosen_gantry_index"] = self._find_free_gantry(env_state_action_dict, task_record)
-                    if task_record["chosen_gantry_index"] is not None:
-                        env_state_action_dict["machine"]["num07_gantry_group"]["ongoing_task_record_index"][0] = task_record["product_index"]
-                        env_state_action_dict["machine"]["num07_gantry_group"]["state"][0] = "working_" + task_record["task"]
-                        task_record["subtasks_dict"]["finished"][1] = True
+                chosen_gantry_index = task_record["chosen_gantry_index"]
+                if chosen_gantry_index is not None:
+                    if task_record.get("task_start_time_step") is None:
+                        task_record["task_start_time_step"] = int(env_state_action_dict["time_step"])
+                    env_state_action_dict["machine"]["num07_gantry_group"]["ongoing_task_record_index"][chosen_gantry_index] = task_record["product_index"]
+                    env_state_action_dict["machine"]["num07_gantry_group"]["state"][chosen_gantry_index] = "working_" + task_record["task"]
+                    task_record["subtasks_dict"]["finished"][1] = True
             ### where the processed material will be put on
             elif task_record["subtasks_dict"]["ongoing_index"] >= task_record["subtasks_dict"]["index_to_decide_goal_area"] and \
                   task_record["subtasks_dict"]["goal_area_ids"] is None:

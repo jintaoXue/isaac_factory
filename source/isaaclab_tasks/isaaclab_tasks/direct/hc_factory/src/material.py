@@ -205,7 +205,8 @@ class MaterialBatch:
             if material_state == "on_start_area":
                 pass
             elif material_state == "disappear":
-                pass
+                position[0][2] = -100
+                storage_name = "disappear"
             elif material_state == "on_gantry":
                 gantry_index = task_record["chosen_gantry_index"]
                 gantry_indexs = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]["gantry_indexs"]

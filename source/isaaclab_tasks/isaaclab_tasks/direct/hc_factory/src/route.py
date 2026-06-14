@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 import torch
 from ..env_asset_cfg.cfg_human import CfgHuman
+from ..env_asset_cfg.cfg_machine import CfgMachine
 
 _CPU_DEVICE = torch.device("cpu")
 
@@ -304,21 +305,21 @@ class RouteManagerVectorEnv:
         return env_state_action_dict
 
     def _step_gantry(self, env_state_action_dict: dict) -> None:
-        """Resolve gantry target_area_xy from map point id (gantry/robot parking area)."""
+        """Resolve per-gantry target_area_xy from map point id."""
         gantry_state = env_state_action_dict["machine"]["num07_gantry_group"]
-        target_area_id = gantry_state["target_area_id"]
-        if target_area_id is None or gantry_state["target_area_xy"] is not None:
-            return
+        active_indices = CfgMachine["num07_gantry_group"]["active_gantry_indices"]
+        for gantry_index in active_indices:
+            target_area_id = gantry_state["target_area_id"][gantry_index]
+            if target_area_id is None or gantry_state["target_area_xy"][gantry_index] is not None:
+                continue
 
-        area_id = int(target_area_id)
-        # gantry_parking_areas_ids come from robot map (see cfg_machine comments)
-        x, y = self.human_roadmap.get_xy_at_area_id(area_id)
-
-        gantry_state["target_area_xy"] = torch.tensor(
-            [x, y],
-            dtype=torch.float32,
-            device=self.cuda_device,
-        )
+            area_id = int(target_area_id)
+            x, y = self.human_roadmap.get_xy_at_area_id(area_id)
+            gantry_state["target_area_xy"][gantry_index] = torch.tensor(
+                [x, y],
+                dtype=torch.float32,
+                device=self.cuda_device,
+            )
 
     def reset(self, env_state_action_dict: dict) -> dict:
         pass
