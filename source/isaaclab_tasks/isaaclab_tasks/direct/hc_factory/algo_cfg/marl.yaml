@@ -1,0 +1,41 @@
+params:
+  seed: 42
+  algo:
+    name: marl
+
+  env:
+    clip_observations: 5.0
+    clip_actions: 1.0
+
+  config:
+    name: HcFactory
+    env_name: rlgpu_HRTPA
+    device: 'cuda:0'
+    device_name: 'cuda:0'
+    time_str: "None"
+
+    gamma: 0.99
+    learning_rate: 1.0e-4
+    max_epochs: 1.0e+11
+    batch_size: 64
+    replay_buffer_size: 50000
+    hidden_dim: 128
+    target_update_interval: 500
+
+    # epsilon-greedy exploration
+    epsilon_start: 1.0
+    epsilon_end: 0.05
+    epsilon_decay_steps: 100000
+
+    # training loop
+    learn_interval: 1
+    save_interval: 5000
+    log_interval: 100
+    parallel_producing_limit: 5
+
+    test: False
+    wandb_activate: False
+    wandb_project: 'HcFactory_MARL'
+
+    load_dir: ''
+    load_name: ''
