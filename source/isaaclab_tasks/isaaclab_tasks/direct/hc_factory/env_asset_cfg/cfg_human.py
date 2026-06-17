@@ -1,6 +1,35 @@
 
 from .cfg_hc_env import HcVectorEnvCfg
 import torch
+
+_HUMAN_REST_POSE_JOINTS = {
+    "upperarm_l": "RL_BoneRoot/Hip/Waist/Spine01/Spine02/L_Clavicle/L_Upperarm",
+    "upperarm_r": "RL_BoneRoot/Hip/Waist/Spine01/Spine02/R_Clavicle/R_Upperarm",
+    "forearm_l": "RL_BoneRoot/Hip/Waist/Spine01/Spine02/L_Clavicle/L_Upperarm/L_Forearm",
+    "forearm_r": "RL_BoneRoot/Hip/Waist/Spine01/Spine02/R_Clavicle/R_Upperarm/R_Forearm",
+}
+
+_HUMAN_REST_POSE_LIBRARY = {
+    "idle": {
+        "upperarm_l": (0.0, 0.0, -70.0),
+        "upperarm_r": (0.0, 0.0, 70.0),
+        "forearm_l": (0.0, 0.0, -10.0),
+        "forearm_r": (0.0, 0.0, 10.0),
+    },
+    "walk": {
+        "upperarm_l": (0.0, 0.0, -35.0),
+        "upperarm_r": (0.0, 0.0, 35.0),
+        "forearm_l": (0.0, 0.0, -20.0),
+        "forearm_r": (0.0, 0.0, 20.0),
+    },
+    "operate": {
+        "upperarm_l": (15.0, -20.0, -45.0),
+        "upperarm_r": (15.0, 20.0, 45.0),
+        "forearm_l": (0.0, 0.0, -60.0),
+        "forearm_r": (0.0, 0.0, 60.0),
+    },
+}
+
 CfgHuman = {
     "NumUpperBound": HcVectorEnvCfg().human_number_upper_bound,
     "NormalHuman": {
@@ -28,6 +57,10 @@ CfgHuman = {
         },
         "human_route_orientation_offset": {
             "orientation": torch.tensor([0.7071, 0, 0, 0.7071]),
+        },
+        "rest_pose_cfg": {
+            "joints": _HUMAN_REST_POSE_JOINTS,
+            "poses": _HUMAN_REST_POSE_LIBRARY,
         },
     }
 }

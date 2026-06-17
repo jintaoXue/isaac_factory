@@ -267,33 +267,15 @@ class Human:
         return mat
 
     def _build_rest_pose_rules(self, pose_name: str) -> list[tuple[str, tuple[float, float, float]]]:
-        # Local rotateXYZ degrees applied on top of authored restTransforms.
-        upperarm = "RL_BoneRoot/Hip/Waist/Spine01/Spine02/L_Clavicle/L_Upperarm"
-        r_upperarm = "RL_BoneRoot/Hip/Waist/Spine01/Spine02/R_Clavicle/R_Upperarm"
-        forearm = "RL_BoneRoot/Hip/Waist/Spine01/Spine02/L_Clavicle/L_Upperarm/L_Forearm"
-        r_forearm = "RL_BoneRoot/Hip/Waist/Spine01/Spine02/R_Clavicle/R_Upperarm/R_Forearm"
-        if pose_name == "idle":
-            return [
-                (upperarm, (0.0, 0.0, -70.0)),
-                (r_upperarm, (0.0, 0.0, 70.0)),
-                (forearm, (0.0, 0.0, -10.0)),
-                (r_forearm, (0.0, 0.0, 10.0)),
-            ]
-        if pose_name == "walk":
-            return [
-                (upperarm, (0.0, 0.0, -35.0)),
-                (r_upperarm, (0.0, 0.0, 35.0)),
-                (forearm, (0.0, 0.0, -20.0)),
-                (r_forearm, (0.0, 0.0, 20.0)),
-            ]
-        if pose_name == "operate":
-            return [
-                (upperarm, (15.0, -20.0, -45.0)),
-                (r_upperarm, (15.0, 20.0, 45.0)),
-                (forearm, (0.0, 0.0, -60.0)),
-                (r_forearm, (0.0, 0.0, 60.0)),
-            ]
-        return []
+        rest_pose_cfg = self.cfg.get("rest_pose_cfg", {})
+        joint_map: dict = rest_pose_cfg.get("joints", {})
+        pose_library: dict = rest_pose_cfg.get("poses", {})
+        pose_rules: dict = pose_library.get(pose_name, {})
+        rules: list[tuple[str, tuple[float, float, float]]] = []
+        for joint_key, rot_xyz in pose_rules.items():
+            joint_name = joint_map.get(joint_key, joint_key)
+            rules.append((joint_name, rot_xyz))
+        return rules
 
     def _apply_rest_transform_pose(self, pose_name: str) -> int:
         if self.skeleton is None or not self._rest_transforms_base:
