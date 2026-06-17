@@ -25,13 +25,13 @@ class MachineManager:
     def reset(self, env_state_action_dict: dict) -> dict:
         for machine in self.iter_machines() + self.iter_logistic_machines():
             machine.reset(env_state_action_dict)
-        self.update_task_availability_mask(env_state_action_dict)
+        # self.update_task_availability_mask(env_state_action_dict)
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
         for machine in self.iter_machines() + self.iter_logistic_machines():
             machine.step(env_state_action_dict)
-        self.update_task_availability_mask(env_state_action_dict)
+        # self.update_task_availability_mask(env_state_action_dict)
         return env_state_action_dict
     
     def iter_machines(self):

@@ -36,16 +36,16 @@ class HumanManager:
         for human, i in zip(self.human_list, range(num_humans)):
             human.reset(env_state_action_dict, shuffled_init_points_in_map[i].unsqueeze(0), shuffled_init_points_ids[i])
         
-        self.update_task_availability_mask(env_state_action_dict)
-        self.update_self_availability_mask(env_state_action_dict)
+        # self.update_task_availability_mask(env_state_action_dict)
+        # self.update_self_availability_mask(env_state_action_dict)
 
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
         for human in self.human_list:
             human.step(env_state_action_dict)
-        self.update_task_availability_mask(env_state_action_dict)
-        self.update_self_availability_mask(env_state_action_dict)
+        # self.update_task_availability_mask(env_state_action_dict)
+        # self.update_self_availability_mask(env_state_action_dict)
 
         return env_state_action_dict
     
