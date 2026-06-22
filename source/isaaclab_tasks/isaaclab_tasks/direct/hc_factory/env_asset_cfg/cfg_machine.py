@@ -1,3 +1,4 @@
+import math
 import torch
 
 CfgMachine = {
@@ -34,6 +35,10 @@ CfgMachine = {
                 "robot_parking_areas_ids": [61],
                 "gantry_parking_areas_ids": [60],
             },
+        },
+        "human_working_areas_ids_orientation": {
+            56 : math.pi,
+            60 : math.pi,
         },
         "material_placement_cfg": {
             "num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
@@ -84,6 +89,9 @@ CfgMachine = {
                 "gantry_parking_areas_ids": [66],
             },
         },
+        "human_working_areas_ids_orientation": {
+            66 : math.pi,
+        },
         "material_placement_cfg": {
             "num01_weldingRobot_part02_robot_arm_and_base": {
                 "position": torch.tensor([24.68707, 14.36929, 1.146]),
@@ -128,6 +136,9 @@ CfgMachine = {
                 "robot_parking_areas_ids": [78],
                 "gantry_parking_areas_ids": [78],
             },
+        },
+        "human_working_areas_ids_orientation": {
+            90 : 0,
         },
         "material_placement_cfg": {
             "num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
@@ -174,6 +185,9 @@ CfgMachine = {
                 "gantry_parking_areas_ids": [111],
             },
         },
+        "human_working_areas_ids_orientation": {
+            113 : 0,
+        },
         "material_placement_cfg": {
             "num03_laserCuttingMachine": {
                 "position": torch.tensor([0.0, 0.0, 0.0]),
@@ -212,6 +226,9 @@ CfgMachine = {
                 "robot_parking_areas_ids": [136],
                 "gantry_parking_areas_ids": [136],
             },
+        },
+        "human_working_areas_ids_orientation": {
+            138 : math.pi,
         },
         "material_placement_cfg": {
             "num04_groovingMachineLarge_part01_large_fixed_base": {
@@ -258,6 +275,9 @@ CfgMachine = {
                 "gantry_parking_areas_ids": [139],
             },
         },
+        "human_working_areas_ids_orientation": {
+            160 : math.pi,
+        },
         "material_placement_cfg": {
             "num05_groovingMachineSmall_part01_small_fixed_base": {
                 "position": torch.tensor([0.0, 0.0, 0.0]),
@@ -302,6 +322,9 @@ CfgMachine = {
                 "robot_parking_areas_ids": [131],
                 "gantry_parking_areas_ids": [131],
             },
+        },
+        "human_working_areas_ids_orientation": {
+            130 : 0,
         },
         "material_placement_cfg": {
             "num06_highPressureFoamingMachine": {
@@ -373,6 +396,9 @@ CfgMachine = {
                 "gantry_parking_areas_ids": [],
             },
         },
+        "human_working_areas_ids_orientation": {
+
+        },
         "material_placement_cfg": {},
         "registration_infos": {
             "num07_gantry_group": {
@@ -421,6 +447,10 @@ CfgMachine = {
                 "gantry_parking_areas_ids": [47],
             },
         },
+        "human_working_areas_ids_orientation": {
+            45 : 3 * math.pi / 2,
+            49 : math.pi / 2,
+        },
         "material_placement_cfg": {
             "num08_workbench_station_00": {
                 "position": torch.tensor([28.44292, -2.08669, 0.53412]), 
@@ -443,5 +473,4 @@ CfgMachine = {
         },
     },
 }
-
 

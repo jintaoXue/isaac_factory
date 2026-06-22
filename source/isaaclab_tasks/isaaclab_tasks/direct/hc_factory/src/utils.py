@@ -196,3 +196,155 @@ class GantryGroupAnimation(PoseAnimation):
         self.step_time[gantry_index] = float(self.animation_time)
         self.is_yield_move[gantry_index] = False
         self.done[gantry_index] = True
+
+
+def _smoothstep(t: float) -> float:
+    t = max(0.0, min(1.0, t))
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _lerp_angle(a: float, b: float, t: float) -> float:
+    return a + (b - a) * t
+
+
+def _lerp_rotation(
+    rot_a: tuple[float, float, float], rot_b: tuple[float, float, float], t: float
+) -> tuple[float, float, float]:
+    return (
+        _lerp_angle(rot_a[0], rot_b[0], t),
+        _lerp_angle(rot_a[1], rot_b[1], t),
+        _lerp_angle(rot_a[2], rot_b[2], t),
+    )
+
+
+def _compute_walk_pose(phase: float, params: dict) -> dict[str, tuple[float, float, float]]:
+    """Procedural walk: sine gait with 180° left/right phase offset."""
+    theta = 2.0 * math.pi * phase
+    s_left = math.sin(theta)
+    s_right = -s_left
+
+    thigh_swing = float(params.get("thigh_swing_deg", 30.0))
+    knee_lift = float(params.get("knee_lift_deg", 35.0))
+    knee_stance = float(params.get("knee_stance_deg", 8.0))
+    foot_lift = float(params.get("foot_lift_deg", 15.0))
+    foot_push = float(params.get("foot_push_deg", 8.0))
+    arm_swing = float(params.get("arm_swing_deg", 22.0))
+    forearm_follow = float(params.get("forearm_follow_deg", 8.0))
+    arm_hang_z_l = float(params.get("arm_hang_z_l", -70.0))
+    arm_hang_z_r = float(params.get("arm_hang_z_r", 70.0))
+    torso_lean = float(params.get("torso_lean_deg", 5.0))
+
+    def forward_weight(s: float) -> float:
+        return max(0.0, s)
+
+    def backward_weight(s: float) -> float:
+        return max(0.0, -s)
+
+    return {
+        "waist": (torso_lean * 0.3, 0.0, 0.0),
+        "spine01": (torso_lean, 0.0, 0.0),
+        "spine02": (0.0, 0.0, 0.0),
+        # 下肢：髋-膝-踝交替迈步，左右腿相位差 180°
+        "thigh_l": (thigh_swing * s_left, 0.0, 0.0),
+        "thigh_r": (thigh_swing * s_right, 0.0, 0.0),
+        "calf_l": (
+            -knee_lift * forward_weight(s_left) - knee_stance * backward_weight(s_left),
+            0.0,
+            0.0,
+        ),
+        "calf_r": (
+            -knee_lift * forward_weight(s_right) - knee_stance * backward_weight(s_right),
+            0.0,
+            0.0,
+        ),
+        "foot_l": (
+            foot_lift * forward_weight(s_left) + foot_push * backward_weight(s_left),
+            0.0,
+            0.0,
+        ),
+        "foot_r": (
+            foot_lift * forward_weight(s_right) + foot_push * backward_weight(s_right),
+            0.0,
+            0.0,
+        ),
+        # 上肢：沿身体前后轴（X）摆臂，Z 锁定下垂姿态，禁止 Y 轴横摆
+        "upperarm_l": (-arm_swing * s_left, 0.0, arm_hang_z_l),
+        "upperarm_r": (arm_swing * s_left, 0.0, arm_hang_z_r),
+        "forearm_l": (0.0, 0.0, -10.0 - forearm_follow * abs(s_left)),
+        "forearm_r": (0.0, 0.0, 10.0 + forearm_follow * abs(s_left)),
+    }
+
+
+class HumanAnimation:
+    """Keyframe-based full-body human animation with smooth interpolation."""
+
+    def __init__(self, animation_cfg: dict):
+        self._animations: dict = animation_cfg.get("animations", {})
+        self._current_name: str = "idle"
+        self._frame_index: float = 0.0
+
+    @property
+    def current_animation(self) -> str:
+        return self._current_name
+
+    def set_animation(self, name: str) -> None:
+        name = name.lower()
+        if name not in self._animations:
+            name = "idle"
+        if name != self._current_name:
+            self._current_name = name
+            self._frame_index = 0.0
+
+    def reset(self) -> None:
+        self._current_name = "idle"
+        self._frame_index = 0.0
+
+    def step(self) -> dict[str, tuple[float, float, float]]:
+        anim = self._animations.get(self._current_name)
+        if anim is None:
+            return {}
+        cycle_length: int = int(anim.get("cycle_length", 1))
+        if cycle_length <= 0:
+            return {}
+
+        self._frame_index = (self._frame_index + 1.0) % float(cycle_length)
+        phase = self._frame_index / float(cycle_length)
+
+        anim_type = anim.get("type", "keyframes")
+        if anim_type == "procedural_sine":
+            return _compute_walk_pose(phase, anim.get("params", {}))
+
+        keyframes: list[dict] = anim.get("keyframes", [])
+        if not keyframes:
+            return {}
+        return self._interpolate_keyframes(keyframes, phase)
+
+    def get_pose_at_phase(self, name: str, phase: float) -> dict[str, tuple[float, float, float]]:
+        anim = self._animations.get(name.lower())
+        if anim is None:
+            return {}
+        if anim.get("type") == "procedural_sine":
+            return _compute_walk_pose(phase % 1.0, anim.get("params", {}))
+        return self._interpolate_keyframes(anim.get("keyframes", []), phase % 1.0)
+
+    def _interpolate_keyframes(
+        self, keyframes: list[dict], phase: float
+    ) -> dict[str, tuple[float, float, float]]:
+        num_keyframes = len(keyframes)
+        if num_keyframes == 1:
+            return {k: tuple(v) for k, v in keyframes[0].items()}
+
+        segment = phase * num_keyframes
+        idx0 = int(segment) % num_keyframes
+        idx1 = (idx0 + 1) % num_keyframes
+        t = _smoothstep(segment - int(segment))
+
+        pose0 = keyframes[idx0]
+        pose1 = keyframes[idx1]
+        all_joints = set(pose0.keys()) | set(pose1.keys())
+        result: dict[str, tuple[float, float, float]] = {}
+        for joint_key in all_joints:
+            rot0 = tuple(pose0.get(joint_key, (0.0, 0.0, 0.0)))
+            rot1 = tuple(pose1.get(joint_key, rot0))
+            result[joint_key] = _lerp_rotation(rot0, rot1, t)
+        return result

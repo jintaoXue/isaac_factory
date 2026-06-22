@@ -2,9 +2,11 @@ from isaacsim.core.prims import RigidPrim
 import omni.usd
 from pxr import Usd, UsdSkel, Gf, Sdf
 from ..env_asset_cfg.cfg_human import CfgHuman, CfgHumanRegistrationInfos
+from ..env_asset_cfg.cfg_machine import CfgMachine
 from ..env_asset_cfg.cfg_route.cfg_route import RouteOptionalInitPointsInMap, OptionalInitPointIds
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
 from ..env_asset_cfg.cfg_process_subtask_gallery import CfgSubtaskPredefinedTimeGallery
+from .utils import HumanAnimation, quat_multiply_wxyz, yaw_to_quaternion_wxyz
 import torch
 import copy
 import random
@@ -93,6 +95,8 @@ class Human:
         self._joint_name_to_index: dict[str, int] = {}
         self._rest_transforms_base: list[Gf.Matrix4d] = []
         self._current_pose_name: str = "default"
+        self._animation = HumanAnimation(cfg.get("animation_cfg", {}))
+        self._joint_map: dict = cfg.get("animation_cfg", {}).get("joints", {})
         self.cuda_device = cuda_device
         self._register_skeleton()
         self._register_rigid_prim()
@@ -116,11 +120,6 @@ class Human:
             else:
                 rest = [Gf.Matrix4d(1.0) for _ in self._joint_names]
         self._rest_transforms_base = [Gf.Matrix4d(m) for m in rest]
-        if self.idx == 0:
-            print(
-                f"[HumanRestPose] env={self.env_id} idx={self.idx:02d} "
-                f"joints={len(self._joint_names)} rest={len(self._rest_transforms_base)}"
-            )
         return
     
     def _register_rigid_prim(self):
@@ -143,7 +142,9 @@ class Human:
         self.state["current_area_id"] = init_point_id
         env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"] = self.state
         self.reset_to_random_map_point(env_state_action_dict, init_point_in_map)
+        self._animation.reset()
         self.set_pose("idle")
+        self._advance_animation()
         return env_state_action_dict
 
     def reset_to_random_map_point(self, env_state_action_dict: dict, init_point_in_map: torch.tensor) -> dict:
@@ -159,7 +160,8 @@ class Human:
         task_record_index : int = env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"]["ongoing_task_record_index"]
         if task_record_index is None:
             self.set_pose("idle")
-            return
+            self._advance_animation()
+            return env_state_action_dict
         task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
         assert task_record["human_index"] == self.idx, "The human index should be the same as the human index in the task record"
 
@@ -181,6 +183,7 @@ class Human:
             self.set_pose("operate")
         elif human_subtask in ("wait", "done"):
             self.set_pose("idle")
+        self._advance_animation()
         if human_subtask == "go_to_material":
             self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "start")
         elif human_subtask == "material_on_gantry":
@@ -196,6 +199,7 @@ class Human:
         elif human_subtask == "go_to_processing_machine":
             self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "start")
         elif human_subtask == "control_machine":
+            self._let_human_face_to_machine(env_state_action_dict, task_record)
             self._time_counting_subtask(subtasks, human_subtask)
         elif human_subtask == "wait":
             subtasks["finished"][0] = True
@@ -230,6 +234,15 @@ class Human:
             pass
         return env_state_action_dict
 
+    def _let_human_face_to_machine(self, env_state_action_dict: dict, task_record: dict) -> None:
+        human_area_id = self.state["current_area_id"]
+        machine_name = task_record["target_machine"]
+        yaw = CfgMachine[machine_name]["human_working_areas_ids_orientation"][human_area_id]
+        orientation = yaw_to_quaternion_wxyz(yaw, self.cuda_device)
+        human_name = f"num_{self.idx:02d}_{self.type_name}"
+        env_state_action_dict["rigid_prims"][human_name]["orientation"] = orientation.unsqueeze(0)
+        return
+
     def _time_counting_subtask(self, subtasks: dict, human_subtask: str) -> None:
         if subtasks["finished"][0] == True:
             return
@@ -252,8 +265,13 @@ class Human:
         if joint_name in self._joint_name_to_index:
             return self._joint_name_to_index[joint_name]
         joint_name_lower = joint_name.lower()
+        joint_suffix = joint_name_lower.rsplit("/", 1)[-1]
         for name, index in self._joint_name_to_index.items():
-            if name.lower().endswith(joint_name_lower) or joint_name_lower in name.lower():
+            name_lower = name.lower()
+            if name_lower.endswith(joint_name_lower) or joint_name_lower in name_lower:
+                return index
+            name_suffix = name_lower.rsplit("/", 1)[-1]
+            if joint_suffix == name_suffix:
                 return index
         return None
 
@@ -266,24 +284,13 @@ class Human:
         mat.SetRotate(rot)
         return mat
 
-    def _build_rest_pose_rules(self, pose_name: str) -> list[tuple[str, tuple[float, float, float]]]:
-        rest_pose_cfg = self.cfg.get("rest_pose_cfg", {})
-        joint_map: dict = rest_pose_cfg.get("joints", {})
-        pose_library: dict = rest_pose_cfg.get("poses", {})
-        pose_rules: dict = pose_library.get(pose_name, {})
-        rules: list[tuple[str, tuple[float, float, float]]] = []
-        for joint_key, rot_xyz in pose_rules.items():
-            joint_name = joint_map.get(joint_key, joint_key)
-            rules.append((joint_name, rot_xyz))
-        return rules
-
-    def _apply_rest_transform_pose(self, pose_name: str) -> int:
+    def _apply_joint_pose(self, joint_pose: dict[str, tuple[float, float, float]]) -> int:
         if self.skeleton is None or not self._rest_transforms_base:
             return 0
-        rules = self._build_rest_pose_rules(pose_name)
         rest_transforms = [Gf.Matrix4d(m) for m in self._rest_transforms_base]
         hit = 0
-        for joint_name, rot_xyz in rules:
+        for joint_key, rot_xyz in joint_pose.items():
+            joint_name = self._joint_map.get(joint_key, joint_key)
             joint_index = self._resolve_joint_index(joint_name)
             if joint_index is None:
                 continue
@@ -293,25 +300,24 @@ class Human:
         self.skeleton.GetRestTransformsAttr().Set(rest_transforms)
         return hit
 
+    def _advance_animation(self) -> int:
+        joint_pose = self._animation.step()
+        if not joint_pose:
+            return 0
+        return self._apply_joint_pose(joint_pose)
+
     def set_pose(self, pose_name: str) -> bool:
         pose_name = pose_name.lower()
-        if pose_name == self._current_pose_name:
-            return True
         if pose_name == "default":
             if self.skeleton is None:
                 return False
             self.skeleton.GetRestTransformsAttr().Set(list(self._rest_transforms_base))
             self._current_pose_name = pose_name
+            self._animation.reset()
             return True
-        hit = self._apply_rest_transform_pose(pose_name)
-        if hit == 0:
-            return False
-        self._current_pose_name = pose_name
-        if self.idx == 0:
-            print(
-                f"[HumanRestPose] env={self.env_id} idx={self.idx:02d} "
-                f"pose={pose_name} joints_updated={hit}"
-            )
+        if pose_name != self._current_pose_name:
+            self._animation.set_animation(pose_name)
+            self._current_pose_name = pose_name
         return True
 
 class NormalHuman(Human):
