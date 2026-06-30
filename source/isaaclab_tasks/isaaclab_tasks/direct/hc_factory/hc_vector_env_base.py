@@ -28,8 +28,11 @@ import torch
 from .hc_single_env import HcSingleEnv
 
 from omni.kit.viewport.utility import get_active_viewport_window
+from .env_asset_cfg.cfg_camera import has_registered_cameras
+from .env_asset_cfg.cfg_hc_env import HcRenderCfg
+from .hc_rendering import apply_hc_render_settings
 from .src.route import RouteManagerVectorEnv
-
+import time
 
 class HcVectorEnvBase(DirectRLEnv):
     cfg_vector_env: HcVectorEnvCfg
@@ -38,18 +41,22 @@ class HcVectorEnvBase(DirectRLEnv):
         self.cuda_device = torch.device(self.cfg_vector_env.cuda_device_str)
         self.env_list : list[type[HcSingleEnv]] = []
         super().__init__(cfg, render_mode, **kwargs)
+        if has_registered_cameras() or render_mode == "rgb_array":
+            apply_hc_render_settings(HcRenderCfg())
         self.reward_buf = torch.zeros(self.num_envs, dtype=torch.float32, device=self.sim.device)
         self._setup_rendering_resolution()
-        
 
     def _setup_rendering_resolution(self):
-        # 1. Get the active Viewport window
+        if not self.sim.has_gui():
+            return
         viewport_window = get_active_viewport_window()
+        if viewport_window is None or viewport_window.viewport_api is None:
+            return
 
-        # 2. Disable "Fill Frame" to allow a custom fixed resolution
+        # Disable "Fill Frame" to allow a custom fixed resolution
         viewport_window.viewport_api.fill_frame = False
 
-        # 3. Set the resolution to the rendering resolution
+        # Set the resolution to the rendering resolution
         viewport_window.viewport_api.resolution = self.cfg_vector_env.rendering_resolution
         return
 
@@ -69,6 +76,13 @@ class HcVectorEnvBase(DirectRLEnv):
         # add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
+        # spawn RTX cameras after clone (Isaac Lab pattern) and register with the scene
+        for single_env in self.env_list:
+            env_origin = self.scene.env_origins[single_env.env_id]
+            single_env.camera_manager.create_sensors(env_origin=env_origin)
+            for camera in single_env.camera_manager.camera_list:
+                sensor_name = f"env_{single_env.env_id:02d}_{camera.state_key}"
+                self.scene.sensors[sensor_name] = camera._sensor
 
     def setup_one_env(self, env_id: int):
         single_env = HcSingleEnv(env_id=env_id, route_manager=self.route_manager, cuda_device=self.cuda_device)
@@ -76,16 +90,28 @@ class HcVectorEnvBase(DirectRLEnv):
 
     def reset(self, num_worker=None, num_robot=None, evaluate=False):
         """Resets the task and applies default zero actions to recompute observations and states."""
-        # now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        # print(f"[{now}] Running RL reset")
-        obs : list[dict] = []
-        for env_id, env in enumerate(self.env_list):
+        obs: list[dict] = []
+        for env in self.env_list:
             obs.append(env.reset_env())
+        if self.sim.has_rtx_sensors():
+            if self.cfg.rerender_on_reset:
+                self.sim.render()
+            if self.cfg.wait_for_textures:
+                from isaacsim.core.simulation_manager import SimulationManager
+
+                while SimulationManager.assets_loading():
+                    self.sim.render()
         return obs
 
     def step(self, action: list[dict] | None = None, action_extra: list[dict] | None = None) -> None:
+        # time_start = time.time()
         self.step_env_logic(action, action_extra)
+        # time_end = time.time()
+        # print(f"step_env_logic time: {time_end - time_start}")
+        # time_start = time.time()
         self.step_env_physics()
+        # time_end = time.time()
+        # print(f"step_env_physics time: {time_end - time_start}")
         obs : list[dict] = []
         for env_id, env in enumerate(self.env_list):
             obs.append(env.env_state_action_dict)
@@ -109,6 +135,10 @@ class HcVectorEnvBase(DirectRLEnv):
             #    If a camera needs rendering at a faster frequency, this will lead to unexpected behavior.
             if self._sim_step_counter % self.cfg.sim.render_interval == 0 and is_rendering:
                 self.sim.render()
+                sensor_dt = self.physics_dt
+                self.scene.update(dt=sensor_dt)
+                for single_env in self.env_list:
+                    single_env.camera_manager.update_sensors(sensor_dt, single_env.env_state_action_dict)
             # update buffers at sim dt
             # self.scene.update(dt=self.physics_dt)
     

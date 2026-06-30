@@ -15,7 +15,7 @@ import torch
 from isaaclab.assets import ArticulationCfg
 from isaaclab.envs import DirectRLEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sim import SimulationCfg
+from isaaclab.sim import SimulationCfg, RenderCfg
 # from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils import configclass
 # from isaaclab.utils.math import sample_uniform
@@ -23,6 +23,8 @@ from isaaclab.utils import configclass
 import os
 # from .......isaaclab.isaaclab.envs.common import ViewerCfg
 from isaaclab.envs.common import ViewerCfg
+
+from ..hc_env_window import HcEnvWindow
 
 
 
@@ -32,6 +34,7 @@ SingleEnvStateActionDictTemplate : dict = {
     "material": {},
     "human": {},
     "robot": {},
+    "camera": {},
     "storage": {},
     "articulations": {},
     "rigid_prims": {},
@@ -80,6 +83,17 @@ SingleEnvStateActionDictTemplate : dict = {
         "human_robot_allocation": torch.Tensor([]),
     },
 }
+
+
+@configclass
+class HcRenderCfg(RenderCfg):
+    """RTX settings for HRTPA training / video capture (headless-safe)."""
+
+    antialiasing_mode: str = "DLSS"
+    enable_dl_denoiser: bool = False
+    samples_per_pixel: int = 2
+    enable_ambient_occlusion: bool = True
+    dlss_mode: int = 2
 
 
 @configclass
@@ -133,6 +147,7 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     sim_step_interval = 1
     # viewer
     viewer: HcViewerCfg = HcViewerCfg()
+    ui_window_class_type: type | None = HcEnvWindow
     #dynamic env len settings, for human 1-3 x robot 1-3, <= 1500
     # train_env_len_setting = [[4000, 4000, 4000], [1800, 1800, 1800], [1500, 1500, 1500]]
     train_env_len_setting = [[3500, 2000, 2000], [1800, 1500, 1500], [1800, 1400, 1400]]

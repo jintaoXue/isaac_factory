@@ -31,6 +31,7 @@ from .src.machine import MachineManager
 from .src.material import ProductMaterialManager
 from .src.human import HumanManager
 from .src.robot import RobotManager
+from .src.camera import CameraManager
 from .src.storage import StorageManager
 from .src.route import RouteManagerVectorEnv
 from .env_asset_cfg.cfg_hc_env import SingleEnvStateActionDictTemplate, HcVectorEnvCfg
@@ -56,6 +57,7 @@ class HcSingleEnvBase():
         self.machine_manager = MachineManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.human_manager = HumanManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.robot_manager = RobotManager(env_id=self.env_id, cuda_device=self.cuda_device)
+        self.camera_manager = CameraManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.algo_multiagent_masker = AlgoMultiAgentMasker(self.cuda_device)
         self.task_manager = TaskManager(self.cuda_device)
         # self.route_manager = RouteManagerVectorEnv(cuda_device=self.cuda_device)
@@ -66,6 +68,7 @@ class HcSingleEnvBase():
             self.product_material_manager,
             self.human_manager,
             self.robot_manager,
+            self.camera_manager,
             self.route_manager,
             self.machine_manager,
             self.task_manager,

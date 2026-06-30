@@ -352,16 +352,17 @@ class RlGamesGpuEnv(IVecEnv):
 
 class RlGamesVecEnvWrapperHRTPA(RlGamesVecEnvWrapper):
 
+    def _hc_env(self):
+        return self.env.unwrapped
+
     def reset(self, num_worker=None, num_robot=None, evaluate=False):  # noqa: D102
-        obs_dict = self.env.reset(num_worker, num_robot, evaluate)
-        # process observations and states
-        return obs_dict
-    
-    def step(self, actions, action_extra = None):  # noqa: D102
-        return self.env.step(actions, action_extra)
-    
+        return self._hc_env().reset(num_worker=num_worker, num_robot=num_robot, evaluate=evaluate)
+
+    def step(self, actions, action_extra=None):  # noqa: D102
+        return self._hc_env().step(actions, action_extra)
+
     def get_env_info(self):
-        return self.env.get_env_info()
+        return self._hc_env().get_env_info()
 
 class RlGamesGpuEnvHRTPA(RlGamesGpuEnv):
 
