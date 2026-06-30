@@ -76,13 +76,9 @@ class HcVectorEnvBase(DirectRLEnv):
         # add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
-        # spawn RTX cameras after clone (Isaac Lab pattern) and register with the scene
+        # spawn RTX cameras after clone (local pose under /World/envs/env_{i})
         for single_env in self.env_list:
-            env_origin = self.scene.env_origins[single_env.env_id]
-            single_env.camera_manager.create_sensors(env_origin=env_origin)
-            for camera in single_env.camera_manager.camera_list:
-                sensor_name = f"env_{single_env.env_id:02d}_{camera.state_key}"
-                self.scene.sensors[sensor_name] = camera._sensor
+            single_env.camera_manager.create_sensors()
 
     def setup_one_env(self, env_id: int):
         single_env = HcSingleEnv(env_id=env_id, route_manager=self.route_manager, cuda_device=self.cuda_device)
@@ -93,7 +89,7 @@ class HcVectorEnvBase(DirectRLEnv):
         obs: list[dict] = []
         for env in self.env_list:
             obs.append(env.reset_env())
-        if self.sim.has_rtx_sensors():
+        if self.sim.has_rtx_sensors() or has_registered_cameras():
             if self.cfg.rerender_on_reset:
                 self.sim.render()
             if self.cfg.wait_for_textures:
@@ -135,10 +131,16 @@ class HcVectorEnvBase(DirectRLEnv):
             #    If a camera needs rendering at a faster frequency, this will lead to unexpected behavior.
             if self._sim_step_counter % self.cfg.sim.render_interval == 0 and is_rendering:
                 self.sim.render()
-                sensor_dt = self.physics_dt
-                self.scene.update(dt=sensor_dt)
-                for single_env in self.env_list:
-                    single_env.camera_manager.update_sensors(sensor_dt, single_env.env_state_action_dict)
+                if has_registered_cameras():
+                    sensor_dt = self.physics_dt
+                    pose_dirty = False
+                    for single_env in self.env_list:
+                        if single_env.camera_manager.prepare_sensors():
+                            pose_dirty = True
+                    if pose_dirty:
+                        self.sim.render()
+                    for single_env in self.env_list:
+                        single_env.camera_manager.capture_sensors(sensor_dt, single_env.env_state_action_dict)
             # update buffers at sim dt
             # self.scene.update(dt=self.physics_dt)
     
