@@ -54,6 +54,23 @@ def _set_prim_local_pose(prim_path: str, translation: np.ndarray, orientation_wx
     )
 
 
+def _apply_spawn_intrinsics(sensor: IsaacSimCamera, spawn_cfg: dict | None) -> None:
+    """Apply pinhole intrinsics from cfg camera_sensor.spawn (controls FOV)."""
+    if not spawn_cfg:
+        return
+    if "focal_length" in spawn_cfg:
+        sensor.set_focal_length(float(spawn_cfg["focal_length"]))
+    if "horizontal_aperture" in spawn_cfg:
+        sensor.set_horizontal_aperture(float(spawn_cfg["horizontal_aperture"]))
+    if "vertical_aperture" in spawn_cfg:
+        sensor.set_vertical_aperture(float(spawn_cfg["vertical_aperture"]))
+    if "focus_distance" in spawn_cfg:
+        sensor.set_focus_distance(float(spawn_cfg["focus_distance"]))
+    if "clipping_range" in spawn_cfg:
+        near, far = spawn_cfg["clipping_range"]
+        sensor.set_clipping_range(float(near), float(far))
+
+
 def _enable_rtx_sensors_flag() -> None:
     carb.settings.get_settings().set_bool("/isaaclab/render/rtx_sensors", True)
 
@@ -177,8 +194,10 @@ class Camera:
             return False
 
         pose_dirty = False
+        sensor_cfg = self.cfg["camera_sensor"]
         if not self._initialized:
             self._sensor.initialize()
+            _apply_spawn_intrinsics(self._sensor, sensor_cfg.get("spawn"))
             self._initialized = True
             eye, target = _eye_lookat_arrays(self.cfg["eye"], self.cfg["lookat"])
             print(

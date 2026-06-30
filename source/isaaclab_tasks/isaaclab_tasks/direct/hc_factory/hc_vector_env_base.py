@@ -104,10 +104,10 @@ class HcVectorEnvBase(DirectRLEnv):
         self.step_env_logic(action, action_extra)
         # time_end = time.time()
         # print(f"step_env_logic time: {time_end - time_start}")
-        # time_start = time.time()
+        time_start = time.time()
         self.step_env_physics()
-        # time_end = time.time()
-        # print(f"step_env_physics time: {time_end - time_start}")
+        time_end = time.time()
+        print(f"step_env_physics time: {time_end - time_start}")
         obs : list[dict] = []
         for env_id, env in enumerate(self.env_list):
             obs.append(env.env_state_action_dict)
