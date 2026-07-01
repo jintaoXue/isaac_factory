@@ -145,6 +145,8 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     # simulation
     sim: SimulationCfg = SimulationCfg(dt=1 / 120, render_interval=decimation)
     sim_step_interval = 1
+    # RTX 相机采集间隔（物理步数）。9 路相机每步 render 很贵，可设为 6~30
+    camera_capture_interval = 6
     # viewer
     viewer: HcViewerCfg = HcViewerCfg()
     ui_window_class_type: type | None = HcEnvWindow

@@ -25,14 +25,16 @@ from .env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
 from abc import abstractmethod
 import numpy as np
 import torch
+import time
+
 from .hc_single_env import HcSingleEnv
 
 from omni.kit.viewport.utility import get_active_viewport_window
 from .env_asset_cfg.cfg_camera import has_registered_cameras
 from .env_asset_cfg.cfg_hc_env import HcRenderCfg
 from .hc_rendering import apply_hc_render_settings
+
 from .src.route import RouteManagerVectorEnv
-import time
 
 class HcVectorEnvBase(DirectRLEnv):
     cfg_vector_env: HcVectorEnvCfg
@@ -76,9 +78,6 @@ class HcVectorEnvBase(DirectRLEnv):
         # add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
-        # spawn RTX cameras after clone (local pose under /World/envs/env_{i})
-        for single_env in self.env_list:
-            single_env.camera_manager.create_sensors()
 
     def setup_one_env(self, env_id: int):
         single_env = HcSingleEnv(env_id=env_id, route_manager=self.route_manager, cuda_device=self.cuda_device)
@@ -100,15 +99,12 @@ class HcVectorEnvBase(DirectRLEnv):
         return obs
 
     def step(self, action: list[dict] | None = None, action_extra: list[dict] | None = None) -> None:
-        # time_start = time.time()
         self.step_env_logic(action, action_extra)
-        # time_end = time.time()
-        # print(f"step_env_logic time: {time_end - time_start}")
         time_start = time.time()
         self.step_env_physics()
         time_end = time.time()
         print(f"step_env_physics time: {time_end - time_start}")
-        obs : list[dict] = []
+        obs: list[dict] = []
         for env_id, env in enumerate(self.env_list):
             obs.append(env.env_state_action_dict)
         return obs
@@ -118,11 +114,12 @@ class HcVectorEnvBase(DirectRLEnv):
             single_env.step_env_logic(action[env_id], action_extra[env_id])
 
     def step_env_physics(self) -> None:
-        is_rendering = self.sim.has_gui() or self.sim.has_rtx_sensors()
         self.apply_data_to_sim()
+        is_rendering = self.sim.has_gui() or self.sim.has_rtx_sensors()
         # perform physics stepping
         for _ in range(self.cfg.decimation):
             self._sim_step_counter += 1
+            # self.scene.write_data_to_sim()
             # simulate
             if self._sim_step_counter % self.cfg.sim_step_interval == 0:
                 self.sim.step(render=False)
@@ -131,19 +128,7 @@ class HcVectorEnvBase(DirectRLEnv):
             #    If a camera needs rendering at a faster frequency, this will lead to unexpected behavior.
             if self._sim_step_counter % self.cfg.sim.render_interval == 0 and is_rendering:
                 self.sim.render()
-                if has_registered_cameras():
-                    sensor_dt = self.physics_dt
-                    pose_dirty = False
-                    for single_env in self.env_list:
-                        if single_env.camera_manager.prepare_sensors():
-                            pose_dirty = True
-                    if pose_dirty:
-                        self.sim.render()
-                    for single_env in self.env_list:
-                        single_env.camera_manager.capture_sensors(sensor_dt, single_env.env_state_action_dict)
-            # update buffers at sim dt
-            # self.scene.update(dt=self.physics_dt)
-    
+                
     def apply_data_to_sim(self) -> None:
         for single_env in self.env_list:
             single_env.apply_data_to_sim()

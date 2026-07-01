@@ -10,11 +10,10 @@ import isaacsim.core.utils.stage as stage_utils
 import numpy as np
 import torch
 from isaaclab.utils.math import create_rotation_matrix_from_view, quat_from_matrix
-from isaacsim.core.prims import XFormPrim
 from isaacsim.sensors.camera import Camera as IsaacSimCamera
 from PIL import Image
 
-from ..env_asset_cfg.cfg_camera import CfgCamera, CfgCameraRegistrationInfos
+from ..env_asset_cfg.cfg_camera import CfgCamera, CfgCameraRegistrationInfos, has_registered_cameras
 
 _DEBUG_CAMERA_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output" / "debug_camera"
 
@@ -46,14 +45,6 @@ def _pose_from_eye_lookat(eye: np.ndarray, target: np.ndarray) -> tuple[np.ndarr
     return eye.astype(np.float32), orientation
 
 
-def _set_prim_local_pose(prim_path: str, translation: np.ndarray, orientation_wxyz: np.ndarray, cuda_device: torch.device) -> None:
-    """Set pose relative to env parent prim (vector-env safe; follows env clone offset)."""
-    XFormPrim(prim_path).set_local_poses(
-        translations=torch.tensor(translation, dtype=torch.float32, device=cuda_device).unsqueeze(0),
-        orientations=torch.tensor(orientation_wxyz, dtype=torch.float32, device=cuda_device).unsqueeze(0),
-    )
-
-
 def _apply_spawn_intrinsics(sensor: IsaacSimCamera, spawn_cfg: dict | None) -> None:
     """Apply pinhole intrinsics from cfg camera_sensor.spawn (controls FOV)."""
     if not spawn_cfg:
@@ -69,6 +60,28 @@ def _apply_spawn_intrinsics(sensor: IsaacSimCamera, spawn_cfg: dict | None) -> N
     if "clipping_range" in spawn_cfg:
         near, far = spawn_cfg["clipping_range"]
         sensor.set_clipping_range(float(near), float(far))
+
+
+def _rgb_from_frame(frame: dict) -> np.ndarray | None:
+    """Extract RGB uint8 array from Isaac Sim Camera.get_current_frame() dict."""
+    rgba = frame.get("rgba")
+    if rgba is None:
+        return None
+    if isinstance(rgba, torch.Tensor):
+        rgba_np = rgba.detach().cpu().numpy()
+    else:
+        rgba_np = np.asarray(rgba)
+    if rgba_np.size == 0:
+        return None
+    if rgba_np.ndim == 4:
+        rgba_np = rgba_np[0]
+    rgb_np = rgba_np[..., :3]
+    if rgb_np.dtype != np.uint8:
+        if rgb_np.max() <= 1.0 + 1e-3:
+            rgb_np = (rgb_np * 255.0).clip(0, 255).astype(np.uint8)
+        else:
+            rgb_np = np.clip(rgb_np, 0, 255).astype(np.uint8)
+    return rgb_np
 
 
 def _enable_rtx_sensors_flag() -> None:
@@ -90,41 +103,23 @@ class CameraManager:
         return env_state_action_dict
 
     def step(self, env_state_action_dict: dict) -> dict:
+        for camera in self.camera_list:
+            camera.step(env_state_action_dict)
         return env_state_action_dict
-
-    def prepare_sensors(self) -> bool:
-        """Initialize sensors and apply poses. Returns True if any pose changed."""
-        pose_dirty = False
-        for camera in self.camera_list:
-            if camera.prepare_sensor():
-                pose_dirty = True
-        return pose_dirty
-
-    def capture_sensors(self, dt: float, env_state_action_dict: dict) -> dict:
-        for camera in self.camera_list:
-            camera.capture_sensor(dt, env_state_action_dict)
-        return env_state_action_dict
-
-    def update_sensors(self, dt: float, env_state_action_dict: dict) -> dict:
-        self.prepare_sensors()
-        return self.capture_sensors(dt, env_state_action_dict)
-
-    def create_sensors(self) -> None:
-        for camera in self.camera_list:
-            camera.create_sensor()
 
     def _register_camera_list(self) -> None:
-        for type_name, count in self.cfg_registration_infos.items():
+        for cfg_key, count in self.cfg_registration_infos.items():
             if count <= 0:
                 continue
-            cls = globals()[type_name]
             for idx in range(count):
-                self.camera_list.append(cls(idx, self.cfg_camera[type_name], self.env_id, self.cuda_device))
+                self.camera_list.append(Camera(idx, self.cfg_camera[cfg_key], self.env_id, self.cuda_device))
         if any(camera.cfg.get("debug_save_frames", False) for camera in self.camera_list):
             print(
                 f"[INFO] Debug camera frames (env_{self.env_id:02d}) -> "
                 f"{_DEBUG_CAMERA_OUTPUT_DIR.resolve()}/env_{self.env_id:02d}_num_XX_<CameraName>/"
             )
+        for camera in self.camera_list:
+            camera._register_sensor()
 
 
 class Camera:
@@ -142,29 +137,43 @@ class Camera:
         self.state: dict = {}
         self._sensor: IsaacSimCamera | None = None
         self._saved_frame_counter = 0
-        self._initialized = False
-        self._pose_dirty = False
 
     def _iter_key_variables(self) -> dict:
-        return {"type_name": self.type_name, "idx": self.idx}
+        return {
+            "type_name": self.type_name,
+            "idx": self.idx,
+            "machine_name": self.cfg.get("machine_name", self.type_name),
+        }
 
-    def create_sensor(self) -> None:
+    def _register_sensor(self) -> None:
+        """Create Camera, set pose, and initialize once (Isaac Sim standalone pattern)."""
         if self._sensor is not None:
             return
 
         meta = self.meta_registeration_info
         sensor_cfg = self.cfg["camera_sensor"]
-        prim_path = meta["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}")
+        prim_path = meta["prim_paths_expr"].format(i=self.env_id)
 
         update_period = float(sensor_cfg.get("update_period", 0.0))
         frequency = None if update_period <= 0.0 else max(1, int(round(1.0 / update_period)))
+
+        eye, target = _eye_lookat_arrays(self.cfg["eye"], self.cfg["lookat"])
+        position, orientation = _pose_from_eye_lookat(eye, target)
 
         _enable_rtx_sensors_flag()
         self._sensor = IsaacSimCamera(
             prim_path=prim_path,
             name=self.state_key,
+            position=position,
+            orientation=orientation,
             resolution=(sensor_cfg["width"], sensor_cfg["height"]),
             frequency=frequency,
+        )
+        self._sensor.initialize()
+        _apply_spawn_intrinsics(self._sensor, sensor_cfg.get("spawn"))
+        print(
+            f"[INFO] {self.state_key} initialized @ {self._sensor.prim_path} "
+            f"local_eye={eye.tolist()} local_lookat={target.tolist()}"
         )
 
     @property
@@ -175,54 +184,26 @@ class Camera:
         self.state = copy.deepcopy(self.reset_state)
         self._saved_frame_counter = 0
         env_state_action_dict["camera"][self.state_key] = self.state
-        if self._sensor is not None and self._initialized:
+        if self._sensor is not None:
             self._sensor.post_reset()
-            self._apply_local_pose()
         return env_state_action_dict
 
-    def _apply_local_pose(self) -> None:
+    def step(self, env_state_action_dict: dict) -> dict:
+        self.capture_frame(env_state_action_dict)
+        return env_state_action_dict
+
+    def capture_frame(self, env_state_action_dict: dict) -> dict:
+        """Read RGB via get_current_frame()"""
         if self._sensor is None:
-            return
-        eye, target = _eye_lookat_arrays(self.cfg["eye"], self.cfg["lookat"])
-        translation, orientation = _pose_from_eye_lookat(eye, target)
-        _set_prim_local_pose(self._sensor.prim_path, translation, orientation, self.cuda_device)
-        self._pose_dirty = True
-
-    def prepare_sensor(self) -> bool:
-        """Initialize sensor and apply pose. Returns True if pose changed this step."""
-        if self._sensor is None:
-            return False
-
-        pose_dirty = False
-        sensor_cfg = self.cfg["camera_sensor"]
-        if not self._initialized:
-            self._sensor.initialize()
-            _apply_spawn_intrinsics(self._sensor, sensor_cfg.get("spawn"))
-            self._initialized = True
-            eye, target = _eye_lookat_arrays(self.cfg["eye"], self.cfg["lookat"])
-            print(
-                f"[INFO] {self.state_key} initialized @ {self._sensor.prim_path} "
-                f"local_eye={eye.tolist()} local_lookat={target.tolist()}"
-            )
-            pose_dirty = True
-
-        if pose_dirty or self._pose_dirty:
-            self._apply_local_pose()
-            return True
-        return False
-
-    def capture_sensor(self, dt: float, env_state_action_dict: dict) -> dict:
-        if self._sensor is None or not self._initialized:
             self.state["is_initialized"] = False
             return env_state_action_dict
 
-        self._pose_dirty = False
-        rgba = self._sensor.get_rgba()
-        if rgba is None or (hasattr(rgba, "size") and rgba.size == 0):
+        frame = self._sensor.get_current_frame(clone=False)
+        rgb_np = _rgb_from_frame(frame)
+        if rgb_np is None:
             self.state["is_initialized"] = False
             return env_state_action_dict
 
-        rgb_np = np.asarray(rgba)[..., :3]
         self.state["rgb"] = torch.as_tensor(rgb_np, dtype=torch.uint8, device=self.cuda_device)
         self._save_frame(rgb_np)
         self.state["is_initialized"] = True
@@ -235,15 +216,6 @@ class Camera:
         max_frames = self.cfg.get("debug_max_frames")
         if max_frames is not None and self._saved_frame_counter >= max_frames:
             return
-        if rgb_np.ndim == 4:
-            rgb_np = rgb_np[0]
-        if rgb_np.shape[-1] > 3:
-            rgb_np = rgb_np[..., :3]
-        if rgb_np.dtype != np.uint8:
-            if rgb_np.max() <= 1.0 + 1e-3:
-                rgb_np = (rgb_np * 255.0).clip(0, 255).astype(np.uint8)
-            else:
-                rgb_np = np.clip(rgb_np, 0, 255).astype(np.uint8)
         if rgb_np.size == 0:
             return
 
@@ -257,11 +229,3 @@ class Camera:
         out_path = out_dir / f"{self._saved_frame_counter:06d}.jpg"
         Image.fromarray(rgb_np).save(out_path, format="JPEG", quality=95)
         self._saved_frame_counter += 1
-
-
-class TestCamera(Camera):
-    pass
-
-
-class DetailCamera(Camera):
-    pass
