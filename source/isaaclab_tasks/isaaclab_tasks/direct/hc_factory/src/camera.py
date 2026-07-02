@@ -6,10 +6,9 @@ import copy
 from pathlib import Path
 
 import carb
-import isaacsim.core.utils.stage as stage_utils
 import numpy as np
 import torch
-from isaaclab.utils.math import create_rotation_matrix_from_view, quat_from_matrix
+from isaacsim.core.utils.viewports import set_camera_view
 from isaacsim.sensors.camera import Camera as IsaacSimCamera
 from PIL import Image
 
@@ -24,25 +23,6 @@ def _eye_lookat_arrays(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Eye/lookat in env-local frame (relative to /World/envs/env_{i})."""
     return np.asarray(eye, dtype=np.float64), np.asarray(lookat, dtype=np.float64)
-
-
-def _pose_from_eye_lookat(eye: np.ndarray, target: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """OpenGL/USD local pose from eye/lookat (+ nadir handling from viewport utils)."""
-    up_axis = stage_utils.get_stage_up_axis()
-
-    if np.allclose(eye[:2], target[:2], atol=1e-4):
-        position = eye.astype(np.float32)
-        if eye[2] > target[2]:
-            orientation = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
-        else:
-            orientation = np.array([0.0, 0.0, 1.0, 0.0], dtype=np.float32)
-        return position, orientation
-
-    eyes_t = torch.tensor(eye, dtype=torch.float32).unsqueeze(0)
-    targets_t = torch.tensor(target, dtype=torch.float32).unsqueeze(0)
-    rot_mat = create_rotation_matrix_from_view(eyes_t, targets_t, up_axis=up_axis, device="cpu")
-    orientation = quat_from_matrix(rot_mat)[0].numpy().astype(np.float32)
-    return eye.astype(np.float32), orientation
 
 
 def _apply_spawn_intrinsics(sensor: IsaacSimCamera, spawn_cfg: dict | None) -> None:
@@ -158,7 +138,8 @@ class Camera:
         frequency = None if update_period <= 0.0 else max(1, int(round(1.0 / update_period)))
 
         eye, target = _eye_lookat_arrays(self.cfg["eye"], self.cfg["lookat"])
-        position, orientation = _pose_from_eye_lookat(eye, target)
+        position = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        orientation = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
 
         _enable_rtx_sensors_flag()
         self._sensor = IsaacSimCamera(
@@ -169,6 +150,12 @@ class Camera:
             resolution=(sensor_cfg["width"], sensor_cfg["height"]),
             frequency=frequency,
         )
+        set_camera_view(
+            eye=eye.tolist(),
+            target=target.tolist(),
+            camera_prim_path=prim_path,
+        )
+
         self._sensor.initialize()
         _apply_spawn_intrinsics(self._sensor, sensor_cfg.get("spawn"))
         print(
