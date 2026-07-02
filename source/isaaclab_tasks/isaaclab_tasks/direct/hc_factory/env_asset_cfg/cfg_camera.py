@@ -1,6 +1,6 @@
 _CAMERA_SENSOR = {
-    "width": 640,
-    "height": 480,
+    "width": 1080,
+    "height": 720,
     "update_period": 0.0,
     "data_types": ["rgb"],
     "spawn": {
@@ -18,7 +18,17 @@ _CAMERA_RESET_STATE = {
 }
 
 # machine_name -> camera_name -> {eye, lookat}
-CAMERA_FOR_MACHINE_CFG = {
+CAMERA_POSES = {
+    "highrise_for_env":{
+        "camera_num00_highrise_for_env": {
+            "eye": (-3, -2.83729, 10),
+            "lookat": (14, 8.76496, 1.0),
+        },
+        "camera_num01_highrise_for_env": {
+            "eye": (10, -2.83729, 10),
+            "lookat": (-17, 7.76346, 1.0),
+        },
+    },
     "num00_rotaryPipeAutomaticWeldingMachine": {
         "camera_num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
             "eye": (40, 20, 12),
@@ -57,11 +67,11 @@ CAMERA_FOR_MACHINE_CFG = {
 
 
 def _iter_camera_pose_entries(
-    camera_for_machine_cfg: dict,
+    camera_poses: dict,
 ) -> list[tuple[str, dict[str, tuple[float, float, float]], str]]:
     """展开 machine -> camera -> pose，返回 (camera_name, pose, machine_name)。"""
     entries: list[tuple[str, dict[str, tuple[float, float, float]], str]] = []
-    for machine_name, cameras in camera_for_machine_cfg.items():
+    for machine_name, cameras in camera_poses.items():
         for camera_name, pose in cameras.items():
             entries.append((camera_name, pose, machine_name))
     return entries
@@ -91,7 +101,7 @@ def _make_machine_camera(
 
 CfgCamera = {
     camera_name: _make_machine_camera(camera_name, pose["eye"], pose["lookat"], machine_name)
-    for camera_name, pose, machine_name in _iter_camera_pose_entries(CAMERA_FOR_MACHINE_CFG)
+    for camera_name, pose, machine_name in _iter_camera_pose_entries(CAMERA_POSES)
 }
 
 CfgCameraRegistrationInfos = {camera_name: 1 for camera_name in CfgCamera}

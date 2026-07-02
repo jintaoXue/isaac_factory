@@ -114,7 +114,10 @@ storage 的管理
 # 7.2
  1. human的颜色改一下方便分辨
  在Raw USD Properties 改 material:binding
+  红色 /obj/HC_factory/Looks/material____________1
+  绿色 /obj/HC_factory/Looks/material____________2
   蓝色 /obj/HC_factory/Looks/material____________3
 
  2. 摄像头的种类和位置还要再设计一下
+  
  3. 识别的标签，任务要设计一下
