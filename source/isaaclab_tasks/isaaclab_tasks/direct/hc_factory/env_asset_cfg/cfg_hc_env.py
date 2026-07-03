@@ -82,6 +82,10 @@ SingleEnvStateActionDictTemplate : dict = {
         "process_task_planning": torch.Tensor([]),
         "human_robot_allocation": torch.Tensor([]),
     },
+    "perception": {
+        "predictions": {},
+        "last_sample": None,
+    },
 }
 
 

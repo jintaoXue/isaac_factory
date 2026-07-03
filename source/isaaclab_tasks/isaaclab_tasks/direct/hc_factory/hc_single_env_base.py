@@ -32,9 +32,11 @@ from .src.material import ProductMaterialManager
 from .src.human import HumanManager
 from .src.robot import RobotManager
 from .src.camera import CameraManager
+from .src.perception import PerceptionManager
 from .src.storage import StorageManager
 from .src.route import RouteManagerVectorEnv
 from .env_asset_cfg.cfg_hc_env import SingleEnvStateActionDictTemplate, HcVectorEnvCfg
+from .env_asset_cfg.cfg_perception import CfgPerception
 from .src.algo_multiagent_masker import AlgoMultiAgentMasker
 from .src.task_progress_manager import TaskManager
 from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.src import algo_multiagent_masker
@@ -58,6 +60,9 @@ class HcSingleEnvBase():
         self.human_manager = HumanManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.robot_manager = RobotManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.camera_manager = CameraManager(env_id=self.env_id, cuda_device=self.cuda_device)
+        self.perception_manager = PerceptionManager(
+            env_id=self.env_id, cuda_device=self.cuda_device, cfg=CfgPerception
+        )
         self.algo_multiagent_masker = AlgoMultiAgentMasker(self.cuda_device)
         self.task_manager = TaskManager(self.cuda_device)
         # self.route_manager = RouteManagerVectorEnv(cuda_device=self.cuda_device)
@@ -89,6 +94,7 @@ class HcSingleEnvBase():
         for m in self.iter_managers():
             m.reset(self.env_state_action_dict)
         self.env_state_action_dict["time_step"] = 0
+        self.perception_manager.reset(self.env_state_action_dict)
         return self.env_state_action_dict
 
     def apply_data_to_sim(self) -> None:
@@ -113,6 +119,7 @@ class HcSingleEnvBase():
         for m in self.iter_managers():
             m.step(self.env_state_action_dict)
         self.env_state_action_dict["time_step"] += 1
+        self.perception_manager.step(self.env_state_action_dict)
         # time_end = time.time()
         # print(f"step_env_logic time: {time_end - time_start}")
         return

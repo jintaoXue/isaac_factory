@@ -121,3 +121,45 @@ storage 的管理
  2. 摄像头的种类和位置还要再设计一下
   
  3. 识别的标签，任务要设计一下
+
+      设定   
+            人的状态需要通过env中的相机的图片信息提取。
+            人的状态(state information)包括: 
+                  state (见cfg_human.py) 具体有 free 和 working_task
+                  working_task又包含一系列的subtask (见cfg_process_subtask_gallery.py)
+            agv和machine的状态是直接可以获取的
+      目标  
+            通过图片信息，文本信息（主要是task record, 见task_progress_manager.py等），识别人的working_task progress,也就是human进行到了哪一步
+            subtask。比如logistic_for_pipe_cutting中                
+            "subtasks": [
+                    # human: 0, gantry: 1, machine: 2, robot: 3
+                    ["go_to_material", "go_to_material", "wait", "go_to_material"],
+                    ["material_on_gantry", "wait", "wait", "wait"],
+                    ["control_gantry", "carry_to_robot", "wait", "wait"],
+                    ["material_on_robot", "wait", "wait", "wait"],
+                    ["go_to_goal_area", "move_to_goal_area", "wait", "carry_to_goal_area"],
+                    ["material_on_gantry", "wait", "wait", "wait"],
+                    ["control_gantry", "move_to_goal_area", "wait", "wait"],
+                    ["material_on_goal_area", "wait", "wait", "done"],
+                    ["done", "done", "done", "done"],
+                ],
+      
+      输入数据
+            应该是一个带前后帧的文本序列，图像序列
+            task_record
+            task_gallery
+            subtask_gallery
+      
+      任务分解
+            根据human环境着装和帽子的颜色不同，识别human id
+            根据文本信息, 图像信息推理(比如task_record task_gallery subtask_gallery)识别subtask the human is doing
+            识别subtask是doing or done的状态
+      提示
+            输入是多模态的，这带来了性能的提升。比如
+            # human: 0, gantry: 1, machine: 2, robot: 3
+            ["control_gantry", "carry_to_robot", "wait", "wait"],
+            因为gantry可以直接获取信号，所以一旦gantry的subtask carry_to_robot一旦是done的状态，控制gantry的human也应该是done的状态
+
+            又比如
+            ["go_to_material", "go_to_material", "wait", "go_to_material"],
+            这个时候human与其他任务是独立的，只能通过图片信息判断，human是否到达指定的位置
