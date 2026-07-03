@@ -166,3 +166,6 @@ storage 的管理
             又比如
             ["go_to_material", "go_to_material", "wait", "go_to_material"],
             这个时候human与其他任务是独立的，只能通过图片信息判断，human是否到达指定的位置
+
+
+## 7.3 目前来说文字数据有点问题
