@@ -121,9 +121,12 @@ storage 的管理
  2. 摄像头的种类和位置还要再设计一下
   
  3. 识别的标签，任务要设计一下
-
+      请你帮我
+            1. 设计实验
+            2. 推荐问题解决方案
       设定   
             人的状态需要通过env中的相机的图片信息提取。
+            相机是有多个的，多视角。每个machine的相机只观测machine周围的环境，还有storage. highrise camera可以观测更广的工厂环境
             人的状态(state information)包括: 
                   state (见cfg_human.py) 具体有 free 和 working_task
                   working_task又包含一系列的subtask (见cfg_process_subtask_gallery.py)

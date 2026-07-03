@@ -14,6 +14,44 @@ _DEFAULT_OUTPUT_DIR = (
     Path(__file__).resolve().parent.parent / "output" / "perception_dataset"
 )
 
+# ---------------------------------------------------------------------------
+# 跨智能体 subtask 耦合规则（来自 cfg_process_subtask_gallery.py）
+#
+# 同一 subtasks 行里，不同列可以有不同名字；不能用一个全局同义词表强行对齐。
+# 仅当 (human_subtask, partner_col, partner_subtask) 匹配时，
+# 且 partner 列 finished=True，才推断 human 当前 subtask 为 done。
+#
+# logistic_for_pipe_cutting have_AGV 示例:
+#   row2: human=control_gantry,  gantry=carry_to_robot        -> 耦合
+#   row4: human=go_to_goal_area, gantry=move_to_goal_area     -> 不耦合（并行到达）
+#   row6: human=control_gantry,  gantry=carry_to_goal_area    -> 耦合
+#
+# only_have_gantry:
+#   row2: human=go_to_goal_area, gantry=carry_to_goal_area    -> 不耦合
+#
+# pipe_cutting:
+#   row1: human=control_machine, machine=process              -> 耦合
+#   row2: human=wait,            gantry=finding_free_gantry   -> 不耦合
+#   row3: human=control_gantry,  gantry=go_to_processing_machine -> 耦合
+#   row5: human=control_gantry,  gantry=carry_to_goal_area    -> 耦合
+# ---------------------------------------------------------------------------
+CoupledDoneRules: list[tuple[str, int, str]] = [
+    ("control_gantry", AGENT_COL_GANTRY, "carry_to_robot"),
+    ("control_gantry", AGENT_COL_GANTRY, "carry_to_goal_area"),
+    ("control_gantry", AGENT_COL_GANTRY, "go_to_processing_machine"),
+    ("control_machine", AGENT_COL_MACHINE, "process"),
+]
+
+# 以下同名/异名组合为并行任务，伙伴 finished 不能推断 human done
+IndependentSubtaskRows: list[tuple[str, int, str]] = [
+    ("go_to_material", AGENT_COL_GANTRY, "go_to_material"),
+    ("go_to_material", AGENT_COL_ROBOT, "go_to_material"),
+    ("go_to_goal_area", AGENT_COL_GANTRY, "move_to_goal_area"),
+    ("go_to_goal_area", AGENT_COL_GANTRY, "carry_to_goal_area"),
+    ("go_to_goal_area", AGENT_COL_ROBOT, "carry_to_goal_area"),
+    ("wait", AGENT_COL_GANTRY, "finding_free_gantry"),
+]
+
 # 单步采集样本模板（logger 按此结构写入 meta.jsonl）
 PerceptionSampleTemplate = {
     "episode_id": 0,
@@ -22,7 +60,7 @@ PerceptionSampleTemplate = {
     "env_id": 0,
     # 图像路径相对 episode 目录，如 cameras/step_000123/camera_xxx.jpg
     "camera_paths": {},
-  # 结构化文本上下文（供训练 / VLM prompt）
+    # 结构化文本上下文（供训练 / VLM prompt）
     "text_context": "",
     # GT：每个 human 的 subtask 进度
     "human_labels": {
@@ -54,9 +92,9 @@ PerceptionSampleTemplate = {
 }
 
 CfgPerception = {
-    "enabled": False,
+    "enabled": True,
     # collect: 仿真中采集 | infer: 仿真中推理 | off: 关闭
-    "mode": "off",
+    "mode": "collect",
     "output_dir": str(_DEFAULT_OUTPUT_DIR),
     # 每 N 个 env step 存一帧（与 camera_capture_interval 对齐时可设为相同值）
     "save_interval": 1,

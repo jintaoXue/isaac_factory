@@ -39,7 +39,7 @@ CfgSubtaskGallery = {
                     ["material_on_robot", "wait", "wait", "wait"],
                     ["go_to_goal_area", "move_to_goal_area", "wait", "carry_to_goal_area"],
                     ["material_on_gantry", "wait", "wait", "wait"],
-                    ["control_gantry", "move_to_goal_area", "wait", "wait"],
+                    ["control_gantry", "carry_to_goal_area", "wait", "wait"],
                     ["material_on_goal_area", "wait", "wait", "done"],
                     ["done", "done", "done", "done"],
                 ],
