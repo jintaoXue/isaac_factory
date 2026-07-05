@@ -1,0 +1,979 @@
+# Isaac Factory 代码结构与输出说明
+
+本文档说明 **isaac_factory** 项目的代码架构、运行流程与运行输出，便于快速理解项目如何组织、如何执行、会产生哪些结果。
+
+> 安装与快速运行见 [README_CN.md](README_CN.md)。
+
+---
+
+## 目录
+
+- [项目概述](#项目概述)
+- [整体架构](#整体架构)
+- [代码结构](#代码结构)
+- [运行流程](#运行流程)
+- [环境接口](#环境接口)
+- [运行输出](#运行输出)
+- [配置说明](#配置说明)
+- [相关文件索引](#相关文件索引)
+
+---
+
+## 项目概述
+
+**isaac_factory** 是基于 [NVIDIA Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/index.html) 与 [NVIDIA Isaac Sim 4.5](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/index.html) 构建的**海创（HC）工厂人机协同生产调度仿真环境**。
+
+它模拟水喉（`ProductWaterPipe`）等多工序制造流程，通过四层决策智能体完成：
+
+1. **产品排序** — 决定优先生产哪种产品
+2. **产品选择** — 从待产批次中选择下一个产品实例
+3. **工序规划** — 规划下一道加工或物流任务
+4. **人机分配** — 将任务分配给工人、机器人或机器
+
+决策结果驱动 Isaac Sim 中的物理仿真，实现「逻辑调度 + 3D 场景」的闭环。
+
+---
+
+
+
+## 整体架构
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  train.py（入口）                                        │
+│  ├── AppLauncher 启动 Isaac Sim                         │
+│  ├── Hydra 加载 env_cfg + algo_cfg                      │
+│  └── RL-Games Runner 驱动训练/仿真循环                   │
+└─────────────────────────────────────────────────────────┘
+                          │
+          ┌───────────────┴───────────────┐
+          ▼                               ▼
+┌─────────────────────┐       ┌─────────────────────────────┐
+│  决策算法层          │       │  仿真环境层                  │
+│  rule_based / marl  │◄─────►│  HcVectorEnv（向量化环境）    │
+│  Agent A → B → C → D│       │  ├── HcSingleEnv × N        │
+└─────────────────────┘       │  └── RouteManagerVectorEnv  │
+                              └─────────────────────────────┘
+                                          │
+                                          ▼
+                              ┌─────────────────────────────┐
+                              │  Isaac Sim 物理引擎          │
+                              │  USD 场景 + Articulation     │
+                              └─────────────────────────────┘
+```
+
+
+
+### 四层决策栈
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Agent A — Product Sequencing（产品排序）               │
+│  根据当前生产订单，决定优先生产哪种产品                    │
+├─────────────────────────────────────────────────────────┤
+│  Agent B — Product Selection（产品选择）                │
+│  从待产批次中选择下一个待加工的产品实例                    │
+├─────────────────────────────────────────────────────────┤
+│  Agent C — Process Task Planning（工序任务规划）         │
+│  为选中产品规划下一个关键工序任务（加工 / 物流）           │
+├─────────────────────────────────────────────────────────┤
+│  Agent D — Human-Robot Allocation（人机资源分配）       │
+│  将规划任务分配给最合适的人工、机器人或机器资源             │
+└─────────────────────────────────────────────────────────┘
+         ↓ action dict
+┌─────────────────────────────────────────────────────────┐
+│  HcVectorEnv（向量化环境）                               │
+│  ├── HcSingleEnv × N（单环境逻辑实例）                   │
+│  │   ├── MachineManager      机器状态与工位管理           │
+│  │   ├── ProductMaterialManager  物料 / 在制品管理        │
+│  │   ├── HumanManager        人工资源与路径              │
+│  │   ├── RobotManager        机器人资源与路径            │
+│  │   ├── StorageManager      仓储区域管理                │
+│  │   ├── TaskManager         任务进度与工序解码          │
+│  │   └── AlgoMultiAgentMasker  动作合法性掩码            │
+│  └── RouteManagerVectorEnv   跨环境共享路径规划           │
+└─────────────────────────────────────────────────────────┘
+         ↓ apply_data_to_sim()
+┌─────────────────────────────────────────────────────────┐
+│  Isaac Sim 物理引擎（USD 场景 + Articulation / RigidBody）│
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+
+
+## 代码结构
+
+
+
+### 顶层目录
+
+```
+isaac_factory/
+├── train.py                          # 训练 / 仿真入口脚本
+├── isaaclab.sh                       # Isaac Lab 环境管理脚本
+├── map_data/                         # 地图数据与生成工具
+├── outputs/                          # Hydra 配置快照（按日期/时间组织）
+├── logs/                             # 实验日志与参数备份
+├── source/
+│   ├── algo/multiagent/hc_factory/   # 多智能体决策算法
+│   ├── isaaclab/                     # Isaac Lab 核心库
+│   ├── isaaclab_assets/              # 资产定义
+│   ├── isaaclab_rl/                  # RL 框架集成（RL-Games 封装）
+│   └── isaaclab_tasks/
+│       └── isaaclab_tasks/direct/hc_factory/   # 工厂仿真核心模块
+└── _isaac_sim/                       # Isaac Sim 符号链接 / 安装目录
+```
+
+
+
+### 入口：`train.py`
+
+`train.py` 是整个项目的启动入口，主要职责：
+
+1. 解析命令行参数（`--task`、`--algo`、`--num_envs`、`--device` 等）
+2. 通过 `AppLauncher` 启动 Isaac Sim
+3. 使用 Hydra 装饰器 `@hydra_task_config` 加载环境与算法配置
+4. 创建 Gym 环境 `HRTPaHC-v1`，并包装为 RL-Games 可用的向量化环境
+5. 注册算法（`rule_based`、`marl` 等），调用 `runner.run()` 进入主循环
+6. 将配置快照写入 `logs/rl_games/HcFactory/`
+
+
+
+### 环境注册：`hc_factory/__init__.py`
+
+注册的 Gym 环境 ID 为 `HRTPaHC-v1`（Human-Robot Task Planning and Allocation for HC Factory），并绑定三套算法配置：
+
+
+| 算法           | 配置文件                       | 说明         |
+| ------------ | -------------------------- | ---------- |
+| `rule_based` | `algo_cfg/rule_based.yaml` | 规则基线（默认）   |
+| `marl`       | `algo_cfg/marl.yaml`       | 多智能体强化学习   |
+| `rl_filter`  | `algo_cfg/rl_filter.yaml`  | RL 过滤器（预留） |
+
+
+
+
+### 仿真核心：`source/isaaclab_tasks/.../hc_factory/`
+
+
+| 文件                      | 职责                                               |
+| ----------------------- | ------------------------------------------------ |
+| `hc_vector_env.py`      | 向量化环境入口，继承 `HcVectorEnvBase`                     |
+| `hc_vector_env_base.py` | 场景加载、多环境克隆、`step_env_logic` / `step_env_physics` |
+| `hc_single_env.py`      | 单环境逻辑实现                                          |
+| `hc_single_env_base.py` | 单环境基类，注册各 Manager，`reset` / `step`               |
+| `hc_env_window.py`      | GUI 调试窗口                                         |
+| `hc_rendering.py`       | 渲染设置                                             |
+| `hc_video_recorder.py`  | 视频录制                                             |
+
+
+
+
+#### `src/` — 运行时 Manager
+
+
+| 文件                          | 职责                              |
+| --------------------------- | ------------------------------- |
+| `machine.py`                | 机器状态与工位管理                       |
+| `material.py`               | 物料与在制品管理                        |
+| `human.py`                  | 人工资源与路径                         |
+| `robot.py`                  | 机器人资源与路径                        |
+| `storage.py`                | 仓储区域管理                          |
+| `route.py`                  | 路径规划（含 `RouteManagerVectorEnv`） |
+| `task_progress_manager.py`  | 任务进度与工序解码                       |
+| `algo_multiagent_masker.py` | 四层 Agent 动作合法性掩码                |
+| `camera.py`                 | 相机管理                            |
+
+
+
+
+#### `env_asset_cfg/` — 静态配置
+
+
+| 文件                               | 职责                       |
+| -------------------------------- | ------------------------ |
+| `cfg_hc_env.py`                  | 环境全局配置（并行环境数、资产路径、训练步长等） |
+| `cfg_material_product.py`        | 产品与物料定义                  |
+| `cfg_process_task_gallery.py`    | 工序任务库                    |
+| `cfg_process_subtask_gallery.py` | 子任务库                     |
+| `cfg_machine.py`                 | 机器配置                     |
+| `cfg_human.py`                   | 人工配置                     |
+| `cfg_robot.py`                   | 机器人配置                    |
+| `cfg_storage.py`                 | 仓储配置                     |
+| `cfg_route/`                     | 路径规划配置与地图点               |
+| `cfg_camera.py`                  | 相机配置                     |
+
+
+
+
+### 决策算法：`source/algo/multiagent/hc_factory/`
+
+
+| 文件                                 | 职责                              |
+| ---------------------------------- | ------------------------------- |
+| `rule_based.py`                    | 规则基线，串联 A→B→C→D 四层 Agent，无限循环仿真 |
+| `agent_A_product_sequencer.py`     | 产品排序 Agent                      |
+| `agent_B_product_selector.py`      | 产品选择 Agent                      |
+| `agent_C_process_task_planner.py`  | 工序任务规划 Agent                    |
+| `agent_D_human_robot_allocator.py` | 人机资源分配 Agent                    |
+| `MARL.py`                          | 多智能体强化学习入口                      |
+| `marl_*.py`                        | MARL 网络、缓冲区、观测等辅助模块             |
+
+
+
+
+### RL-Games 封装：`source/isaaclab_rl/isaaclab_rl/rl_games.py`
+
+针对本项目的 HRTPA 环境，提供了专用包装器：
+
+
+| 类                           | 职责                                          |
+| --------------------------- | ------------------------------------------- |
+| `RlGamesVecEnvWrapperHRTPA` | 将 `HcVectorEnv` 适配为 RL-Games 接口，支持字典观测与字典动作 |
+| `RlGamesGpuEnvHRTPA`        | GPU 向量化环境，转发 `reset` / `step` 到 HRTPA 环境    |
+
+
+---
+
+
+
+## 运行流程
+
+
+
+### 启动命令示例
+
+```bash
+# 带 GUI 运行（3 个并行环境）
+python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 3 --device cuda:0
+
+# 无头模式（服务器 / 批量训练）
+python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 3 --device cuda:0 --headless
+```
+
+
+
+### 主循环（`rule_based` 模式）
+
+`rule_based.py` 中的 `train()` 方法执行无限循环：
+
+```
+reset() → act(obs) → step(action) → obs = next_obs → 重复
+```
+
+其中 `act()` 依次调用四层 Agent：
+
+```
+Agent A.act(obs) → 产品排序动作
+Agent B.act(obs) → 产品选择动作
+Agent C.act(obs, B的动作) → 工序规划动作
+Agent D.act(obs, B的动作, C的动作) → 人机分配动作
+```
+
+
+
+### 单步仿真（`HcVectorEnvBase.step`）
+
+每个仿真步分为两阶段：
+
+1. **逻辑步（**`step_env_logic`**）**
+  - 各 `HcSingleEnv` 接收四层 Agent 的动作字典
+  - 更新任务记录、物料状态、人机分配
+  - 计算动作掩码（mask）
+2. **物理步（**`step_env_physics`**）**
+  - `apply_data_to_sim()`：将关节位置、刚体位姿写入仿真器
+  - `sim.step()`：推进物理时间
+  - 若有 GUI 或 RTX 传感器，按 `render_interval` 渲染
+
+逻辑步与物理步完成后，返回所有环境的 `env_state_action_dict` 列表作为下一时刻观测。
+
+---
+
+
+
+## 环境接口
+
+
+
+### 观测：`env_state_action_dict`
+
+每个并行环境实例维护一个独立的状态字典，模板定义于 `cfg_hc_env.py` 的 `SingleEnvStateActionDictTemplate`：
+
+
+| 字段                  | 含义                    |
+| ------------------- | --------------------- |
+| `time_step`         | 当前仿真步数                |
+| `machine`           | 机器状态                  |
+| `material`          | 物料 / 在制品状态            |
+| `human`             | 人工资源状态                |
+| `robot`             | 机器人资源状态               |
+| `storage`           | 仓储状态                  |
+| `camera`            | 相机状态                  |
+| `progress`          | 生产进度（订单、在产、已完成、进行中任务） |
+| `agent_action_mask` | 四层 Agent 及各资源的动作合法性掩码 |
+| `action`            | 当前步接收的动作              |
+| `articulations`     | 待写入仿真的关节对象数据          |
+| `rigid_prims`       | 待写入仿真的刚体对象数据          |
+
+
+
+
+### 动作：四层字典
+
+动作不是单一连续向量，而是按 Agent 分层的字典：
+
+```python
+{
+    "product_sequencing": ...,       # Agent A
+    "product_selection": ...,        # Agent B
+    "process_task_planning": ...,    # Agent C
+    "human_robot_allocation": ...,   # Agent D
+}
+```
+
+向量化环境下，`step(action, action_extra)` 接收的是**长度为** `num_envs` **的列表**，每个元素对应一个环境的动作字典。
+
+---
+
+
+
+## 运行输出
+
+运行 `train.py` 后，会产生以下输出。
+
+### 1. 终端实时输出
+
+```
+step_env_physics time: 5.338674783706665
+```
+
+由 `hc_vector_env_base.py` 在每次物理步后打印，表示**单步物理仿真耗时（秒）**。
+
+
+| 耗时范围      | 典型原因              |
+| --------- | ----------------- |
+| 约 5–6 秒   | 多并行环境、物理负载较重时的常态  |
+| 约 0.1–1 秒 | 负载较轻或刚 reset 后    |
+| 波动较大      | 渲染、资产加载、GPU 调度等因素 |
+
+
+在 `rule_based` 模式下，终端**不会打印 loss、reward 曲线**等训练指标，主要以物理步耗时为主。按 `Ctrl+C` 可正常结束运行。
+
+### 2. Hydra 配置快照：`outputs/`
+
+```
+outputs/
+└── 2026-07-04/
+    └── 02-48-57/
+        ├── .hydra/
+        │   ├── config.yaml      # 合并后的完整配置（env + agent）
+        │   ├── hydra.yaml       # Hydra 运行元信息
+        │   └── overrides.yaml   # 命令行覆盖项
+        └── hydra.log            # Hydra 日志（通常为空）
+```
+
+目录按 `日期/时间` 组织，用于**复现某次运行使用了哪些参数**，不包含训练指标。
+
+### 3. 实验日志：`logs/rl_games/HcFactory/`
+
+```
+logs/rl_games/HcFactory/
+└── rule_based_2026-07-04_02-48-58/
+    └── params/
+        ├── env.yaml      # 环境配置快照
+        ├── agent.yaml    # 算法配置快照
+        ├── env.pkl       # 环境配置 pickle
+        └── agent.pkl     # 算法配置 pickle
+```
+
+命名规则：`{算法名}_{时间戳}`，例如 `rule_based_2026-07-04_02-48-58`。
+
+`train.py` 在启动时自动将当前 `env_cfg` 与 `algo_cfg` 写入该目录。
+
+### 4. 可选输出
+
+
+| 命令行开关                 | 输出位置 / 形式                     |
+| --------------------- | ----------------------------- |
+| `--video`             | `logs/.../videos/train/` 仿真视频 |
+| `--wandb_activate`    | Weights & Biases 云端实验记录       |
+| `--gantt_chart_data`  | 甘特图数据文件                       |
+| `--active_livestream` | Isaac Sim Livestream 远程画面推流   |
+
+
+---
+
+
+
+## 配置说明
+
+Hydra 合并后的 `config.yaml` 分为 `env` 与 `agent` 两部分。以下为常见字段说明。
+
+### 环境配置（`env`）
+
+
+| 字段                         | 示例值                       | 含义                |
+| -------------------------- | ------------------------- | ----------------- |
+| `scene.num_envs`           | `3`                       | 并行仿真环境数量          |
+| `scene.env_spacing`        | `120.0`                   | 环境间距（米）           |
+| `asset_path`               | `.../HC_import.usd`       | 工厂 USD 场景路径       |
+| `episode_length_s`         | `80.0`                    | 单 episode 时长（秒）   |
+| `sim.dt`                   | `0.00833`                 | 物理仿真时间步（约 120 Hz） |
+| `sim.device`               | `cuda:0`                  | 仿真设备              |
+| `train_env_len_setting`    | `[[3500,2000,2000], ...]` | 不同人机数量下的仿真步长上限    |
+| `rendering_resolution`     | `[1920, 1080]`            | 渲染分辨率             |
+| `human_number_upper_bound` | `10`                      | 人工数量上界            |
+| `robot_upper_bound`        | `2`                       | 机器人数量上界           |
+
+
+
+
+### 算法配置（`agent`）
+
+
+| 字段                             | 示例值           | 含义                          |
+| ------------------------------ | ------------- | --------------------------- |
+| `params.algo.name`             | `rule_based`  | 算法名称                        |
+| `params.config.name`           | `HcFactory`   | 实验项目名称                      |
+| `params.config.env_name`       | `rlgpu_HRTPA` | RL-Games 环境注册名              |
+| `params.config.device`         | `cuda:0`      | 算法计算设备                      |
+| `params.config.max_epochs`     | 极大值           | 最大训练轮数（rule_based 下实际为无限循环） |
+| `params.config.wandb_activate` | `false`       | 是否启用 W&B                    |
+| `params.config.test`           | `false`       | 是否为测试模式                     |
+
+
+---
+
+
+
+## 相关文件索引
+
+
+| 需求             | 查看文件                                                           |
+| -------------- | -------------------------------------------------------------- |
+| 安装与快速运行        | [README_CN.md](README_CN.md)                                   |
+| 开发笔记           | [coding_note.md](coding_note.md)                               |
+| 环境全局配置         | `source/isaaclab_tasks/.../env_asset_cfg/cfg_hc_env.py`        |
+| 工序与任务定义        | `cfg_process_task_gallery.py`、`cfg_process_subtask_gallery.py` |
+| 规则基线算法         | `source/algo/multiagent/hc_factory/rule_based.py`              |
+| 物理步实现          | `source/isaaclab_tasks/.../hc_vector_env_base.py`              |
+| 单环境 Manager 注册 | `source/isaaclab_tasks/.../hc_single_env_base.py`              |
+| 工厂 USD 资产      | `~/work/Dataset/HC_data/final_for_isaac/HC_import.usd`         |
+| 地图路由数据         | `~/work/Dataset/HC_data/map_data/`                             |
+
+
+---
+
+
+
+## 工厂与产品（简要）
+
+
+
+### 工厂场景
+
+仿真场景为**海创（HC）工厂**，包含数控机床、焊接机器人、龙门吊、工作台等设备，以及人工操作员与 AGV 机器人。布局基于真实工厂地图数据，人机共用路网点。
+
+### 默认产品：水喉（ProductWaterPipe）
+
+默认生产订单为 5 件水喉，每件经历 6 道加工工序及对应物流任务：
+
+
+| 序号  | 工序                            | 执行设备       |
+| --- | ----------------------------- | ---------- |
+| 1   | 管材切割（`pipe_cutting`）          | 滚床 CNC 切管机 |
+| 2   | 管材开槽（`pipe_grooving`）         | 大型开槽机      |
+| 3   | 批量点焊（`batch_spot_welding`）    | 工作台        |
+| 4   | 氩弧焊底焊（`arc_welding_root`）     | 焊接机器人      |
+| 5   | MIG 面焊（`MIG_welding_surface`） | 旋转管自动焊机    |
+| 6   | 防锈漆喷涂（`paint_rust_proof`）     | 工作台        |
+
+
+每道工序前均有龙门吊执行的**物流任务**。物料状态随工序推进从 `pipe → flange/elbow → semi → product` 逐步演化。
+
+从代码的角度看，分为两部分：
+
+- **配置文件**：定义「工艺是什么」
+- **运行时代码**：定义「工艺怎么一步步跑起来」
+
+
+
+### 1. 产品 & 物料 & 订单
+
+**文件**：`cfg_material_product.py`
+
+
+| 配置项                    | 作用                | 对应你文档里的内容                              |
+| ---------------------- | ----------------- | -------------------------------------- |
+| `CfgProductOrder`      | 生产订单：做 5 个水喉      | 「默认生产订单为 5 件水喉」                        |
+| `CfgRegistrationInfos` | 最多注册几批物料          | 支持 5 批（编号 00–04）                       |
+| `CfgProductProcess`    | 每种产品的物料组成、初始状态    | `pipe → flange/elbow → semi → product` |
+| `ProductWaterPipe` 类   | 水喉物料在 3D 场景里的模型路径 | 管子、法兰、弯管、半成品、成品                        |
+
+
+物料演化在这里定义，例如：
+
+- `product_00_pipe` — 管材
+- `product_00_flange` / `product_00_elbow` — 法兰/弯管
+- `product_00_semi` — 半成品
+- `product_00_maded` — 成品
+
+
+
+### 2. 工序总表（6 道加工 + 对应机器 + 耗时）
+
+**文件**：`cfg_process_task_gallery.py` 里的 `CfgProductProcessGallery`
+
+这里定义你表格里的 6 道工序：
+
+```44:86:source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/cfg_process_task_gallery.py
+CfgProductProcessGallery = {
+    "ProductWaterPipe": {
+        "num_process_steps": 6,
+        "process_steps": {
+            "pipe_cutting": {
+                "machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine",
+                ...
+            },
+            "pipe_grooving": { ... },
+            "batch_spot_welding": { ... },
+            "arc_welding_root": { ... },
+            "MIG_welding_surface": { ... },
+            "paint_rust_proof": { ... },
+        }
+    }
+}
+```
+
+每个工序包含：
+
+- 用哪台机器（`machine`）
+- 需要什么物料（`required_materials`）
+- 加工时间（`process_time`）
+
+
+
+### 3. 工序任务库（物流 + 加工 + 前后关系）
+
+**文件**：`cfg_process_task_gallery.py` 里的另外两个大字典
+
+
+| 字典                                        | 作用                   |
+| ----------------------------------------- | -------------------- |
+| `CfgProcessTaskGalleryInAll`              | 给所有任务编号（Agent 选任务时用） |
+| `CfgProcessTaskGalleryDetailedClassified` | 每个任务的完整定义            |
+
+
+你文档里「每道工序前都有龙门吊物流」，就在这里体现。以 `pipe_cutting` 为例：
+
+```147:161:source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/cfg_process_task_gallery.py
+        "pipe_cutting": {
+            "task_type": "processing",
+            "target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine",
+            "processing_submaterials": ["product_00_pipe"],
+            "processed_material": "product_00_pipe",
+            "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["pipe_cutting"],
+            "next_logistic_task": "logistic_for_pipe_grooving",
+            "next_processing_task": "pipe_grooving",
+            ...
+        },
+```
+
+每个任务会写明：
+
+- 是物流（`logistic`）还是加工（`processing`）
+- 用哪台机器
+- 搬什么料、产出什么料
+- 下一道物流/加工是什么
+- 引用哪套子任务流程
+
+完整工序链在 `CfgProcessTaskGalleryInAll`（约 95–109 行）：
+
+```
+logistic_for_pipe_cutting → pipe_cutting → logistic_for_pipe_grooving → pipe_grooving → ... → paint_rust_proof
+```
+
+
+
+### 4. 子任务细节（人/机器人/龙门吊/机器具体怎么动）
+
+**文件**：`cfg_process_subtask_gallery.py`
+
+这是**最细**的一层：一道工序拆成很多小步骤。
+
+例如 `logistic_for_pipe_cutting`（搬管子去切管机）：
+
+```17:52:source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/cfg_process_subtask_gallery.py
+CfgSubtaskGallery = {
+    "ProductWaterPipe": {
+        "logistic_for_pipe_cutting":{
+            "have_AGV":{
+                "subtasks": [
+                    ["go_to_material", "go_to_material", "wait", "go_to_material"],
+                    ["material_on_gantry", "wait", "wait", "wait"],
+                    ["control_gantry", "carry_to_robot", "wait", "wait"],
+                    ...
+                ],
+                "material_states_in_subtasks": {
+                    "product_00_pipe": ["on_start_area", "on_gantry", "on_robot", ...],
+                    ...
+                }
+            },
+            "only_have_gantry": { ... }
+        },
+```
+
+含义：
+
+- `subtasks`：每一步里，人 / 龙门吊 / 机器 / 机器人各做什么
+- `material_states_in_subtasks`：物料在各子步骤处于什么状态（在仓库、在龙门吊上、在机器上等）
+
+文件后半部分（约 123 行起）用 `copy.deepcopy` 复用模板，快速生成其他 5 道工序的配置。
+
+### 5. 机器与工序的对应关系
+
+**文件**：`cfg_machine.py`
+
+每台机器声明自己能做哪些工序：
+
+```117:122:source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/cfg_machine.py
+    "num02_rollerbedCNCPipeIntersectionCuttingMachine": {
+        ...
+        "corresponding_process_task": ["pipe_cutting"],
+        "corresponding_logistic_task": ["logistic_for_pipe_cutting"],
+```
+
+还包含：工位、放料位置、工作区域 ID 等。
+
+---
+
+
+
+## 二、运行时代码（工艺怎么执行）
+
+配置文件只定义「应该发生什么」，真正执行在 `src/` 目录。
+
+### 总调度：`task_progress_manager.py`
+
+**文件**：`src/task_progress_manager.py` 的 `TaskManager`
+
+可以把它想成**车间调度主任**，负责：
+
+1. 解析 Agent 决策
+2. 创建任务
+3. 推进子任务
+4. 判断任务是否完成
+
+主流程在 `step()`：
+
+```26:38:source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/task_progress_manager.py
+    def step(self, env_state_action_dict: dict) -> dict:
+        self.decode_action_product_sequencing(...)
+        new_task_record = copy.deepcopy(TaskRecordTemplate)
+        if self.decode_action_product_selection(...):
+            have_new_task = self.decode_action_process_task_planning(...)
+            if have_new_task:
+                self.decode_action_human_robot_allocation(...)
+                self.update_new_task_record(...)   # ← 从配置里加载任务详情
+        self.step_task_records(...)                # ← 每步推进子任务
+```
+
+关键函数：
+
+
+| 函数                                    | 做什么                                                       |
+| ------------------------------------- | --------------------------------------------------------- |
+| `decode_action_process_task_planning` | Agent C 选了哪道工序（如 `pipe_cutting`）                          |
+| `update_new_task_record`              | 从 `CfgProcessTaskGalleryDetailedClassified` 加载任务配置，初始化子任务 |
+| `initialze_subtasks`                  | 从 `CfgSubtaskGallery` 加载子任务流程                             |
+| `step_task_records`                   | 每步检查子任务是否完成                                               |
+| `_check_subtask_and_task_done`        | 子任务做完 → 切到下一个子任务；全部做完 → 任务完成                              |
+
+
+
+
+### 各角色执行子任务
+
+任务创建后，各 Manager 在 `step()` 里按子任务干活：
+
+
+| 文件                | 负责                     |
+| ----------------- | ---------------------- |
+| `src/human.py`    | 工人走路径、到料、操作            |
+| `src/robot.py`    | AGV 搬运                 |
+| `src/machine.py`  | 机器加工、龙门吊控制             |
+| `src/material.py` | **物料位置更新**（管子在哪、显示/隐藏） |
+| `src/route.py`    | 路径规划                   |
+
+
+物料位置更新在 `MaterialBatch.step()`（`material.py` 约 174 行），根据 `material_states_in_subtasks` 把管子放到龙门吊上、机器上或藏起来。
+
+### 物理画面更新
+
+逻辑算完后，`hc_single_env_base.py` 的 `apply_data_to_sim()` 把位置写入 3D 场景，再由 `hc_vector_env_base.py` 的 `step_env_physics()` 推进仿真。
+
+---
+
+
+
+## 三、一条完整工艺链怎么串起来
+
+以水喉第 1 道工序「管材切割」为例：
+
+```
+1. Agent C 选择任务 "logistic_for_pipe_cutting" 或 "pipe_cutting"
+        ↓
+2. task_progress_manager.py
+   从 CfgProcessTaskGalleryDetailedClassified 读取任务定义
+   从 CfgSubtaskGallery 读取子任务流程
+        ↓
+3. 每步仿真时各 Manager 执行子任务：
+   human.py    → 工人走到取料点
+   machine.py  → 龙门吊搬运
+   robot.py    → AGV 参与（如果有）
+   material.py → 管子位置从仓库 → 龙门吊 → 切管机
+        ↓
+4. 子任务全部完成 → finished_task 更新为 "pipe_cutting"
+        ↓
+5. 下一道自动是 logistic_for_pipe_grooving → pipe_grooving ...
+```
+
+---
+
+## 问题 1：`step_env_logic` 和 `step_env_physics` 有什么区别？
+
+- `step_env_logic`：更新「工厂大脑」里的状态（任务、物料、人机分配）
+- `step_env_physics`：把更新后的位置/姿态写进 3D 仿真，并推进一帧物理时间
+
+
+
+### 代码位置
+
+主入口在 `hc_vector_env_base.py` 的 `step()`：
+
+```101:114:source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/hc_vector_env_base.py
+    def step(self, action: list[dict] | None = None, action_extra: list[dict] | None = None) -> None:
+        self.step_env_logic(action, action_extra)
+        time_start = time.time()
+        self.step_env_physics()
+        time_end = time.time()
+        print(f"step_env_physics time: {time_end - time_start}")
+        ...
+```
+
+**逻辑步**具体做什么？在 `hc_single_env_base.py`：
+
+```110:117:source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/hc_single_env_base.py
+    def step_env_logic(self, action: dict | None = None, action_extra: list[dict] | None = None) -> None:
+        self.env_state_action_dict['action'] = action
+        for m in self.iter_managers():
+            m.step(self.env_state_action_dict)
+        self.env_state_action_dict["time_step"] += 1
+```
+
+意思是：把 Agent 的决策写进 `action`，然后让各个 Manager（机器、物料、人、机器人、任务等）依次更新状态。
+
+**物理步**做什么？在 `hc_vector_env_base.py`：
+
+```116:134:source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/hc_vector_env_base.py
+    def step_env_physics(self) -> None:
+        self.apply_data_to_sim()
+        ...
+                self.sim.step(render=False)
+```
+
+`apply_data_to_sim()` 把逻辑层算好的关节角度、物体位置写入仿真器，再调用 `sim.step()` 推进物理。
+
+---
+
+
+
+## 问题 2：Agent A 是怎么决定先做哪种产品的？
+
+1. 环境先算好「哪些产品类型现在可以选」（mask）
+2. Agent A 看 mask，从可选里挑一个
+3. 任务管理器根据这个选择，更新 `next_product`（下一个要做的产品）
+
+
+
+### 代码位置
+
+**Agent A 做决策**：`agent_A_product_sequencer.py`
+
+```25:32:source/algo/multiagent/hc_factory/agent_A_product_sequencer.py
+    def act(self, env_state_action_dict: dict) -> torch.Tensor | None:
+        mask: torch.Tensor = env_state_action_dict["agent_action_mask"]["agent_A_product_sequencer"]
+        ...
+        action = self.keep_first_one(mask)
+        return action
+```
+
+`keep_first_one` 在 `agent_base.py`：在 mask 里为 1 的选项中，**只保留第一个**。
+
+**谁决定「哪些可以选」？** `algo_multiagent_masker.py` 里的 `ProductSequencerAgentMasker`：
+
+```154:165:source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/algo_multiagent_masker.py
+    def generate_mask(self, env_state_action_dict) -> None:
+        not_started : dict = env_state_action_dict["progress"]["not_started"]
+        next_product : str = env_state_action_dict["progress"]["next_product"]
+        mask = torch.zeros(self.num_product_types, ...)
+        if next_product is None and len(not_started.keys()) > 0:
+            for product_type in not_started.keys():
+                mask[self.product_types[product_type]] = 1
+```
+
+规则：如果还没选定「下一个产品」，且还有待产订单，就把所有未开始的产品类型标为可选。
+
+**决策如何生效？** `task_progress_manager.py` 的 `decode_action_product_sequencing`：
+
+```40:57:source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/task_progress_manager.py
+    def decode_action_product_sequencing(self, env_state_action_dict):
+        action_product_sequencing = env_state_action_dict["action"]["product_sequencing"]
+        if action_product_sequencing.sum() != 0:
+            product_type_index = action_product_sequencing.nonzero()[0][0]
+            product_type = list(CfgProductProcess.keys())[product_type_index]
+            ...
+                    env_state_action_dict["progress"]["next_product"] = product_type
+                    env_state_action_dict["progress"]["next_product_index"] = key_variables["idx"]
+```
+
+**调用链**：`rule_based.py` → Agent A 的 `act()` → 环境 `step_env_logic` → `TaskManager.decode_action_product_sequencing`。
+
+---
+
+
+
+## 问题 3：物料状态是在哪里更新的？
+
+物料状态主要在 `material.py` 里更新，由 `ProductMaterialManager` 和 `MaterialBatch` 负责。
+
+「物料状态」包括：
+
+- 这根管子现在在仓库、龙门吊上、还是机器工位上？
+- 它完成了哪道工序？
+- 3D 场景里它该出现在什么坐标？
+
+
+
+### 代码位置
+
+**总入口**：`hc_single_env_base.py` 的 `step_env_logic` 会调用所有 Manager，其中包括 `product_material_manager`。
+
+**物料 Manager**：`src/material.py`
+
+
+| 函数                                               | 什么时候   | 做什么               |
+| ------------------------------------------------ | ------ | ----------------- |
+| `ProductMaterialManager.reset()`                 | 环境重置   | 初始化所有物料批次         |
+| `MaterialBatch.reset()`                          | 重置单批物料 | 放回仓库、隐藏半成品        |
+| `MaterialBatch.step()`                           | 每步仿真   | 根据当前任务更新物料位置和工序进度 |
+| `MaterialBatch.reset_raw_materials_to_storage()` | 重置时    | 把原材料放进对应仓位        |
+
+
+**最核心的更新逻辑**在 `MaterialBatch.step()`（约 174–254 行）：
+
+- 读当前任务 `ongoing_task_records`
+- 根据子任务状态（`on_gantry`、`on_machine`、`disappear` 等）更新物料位置
+- 任务完成时更新 `finished_task`
+
+**生产进度**（哪些在做、哪些完成）在 `task_progress_manager.py` 的 `TaskManager` 里更新，和物料是配合关系。
+
+---
+
+
+
+## 问题 4：`env_state_action_dict` 里每个字段是什么意思？
+
+
+
+### 一句话
+
+这是**单个工厂环境的「大账本」**，所有 Manager 和 Agent 都通过它读写状态。
+
+### 通俗解释
+
+可以把它想成工厂车间的**实时状态表**，一个环境一份，存在内存里。
+
+### 代码位置
+
+模板定义在 `cfg_hc_env.py` 的 `SingleEnvStateActionDictTemplate`（约 31–85 行）。
+
+### 各字段含义（通俗版）
+
+
+| 字段                  | 通俗含义                    |
+| ------------------- | ----------------------- |
+| `time_step`         | 当前仿真走了多少步               |
+| `machine`           | 各台机器的状态（空闲/忙碌、工位等）      |
+| `material`          | 各批物料的状态（做到哪道工序、在哪）      |
+| `human`             | 各工人的状态（位置、是否在执行任务）      |
+| `robot`             | 各机器人的状态                 |
+| `camera`            | 相机相关状态                  |
+| `storage`           | 各仓库仓位（满了没、放了什么）         |
+| `articulations`     | 有关节的物体（机器人、龙门吊）要写入仿真的数据 |
+| `rigid_prims`       | 刚体物体（管子、法兰等）要写入仿真的位置/朝向 |
+| `progress`          | **生产进度总览**（见下表）         |
+| `agent_action_mask` | 各 Agent「现在能选什么」的合法选项表   |
+| `action`            | 当前这一步四层 Agent 做出的决策     |
+
+
+`progress` **子字段**：
+
+
+| 子字段                    | 通俗含义                     |
+| ---------------------- | ------------------------ |
+| `product_order`        | 订单：要做多少件、什么类型（如 5 个水喉）   |
+| `not_started`          | 还没开始做的产品列表               |
+| `next_product`         | Agent A 选定的「下一个优先做的产品类型」 |
+| `next_product_index`   | 对应第几批物料（0、1、2…）          |
+| `producing`            | 正在生产中的产品                 |
+| `producing_indexs`     | 正在生产的物料批次编号              |
+| `finished`             | 已完成的产品                   |
+| `ongoing_task_records` | 当前正在执行的任务详情（谁在做、做什么工序）   |
+
+
+`action` **子字段**（四层 Agent 的决策）：
+
+
+| 子字段                      | 谁做的决策               |
+| ------------------------ | ------------------- |
+| `product_sequencing`     | Agent A：优先做哪种产品     |
+| `product_selection`      | Agent B：选正在做的还是新开一件 |
+| `process_task_planning`  | Agent C：下一道工序是什么    |
+| `human_robot_allocation` | Agent D：派给人、机器人还是机器 |
+
+
+---
+
+
+
+## 目前的算法流程：
+
+```
+rule_based 算法（无限循环）
+    │
+    ├─ Agent A/B/C/D 看 env_state_action_dict，做出 action
+    │
+    └─ env.step(action)
+           │
+           ├─ step_env_logic  ← 更新「账本」
+           │     ├─ TaskManager：解析 action，更新 progress
+           │     ├─ MaterialBatch：更新物料位置和工序
+           │     ├─ Human/Robot/Machine Manager：更新资源状态
+           │     └─ AlgoMultiAgentMasker：计算下一步能选什么
+           │
+           └─ step_env_physics  ← 更新「3D 画面」
+                 ├─ apply_data_to_sim：写关节/位置
+                 ├─ sim.step()：推进物理
+                 └─ 打印 step_env_physics time
+```
+
+---
+
+我的问题：
+
+1. task和subtask的关系？
+2. mask的含义？
+
