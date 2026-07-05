@@ -17,8 +17,8 @@ A **human-robot collaborative factory production scheduling simulation** built o
 - [Framework Architecture (hc_factory)](#framework-architecture-hc_factory)
 - [Project Structure](#project-structure)
 - [Factory and Product Description](#factory-and-product-description)
-
----
+- [Human Subtask Perception Training](#human-subtask-perception-training)
+- [Related Documentation](#related-documentation)
 
 ## Requirements
 
@@ -288,6 +288,107 @@ The default production order is 5 water pipes. Each unit goes through 6 processi
 Each processing step is preceded by a **logistics task** executed by the gantry crane (transporting materials/WIP to the target machine workstation). Material state evolves through the process: `pipe → flange/elbow → semi → product`.
 
 Process and task definitions are in `env_asset_cfg/cfg_process_task_gallery.py` and `cfg_process_subtask_gallery.py`.
+
+---
+
+## Human Subtask Perception Training
+
+The `perception` module learns to estimate **each working human's current subtask** from factory camera images (and optional structured signals). It runs in two phases: **collect** data inside simulation, then **train** offline.
+
+Configuration: `env_asset_cfg/cfg_perception.py` (collection / training hyperparameters), `env_asset_cfg/cfg_camera.py` (camera poses). Implementation: `src/perception.py`.
+
+### Experiment Design
+
+**Goal:** At every simulation step, for every human with `state != free`, predict:
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `subtask_name` | 9-class classification | Human-column subtask, e.g. `go_to_material`, `control_gantry`, `wait` |
+| `subtask_done` | binary | Whether the current human subtask is finished |
+
+**Inputs (model):**
+
+| Modality | Shape / format | Source |
+|----------|----------------|--------|
+| Multi-camera RGB | `(N_cam, 3, 224, 224)` | Fixed factory cameras (`cfg_camera.py`); ResNet18 per view |
+| Agent signals (optional) | 8-dim vector | Privileged task-record features: `subtask_index`, `num_subtasks`, four `finished` flags, two `wait` flags |
+
+**Ground truth (logged in `meta.jsonl`):**
+
+- From simulation `subtasks_dict`: `subtask_name = ongoing[human]`, `subtask_done = finished[human]`
+- Also logged per step: `task`, `subtask_index`, `area_id`, full-scene `human_labels`, `agent_signals`, `task_records`
+- Humans with `state == free` are context only; they are **not** prediction targets
+- Label vocab: `HumanSubtaskVocab` and `TaskVocab` in `cfg_perception.py` (synced with process galleries)
+
+**Loss:** `CrossEntropy(subtask_name) + BCE(subtask_done)`
+
+**Dataset layout** (default `output/perception_dataset/`):
+
+```
+perception_dataset/
+├── manifest.json
+└── env_00_episode_000000/
+    ├── meta.jsonl              # one JSON object per saved step
+    └── cameras/step_000123/    # multi-camera JPGs for that step
+```
+
+### Data Collection
+
+1. In `env_asset_cfg/cfg_perception.py`, enable collection:
+
+```python
+CfgPerception = {
+    "enabled": True,
+    "mode": "collect",   # collect | infer | off
+    ...
+}
+```
+
+2. Ensure cameras are registered (`CfgCameraRegistrationInfos` in `cfg_camera.py`).
+
+3. Run simulation (single env recommended for a clean dataset):
+
+```bash
+python train.py \
+  --task HRTPaHC-v1 \
+  --algo rule_based \
+  --num_envs 1 \
+  --device cuda:0 \
+  --headless
+```
+
+Data is written under:
+
+`source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset/`
+
+Tune `save_interval`, `max_episodes`, and `max_steps_per_episode` in `CfgPerception`.
+
+### Offline Training
+
+From the project root with the `isaaclab` environment activated:
+
+```bash
+python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/perception.py train \
+  --dataset_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset \
+  --output_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_runs \
+  --run_name subtask_baseline \
+  --epochs 20 \
+  --batch_size 16 \
+  --device cuda:0
+```
+
+Checkpoints are saved to `output/perception_runs/subtask_baseline/` (`best.pt`, `last.pt`, `history.json`).
+
+**Evaluation:**
+
+```bash
+python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/perception.py eval \
+  --dataset_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset \
+  --checkpoint source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_runs/subtask_baseline/best.pt \
+  --device cuda:0
+```
+
+**Inference in simulation:** set `CfgPerception["mode"] = "infer"` and `checkpoint_path` to a trained `best.pt`.
 
 ---
 

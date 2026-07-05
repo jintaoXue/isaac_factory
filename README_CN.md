@@ -17,8 +17,8 @@
 - [框架架构（hc_factory）](#框架架构hc_factory)
 - [项目结构](#项目结构)
 - [工厂与产品说明](#工厂与产品说明)
-
----
+- [Human Subtask 感知训练](#human-subtask-感知训练)
+- [相关文档](#相关文档)
 
 ## 环境要求
 
@@ -288,6 +288,107 @@ isaac_factory/
 每道工序前均有龙门吊执行的**物流任务**（将物料/在制品运送至目标机器工位）。物料状态随工序推进从 `pipe → flange/elbow → semi → product` 逐步演化。
 
 工序与任务定义详见 `env_asset_cfg/cfg_process_task_gallery.py` 与 `cfg_process_subtask_gallery.py`。
+
+---
+
+## Human Subtask 感知训练
+
+`perception` 模块用于从工厂多相机图像（及可选结构化信号）估计**每个正在作业的 human 当前 subtask**。流程分两步：仿真内 **collect** 采集数据，再离线 **train** 训练。
+
+配置文件：`env_asset_cfg/cfg_perception.py`（采集与训练超参）、`env_asset_cfg/cfg_camera.py`（相机位姿）。实现代码：`src/perception.py`。
+
+### 实验设计
+
+**目标：** 每个仿真步，对所有 `state != free` 的 human 预测：
+
+| 输出 | 类型 | 说明 |
+|------|------|------|
+| `subtask_name` | 9 类分类 | human 列 subtask，如 `go_to_material`、`control_gantry`、`wait` |
+| `subtask_done` | 二分类 | 当前 human subtask 是否已完成 |
+
+**模型输入：**
+
+| 模态 | 形状 / 格式 | 来源 |
+|------|-------------|------|
+| 多相机 RGB | `(N_cam, 3, 224, 224)` | 固定工厂相机（`cfg_camera.py`）；每视角 ResNet18 编码 |
+| Agent signals（可选） | 8 维向量 | 特权 task-record 特征：`subtask_index`、`num_subtasks`、四列 `finished`、两列 `wait` 标志 |
+
+**Ground Truth（写入 `meta.jsonl`）：**
+
+- 来自仿真 `subtasks_dict`：`subtask_name = ongoing[human]`，`subtask_done = finished[human]`
+- 每步同时记录：`task`、`subtask_index`、`area_id`、全场景 `human_labels`、`agent_signals`、`task_records`
+- `state == free` 的 human 仅作场景上下文，**不作为预测目标**
+- 标签词表见 `cfg_perception.py` 中的 `HumanSubtaskVocab`、`TaskVocab`（与工艺 gallery 同步）
+
+**损失函数：** `CrossEntropy(subtask_name) + BCE(subtask_done)`
+
+**数据集目录结构**（默认 `output/perception_dataset/`）：
+
+```
+perception_dataset/
+├── manifest.json
+└── env_00_episode_000000/
+    ├── meta.jsonl              # 每个保存步一行 JSON
+    └── cameras/step_000123/    # 该步多相机 JPG
+```
+
+### 数据采集
+
+1. 在 `env_asset_cfg/cfg_perception.py` 中开启采集：
+
+```python
+CfgPerception = {
+    "enabled": True,
+    "mode": "collect",   # collect | infer | off
+    ...
+}
+```
+
+2. 确认相机已注册（`cfg_camera.py` 中 `CfgCameraRegistrationInfos`）。
+
+3. 运行仿真（建议 `num_envs=1`，便于整理数据集）：
+
+```bash
+python train.py \
+  --task HRTPaHC-v1 \
+  --algo rule_based \
+  --num_envs 1 \
+  --device cuda:0 \
+  --headless
+```
+
+数据默认写入：
+
+`source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset/`
+
+可通过 `CfgPerception` 中的 `save_interval`、`max_episodes`、`max_steps_per_episode` 控制采集量。
+
+### 离线训练
+
+在项目根目录、已激活 `isaaclab` 环境下执行：
+
+```bash
+python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/perception.py train \
+  --dataset_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset \
+  --output_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_runs \
+  --run_name subtask_baseline \
+  --epochs 20 \
+  --batch_size 16 \
+  --device cuda:0
+```
+
+Checkpoint 保存在 `output/perception_runs/subtask_baseline/`（`best.pt`、`last.pt`、`history.json`）。
+
+**评估：**
+
+```bash
+python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/perception.py eval \
+  --dataset_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset \
+  --checkpoint source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_runs/subtask_baseline/best.pt \
+  --device cuda:0
+```
+
+**仿真内推理：** 将 `CfgPerception["mode"]` 设为 `"infer"`，并配置 `checkpoint_path` 指向训练好的 `best.pt`。
 
 ---
 
