@@ -497,6 +497,10 @@ def _confusion_notes(counts: dict[str, int], gt_done: int, gt_not_done: int) -> 
     return notes
 
 
+def _fmt_acc(v: float | None) -> str:
+    return f"{v:.3f}" if v is not None else "N/A"
+
+
 def summarize_done_confusion(counts: dict[str, int], total: int, gt_done: int, gt_not_done: int) -> dict:
     notes = _confusion_notes(counts, gt_done, gt_not_done)
     out = {
@@ -504,9 +508,9 @@ def summarize_done_confusion(counts: dict[str, int], total: int, gt_done: int, g
         "total": total,
         "gt_done": gt_done,
         "gt_not_done": gt_not_done,
-        "done_acc": (counts["done_correct"] + counts["not_done_correct"]) / max(1, total),
-        "done_recall": counts["done_correct"] / gt_done if gt_done else None,
-        "not_done_recall": counts["not_done_correct"] / gt_not_done if gt_not_done else None,
+        "acc": (counts["done_correct"] + counts["not_done_correct"]) / max(1, total),
+        "done_acc": counts["done_correct"] / gt_done if gt_done else None,
+        "not_done_acc": counts["not_done_correct"] / gt_not_done if gt_not_done else None,
         "data_notes": notes,
     }
     return out
@@ -541,19 +545,17 @@ class PerceptionTrainer:
                 loss_sum += loss.item()
             m = self.evaluate(model, val_ld) | {"epoch": epoch, "train_loss": loss_sum / max(1, len(train_ld))}
             history.append(m)
-            c = m
             print(
-                f"[epoch {epoch:03d}] loss={m['train_loss']:.4f} acc={m['done_acc']:.3f} | "
-                f"done✓{c['done_correct']} done→¬{c['done_as_not_done']} "
-                f"¬✓{c['not_done_correct']} ¬→done{c['not_done_as_done']}"
+                f"[epoch {epoch:03d}] loss={m['train_loss']:.4f}, acc={m['acc']:.3f} | "
+                f"done_acc={_fmt_acc(m['done_acc'])}, not_done_acc={_fmt_acc(m['not_done_acc'])}"
             )
-            for note in c.get("data_notes", []):
+            for note in m.get("data_notes", []):
                 print(f"  [WARN] {note}")
             ckpt = {"model_state_dict": model.state_dict(), "num_cameras": ds.num_cameras,
                     "signal_dim": self.cfg.get("signal_dim", SIGNAL_DIM), "train_cfg": self.cfg}
             torch.save(ckpt, run_dir / "last.pt")
-            if m["done_acc"] >= best:
-                best = m["done_acc"]
+            if m["acc"] >= best:
+                best = m["acc"]
                 torch.save(ckpt, run_dir / "best.pt")
         (run_dir / "history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
         print(f"[INFO] Checkpoints -> {run_dir}")
@@ -607,6 +609,10 @@ def main() -> None:
         metrics = trainer.evaluate(model, DataLoader(
             PerceptionDataset(args.dataset_dir), args.batch_size))
         print(json.dumps(metrics, indent=2, ensure_ascii=False))
+        print(
+            f"\nacc={metrics['acc']:.3f} | "
+            f"done_acc={_fmt_acc(metrics['done_acc'])}, not_done_acc={_fmt_acc(metrics['not_done_acc'])}"
+        )
         print("\n--- 四格统计 ---")
         print(f"  done 判断正确 (TP):           {metrics['done_correct']}")
         print(f"  done 误判为 not_done (FN):    {metrics['done_as_not_done']}")
