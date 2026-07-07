@@ -100,7 +100,7 @@ def _make_machine_camera(
         "lookat": lookat,
         "camera_sensor": _CAMERA_SENSOR,
         "reset_state": _CAMERA_RESET_STATE,
-        "debug_save_frames": True,
+        "debug_save_frames": False,
         "debug_max_frames": 50,
     }
 

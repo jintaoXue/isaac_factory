@@ -35,6 +35,7 @@ from .env_asset_cfg.cfg_hc_env import HcRenderCfg
 from .hc_rendering import apply_hc_render_settings
 
 from .src.route import RouteManagerVectorEnv
+from .src.bottleneck_data import init_bottleneck_run_context # added: for bottleneck data collection
 
 class HcVectorEnvBase(DirectRLEnv):
     cfg_vector_env: HcVectorEnvCfg
@@ -66,6 +67,7 @@ class HcVectorEnvBase(DirectRLEnv):
         # assert self.num_envs == 2, "Temporary testing num_envs == 2"
         assert self.cfg_vector_env._valid_train_cfg()
         self.route_manager = RouteManagerVectorEnv(cuda_device=self.cuda_device)
+        init_bottleneck_run_context(self.cfg_vector_env) # added: for bottleneck data collection
         for i in range(self.num_envs):
             sub_env_path = f"/World/envs/env_{i}"
             # the usd file already has a ground plane
