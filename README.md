@@ -38,12 +38,13 @@ A **human-robot collaborative factory production scheduling simulation** built o
 
 Follow the [Isaac Sim installation guide](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/install_workstation.html) to install the Workstation edition.
 
-### 2. Install Isaac Lab Separately
+### 2. Install Isaac Lab v2.0.1 (other versions may also be compatible) separately  
+Installation instructions: https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html
 
-Clone the [official Isaac Lab repository](https://github.com/isaac-sim/IsaacLab), create the `_isaac_sim` symlink, and set up the conda environment:
+Clone the [official Isaac Lab repository](https://github.com/isaac-sim/IsaacLab), create the `_isaac_sim` symbolic link, and initialize the conda environment:
 
 ```bash
-git clone https://github.com/isaac-sim/IsaacLab.git
+git clone --branch v2.0.1 --depth 1 git@github.com:isaac-sim/IsaacLab.git
 cd IsaacLab
 
 # Link Isaac Sim into the repo root (choose one)
@@ -54,11 +55,10 @@ ln -s /path/to/isaac-sim _isaac_sim
 # Create conda environment isaaclab
 ./isaaclab.sh --conda isaaclab
 
-# Activate the environment
+# Activate the environment, for 4.5.0 the python version is 3.10
 conda activate isaaclab
 
 # Install all Isaac Lab extensions
-isaaclab -i
 ```
 
 ### 3. Install This Repository (isaac_factory)

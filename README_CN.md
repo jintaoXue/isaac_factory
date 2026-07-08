@@ -16,7 +16,7 @@
 - [远程可视化（Livestream）](#远程可视化livestream)
 - [框架架构（hc_factory）](#框架架构hc_factory)
 - [项目结构](#项目结构)
-- [工厂与产品说明](#工厂与产品说明)
+- [工厂与产品说明](#工厂与产品说明)  
 - [Human Subtask 感知训练](#human-subtask-感知训练)
 - [相关文档](#相关文档)
 
@@ -38,27 +38,26 @@
 
 按 [Isaac Sim 官方安装文档](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/install_workstation.html) 完成 Workstation 版安装。
 
-### 2. 单独安装 Isaac Lab
+### 2. 单独安装 Isaac Lab（建议 v2.0.1） https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html
 
-克隆 [Isaac Lab 官方仓库](https://github.com/isaac-sim/IsaacLab)，创建符号链接 `_isaac_sim`，并配置 conda 环境：
+克隆 [Isaac Lab 官方仓库](https://github.com/isaac-sim/IsaacLab) 到 `v2.0.1`，创建 `_isaac_sim` 符号链接，并初始化 conda 环境。
+
+> 说明：如未配置 GitHub SSH key，请使用 HTTPS 地址克隆（更省心）。
 
 ```bash
-git clone https://github.com/isaac-sim/IsaacLab.git
+git clone --branch v2.0.1 --depth 1 https://github.com/isaac-sim/IsaacLab.git
 cd IsaacLab
 
-# 将 Isaac Sim 链接到仓库根目录（二选一）
-# 方式 A：符号链接（推荐）
+# 将 Isaac Sim 链接到仓库根目录
 ln -s /path/to/isaac-sim _isaac_sim
-# 方式 B：通过 pip 安装 isaacsim 包（需自行配置 ISAAC_PATH）
 
 # 创建 conda 环境 isaaclab
 ./isaaclab.sh --conda isaaclab
 
-# 激活环境
+# 激活环境（Isaac Sim 4.5.0 对应 Python 3.10）
 conda activate isaaclab
 
 # 安装 Isaac Lab 全部扩展
-isaaclab -i
 ```
 
 ### 3. 安装本仓库（isaac_factory）
