@@ -1,8 +1,10 @@
-# Isaac Factory — HC Factory Production Simulation Environment
+# Isaac Factory — HC Factory Human-Robot Collaborative Production Simulation
 
-A **human-robot collaborative factory production scheduling simulation** built on [NVIDIA Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/index.html) and [NVIDIA Isaac Sim](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html). It simulates multi-step manufacturing workflows for products such as water pipes (`ProductWaterPipe`), and supports training and evaluation of a four-layer real-time decision-making agent stack.
+A **factory-scale production scheduling simulation** built on [NVIDIA Isaac Sim](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html) and [NVIDIA Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/index.html): it reproduces the HC factory scene (machines, workers, robots, logistics) in 3D, simulates multi-step manufacturing for products such as water pipes (`ProductWaterPipe`), and supports training, evaluation, and vision-based perception data collection for a four-layer real-time decision stack.
 
 > 中文版: [README_CN.md](README_CN.md)
+
+**Recommended stack (`master`):** Isaac Sim **5.1.0** + Isaac Lab **2.3.2** · Ubuntu 22.04 · RTX 5090
 
 ---
 
@@ -24,45 +26,30 @@ A **human-robot collaborative factory production scheduling simulation** built o
 
 ### Verified configurations
 
-The following stacks have been tested in this project:
+The following stacks have been verified in training. Other hardware/OS combinations may also work but have not been tested in this project:
 
 | Isaac Sim | Isaac Lab | OS | GPU | Notes |
 |-----------|-----------|-----|-----|-------|
 | **4.5.0** | **2.0.1** | Ubuntu 20.04 | RTX 4090 | Earlier stable stack |
 | **5.1.0** | **2.3.2** | Ubuntu 22.04 | RTX 5090 | Current recommended stack (`master` branch) |
 
-> Versions must match (4.x → Python 3.10, 5.x → Python 3.11). You must **configure the upstream [Isaac Lab](https://github.com/isaac-sim/IsaacLab) repo first**, then clone this project.
+> Versions must match: 4.x → Python 3.10, 5.x → Python 3.11. Configure the upstream [Isaac Lab](https://github.com/isaac-sim/IsaacLab) repo at the matching tag **before** cloning this project.
 
 ### General requirements
 
-For RAM, drivers, VRAM, and other hardware details, see the [Isaac Sim system requirements](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html). NVIDIA recommends at least:
-
-- **RAM**: 32 GB or more
-- **GPU VRAM**: 16 GB or more (more for multi-camera rendering/training)
-- **Driver**: Latest NVIDIA production branch (Linux ≥ `580.65.06` recommended)
-
-You can run the [Isaac Sim Compatibility Checker](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/install_workstation.html) before installing.
-
-| Component | Notes |
-|-----------|-------|
-| NVIDIA Isaac Sim | Workstation pre-built binaries (see installation below) |
-| NVIDIA Isaac Lab | Separate upstream repo — must be configured before this project |
-| Python | 4.5.0 → 3.10; 5.1.0 → 3.11 (created via `isaaclab.sh --conda`) |
-| Conda | [Miniconda](https://docs.conda.io/en/latest/miniconda.html) recommended |
-| GPU | NVIDIA GPU with CUDA support |
-| OS | Linux (Ubuntu 20.04 / 22.04 recommended) |
+For RAM, VRAM, drivers, and other hardware details, see the [Isaac Sim system requirements](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html).
 
 ---
 
 ## Installation
 
-Recommended order (**three separate steps**):
+Overall order (**three separate steps — do not skip**):
 
 1. Install and verify **Isaac Sim**
-2. **Separately** clone and configure the official **Isaac Lab** repo (conda env, `./isaaclab.sh --install`, official tutorial)
-3. Clone **isaac_factory** and reuse the conda env from step 2
+2. **Separately** clone and configure the official **Isaac Lab** repo (create conda env, install extensions, pass the official tutorial)
+3. Clone **isaac_factory** and reuse the configured conda environment
 
-Suggested layout:
+Recommended directory layout:
 
 ```
 ~/work/
@@ -70,7 +57,7 @@ Suggested layout:
 └── isaac_factory/     # Step 3: this project (hc_factory + train.py)
 ```
 
-See the [Isaac Lab installation overview](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html) and [binaries + source guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html).
+See the [Isaac Lab installation overview](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html) and [binaries + source installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html).
 
 ### 1. Install and verify Isaac Sim
 
@@ -81,17 +68,17 @@ Install the Workstation pre-built package for your target version:
 | 4.5.0 | [Isaac Sim 4.5.0 installation](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/install_workstation.html) |
 | 5.1.0 | [Isaac Sim 5.1.0 installation](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_workstation.html) |
 
-Set environment variables (adjust paths as needed):
+After extracting, set environment variables (adjust paths as needed):
 
 ```bash
 export ISAACSIM_PATH="${HOME}/isaacsim"
 export ISAACSIM_PYTHON_EXE="${ISAACSIM_PATH}/python.sh"
 ```
 
-**Verify Isaac Sim:**
+**Verify Isaac Sim can start:**
 
 ```bash
-# Launch the simulator
+# Launch the simulator (--help for all options)
 ${ISAACSIM_PATH}/isaac-sim.sh
 
 # Verify Python and a standalone script
@@ -101,47 +88,65 @@ ${ISAACSIM_PYTHON_EXE} ${ISAACSIM_PATH}/standalone_examples/api/isaacsim.core.ap
 
 After upgrading from an older release, run once: `${ISAACSIM_PATH}/isaac-sim.sh --reset-user`.
 
-### 2. Install Isaac Lab and create the conda environment
+### 2. Configure the Isaac Lab repo separately
 
-This repo already vendors Isaac Lab under `source/`. You usually **do not need a separate Isaac Lab clone**—link Isaac Sim into the repo root and create the conda env.
+> **Important:** Complete this step first. Isaac Lab and `isaac_factory` are **two separate Git repos**. Run conda setup and `./isaaclab.sh --install` inside the **IsaacLab** directory.
+
+Follow the [official Isaac Lab installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html):
 
 ```bash
-git clone git@github.com:jintaoXue/isaac_factory.git
-cd isaac_factory
+cd ~/work
 
-# Link Isaac Sim into the repo root
+# 5.1.0 stack (recommended)
+git clone --branch v2.3.2 --depth 1 https://github.com/isaac-sim/IsaacLab.git
+cd IsaacLab
+
+# 4.5.0 stack
+# git clone --branch v2.0.1 --depth 1 https://github.com/isaac-sim/IsaacLab.git
+# cd IsaacLab
+
 ln -sfn ${ISAACSIM_PATH} _isaac_sim
 
-# Create conda env (custom name allowed, e.g. isaaclab)
 ./isaaclab.sh --conda isaaclab
-
-# Activate
 conda activate isaaclab
 
-# Install Isaac Lab extensions and RL frameworks (incl. rl_games)
 ./isaaclab.sh --install
 ```
 
-> Use HTTPS if SSH is not configured: `https://github.com/jintaoXue/isaac_factory.git`.
-
-**Verify Isaac Lab:**
+**Verify inside `~/work/IsaacLab` (must pass before step 3):**
 
 ```bash
 conda activate isaaclab
-# This repo has no standalone tutorials/ scripts; smoke-test the factory env
-python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0 --headless
+cd ~/work/IsaacLab
+python scripts/tutorials/00_sim/create_empty.py
 ```
 
-You can also follow the [official Isaac Lab verification](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html#verifying-the-isaac-lab-installation) (`create_empty.py`) in a standalone Isaac Lab checkout.
-
-Version-specific Isaac Lab docs:
+Version-specific installation guides:
 
 - Sim 4.5.0 + Lab 2.0.1 → [v2.0.1 installation](https://isaac-sim.github.io/IsaacLab/v2.0.1/source/setup/installation/binaries_installation.html)
 - Sim 5.1.0 + Lab 2.3.2 → [v2.3.2 installation](https://isaac-sim.github.io/IsaacLab/v2.3.2/source/setup/installation/binaries_installation.html)
 
-### 3. Configure data assets and run
+### 3. Clone isaac_factory and trial run
 
-With `isaaclab` activated, place USD/map files per [Data Assets](#data-assets), then see [Quick Start](#quick-start).
+After Isaac Lab is configured and `create_empty.py` runs successfully, clone this project in a **separate directory**:
+
+```bash
+cd ~/work
+git clone https://github.com/jintaoXue/isaac_factory.git
+cd isaac_factory
+
+# _isaac_sim link is also required to run train.py from this repo
+ln -sfn ${ISAACSIM_PATH} _isaac_sim
+
+# Reuse the conda env from step 2 — no need to run --conda / --install again
+conda activate isaaclab
+```
+
+Place USD/map files per [Data Assets](#data-assets), then run:
+
+```bash
+python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0 --headless
+```
 
 ---
 
