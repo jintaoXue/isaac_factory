@@ -119,6 +119,7 @@ simulation_app = app_launcher.app
 import gymnasium as gym
 import math
 import os
+import pickle
 import random
 from datetime import datetime
 
@@ -138,7 +139,16 @@ from isaaclab.envs import (
 )
 from isaaclab.utils.assets import retrieve_file_path
 from isaaclab.utils.dict import print_dict
-from isaaclab.utils.io import dump_pickle, dump_yaml
+from isaaclab.utils.io import dump_yaml
+
+
+def dump_pickle(filename: str, data) -> None:
+    """Save config snapshot; Isaac Lab 2.3+ no longer exports dump_pickle."""
+    if not filename.endswith("pkl"):
+        filename += ".pkl"
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    with open(filename, "wb") as f:
+        pickle.dump(data, f)
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils.hydra import hydra_task_config

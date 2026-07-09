@@ -240,12 +240,24 @@ def _stack_camera_tensors(camera_states: dict, num_cameras: int, size: int, devi
 # ---------------------------------------------------------------------------
 
 
+def _cameras_enabled() -> bool:
+    try:
+        import carb
+
+        return bool(carb.settings.get_settings().get("/isaaclab/cameras_enabled"))
+    except Exception:
+        return False
+
+
 class PerceptionManager:
     def __init__(self, env_id: int, cuda_device: torch.device, cfg: dict | None = None):
         self.env_id, self.cuda_device = env_id, cuda_device
         self.cfg = copy.deepcopy(cfg or CfgPerception)
-        self.enabled = bool(self.cfg.get("enabled", False))
-        self.mode = self.cfg.get("mode", "off")
+        cfg_enabled = bool(self.cfg.get("enabled", False))
+        self.enabled = cfg_enabled and _cameras_enabled()
+        if cfg_enabled and not self.enabled:
+            print(f"[INFO] Perception disabled for env_{env_id:02d}: --enable_cameras not set.")
+        self.mode = self.cfg.get("mode", "off") if self.enabled else "off"
         self._logger = PerceptionLogger(env_id, self.cfg) if self.enabled and self.mode == "collect" else None
         self._model: SubtaskDoneModel | None = None
         if self.enabled and self.mode == "infer":

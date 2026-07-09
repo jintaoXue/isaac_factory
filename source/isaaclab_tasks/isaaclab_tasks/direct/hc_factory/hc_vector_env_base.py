@@ -29,7 +29,6 @@ import time
 
 from .hc_single_env import HcSingleEnv
 
-from omni.kit.viewport.utility import get_active_viewport_window
 from .env_asset_cfg.cfg_camera import has_registered_cameras
 from .env_asset_cfg.cfg_hc_env import HcRenderCfg
 from .hc_rendering import apply_hc_render_settings
@@ -50,6 +49,10 @@ class HcVectorEnvBase(DirectRLEnv):
 
     def _setup_rendering_resolution(self):
         if not self.sim.has_gui():
+            return
+        try:
+            from omni.kit.viewport.utility import get_active_viewport_window
+        except ModuleNotFoundError:
             return
         viewport_window = get_active_viewport_window()
         if viewport_window is None or viewport_window.viewport_api is None:

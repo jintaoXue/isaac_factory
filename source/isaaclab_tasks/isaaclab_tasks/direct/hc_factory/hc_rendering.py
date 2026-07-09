@@ -8,6 +8,17 @@ if TYPE_CHECKING:
     from isaaclab.sim import RenderCfg
 
 
+def _suppress_simulation_manager_plugin_warnings() -> None:
+    """Suppress benign camera/render interpolation warnings (Isaac Sim #403)."""
+    import carb
+
+    carb.logging.acquire_logging().set_level_threshold_for_source(
+        "isaacsim.core.simulation_manager.plugin",
+        carb.logging.LogSettingBehavior.OVERRIDE,
+        carb.logging.LEVEL_ERROR,
+    )
+
+
 def apply_hc_render_settings(render_cfg: RenderCfg) -> None:
     """Enable colored RTX output for training / video capture."""
     import carb
@@ -15,6 +26,8 @@ def apply_hc_render_settings(render_cfg: RenderCfg) -> None:
     settings = carb.settings.get_settings()
     if not settings.get("/isaaclab/cameras_enabled"):
         return
+
+    _suppress_simulation_manager_plugin_warnings()
 
     # Kit defaults disable sampled lighting (flat grayscale). Re-enable for scene DomeLight.
     settings.set_bool("/rtx/directLighting/sampledLighting/enabled", True)
