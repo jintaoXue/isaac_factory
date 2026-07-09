@@ -1,8 +1,10 @@
-# Isaac Factory — 海创工厂生产仿真环境
+# Isaac Factory — 海创（HC）工厂人机协同生产仿真
 
-基于 [NVIDIA Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/index.html) 与 [NVIDIA Isaac Sim](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html) 构建的**人机协同工厂生产调度仿真环境**，用于模拟水喉（`ProductWaterPipe`）等产品的多工序制造流程，并支持四层实时决策智能体的训练与评估。
+基于 [NVIDIA Isaac Sim](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html) 与 [NVIDIA Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/index.html) 的**工厂级生产调度仿真环境**：在三维场景中复现海创（HC）工厂的机器、人员、机器人与物流，模拟水喉（`ProductWaterPipe`）等多工序制造流程，并支持四层实时决策智能体的训练、评估与视觉感知数据采集。
 
-> English version: [README.md](README.md)
+> English: [README.md](README.md)
+
+**推荐软件栈（`master`）：** Isaac Sim **5.1.0** + Isaac Lab **2.3.2** · Ubuntu 22.04 · RTX 5090
 
 ---
 
@@ -24,33 +26,18 @@
 
 ### 本仓库已验证环境
 
-以下组合已在实际训练中验证通过：
+以下组合已在实际训练中验证通过；其他硬件/系统组合也可能可用，但尚未在本项目中测试：
 
 | Isaac Sim | Isaac Lab | 操作系统 | GPU | 说明 |
 |-----------|-----------|----------|-----|------|
 | **4.5.0** | **2.0.1** | Ubuntu 20.04 | RTX 4090 | 早期稳定栈 |
 | **5.1.0** | **2.3.2** | Ubuntu 22.04 | RTX 5090 | 当前推荐栈（`master` 分支） |
 
-> Isaac Sim 与 Isaac Lab 版本需配套（4.x → Python 3.10，5.x → Python 3.11）。请使用与上表一致的 Isaac Lab 标签/分支，并与本仓库内嵌 `source/` 版本对齐。
+> 版本需配套：4.x 对应 Python 3.10，5.x 对应 Python 3.11。请使 Isaac Sim、Isaac Lab 与本仓库 `source/` 内嵌版本保持一致。
 
 ### 通用要求
 
-其他硬件、驱动、内存等要求请参考 [Isaac Sim 系统要求（System Requirements）](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html)。官方建议至少：
-
-- **RAM**：32 GB 及以上
-- **GPU 显存**：16 GB 及以上（多相机渲染/训练建议更大）
-- **驱动**：使用 NVIDIA 最新 production branch 驱动（Linux 建议 ≥ `580.65.06`）
-
-安装前可用 [Isaac Sim Compatibility Checker](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/install_workstation.html) 检查本机是否满足运行条件。
-
-| 组件 | 说明 |
-|------|------|
-| NVIDIA Isaac Sim | Workstation 预编译包（见下方安装步骤） |
-| NVIDIA Isaac Lab | 与本仓库 `source/` 内嵌版本一致 |
-| Python | 4.5.0 → 3.10；5.1.0 → 3.11（由 `isaaclab.sh --conda` 创建） |
-| Conda | 推荐 [Miniconda](https://docs.conda.io/en/latest/miniconda.html) |
-| GPU | 支持 CUDA 的 NVIDIA GPU |
-| 操作系统 | Linux（推荐 Ubuntu 20.04 / 22.04） |
+RAM、显存、驱动等硬件要求请参考 [Isaac Sim 系统要求（System Requirements）](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html)。官方建议至少 32 GB 内存、16 GB 显存，并使用较新的 NVIDIA production branch 驱动。
 
 ---
 
@@ -91,45 +78,41 @@ ${ISAACSIM_PYTHON_EXE} ${ISAACSIM_PATH}/standalone_examples/api/isaacsim.core.ap
 
 ### 2. 安装 Isaac Lab 并创建 conda 环境
 
-本仓库已在 `source/` 目录内嵌 Isaac Lab，**一般无需再单独克隆 Isaac Lab 仓库**。将 Isaac Sim 链接到仓库根目录并创建 conda 环境即可。
+按 [Isaac Lab 官方文档](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html) 完成 Isaac Lab 安装。本仓库已在 `source/` 内嵌 Isaac Lab 源码，**克隆本仓库即可，无需再单独克隆上游 Isaac Lab**（除非你要修改 Lab 本体）。
 
 ```bash
-git clone git@github.com:jintaoXue/isaac_factory.git
+# 克隆本仓库（5.1.0 栈请用 master；4.5.0 栈请切换到对应历史分支/tag）
+git clone https://github.com/jintaoXue/isaac_factory.git
 cd isaac_factory
 
-# 将 Isaac Sim 链接到仓库根目录（路径按实际修改）
+# 将 Isaac Sim 链接到仓库根目录
 ln -sfn ${ISAACSIM_PATH} _isaac_sim
 
-# 创建 conda 环境（可自定义名称，如 isaaclab）
+# 创建 conda 环境（名称可自定义，如 isaaclab）
 ./isaaclab.sh --conda isaaclab
-
-# 激活环境
 conda activate isaaclab
 
 # 安装 Isaac Lab 扩展与 RL 依赖（含 rl_games）
 ./isaaclab.sh --install
 ```
 
-> 若未配置 GitHub SSH，可将 `git clone` 改为 HTTPS：`https://github.com/jintaoXue/isaac_factory.git`。
-
 **验证 Isaac Lab 安装：**
 
 ```bash
 conda activate isaaclab
-# 本仓库无独立 tutorials 脚本，可直接试跑工厂环境
 python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0 --headless
 ```
 
-亦可按 [Isaac Lab 官方验证步骤](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html#verifying-the-isaac-lab-installation) 在上游 Isaac Lab 仓库中运行 `create_empty.py`。
+亦可参考 [Isaac Lab 官方验证步骤](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html#verifying-the-isaac-lab-installation)，在上游 Isaac Lab 仓库中运行 `create_empty.py`。
 
-版本对齐参考：
+版本对齐文档：
 
-- Sim 4.5.0 + Lab 2.0.1 → [v2.0.1 安装文档](https://isaac-sim.github.io/IsaacLab/v2.0.1/source/setup/installation/binaries_installation.html)
-- Sim 5.1.0 + Lab 2.3.2 → [v2.3.2 安装文档](https://isaac-sim.github.io/IsaacLab/v2.3.2/source/setup/installation/binaries_installation.html)
+- Sim 4.5.0 + Lab 2.0.1 → [v2.0.1 安装说明](https://isaac-sim.github.io/IsaacLab/v2.0.1/source/setup/installation/binaries_installation.html)
+- Sim 5.1.0 + Lab 2.3.2 → [v2.3.2 安装说明](https://isaac-sim.github.io/IsaacLab/v2.3.2/source/setup/installation/binaries_installation.html)
 
-### 3. 配置本仓库数据与运行
+### 3. 配置数据资产并试跑
 
-在已激活 `isaaclab` 环境的前提下，按下方 [数据资产](#数据资产) 放置 USD 与地图文件，即可 [快速运行](#快速运行)。
+在已激活 `isaaclab` 环境的前提下，按 [数据资产](#数据资产) 放置 USD 与地图文件后执行：
 
 ---
 
