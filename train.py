@@ -155,7 +155,7 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 import wandb
 
 from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
-from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.hc_video_recorder import HcVideoRecorder
+from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.hc_render import HcVideoRecorder
 
 @hydra_task_config(args_cli.task, args_cli.algo)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo_cfg: dict):

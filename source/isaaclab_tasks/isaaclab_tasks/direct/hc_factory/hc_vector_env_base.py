@@ -31,7 +31,7 @@ from .hc_single_env import HcSingleEnv
 
 from .env_asset_cfg.cfg_camera import has_registered_cameras
 from .env_asset_cfg.cfg_hc_env import HcRenderCfg
-from .hc_rendering import apply_hc_render_settings
+from .hc_render import apply_hc_render_settings
 
 from .src.route import RouteManagerVectorEnv
 
