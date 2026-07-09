@@ -33,19 +33,31 @@
 | **4.5.0** | **2.0.1** | Ubuntu 20.04 | RTX 4090 | 早期稳定栈 |
 | **5.1.0** | **2.3.2** | Ubuntu 22.04 | RTX 5090 | 当前推荐栈（`master` 分支） |
 
-> 版本需配套：4.x 对应 Python 3.10，5.x 对应 Python 3.11。请使 Isaac Sim、Isaac Lab 与本仓库 `source/` 内嵌版本保持一致。
+> 版本需配套：4.x 对应 Python 3.10，5.x 对应 Python 3.11。须先按对应标签安装上游 [Isaac Lab](https://github.com/isaac-sim/IsaacLab)，再克隆本仓库。
 
 ### 通用要求
 
-RAM、显存、驱动等硬件要求请参考 [Isaac Sim 系统要求（System Requirements）](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html)。官方建议至少 32 GB 内存、16 GB 显存，并使用较新的 NVIDIA production branch 驱动。
+RAM、显存、驱动等硬件要求请参考 [Isaac Sim 系统要求（System Requirements）](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html)。
 
 ---
 
 ## 安装步骤
 
-整体顺序：**先按官方文档安装并测试 Isaac Sim → 再安装 Isaac Lab 并创建 conda 环境 → 最后配置本仓库**。
+整体顺序（**三个独立步骤，不可跳过**）：
 
-详细流程以 [Isaac Lab 本地安装总览](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html) 与 [预编译 Isaac Sim + 源码 Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html) 为准；下文给出与本项目匹配的版本要点。
+1. 安装并验证 **Isaac Sim**
+2. **单独**克隆、配置官方 **Isaac Lab** 仓库（创建 conda 环境、安装扩展、跑通官方示例）
+3. 再克隆本仓库 **isaac_factory**，复用已配置好的 conda 环境
+
+推荐目录布局：
+
+```
+~/work/
+├── IsaacLab/          # 步骤 2：官方 Isaac Lab 仓库（conda 环境在此创建）
+└── isaac_factory/     # 步骤 3：本项目（hc_factory 环境与 train.py）
+```
+
+详细流程以 [Isaac Lab 本地安装总览](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html) 与 [预编译 Isaac Sim + 源码 Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html) 为准。
 
 ### 1. 安装并验证 Isaac Sim
 
@@ -76,43 +88,65 @@ ${ISAACSIM_PYTHON_EXE} ${ISAACSIM_PATH}/standalone_examples/api/isaacsim.core.ap
 
 若从旧版本升级，首次启动建议执行：`${ISAACSIM_PATH}/isaac-sim.sh --reset-user`。
 
-### 2. 安装 Isaac Lab 并创建 conda 环境
+### 2. 单独配置 Isaac Lab 仓库
 
-按 [Isaac Lab 官方文档](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html) 完成 Isaac Lab 安装。本仓库已在 `source/` 内嵌 Isaac Lab 源码，**克隆本仓库即可，无需再单独克隆上游 Isaac Lab**（除非你要修改 Lab 本体）。
+> **重要：** 必须先完成本步骤。Isaac Lab 与 `isaac_factory` 是**两个独立的 Git 仓库**；conda 环境、`./isaaclab.sh --install` 均在 **IsaacLab** 目录下执行。
+
+按 [Isaac Lab 官方安装文档](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html) 操作：
 
 ```bash
-# 克隆本仓库（5.1.0 栈请用 master；4.5.0 栈请切换到对应历史分支/tag）
-git clone https://github.com/jintaoXue/isaac_factory.git
-cd isaac_factory
+cd ~/work
 
-# 将 Isaac Sim 链接到仓库根目录
+# 5.1.0 栈（推荐）
+git clone --branch v2.3.2 --depth 1 https://github.com/isaac-sim/IsaacLab.git
+cd IsaacLab
+
+# 4.5.0 栈
+# git clone --branch v2.0.1 --depth 1 https://github.com/isaac-sim/IsaacLab.git
+# cd IsaacLab
+
 ln -sfn ${ISAACSIM_PATH} _isaac_sim
 
-# 创建 conda 环境（名称可自定义，如 isaaclab）
 ./isaaclab.sh --conda isaaclab
 conda activate isaaclab
 
-# 安装 Isaac Lab 扩展与 RL 依赖（含 rl_games）
 ./isaaclab.sh --install
 ```
 
-**验证 Isaac Lab 安装：**
+**在 IsaacLab 目录下验证（必须通过后再进行步骤 3）：**
 
 ```bash
 conda activate isaaclab
-python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0 --headless
+cd ~/work/IsaacLab
+python scripts/tutorials/00_sim/create_empty.py
 ```
-
-亦可参考 [Isaac Lab 官方验证步骤](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html#verifying-the-isaac-lab-installation)，在上游 Isaac Lab 仓库中运行 `create_empty.py`。
 
 版本对齐文档：
 
 - Sim 4.5.0 + Lab 2.0.1 → [v2.0.1 安装说明](https://isaac-sim.github.io/IsaacLab/v2.0.1/source/setup/installation/binaries_installation.html)
 - Sim 5.1.0 + Lab 2.3.2 → [v2.3.2 安装说明](https://isaac-sim.github.io/IsaacLab/v2.3.2/source/setup/installation/binaries_installation.html)
 
-### 3. 配置数据资产并试跑
+### 3. 克隆 isaac_factory 并试跑
 
-在已激活 `isaaclab` 环境的前提下，按 [数据资产](#数据资产) 放置 USD 与地图文件后执行：
+Isaac Lab 仓库配置完成且 `create_empty.py` 跑通后，**另起目录**克隆本项目：
+
+```bash
+cd ~/work
+git clone https://github.com/jintaoXue/isaac_factory.git
+cd isaac_factory
+
+# 本仓库运行 train.py 时同样需要 _isaac_sim 链接
+ln -sfn ${ISAACSIM_PATH} _isaac_sim
+
+# 复用步骤 2 中已创建的 conda 环境，无需重新 --conda / --install
+conda activate isaaclab
+```
+
+按 [数据资产](#数据资产) 放置 USD 与地图文件后试跑：
+
+```bash
+python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0 --headless
+```
 
 ---
 
