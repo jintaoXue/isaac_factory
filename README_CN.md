@@ -22,11 +22,33 @@
 
 ## 环境要求
 
-| 组件 | 版本 / 说明 |
-|------|-------------|
-| NVIDIA Isaac Sim | **4.5.0**（Workstation 安装） |
-| NVIDIA Isaac Lab | 与本仓库 `source/` 目录内嵌版本一致 |
-| Python | 3.10（conda 环境 `isaaclab`） |
+### 本仓库已验证环境
+
+以下组合已在实际训练中验证通过：
+
+| Isaac Sim | Isaac Lab | 操作系统 | GPU | 说明 |
+|-----------|-----------|----------|-----|------|
+| **4.5.0** | **2.0.1** | Ubuntu 20.04 | RTX 4090 | 早期稳定栈 |
+| **5.1.0** | **2.3.2** | Ubuntu 22.04 | RTX 5090 | 当前推荐栈（`master` 分支） |
+
+> Isaac Sim 与 Isaac Lab 版本需配套（4.x → Python 3.10，5.x → Python 3.11）。请使用与上表一致的 Isaac Lab 标签/分支，并与本仓库内嵌 `source/` 版本对齐。
+
+### 通用要求
+
+其他硬件、驱动、内存等要求请参考 [Isaac Sim 系统要求（System Requirements）](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html)。官方建议至少：
+
+- **RAM**：32 GB 及以上
+- **GPU 显存**：16 GB 及以上（多相机渲染/训练建议更大）
+- **驱动**：使用 NVIDIA 最新 production branch 驱动（Linux 建议 ≥ `580.65.06`）
+
+安装前可用 [Isaac Sim Compatibility Checker](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/install_workstation.html) 检查本机是否满足运行条件。
+
+| 组件 | 说明 |
+|------|------|
+| NVIDIA Isaac Sim | Workstation 预编译包（见下方安装步骤） |
+| NVIDIA Isaac Lab | 与本仓库 `source/` 内嵌版本一致 |
+| Python | 4.5.0 → 3.10；5.1.0 → 3.11（由 `isaaclab.sh --conda` 创建） |
+| Conda | 推荐 [Miniconda](https://docs.conda.io/en/latest/miniconda.html) |
 | GPU | 支持 CUDA 的 NVIDIA GPU |
 | 操作系统 | Linux（推荐 Ubuntu 20.04 / 22.04） |
 
@@ -34,40 +56,80 @@
 
 ## 安装步骤
 
-### 1. 安装 Isaac Sim 4.5.0
+整体顺序：**先按官方文档安装并测试 Isaac Sim → 再安装 Isaac Lab 并创建 conda 环境 → 最后配置本仓库**。
 
-按 [Isaac Sim 官方安装文档](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/install_workstation.html) 完成 Workstation 版安装。
+详细流程以 [Isaac Lab 本地安装总览](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html) 与 [预编译 Isaac Sim + 源码 Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html) 为准；下文给出与本项目匹配的版本要点。
 
-### 2. 单独安装 Isaac Lab（建议 v2.0.1） https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html
+### 1. 安装并验证 Isaac Sim
 
-克隆 [Isaac Lab 官方仓库](https://github.com/isaac-sim/IsaacLab) 到 `v2.0.1`，创建 `_isaac_sim` 符号链接，并初始化 conda 环境。
+按所选版本安装 Workstation 预编译包：
 
-> 说明：如未配置 GitHub SSH key，请使用 HTTPS 地址克隆（更省心）。
+| 版本 | 官方安装文档 |
+|------|----------------|
+| 4.5.0 | [Isaac Sim 4.5.0 安装](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/install_workstation.html) |
+| 5.1.0 | [Isaac Sim 5.1.0 安装](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_workstation.html) |
+
+解压后建议设置环境变量（路径按实际安装位置修改）：
 
 ```bash
-git clone --branch v2.0.1 --depth 1 https://github.com/isaac-sim/IsaacLab.git
-cd IsaacLab
-
-# 将 Isaac Sim 链接到仓库根目录
-ln -s /path/to/isaac-sim _isaac_sim
-
-# 创建 conda 环境 isaaclab
-./isaaclab.sh --conda isaaclab
-
-# 激活环境（Isaac Sim 4.5.0 对应 Python 3.10）
-conda activate isaaclab
-
-# 安装 Isaac Lab 全部扩展
+export ISAACSIM_PATH="${HOME}/isaacsim"
+export ISAACSIM_PYTHON_EXE="${ISAACSIM_PATH}/python.sh"
 ```
 
-### 3. 安装本仓库（isaac_factory）
+**验证 Isaac Sim 能否正常启动：**
 
-在已激活 `isaaclab` 环境的前提下，克隆本仓库：
+```bash
+# 启动仿真器（可加 --help 查看参数）
+${ISAACSIM_PATH}/isaac-sim.sh
+
+# 验证 Python 与独立脚本
+${ISAACSIM_PYTHON_EXE} -c "print('Isaac Sim configuration is now complete.')"
+${ISAACSIM_PYTHON_EXE} ${ISAACSIM_PATH}/standalone_examples/api/isaacsim.core.api/add_cubes.py
+```
+
+若从旧版本升级，首次启动建议执行：`${ISAACSIM_PATH}/isaac-sim.sh --reset-user`。
+
+### 2. 安装 Isaac Lab 并创建 conda 环境
+
+本仓库已在 `source/` 目录内嵌 Isaac Lab，**一般无需再单独克隆 Isaac Lab 仓库**。将 Isaac Sim 链接到仓库根目录并创建 conda 环境即可。
 
 ```bash
 git clone git@github.com:jintaoXue/isaac_factory.git
 cd isaac_factory
+
+# 将 Isaac Sim 链接到仓库根目录（路径按实际修改）
+ln -sfn ${ISAACSIM_PATH} _isaac_sim
+
+# 创建 conda 环境（可自定义名称，如 isaaclab）
+./isaaclab.sh --conda isaaclab
+
+# 激活环境
+conda activate isaaclab
+
+# 安装 Isaac Lab 扩展与 RL 依赖（含 rl_games）
+./isaaclab.sh --install
 ```
+
+> 若未配置 GitHub SSH，可将 `git clone` 改为 HTTPS：`https://github.com/jintaoXue/isaac_factory.git`。
+
+**验证 Isaac Lab 安装：**
+
+```bash
+conda activate isaaclab
+# 本仓库无独立 tutorials 脚本，可直接试跑工厂环境
+python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0 --headless
+```
+
+亦可按 [Isaac Lab 官方验证步骤](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html#verifying-the-isaac-lab-installation) 在上游 Isaac Lab 仓库中运行 `create_empty.py`。
+
+版本对齐参考：
+
+- Sim 4.5.0 + Lab 2.0.1 → [v2.0.1 安装文档](https://isaac-sim.github.io/IsaacLab/v2.0.1/source/setup/installation/binaries_installation.html)
+- Sim 5.1.0 + Lab 2.3.2 → [v2.3.2 安装文档](https://isaac-sim.github.io/IsaacLab/v2.3.2/source/setup/installation/binaries_installation.html)
+
+### 3. 配置本仓库数据与运行
+
+在已激活 `isaaclab` 环境的前提下，按下方 [数据资产](#数据资产) 放置 USD 与地图文件，即可 [快速运行](#快速运行)。
 
 ---
 
@@ -96,6 +158,9 @@ python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 4 --device cuda:1
 
 # 无头模式（服务器 / 批量训练）
 python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 4 --device cuda:1 --headless
+
+# 无头 + 相机 / 感知采集（需启用渲染 kit）
+python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0 --headless --enable_cameras
 ```
 
 当前注册的 Gym 环境 ID 为 **`HRTPaHC-v1`**（Human-Robot Task Planning and Allocation for HC Factory），默认算法为 **`rule_based`**（基于规则的四层多智能体决策）。
@@ -115,6 +180,7 @@ python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 4 --device cuda:1
 | `--num_envs` | 并行仿真环境数量 | 3 |
 | `--device` | CUDA 设备 | `cuda:0` |
 | `--headless` | 无 GUI 模式 | 关闭 |
+| `--enable_cameras` | 启用相机与离屏 RTX 渲染（headless 下采集图像必需） | 关闭 |
 | `--seed` | 随机种子 | 42 |
 | `--test` | 测试模式（加载 checkpoint） | 关闭 |
 | `--wandb_activate` | 启用 Weights & Biases 日志 | 关闭 |
@@ -353,7 +419,8 @@ python train.py \
   --algo rule_based \
   --num_envs 1 \
   --device cuda:0 \
-  --headless
+  --headless \
+  --enable_cameras
 ```
 
 数据默认写入：
@@ -393,7 +460,11 @@ python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/perception.py 
 
 ## 相关文档
 
+- [Isaac Lab 安装总览](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html)
+- [Isaac Lab 预编译 Sim + 源码 Lab 安装](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html)
 - [Isaac Lab 官方文档](https://isaac-sim.github.io/IsaacLab/main/index.html)
+- [Isaac Sim 系统要求](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html)
+- [Isaac Sim 5.1.0 文档](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/index.html)
 - [Isaac Sim 4.5.0 文档](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/index.html)
 - [Isaac Sim Livestream 客户端](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/manual_livestream_clients.html)
 - 开发笔记：`coding_note.md`
