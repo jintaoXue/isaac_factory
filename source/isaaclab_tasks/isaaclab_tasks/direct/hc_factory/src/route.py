@@ -447,8 +447,11 @@ class RouteManagerVectorEnv:
 
         Two-phase resolution (working first, free last):
         1. Resolve detour/wait among working agents only (free agents are excluded).
-        2. After working routes are updated, yield free agents away from the new working
-           passing ranges.
+        2. After working routes are updated, predictively yield free agents when they
+           approach a working route (distance threshold), then advance immediately on
+           yield-route creation.
+        3. Finalize completed yield routes, then separate idle free agents whose
+           passing ranges overlap (priority order, lateral offset, stay at new pose).
         """
         working_snapshot = self._collect_agent_collision_snapshot(
             env_state_action_dict, include_free=False
@@ -966,24 +969,115 @@ class RouteManagerVectorEnv:
         )
         return footprint
 
+    @staticmethod
+    def _clear_yield_state(agent_state: dict) -> None:
+        agent_state["yield_active"] = False
+        agent_state["yield_blocker_key"] = None
+
+    def _activate_yield_state(self, agent_state: dict, blocker_key: str) -> None:
+        agent_state["yield_active"] = True
+        agent_state["yield_blocker_key"] = blocker_key
+
+    def _is_executing_yield_route(self, agent_state: dict) -> bool:
+        """Return True while a yield route is still being followed."""
+        if not agent_state.get("yield_active"):
+            return False
+        return (
+            int(agent_state["route_length"]) > 0
+            and int(agent_state["route_index"]) < int(agent_state["route_length"])
+        )
+
+    def _predictive_yield_conflicts(
+        self,
+        from_xy: tuple[float, float],
+        working_agents: list[dict],
+    ) -> list[dict]:
+        """Return working agents whose route is within the predictive trigger distance."""
+        trigger_distance = float(self.collision_cfg["yield_predictive_trigger_distance_m"])
+        return [
+            other
+            for other in working_agents
+            if self._distance_xy_to_working_route(from_xy, other) <= trigger_distance
+        ]
+
+    def _find_yield_route_start_index(self, route: list[dict], current_pose: dict) -> int:
+        """Skip densified prefix waypoints that duplicate the current pose."""
+        threshold = float(self.collision_cfg["yield_route_step_m"]) * 0.5
+        current_x = float(current_pose["x"])
+        current_y = float(current_pose["y"])
+        for idx, waypoint in enumerate(route):
+            dist = math.hypot(float(waypoint["x"]) - current_x, float(waypoint["y"]) - current_y)
+            if dist > threshold:
+                return idx
+        return len(route)
+
+    def _write_agent_waypoint_to_prim(
+        self,
+        agent_key: str,
+        waypoint: dict,
+        rigid_prims: dict,
+        default_z: float,
+    ) -> None:
+        rigid_prims[agent_key]["position"] = torch.tensor(
+            [waypoint["x"], waypoint["y"], default_z],
+            dtype=torch.float32,
+            device=self.cuda_device,
+        ).unsqueeze(0)
+        orientation = waypoint["orientation"]
+        if orientation.dim() == 1:
+            orientation = orientation.unsqueeze(0)
+        rigid_prims[agent_key]["orientation"] = orientation
+
+    def _apply_yield_route_and_advance(
+        self,
+        entry: dict,
+        yield_route: list[dict],
+        goal_xy: tuple[float, float],
+        blocker_key: str,
+        env_state_action_dict: dict,
+    ) -> None:
+        """Assign a yield route, lock yield state, and advance one actionable waypoint immediately."""
+        agent_state = entry["agent_state"]
+        agent_type = entry["agent_type"]
+        current_pose = entry["current_pose"]
+        default_z = self.default_z_human if agent_type == "human" else self.default_z_robot
+
+        gpu_route = self._move_route_to_device(yield_route)
+        start_index = self._find_yield_route_start_index(gpu_route, current_pose)
+        agent_state["generated_route"] = gpu_route
+        agent_state["route_length"] = len(gpu_route)
+        agent_state["route_index"] = start_index
+        roadmap = self._roadmap_for_agent_type(agent_type)
+        agent_state["target_area_id"] = roadmap.find_nearest_area_id(goal_xy[0], goal_xy[1])
+        self._activate_yield_state(agent_state, blocker_key)
+
+        if start_index < len(gpu_route):
+            self._write_agent_waypoint_to_prim(
+                entry["agent_key"],
+                gpu_route[start_index],
+                env_state_action_dict["rigid_prims"],
+                default_z,
+            )
+            agent_state["route_index"] = start_index + 1
+
     def _resolve_free_agent_yields(self, env_state_action_dict: dict, snapshot: dict) -> None:
-        """Phase 2: yield free agents after working routes have been updated."""
+        """Phase 2: predictively yield free agents and advance immediately on route creation."""
         working_agents = [entry for entry in snapshot["agents"] if entry["is_working"]]
         for entry in snapshot["agents"]:
             if entry["is_working"]:
                 continue
-            conflicts = [
-                other
-                for other in working_agents
-                if self._check_passing_range_overlap(entry["passing_range"], other["passing_range"])
-            ]
+
+            agent_state = entry["agent_state"]
+            if self._is_executing_yield_route(agent_state):
+                continue
+
+            current_pose = entry["current_pose"]
+            from_xy = (current_pose["x"], current_pose["y"])
+            conflicts = self._predictive_yield_conflicts(from_xy, working_agents)
             if not conflicts:
                 continue
 
-            agent_state = entry["agent_state"]
             agent_type = entry["agent_type"]
-            current_pose = entry["current_pose"]
-            from_xy = (current_pose["x"], current_pose["y"])
             primary_conflict = self._select_primary_yield_conflict(from_xy, conflicts)
             goal_xy = self._sample_yield_standable_xy(
                 agent_type, from_xy, working_agents, primary_conflict
@@ -995,11 +1089,13 @@ class RouteManagerVectorEnv:
                 "orientation": yaw_to_quaternion_wxyz(goal_yaw, self.cuda_device),
             }
             yield_route = self._build_yield_route(current_pose, goal_pose, agent_type)
-            agent_state["generated_route"] = self._move_route_to_device(yield_route)
-            agent_state["route_index"] = 0
-            agent_state["route_length"] = len(yield_route)
-            roadmap = self._roadmap_for_agent_type(agent_type)
-            agent_state["target_area_id"] = roadmap.find_nearest_area_id(goal_xy[0], goal_xy[1])
+            self._apply_yield_route_and_advance(
+                entry,
+                yield_route,
+                goal_xy,
+                primary_conflict["agent_key"],
+                env_state_action_dict,
+            )
 
     def _distance_xy_to_working_route(self, query_xy: tuple[float, float], working_entry: dict) -> float:
         agent_state = working_entry["agent_state"]
@@ -1128,6 +1224,8 @@ class RouteManagerVectorEnv:
         xy: tuple[float, float],
         working_agents: list[dict],
         occupancy: rc.OccupancyMap,
+        *,
+        free_agents: list[dict] | None = None,
     ) -> bool:
         pose = {
             "x": xy[0],
@@ -1142,6 +1240,10 @@ class RouteManagerVectorEnv:
         for other in working_agents:
             if self._check_passing_range_overlap({"primitives": [footprint]}, other["passing_range"]):
                 return False
+        if free_agents is not None:
+            for other in free_agents:
+                if self._check_passing_range_overlap({"primitives": [footprint]}, other["passing_range"]):
+                    return False
         return True
 
     def _build_yield_route(
@@ -1191,8 +1293,170 @@ class RouteManagerVectorEnv:
 
         return route
 
+    def _collect_idle_free_agent_entries(self, env_state_action_dict: dict) -> list[dict]:
+        """Build snapshot entries for idle free agents (current pose passing range only)."""
+        entries: list[dict] = []
+        rigid_prims = env_state_action_dict["rigid_prims"]
+        for agent_type in ("human", "robot"):
+            for agent_key, agent_state in env_state_action_dict[agent_type].items():
+                if not self._is_free_agent(agent_state):
+                    continue
+                if self._is_executing_yield_route(agent_state):
+                    continue
+                if int(agent_state["route_length"]) > 0:
+                    continue
+                if agent_key not in rigid_prims:
+                    continue
+                entries.append(
+                    self._build_snapshot_entry(
+                        agent_key,
+                        agent_type,
+                        agent_state,
+                        rigid_prims,
+                        lookahead_override=0,
+                    )
+                )
+        return entries
+
+    def _free_agent_tangent_near_xy(
+        self,
+        entry: dict,
+        query_xy: tuple[float, float],
+    ) -> tuple[float, float]:
+        """Unit tangent from the free agent's own route direction or current orientation."""
+        agent_state = entry["agent_state"]
+        route = agent_state["generated_route"]
+        route_index = int(agent_state["route_index"])
+        route_length = int(agent_state["route_length"])
+        current_pose = entry["current_pose"]
+
+        if route_length > 0 and route_index < route_length:
+            nearest_idx = route_index
+            best_dist_sq = math.inf
+            for idx in range(route_index, route_length):
+                wx = float(route[idx]["x"])
+                wy = float(route[idx]["y"])
+                dist_sq = (wx - query_xy[0]) ** 2 + (wy - query_xy[1]) ** 2
+                if dist_sq < best_dist_sq:
+                    best_dist_sq = dist_sq
+                    nearest_idx = idx
+            return self._path_tangent_at(route, nearest_idx, route_index, current_pose)
+
+        yaw = self._yaw_from_orientation(current_pose["orientation"])
+        return math.cos(yaw), math.sin(yaw)
+
+    def _distance_xy_to_free_agent(self, query_xy: tuple[float, float], free_entry: dict) -> float:
+        pose = free_entry["current_pose"]
+        return math.hypot(query_xy[0] - pose["x"], query_xy[1] - pose["y"])
+
+    def _sample_free_separation_standable_xy(
+        self,
+        agent_type: str,
+        from_xy: tuple[float, float],
+        entry: dict,
+        working_agents: list[dict],
+        committed_free_agents: list[dict],
+        conflict_free: dict,
+    ) -> tuple[float, float]:
+        """Sample a standable point perpendicular to the free agent's own heading."""
+        search_radius = float(self.collision_cfg["yield_search_radius_m"])
+        search_step = float(self.collision_cfg["yield_search_step_m"])
+        occupancy = self._occupancy_for_agent_type(agent_type)
+
+        tangent = self._free_agent_tangent_near_xy(entry, from_xy)
+        perp_x, perp_y = self._perpendicular_from_route_tangent(tangent)
+
+        conflict_pose = conflict_free["current_pose"]
+        away_x = from_xy[0] - conflict_pose["x"]
+        away_y = from_xy[1] - conflict_pose["y"]
+        if perp_x * away_x + perp_y * away_y < 0.0:
+            perp_x, perp_y = -perp_x, -perp_y
+
+        step_count = max(1, int(math.ceil(search_radius / search_step)))
+        for step_idx in range(1, step_count + 1):
+            distance = step_idx * search_step
+            for sign in (1.0, -1.0):
+                candidate = (
+                    from_xy[0] + perp_x * sign * distance,
+                    from_xy[1] + perp_y * sign * distance,
+                )
+                if self._is_standable_xy(
+                    agent_type,
+                    candidate,
+                    working_agents,
+                    occupancy,
+                    free_agents=committed_free_agents,
+                ):
+                    return candidate
+
+        if self._is_standable_xy(
+            agent_type,
+            from_xy,
+            working_agents,
+            occupancy,
+            free_agents=committed_free_agents,
+        ):
+            return from_xy
+        return from_xy
+
+    def _resolve_free_free_separations(
+        self,
+        env_state_action_dict: dict,
+        working_agents: list[dict],
+    ) -> None:
+        """Separate overlapping idle free agents; lower-priority agents move aside and stay."""
+        free_entries = self._collect_idle_free_agent_entries(env_state_action_dict)
+        free_entries.sort(
+            key=lambda entry: rc.agent_priority_key(entry["agent_type"], entry["agent_key"])
+        )
+
+        committed_entries: list[dict] = []
+        for entry in free_entries:
+            conflicts = [
+                other
+                for other in committed_entries
+                if self._check_passing_range_overlap(entry["passing_range"], other["passing_range"])
+            ]
+            if not conflicts:
+                committed_entries.append(entry)
+                continue
+
+            agent_type = entry["agent_type"]
+            current_pose = entry["current_pose"]
+            from_xy = (current_pose["x"], current_pose["y"])
+            primary_conflict = min(
+                conflicts,
+                key=lambda other: self._distance_xy_to_free_agent(from_xy, other),
+            )
+            goal_xy = self._sample_free_separation_standable_xy(
+                agent_type,
+                from_xy,
+                entry,
+                working_agents,
+                committed_entries,
+                primary_conflict,
+            )
+            if goal_xy == from_xy:
+                committed_entries.append(entry)
+                continue
+
+            goal_yaw = rc.yaw_from_xy_delta(goal_xy[0] - from_xy[0], goal_xy[1] - from_xy[1])
+            goal_pose = {
+                "x": goal_xy[0],
+                "y": goal_xy[1],
+                "orientation": yaw_to_quaternion_wxyz(goal_yaw, self.cuda_device),
+            }
+            separation_route = self._build_yield_route(current_pose, goal_pose, agent_type)
+            self._apply_yield_route_and_advance(
+                entry,
+                separation_route,
+                goal_xy,
+                primary_conflict["agent_key"],
+                env_state_action_dict,
+            )
+
     def _finalize_free_agent_yields(self, env_state_action_dict: dict) -> None:
-        """Finalize free-agent yield after the yield route completes."""
+        """Finalize completed yield/separation routes, then resolve free-free overlaps."""
         for agent_type in ("human", "robot"):
             for agent_state in env_state_action_dict[agent_type].values():
                 if not self._is_free_agent(agent_state):
@@ -1206,4 +1470,13 @@ class RouteManagerVectorEnv:
                 agent_state["route_index"] = 0
                 agent_state["route_length"] = 0
                 agent_state["target_area_id"] = None
+                self._clear_yield_state(agent_state)
+
+        working_snapshot = self._collect_agent_collision_snapshot(
+            env_state_action_dict,
+            include_free=False,
+            lookahead_override=int(self.collision_cfg["free_yield_lookahead_waypoints"]),
+        )
+        working_agents = [entry for entry in working_snapshot["agents"] if entry["is_working"]]
+        self._resolve_free_free_separations(env_state_action_dict, working_agents)
 

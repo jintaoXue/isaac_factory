@@ -26,7 +26,7 @@ CfgRoute = {
             "human": 3,
             "robot": 3,
         },
-        "human_safety_diameter": 0.1,
+        "human_safety_diameter": 0.3,
         "robot_footprint_local_bounds": {
             "min_x": 0.0,
             "max_x": 1.8,
@@ -34,6 +34,7 @@ CfgRoute = {
             "max_y": 0.8,
         },
         "occupancy_free_threshold": 250,
+        "yield_predictive_trigger_distance_m": 2.0,
         "yield_search_radius_m": 3.5,
         "yield_search_step_m": 0.2,
         "yield_route_step_m": 0.2,

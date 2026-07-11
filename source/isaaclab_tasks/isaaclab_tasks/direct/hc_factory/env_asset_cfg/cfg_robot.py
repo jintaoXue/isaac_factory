@@ -26,6 +26,8 @@ CfgRobot = {
             "detour_active": False,
             "detour_blocker_key": None,
             "detour_until_route_index": None,
+            "yield_active": False,
+            "yield_blocker_key": None,
         },
         "offset_for_material_placement": {
             "position": torch.tensor([-1, -0.4, 0.2]),

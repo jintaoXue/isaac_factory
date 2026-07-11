@@ -130,6 +130,8 @@ CfgHuman = {
             "detour_active": False,
             "detour_blocker_key": None,
             "detour_until_route_index": None,
+            "yield_active": False,
+            "yield_blocker_key": None,
         },
         "human_route_orientation_offset": {
             "orientation": torch.tensor([0.7071, 0, 0, 0.7071]),
