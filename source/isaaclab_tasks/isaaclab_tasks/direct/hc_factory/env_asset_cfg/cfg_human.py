@@ -127,6 +127,9 @@ CfgHuman = {
             "generated_route": [],
             "route_index": 0,
             "route_length": 0,
+            "detour_active": False,
+            "detour_blocker_key": None,
+            "detour_until_route_index": None,
         },
         "human_route_orientation_offset": {
             "orientation": torch.tensor([0.7071, 0, 0, 0.7071]),

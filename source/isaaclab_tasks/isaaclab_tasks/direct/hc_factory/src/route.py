@@ -1,5 +1,6 @@
 from ..env_asset_cfg.cfg_route.cfg_route import CfgRoute, OptionalInitPointIds
-from .utils import quat_multiply_wxyz, yaw_to_quaternion_wxyz
+from .utils import quat_multiply_wxyz, quaternion_wxyz_to_yaw, yaw_to_quaternion_wxyz
+from . import route_collision as rc
 import heapq
 import json
 import math
@@ -192,6 +193,18 @@ class _RoadmapGraph:
             return node_xy
         raise ValueError(f"Unknown {self.agent_label} map point id: {area_id}")
 
+    def find_nearest_area_id(self, x: float, y: float) -> int:
+        best_area_id = None
+        best_dist_sq = math.inf
+        for area_id, point_xy in self.point_xy_by_id.items():
+            dist_sq = (point_xy[0] - x) ** 2 + (point_xy[1] - y) ** 2
+            if dist_sq < best_dist_sq:
+                best_dist_sq = dist_sq
+                best_area_id = int(area_id)
+        if best_area_id is None:
+            raise ValueError(f"No {self.agent_label} map point found near ({x}, {y})")
+        return best_area_id
+
     def _pose_at_node(self, node_id: int) -> dict:
         node_xy = self.point_xy_by_id.get(node_id)
         if node_xy is not None:
@@ -275,6 +288,7 @@ class RouteManagerVectorEnv:
     def __init__(self, cuda_device: torch.device):
         self.cuda_device = cuda_device
         self.cfg_route = CfgRoute
+        self.collision_cfg = self.cfg_route["collision_avoidance"]
         self.human_route_orientation_offset = CfgHuman["NormalHuman"]["human_route_orientation_offset"]["orientation"].to(_CPU_DEVICE)
         routes_human = json.load(Path(self.cfg_route["routes_path_human"]).expanduser().open("r", encoding="utf-8"))
         routes_robot = json.load(Path(self.cfg_route["routes_path_robot"]).expanduser().open("r", encoding="utf-8"))
@@ -291,10 +305,20 @@ class RouteManagerVectorEnv:
         )
         self.default_z_human = OptionalInitPointIds["human_z"]
         self.default_z_robot = OptionalInitPointIds["robot_z"]
+        free_threshold = int(self.collision_cfg["occupancy_free_threshold"])
+        png_coords = self.cfg_route["png_image_coordinates"]
+        isaac_coords = self.cfg_route["isaac_sim_coordinates"]
+        self._occupancy_human = rc.OccupancyMap(
+            self.cfg_route["map_path_human"], png_coords, isaac_coords, free_threshold
+        )
+        self._occupancy_robot = rc.OccupancyMap(
+            self.cfg_route["map_path_robot"], png_coords, isaac_coords, free_threshold
+        )
 
     def step(self, env_state_action_dict: dict) -> dict:
-        self._update_agent_routes(env_state_action_dict["human"], self.generate_human_route)
-        self._update_agent_routes(env_state_action_dict["robot"], self.generate_robot_route)
+        self._generate_working_agent_routes(env_state_action_dict["human"], self.generate_working_human_route)
+        self._generate_working_agent_routes(env_state_action_dict["robot"], self.generate_working_robot_route)
+        self.agents_collision_check(env_state_action_dict)
         self._step_next_pose(
             env_state_action_dict["rigid_prims"], env_state_action_dict["human"], self.default_z_human
         )
@@ -325,6 +349,10 @@ class RouteManagerVectorEnv:
         pass
 
     def _step_next_pose(self, agent_prims_dict: dict, agent_states: dict, default_z: float) -> dict:
+        """Write ``generated_route[route_index]`` to rigid_prims and increment route_index.
+
+        Called after ``agents_collision_check`` adjusts routes.
+        """
         for agent_name, agent_state in agent_states.items():
             route_index = agent_state["route_index"]
             route_length = agent_state["route_length"]
@@ -363,7 +391,13 @@ class RouteManagerVectorEnv:
             )
         return gpu_route
 
-    def _update_agent_routes(self, agent_states: dict, route_generator) -> None:
+    def _generate_working_agent_routes(self, agent_states: dict, route_generator) -> None:
+        """Generate initial working-agent routes from the map graph only (no occupancy check).
+
+        When ``current_area_id != target_area_id`` and ``generated_route`` is empty, call
+        ``route_generator`` to fill ``generated_route`` / ``route_index`` / ``route_length``.
+        Detour and yield waypoints are not created in this stage.
+        """
         for state in agent_states.values():
             if state["ongoing_task_record_index"] is None:
                 continue
@@ -376,8 +410,10 @@ class RouteManagerVectorEnv:
                 state["generated_route"] = self._move_route_to_device(route_info["route"])
                 state["route_index"] = 0
                 state["route_length"] = len(route_info["route"])
+                self._clear_detour_state(state)
 
-    def generate_human_route(self, start_id: int, end_id: int) -> dict:
+    def generate_working_human_route(self, start_id: int, end_id: int) -> dict:
+        """Build the initial working human route from the map graph (no live occupancy check)."""
         route_info = self.human_roadmap.generate_route(start_id, end_id)
         offset_orientation = self.human_route_orientation_offset
         updated_route: list[dict] = []
@@ -394,5 +430,780 @@ class RouteManagerVectorEnv:
         route_info["route"] = updated_route
         return route_info
 
-    def generate_robot_route(self, start_id: int, end_id: int) -> dict:
+    def generate_working_robot_route(self, start_id: int, end_id: int) -> dict:
+        """Build the initial working robot route from the map graph (no live occupancy check)."""
         return self.robot_roadmap.generate_route(start_id, end_id)
+
+    # ------------------------------------------------------------------
+    # Collision avoidance pipeline (called before _step_next_pose)
+    # ------------------------------------------------------------------
+
+    def agents_collision_check(self, env_state_action_dict: dict) -> None:
+        """Orchestrate dynamic collision avoidance before pose stepping; does not modify rigid_prims.
+
+        Called from ``step`` after ``_generate_working_agent_routes`` and before
+        ``_step_next_pose``. All detour/yield waypoints are written to ``generated_route`` only;
+        ``map_routes_*.json`` is never modified.
+
+        Two-phase resolution (working first, free last):
+        1. Resolve detour/wait among working agents only (free agents are excluded).
+        2. After working routes are updated, yield free agents away from the new working
+           passing ranges.
+        """
+        working_snapshot = self._collect_agent_collision_snapshot(
+            env_state_action_dict, include_free=False
+        )
+        self._resolve_working_mover_conflicts(env_state_action_dict, working_snapshot)
+
+        full_snapshot = self._collect_agent_collision_snapshot(
+            env_state_action_dict,
+            include_free=True,
+            lookahead_override=int(self.collision_cfg["free_yield_lookahead_waypoints"]),
+        )
+        self._resolve_free_agent_yields(env_state_action_dict, full_snapshot)
+        self._finalize_free_agent_yields(env_state_action_dict)
+
+    @staticmethod
+    def _is_free_agent(agent_state: dict) -> bool:
+        return agent_state["state"] == "free"
+
+    @staticmethod
+    def _is_working_agent(agent_state: dict) -> bool:
+        return agent_state["state"] != "free"
+
+    def _lookahead_for_agent_type(self, agent_type: str) -> int:
+        return int(self.collision_cfg["lookahead_waypoints"][agent_type])
+
+    def _occupancy_for_agent_type(self, agent_type: str) -> rc.OccupancyMap:
+        if agent_type == "human":
+            return self._occupancy_human
+        if agent_type == "robot":
+            return self._occupancy_robot
+        raise ValueError(f"Unknown agent type for occupancy map: {agent_type}")
+
+    def _roadmap_for_agent_type(self, agent_type: str) -> _RoadmapGraph:
+        if agent_type == "human":
+            return self.human_roadmap
+        if agent_type == "robot":
+            return self.robot_roadmap
+        raise ValueError(f"Unknown agent type for roadmap: {agent_type}")
+
+    @staticmethod
+    def _pose_from_rigid_prim(prim_entry: dict) -> dict:
+        position = prim_entry["position"]
+        orientation = prim_entry["orientation"]
+        if position.dim() > 1:
+            position = position.reshape(-1, 3)[0]
+        if orientation.dim() > 1:
+            orientation = orientation.reshape(-1, 4)[0]
+        return {
+            "x": float(position[0].item()),
+            "y": float(position[1].item()),
+            "orientation": orientation,
+        }
+
+    @staticmethod
+    def _is_agent_moving(agent_state: dict) -> bool:
+        return agent_state["route_length"] > 0 and agent_state["route_index"] < agent_state["route_length"]
+
+    def _yaw_from_orientation(self, orientation: torch.Tensor) -> float:
+        if orientation.dim() > 1:
+            orientation = orientation.reshape(-1, 4)[0]
+        return quaternion_wxyz_to_yaw(orientation.to(_CPU_DEVICE))
+
+    def _make_waypoint(self, x: float, y: float, yaw: float) -> dict:
+        return {
+            "x": float(x),
+            "y": float(y),
+            "orientation": yaw_to_quaternion_wxyz(yaw, self.cuda_device),
+        }
+
+    def _human_footprint_at_xy(self, x: float, y: float) -> dict:
+        """Human point footprint: circle/capsule with ``human_safety_diameter``, centered at (x, y)."""
+        diameter = float(self.collision_cfg["human_safety_diameter"])
+        return rc.circle_footprint(x, y, diameter)
+
+    def _robot_footprint_at_pose(self, x: float, y: float, orientation: torch.Tensor) -> dict:
+        """Robot point footprint: yaw-oriented rectangle.
+
+        Local origin at one end of the vehicle; length and width from
+        ``collision_cfg["robot_footprint_local_bounds"]``. Determined by (x, y) and orientation yaw.
+        """
+        yaw = self._yaw_from_orientation(orientation)
+        return rc.rect_footprint(x, y, yaw, self.collision_cfg["robot_footprint_local_bounds"])
+
+    def _robot_sweep_footprint(
+        self,
+        pose_from: dict,
+        pose_to: dict,
+    ) -> dict:
+        """Robot motion occupancy: rectangle cluster covering the sweep from current to next pose."""
+        step = float(self.collision_cfg["robot_sweep_step_m"])
+        x0, y0 = pose_from["x"], pose_from["y"]
+        x1, y1 = pose_to["x"], pose_to["y"]
+        yaw = rc.yaw_from_xy_delta(x1 - x0, y1 - y0)
+        primitives = [self._robot_footprint_at_pose(x0, y0, pose_from["orientation"])]
+        for x, y in rc.densify_segment(x0, y0, x1, y1, step)[1:]:
+            primitives.append(rc.rect_footprint(x, y, yaw, self.collision_cfg["robot_footprint_local_bounds"]))
+        return {"primitives": primitives}
+
+    def _footprint_for_pose(self, agent_type: str, pose: dict) -> dict:
+        if agent_type == "human":
+            return self._human_footprint_at_xy(pose["x"], pose["y"])
+        return self._robot_footprint_at_pose(pose["x"], pose["y"], pose["orientation"])
+
+    def _compute_passing_range(
+        self,
+        agent_type: str,
+        agent_state: dict,
+        current_pose: dict,
+        *,
+        lookahead_override: int | None = None,
+    ) -> dict:
+        """Compute passing range for the current step plus lookahead waypoints."""
+        route = agent_state["generated_route"]
+        route_index = int(agent_state["route_index"])
+        route_length = int(agent_state["route_length"])
+        if lookahead_override is not None:
+            lookahead_count = lookahead_override
+        else:
+            lookahead_count = self._lookahead_for_agent_type(agent_type)
+        primitives: list[dict] = []
+
+        current_fp = self._footprint_for_pose(agent_type, current_pose)
+        primitives.append(current_fp)
+
+        for offset in range(lookahead_count):
+            waypoint_index = route_index + offset
+            if waypoint_index >= route_length:
+                break
+            waypoint = route[waypoint_index]
+            waypoint_pose = {
+                "x": float(waypoint["x"]),
+                "y": float(waypoint["y"]),
+                "orientation": waypoint["orientation"],
+            }
+            primitives.append(self._footprint_for_pose(agent_type, waypoint_pose))
+
+        if (
+            lookahead_override is None
+            and agent_type == "robot"
+            and route_index < route_length
+        ):
+            next_pose = {
+                "x": float(route[route_index]["x"]),
+                "y": float(route[route_index]["y"]),
+                "orientation": route[route_index]["orientation"],
+            }
+            sweep = self._robot_sweep_footprint(current_pose, next_pose)
+            primitives.extend(sweep["primitives"])
+
+        return {"primitives": primitives}
+
+    def _build_snapshot_entry(
+        self,
+        agent_key: str,
+        agent_type: str,
+        agent_state: dict,
+        rigid_prims: dict,
+        *,
+        lookahead_override: int | None = None,
+    ) -> dict:
+        current_pose = self._pose_from_rigid_prim(rigid_prims[agent_key])
+        passing_range = self._compute_passing_range(
+            agent_type, agent_state, current_pose, lookahead_override=lookahead_override
+        )
+        return {
+            "agent_key": agent_key,
+            "agent_type": agent_type,
+            "is_working": self._is_working_agent(agent_state),
+            "is_moving": self._is_agent_moving(agent_state),
+            "current_pose": current_pose,
+            "passing_range": passing_range,
+            "agent_state": agent_state,
+        }
+
+    def _collect_agent_collision_snapshot(
+        self,
+        env_state_action_dict: dict,
+        *,
+        include_free: bool = True,
+        lookahead_override: int | None = None,
+    ) -> dict:
+        """Build a collision snapshot: passing_range per agent from rigid_prims and state."""
+        entries: list[dict] = []
+        rigid_prims = env_state_action_dict["rigid_prims"]
+        for agent_type in ("human", "robot"):
+            for agent_key, agent_state in env_state_action_dict[agent_type].items():
+                if not include_free and self._is_free_agent(agent_state):
+                    continue
+                if agent_key not in rigid_prims:
+                    continue
+                entries.append(
+                    self._build_snapshot_entry(
+                        agent_key,
+                        agent_type,
+                        agent_state,
+                        rigid_prims,
+                        lookahead_override=lookahead_override,
+                    )
+                )
+        return {
+            "agents": entries,
+            "by_key": {entry["agent_key"]: entry for entry in entries},
+        }
+
+    def _refresh_snapshot_entry(self, entry: dict, rigid_prims: dict) -> None:
+        entry["current_pose"] = self._pose_from_rigid_prim(rigid_prims[entry["agent_key"]])
+        entry["is_moving"] = self._is_agent_moving(entry["agent_state"])
+        entry["passing_range"] = self._compute_passing_range(
+            entry["agent_type"], entry["agent_state"], entry["current_pose"]
+        )
+
+    @staticmethod
+    def _clear_detour_state(agent_state: dict) -> None:
+        agent_state["detour_active"] = False
+        agent_state["detour_blocker_key"] = None
+        agent_state["detour_until_route_index"] = None
+
+    def _activate_detour_state(
+        self,
+        agent_state: dict,
+        blocker_key: str,
+        until_route_index: int,
+    ) -> None:
+        agent_state["detour_active"] = True
+        agent_state["detour_blocker_key"] = blocker_key
+        agent_state["detour_until_route_index"] = int(until_route_index)
+
+    def _should_skip_detour(self, agent_state: dict, blocker_key: str) -> bool:
+        """Return True while the agent is still executing a detour for the same blocker."""
+        if not agent_state.get("detour_active"):
+            return False
+        if agent_state.get("detour_blocker_key") != blocker_key:
+            return False
+        until_idx = agent_state.get("detour_until_route_index")
+        if until_idx is None:
+            return False
+        return int(agent_state["route_index"]) < int(until_idx)
+
+    def _sync_detour_state(self, mover_entry: dict) -> None:
+        """Clear detour cooldown only after all modified conflicting waypoints are passed."""
+        agent_state = mover_entry["agent_state"]
+        if not agent_state.get("detour_active"):
+            return
+
+        until_idx = agent_state.get("detour_until_route_index")
+        if until_idx is not None and int(agent_state["route_index"]) >= int(until_idx):
+            self._clear_detour_state(agent_state)
+            return
+
+        if int(agent_state["route_length"]) == 0:
+            self._clear_detour_state(agent_state)
+
+    def _find_conflicting_waypoint_offsets(
+        self,
+        agent_type: str,
+        route: list[dict],
+        route_index: int,
+        blocker_passing_range: dict,
+    ) -> list[int]:
+        """Return offsets (relative to route_index) whose footprints overlap the blocker."""
+        scan_limit = min(
+            int(self.collision_cfg["detour_conflict_scan_waypoints"]),
+            len(route) - route_index,
+        )
+        conflicting_offsets: list[int] = []
+        for offset in range(scan_limit):
+            waypoint = route[route_index + offset]
+            pose = {
+                "x": float(waypoint["x"]),
+                "y": float(waypoint["y"]),
+                "orientation": waypoint["orientation"],
+            }
+            footprint = self._footprint_for_pose(agent_type, pose)
+            if self._check_passing_range_overlap(
+                {"primitives": [footprint]}, blocker_passing_range
+            ):
+                conflicting_offsets.append(offset)
+        return conflicting_offsets
+
+    def _build_detour_modification_weights(
+        self,
+        route: list[dict],
+        route_index: int,
+        conflicting_offsets: list[int],
+    ) -> dict[int, float]:
+        """Map global route indices to lateral offset weights for conflict smoothing."""
+        smooth_radius = int(self.collision_cfg["detour_smooth_neighbor_waypoints"])
+        route_len = len(route)
+        weights: dict[int, float] = {}
+        for offset in conflicting_offsets:
+            conflict_global = route_index + offset
+            for delta in range(-smooth_radius, smooth_radius + 1):
+                global_idx = conflict_global + delta
+                if global_idx <= 0 or global_idx >= route_len - 1:
+                    continue
+                weight = max(0.0, 1.0 - abs(delta) / (smooth_radius + 1))
+                weights[global_idx] = max(weights.get(global_idx, 0.0), weight)
+        return weights
+
+    def _nearest_conflict_global_idx(
+        self,
+        global_idx: int,
+        route_index: int,
+        conflicting_offsets: list[int],
+    ) -> int:
+        conflict_globals = [route_index + offset for offset in conflicting_offsets]
+        return min(conflict_globals, key=lambda conflict_idx: abs(conflict_idx - global_idx))
+
+    def _path_tangent_at(
+        self,
+        route: list[dict],
+        global_idx: int,
+        route_index: int,
+        current_pose: dict,
+    ) -> tuple[float, float]:
+        """Unit tangent of the original route polyline at global_idx."""
+        if route_index < global_idx < len(route) - 1:
+            dx = float(route[global_idx + 1]["x"]) - float(route[global_idx - 1]["x"])
+            dy = float(route[global_idx + 1]["y"]) - float(route[global_idx - 1]["y"])
+        elif global_idx + 1 < len(route):
+            dx = float(route[global_idx + 1]["x"]) - float(route[global_idx]["x"])
+            dy = float(route[global_idx + 1]["y"]) - float(route[global_idx]["y"])
+        elif global_idx > 0:
+            dx = float(route[global_idx]["x"]) - float(route[global_idx - 1]["x"])
+            dy = float(route[global_idx]["y"]) - float(route[global_idx - 1]["y"])
+        else:
+            dx = float(route[global_idx]["x"]) - float(current_pose["x"])
+            dy = float(route[global_idx]["y"]) - float(current_pose["y"])
+
+        length = math.hypot(dx, dy)
+        if length < 1e-9:
+            return 1.0, 0.0
+        return dx / length, dy / length
+
+    @staticmethod
+    def _perpendicular_away_from_blocker(
+        tangent: tuple[float, float],
+        waypoint_xy: tuple[float, float],
+        blocker_xy: tuple[float, float],
+    ) -> tuple[float, float]:
+        """Unit perpendicular pointing away from the blocker."""
+        tx, ty = tangent
+        perp_x, perp_y = -ty, tx
+        to_blocker_x = blocker_xy[0] - waypoint_xy[0]
+        to_blocker_y = blocker_xy[1] - waypoint_xy[1]
+        if perp_x * to_blocker_x + perp_y * to_blocker_y > 0.0:
+            perp_x, perp_y = -perp_x, -perp_y
+        return perp_x, perp_y
+
+    def _yaw_along_route_at(
+        self,
+        route: list[dict],
+        global_idx: int,
+        current_pose: dict,
+    ) -> float:
+        """Yaw aligned with the route polyline at global_idx (after xy updates)."""
+        if global_idx + 1 < len(route):
+            dx = float(route[global_idx + 1]["x"]) - float(route[global_idx]["x"])
+            dy = float(route[global_idx + 1]["y"]) - float(route[global_idx]["y"])
+        elif global_idx > 0:
+            dx = float(route[global_idx]["x"]) - float(route[global_idx - 1]["x"])
+            dy = float(route[global_idx]["y"]) - float(route[global_idx - 1]["y"])
+        else:
+            dx = float(route[global_idx]["x"]) - float(current_pose["x"])
+            dy = float(route[global_idx]["y"]) - float(current_pose["y"])
+        return rc.yaw_from_xy_delta(dx, dy)
+
+    def _set_waypoint_orientation(self, waypoint: dict, yaw: float, agent_type: str) -> None:
+        orientation = yaw_to_quaternion_wxyz(yaw, self.cuda_device)
+        if agent_type == "human":
+            orientation = quat_multiply_wxyz(orientation, self.human_route_orientation_offset.to(self.cuda_device))
+        waypoint["orientation"] = orientation
+
+    def _resolve_working_mover_conflicts(self, env_state_action_dict: dict, snapshot: dict) -> None:
+        """Phase 1: resolve passing_range conflicts among working agents (free excluded).
+
+        Stationary working agents never move. Moving working agents detour around stationary
+        blockers, or wait when blocked by a higher-priority moving working agent.
+        """
+        rigid_prims = env_state_action_dict["rigid_prims"]
+        working_agents = [entry for entry in snapshot["agents"] if entry["is_working"]]
+        moving_agents = [entry for entry in working_agents if entry["is_moving"]]
+
+        for mover in moving_agents:
+            self._sync_detour_state(mover)
+            for other in working_agents:
+                if mover["agent_key"] == other["agent_key"]:
+                    continue
+                if not self._check_passing_range_overlap(mover["passing_range"], other["passing_range"]):
+                    continue
+                if not other["is_moving"]:
+                    if self._should_skip_detour(mover["agent_state"], other["agent_key"]):
+                        break
+                    if self._apply_detour(
+                        mover["agent_state"],
+                        mover["agent_type"],
+                        {"blocker": other, "current_pose": mover["current_pose"]},
+                    ):
+                        self._refresh_snapshot_entry(mover, rigid_prims)
+                    break
+                if rc.should_agent_wait(mover, other):
+                    self._clear_detour_state(mover["agent_state"])
+                    self._apply_wait(mover["agent_state"], mover["current_pose"])
+                    self._refresh_snapshot_entry(mover, rigid_prims)
+                    break
+
+    def _apply_detour(
+        self,
+        agent_state: dict,
+        agent_type: str,
+        block_info: dict,
+    ) -> bool:
+        """Detour: offset conflicting waypoints perpendicular to the route; no new waypoints."""
+        blocker_key = block_info["blocker"]["agent_key"]
+        if self._should_skip_detour(agent_state, blocker_key):
+            return False
+
+        current_pose = block_info["current_pose"]
+        blocker_passing_range = block_info["blocker"]["passing_range"]
+        blocker_xy = (
+            float(block_info["blocker"]["current_pose"]["x"]),
+            float(block_info["blocker"]["current_pose"]["y"]),
+        )
+        route = agent_state["generated_route"]
+        route_index = int(agent_state["route_index"])
+        if route_index >= len(route):
+            return False
+
+        conflicting_offsets = self._find_conflicting_waypoint_offsets(
+            agent_type, route, route_index, blocker_passing_range
+        )
+        if not conflicting_offsets:
+            return False
+
+        modification_weights = self._build_detour_modification_weights(
+            route, route_index, conflicting_offsets
+        )
+        if not modification_weights:
+            return False
+
+        lateral_base = float(self.collision_cfg["detour_lateral_offset_m"])
+        max_attempts = int(self.collision_cfg["detour_max_attempts"])
+
+        for attempt in range(max_attempts):
+            sign = 1.0 if attempt % 2 == 0 else -1.0
+            magnitude = lateral_base * (attempt // 2 + 1)
+            trial_positions: dict[int, tuple[float, float]] = {}
+            trial_footprints: list[dict] = []
+
+            for global_idx, weight in modification_weights.items():
+                anchor_global_idx = self._nearest_conflict_global_idx(
+                    global_idx, route_index, conflicting_offsets
+                )
+                anchor_waypoint = route[anchor_global_idx]
+                anchor_xy = (float(anchor_waypoint["x"]), float(anchor_waypoint["y"]))
+                waypoint = route[global_idx]
+                waypoint_xy = (float(waypoint["x"]), float(waypoint["y"]))
+                tangent = self._path_tangent_at(route, anchor_global_idx, route_index, current_pose)
+                perp_x, perp_y = self._perpendicular_away_from_blocker(
+                    tangent, anchor_xy, blocker_xy
+                )
+                effective_magnitude = magnitude * weight
+                new_x = waypoint_xy[0] + perp_x * sign * effective_magnitude
+                new_y = waypoint_xy[1] + perp_y * sign * effective_magnitude
+                trial_positions[global_idx] = (new_x, new_y)
+                trial_pose = {
+                    "x": new_x,
+                    "y": new_y,
+                    "orientation": waypoint["orientation"],
+                }
+                trial_footprints.append(self._footprint_for_pose(agent_type, trial_pose))
+
+            if self._check_static_map_collision({"primitives": trial_footprints}, agent_type):
+                continue
+
+            for global_idx, (new_x, new_y) in trial_positions.items():
+                route[global_idx]["x"] = new_x
+                route[global_idx]["y"] = new_y
+                yaw = self._yaw_along_route_at(route, global_idx, current_pose)
+                self._set_waypoint_orientation(route[global_idx], yaw, agent_type)
+
+            until_route_index = max(modification_weights.keys()) + 1
+            self._activate_detour_state(agent_state, blocker_key, until_route_index)
+            return True
+
+        return False
+
+    def _apply_wait(self, agent_state: dict, current_pose: dict) -> None:
+        """Wait: insert a hold waypoint at the current (x, y, yaw)."""
+        route = agent_state["generated_route"]
+        route_index = int(agent_state["route_index"])
+        yaw = self._yaw_from_orientation(current_pose["orientation"])
+        hold_waypoint = self._make_waypoint(current_pose["x"], current_pose["y"], yaw)
+        route.insert(route_index, hold_waypoint)
+        agent_state["route_length"] = len(route)
+
+    def _check_static_map_collision(self, passing_range: dict, agent_type: str) -> bool:
+        """Return whether passing_range collides with static occupancy-map obstacles."""
+        sample_step = float(self.collision_cfg["detour_densify_step_m"])
+        return self._occupancy_for_agent_type(agent_type).passing_range_collides(passing_range, sample_step)
+
+    def _check_passing_range_overlap(self, range_a: dict, range_b: dict) -> bool:
+        """Return whether two passing ranges overlap in space."""
+        return rc.passing_ranges_overlap(range_a, range_b)
+
+    def _footprint_with_yield_clearance(self, agent_type: str, pose: dict) -> dict:
+        """Footprint enlarged by yield clearance margin for safer stand-off distance."""
+        margin = float(self.collision_cfg["yield_clearance_margin_m"])
+        if agent_type == "human":
+            diameter = float(self.collision_cfg["human_safety_diameter"]) + 2.0 * margin
+            return rc.circle_footprint(pose["x"], pose["y"], diameter)
+        yaw = self._yaw_from_orientation(pose["orientation"])
+        footprint = rc.rect_footprint(
+            pose["x"], pose["y"], yaw, self.collision_cfg["robot_footprint_local_bounds"]
+        )
+        return footprint
+
+    def _resolve_free_agent_yields(self, env_state_action_dict: dict, snapshot: dict) -> None:
+        """Phase 2: yield free agents after working routes have been updated."""
+        working_agents = [entry for entry in snapshot["agents"] if entry["is_working"]]
+        for entry in snapshot["agents"]:
+            if entry["is_working"]:
+                continue
+            conflicts = [
+                other
+                for other in working_agents
+                if self._check_passing_range_overlap(entry["passing_range"], other["passing_range"])
+            ]
+            if not conflicts:
+                continue
+
+            agent_state = entry["agent_state"]
+            agent_type = entry["agent_type"]
+            current_pose = entry["current_pose"]
+            from_xy = (current_pose["x"], current_pose["y"])
+            primary_conflict = self._select_primary_yield_conflict(from_xy, conflicts)
+            goal_xy = self._sample_yield_standable_xy(
+                agent_type, from_xy, working_agents, primary_conflict
+            )
+            goal_yaw = rc.yaw_from_xy_delta(goal_xy[0] - from_xy[0], goal_xy[1] - from_xy[1])
+            goal_pose = {
+                "x": goal_xy[0],
+                "y": goal_xy[1],
+                "orientation": yaw_to_quaternion_wxyz(goal_yaw, self.cuda_device),
+            }
+            yield_route = self._build_yield_route(current_pose, goal_pose, agent_type)
+            agent_state["generated_route"] = self._move_route_to_device(yield_route)
+            agent_state["route_index"] = 0
+            agent_state["route_length"] = len(yield_route)
+            roadmap = self._roadmap_for_agent_type(agent_type)
+            agent_state["target_area_id"] = roadmap.find_nearest_area_id(goal_xy[0], goal_xy[1])
+
+    def _distance_xy_to_working_route(self, query_xy: tuple[float, float], working_entry: dict) -> float:
+        agent_state = working_entry["agent_state"]
+        route = agent_state["generated_route"]
+        route_index = int(agent_state["route_index"])
+        route_length = int(agent_state["route_length"])
+        if route_length == 0 or route_index >= route_length:
+            pose = working_entry["current_pose"]
+            return math.hypot(query_xy[0] - pose["x"], query_xy[1] - pose["y"])
+
+        lookahead = int(self.collision_cfg["free_yield_lookahead_waypoints"])
+        best_dist_sq = math.inf
+        for idx in range(route_index, min(route_length, route_index + lookahead)):
+            wx = float(route[idx]["x"])
+            wy = float(route[idx]["y"])
+            dist_sq = (wx - query_xy[0]) ** 2 + (wy - query_xy[1]) ** 2
+            best_dist_sq = min(best_dist_sq, dist_sq)
+        return math.sqrt(best_dist_sq)
+
+    def _select_primary_yield_conflict(
+        self,
+        from_xy: tuple[float, float],
+        conflicts: list[dict],
+    ) -> dict:
+        """Pick the working agent whose route is closest to the free agent."""
+        return min(conflicts, key=lambda entry: self._distance_xy_to_working_route(from_xy, entry))
+
+    def _working_route_tangent_near_xy(
+        self,
+        working_entry: dict,
+        query_xy: tuple[float, float],
+    ) -> tuple[float, float]:
+        """Unit tangent of the working route polyline near query_xy."""
+        agent_state = working_entry["agent_state"]
+        route = agent_state["generated_route"]
+        route_index = int(agent_state["route_index"])
+        route_length = int(agent_state["route_length"])
+        current_pose = working_entry["current_pose"]
+
+        if route_length == 0 or route_index >= route_length:
+            yaw = self._yaw_from_orientation(current_pose["orientation"])
+            return math.cos(yaw), math.sin(yaw)
+
+        lookahead = int(self.collision_cfg["free_yield_lookahead_waypoints"])
+        nearest_idx = route_index
+        best_dist_sq = math.inf
+        for idx in range(route_index, min(route_length, route_index + lookahead)):
+            wx = float(route[idx]["x"])
+            wy = float(route[idx]["y"])
+            dist_sq = (wx - query_xy[0]) ** 2 + (wy - query_xy[1]) ** 2
+            if dist_sq < best_dist_sq:
+                best_dist_sq = dist_sq
+                nearest_idx = idx
+
+        return self._path_tangent_at(route, nearest_idx, route_index, current_pose)
+
+    @staticmethod
+    def _perpendicular_from_route_tangent(tangent: tuple[float, float]) -> tuple[float, float]:
+        tx, ty = tangent
+        return -ty, tx
+
+    def _sample_yield_standable_xy(
+        self,
+        agent_type: str,
+        from_xy: tuple[float, float],
+        working_agents: list[dict],
+        conflict_working: dict,
+    ) -> tuple[float, float]:
+        """Sample a standable point by stepping perpendicular to the conflicting working route."""
+        search_radius = float(self.collision_cfg["yield_search_radius_m"])
+        search_step = float(self.collision_cfg["yield_search_step_m"])
+        occupancy = self._occupancy_for_agent_type(agent_type)
+
+        tangent = self._working_route_tangent_near_xy(conflict_working, from_xy)
+        perp_x, perp_y = self._perpendicular_from_route_tangent(tangent)
+
+        nearest_route_xy = self._nearest_working_route_xy(conflict_working, from_xy)
+        away_x = from_xy[0] - nearest_route_xy[0]
+        away_y = from_xy[1] - nearest_route_xy[1]
+        if perp_x * away_x + perp_y * away_y < 0.0:
+            perp_x, perp_y = -perp_x, -perp_y
+
+        step_count = max(1, int(math.ceil(search_radius / search_step)))
+        for step_idx in range(1, step_count + 1):
+            distance = step_idx * search_step
+            for sign in (1.0, -1.0):
+                candidate = (
+                    from_xy[0] + perp_x * sign * distance,
+                    from_xy[1] + perp_y * sign * distance,
+                )
+                if self._is_standable_xy(agent_type, candidate, working_agents, occupancy):
+                    return candidate
+
+        if self._is_standable_xy(agent_type, from_xy, working_agents, occupancy):
+            return from_xy
+        return from_xy
+
+    def _nearest_working_route_xy(
+        self,
+        working_entry: dict,
+        query_xy: tuple[float, float],
+    ) -> tuple[float, float]:
+        agent_state = working_entry["agent_state"]
+        route = agent_state["generated_route"]
+        route_index = int(agent_state["route_index"])
+        route_length = int(agent_state["route_length"])
+        if route_length == 0 or route_index >= route_length:
+            pose = working_entry["current_pose"]
+            return pose["x"], pose["y"]
+
+        lookahead = int(self.collision_cfg["free_yield_lookahead_waypoints"])
+        nearest_xy = (float(route[route_index]["x"]), float(route[route_index]["y"]))
+        best_dist_sq = math.inf
+        for idx in range(route_index, min(route_length, route_index + lookahead)):
+            wx = float(route[idx]["x"])
+            wy = float(route[idx]["y"])
+            dist_sq = (wx - query_xy[0]) ** 2 + (wy - query_xy[1]) ** 2
+            if dist_sq < best_dist_sq:
+                best_dist_sq = dist_sq
+                nearest_xy = (wx, wy)
+        return nearest_xy
+
+    def _is_standable_xy(
+        self,
+        agent_type: str,
+        xy: tuple[float, float],
+        working_agents: list[dict],
+        occupancy: rc.OccupancyMap,
+    ) -> bool:
+        pose = {
+            "x": xy[0],
+            "y": xy[1],
+            "orientation": yaw_to_quaternion_wxyz(0.0, self.cuda_device),
+        }
+        footprint = self._footprint_with_yield_clearance(agent_type, pose)
+        if occupancy.passing_range_collides(
+            {"primitives": [footprint]}, float(self.collision_cfg["yield_search_step_m"])
+        ):
+            return False
+        for other in working_agents:
+            if self._check_passing_range_overlap({"primitives": [footprint]}, other["passing_range"]):
+                return False
+        return True
+
+    def _build_yield_route(
+        self,
+        start_pose: dict,
+        goal_pose: dict,
+        agent_type: str,
+    ) -> list[dict]:
+        """Build a smooth yield route with limited per-step yaw change."""
+        step = float(self.collision_cfg["yield_route_step_m"])
+        max_yaw_step = float(self.collision_cfg["yield_max_yaw_step_rad"])
+        start_yaw = self._yaw_from_orientation(start_pose["orientation"])
+        goal_yaw = self._yaw_from_orientation(goal_pose["orientation"])
+
+        path_points = rc.densify_segment(
+            start_pose["x"], start_pose["y"], goal_pose["x"], goal_pose["y"], step
+        )
+        if not path_points:
+            path_points = [(start_pose["x"], start_pose["y"]), (goal_pose["x"], goal_pose["y"])]
+
+        route: list[dict] = []
+        previous_yaw = start_yaw
+        for point_idx, (x, y) in enumerate(path_points):
+            if point_idx + 1 < len(path_points):
+                next_x, next_y = path_points[point_idx + 1]
+                target_yaw = rc.yaw_from_xy_delta(next_x - x, next_y - y)
+            else:
+                target_yaw = goal_yaw
+            yaw = rc.clamp_yaw_step(previous_yaw, target_yaw, max_yaw_step)
+            previous_yaw = yaw
+            route.append(
+                {
+                    "x": float(x),
+                    "y": float(y),
+                    "orientation": yaw_to_quaternion_wxyz(yaw, _CPU_DEVICE),
+                }
+            )
+
+        if agent_type == "human":
+            for waypoint in route:
+                waypoint["orientation"] = quat_multiply_wxyz(
+                    waypoint["orientation"].to(_CPU_DEVICE),
+                    self.human_route_orientation_offset,
+                )
+        else:
+            route[-1]["orientation"] = yaw_to_quaternion_wxyz(goal_yaw, _CPU_DEVICE)
+
+        return route
+
+    def _finalize_free_agent_yields(self, env_state_action_dict: dict) -> None:
+        """Finalize free-agent yield after the yield route completes."""
+        for agent_type in ("human", "robot"):
+            for agent_state in env_state_action_dict[agent_type].values():
+                if not self._is_free_agent(agent_state):
+                    continue
+                if agent_state["route_length"] == 0:
+                    continue
+                if agent_state["route_index"] < agent_state["route_length"]:
+                    continue
+                agent_state["current_area_id"] = agent_state["target_area_id"]
+                agent_state["generated_route"] = []
+                agent_state["route_index"] = 0
+                agent_state["route_length"] = 0
+                agent_state["target_area_id"] = None
+

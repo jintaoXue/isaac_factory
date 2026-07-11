@@ -172,3 +172,6 @@ storage 的管理
 还有摄像头需要加进去
 
 ##7.5 subtask time需要加噪声
+
+
+#7.10 collision check的逻辑

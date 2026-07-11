@@ -20,7 +20,33 @@ CfgRoute = {
         "bottom_right": [-55.0706, 76.16652],
         "x_bound": [55.02995, -55.0706],
         "y_bound": [76.16652, -6.10027]
-    }
+    },
+    "collision_avoidance": {
+        "lookahead_waypoints": {
+            "human": 3,
+            "robot": 3,
+        },
+        "human_safety_diameter": 0.1,
+        "robot_footprint_local_bounds": {
+            "min_x": 0.0,
+            "max_x": 1.8,
+            "min_y": 0.0,
+            "max_y": 0.8,
+        },
+        "occupancy_free_threshold": 250,
+        "yield_search_radius_m": 3.5,
+        "yield_search_step_m": 0.2,
+        "yield_route_step_m": 0.2,
+        "yield_clearance_margin_m": 0.4,
+        "yield_max_yaw_step_rad": 0.35,
+        "free_yield_lookahead_waypoints": 15,
+        "detour_lateral_offset_m": 0.5,
+        "detour_densify_step_m": 0.3,
+        "detour_max_attempts": 6,
+        "detour_conflict_scan_waypoints": 8,
+        "detour_smooth_neighbor_waypoints": 3,
+        "robot_sweep_step_m": 0.3,
+    },
 }
 
 # 可选初始化点集合 in map points

@@ -218,6 +218,10 @@ class TaskManager:
             assert env_state_action_dict["human"][human]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
             env_state_action_dict["human"][human]["ongoing_task_record_index"] = task_record["product_index"]
             env_state_action_dict["human"][human]["state"] = "working_" + task_record["task"]
+            env_state_action_dict["human"][human]["generated_route"] = []
+            env_state_action_dict["human"][human]["route_index"] = 0
+            env_state_action_dict["human"][human]["route_length"] = 0
+            env_state_action_dict["human"][human]["target_area_id"] = None
         #robot
         robot = task_record["robot"]
         if robot != None:
