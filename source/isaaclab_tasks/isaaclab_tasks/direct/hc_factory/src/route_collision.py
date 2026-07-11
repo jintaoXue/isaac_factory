@@ -5,8 +5,6 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-
 import numpy as np
 from PIL import Image
 
@@ -89,13 +87,6 @@ def rect_footprint(x: float, y: float, yaw: float, local_bounds: dict[str, float
     }
 
 
-def union_passing_range(*parts: dict) -> dict:
-    primitives: list[dict] = []
-    for part in parts:
-        primitives.extend(part.get("primitives", []))
-    return {"primitives": primitives}
-
-
 def _project_polygon(axis: tuple[float, float], corners: list[tuple[float, float]]) -> tuple[float, float]:
     ax, ay = axis
     dots = [px * ax + py * ay for px, py in corners]
@@ -148,8 +139,10 @@ def _rect_rect_overlap(corners_a: list[tuple[float, float]], corners_b: list[tup
 
 
 def primitives_overlap(primitive_a: dict, primitive_b: dict) -> bool:
-    type_a = primitive_a["type"]
-    type_b = primitive_b["type"]
+    type_a, type_b = primitive_a["type"], primitive_b["type"]
+    if type_a == "rect" and type_b == "circle":
+        primitive_a, primitive_b = primitive_b, primitive_a
+        type_a, type_b = type_b, type_a
 
     if type_a == "circle" and type_b == "circle":
         dx = primitive_a["cx"] - primitive_b["cx"]
@@ -159,10 +152,6 @@ def primitives_overlap(primitive_a: dict, primitive_b: dict) -> bool:
     if type_a == "circle" and type_b == "rect":
         return _circle_rect_overlap(
             primitive_a["cx"], primitive_a["cy"], primitive_a["r"], primitive_b["corners"]
-        )
-    if type_a == "rect" and type_b == "circle":
-        return _circle_rect_overlap(
-            primitive_b["cx"], primitive_b["cy"], primitive_b["r"], primitive_a["corners"]
         )
 
     if type_a == "rect" and type_b == "rect":
@@ -288,21 +277,15 @@ def clamp_yaw_step(previous_yaw: float, target_yaw: float, max_step: float) -> f
     return previous_yaw + delta
 
 
-def parse_agent_index(agent_key: str) -> int:
-    parts = agent_key.split("_")
-    if len(parts) < 2:
-        return 0
-    return int(parts[1])
-
-
 def agent_priority_key(agent_type: str, agent_key: str) -> tuple[int, int]:
     """Lower tuple = higher priority. Larger agent index waits within the same type."""
-    type_rank = 0 if agent_type == "human" else 1
-    return (type_rank, parse_agent_index(agent_key))
+    parts = agent_key.split("_")
+    agent_index = int(parts[1]) if len(parts) >= 2 else 0
+    return (0 if agent_type == "human" else 1, agent_index)
 
 
 def should_agent_wait(agent_a: dict, agent_b: dict) -> bool:
     """Return True if agent_a should wait for agent_b."""
-    key_a = agent_priority_key(agent_a["agent_type"], agent_a["agent_key"])
-    key_b = agent_priority_key(agent_b["agent_type"], agent_b["agent_key"])
-    return key_a > key_b
+    return agent_priority_key(agent_a["agent_type"], agent_a["agent_key"]) > agent_priority_key(
+        agent_b["agent_type"], agent_b["agent_key"]
+    )

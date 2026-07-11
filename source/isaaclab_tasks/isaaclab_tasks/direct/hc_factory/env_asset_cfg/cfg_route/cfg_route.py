@@ -22,49 +22,58 @@ CfgRoute = {
         "y_bound": [76.16652, -6.10027]
     },
     "collision_avoidance": {
+        # Phase 1 working conflict: waypoints ahead included in passing_range
         "lookahead_waypoints": {
             "human": 3,
             "robot": 3,
         },
+        # Human collision footprint diameter (m); circle centered at current pose
         "human_safety_diameter": 0.3,
+        # Robot footprint local bounds (m); origin at one end, rotated by yaw
         "robot_footprint_local_bounds": {
             "min_x": 0.0,
             "max_x": 1.8,
             "min_y": 0.0,
             "max_y": 0.8,
         },
+        # Occupancy map: pixel grayscale >= threshold is walkable (yield/detour static checks)
         "occupancy_free_threshold": 250,
+        # Predictive yield trigger: free agent within this distance of a working route (m)
         "yield_predictive_trigger_distance_m": 2.0,
+        # Max search radius along perpendicular for yield/separation stand points (m)
         "yield_search_radius_m": 3.5,
+        # Yield/separation sample step (m); also used for occupancy collision sampling
         "yield_search_step_m": 0.2,
+        # Yield/separation route densify step (m); spacing between waypoints
         "yield_route_step_m": 0.2,
+        # Extra clearance margin on yield stand footprint (m)
         "yield_clearance_margin_m": 0.4,
+        # Max yaw change between adjacent yield waypoints (rad)
         "yield_max_yaw_step_rad": 0.35,
+        # Phase 2: waypoints ahead for working passing_range in free yield / free-free separation
         "free_yield_lookahead_waypoints": 15,
+        # Phase 1 detour: lateral offset along route normal at conflicting waypoints (m)
         "detour_lateral_offset_m": 0.5,
+        # Sample step for static occupancy collision checks (m)
         "detour_densify_step_m": 0.3,
+        # Detour lateral attempts (alternating +/- normal direction)
         "detour_max_attempts": 6,
+        # Waypoints ahead to scan for detour conflicts with a blocker
         "detour_conflict_scan_waypoints": 8,
+        # Neighbor waypoints on each side of conflict for smooth detour weights (linear decay)
         "detour_smooth_neighbor_waypoints": 3,
+        # Robot sweep sample step from current pose to next waypoint in passing_range (m)
         "robot_sweep_step_m": 0.3,
     },
 }
 
-# 可选初始化点集合 in map points
+# Optional init point ids from map points
 OptionalInitPointIds = {
     "human": [190, 191, 192, 193, 194, 195, 202, 203, 204, 205, 206, 207, 214, 215, 216, 217, 218, 219],
     "robot": [236, 272],
     "human_z": 0.1779,
     "robot_z": 0.24478,
 }
-# 可选初始化点集合 in map points (template refined with correct structure and type hints)
-RouteOptionalInitPointsInMap: dict = {
-    # Lists of initialization points (xyz[x,y,z])
-    "human_xyz": torch.tensor([], dtype=torch.float32),
-    "robot_xyz": torch.tensor([], dtype=torch.float32),
-}
-
-
 
 
 def _expand_user_path(path: str) -> str:
@@ -87,29 +96,16 @@ def _extract_xy_points_by_ids(points: list[dict], ids: list[int]) -> list[list[f
     return xy
 
 
-# Build init points (xy) for human/robot from point json.
-_points_human = _load_points(CfgRoute["points_path_human"])
-_points_robot = _load_points(CfgRoute["points_path_robot"])
+def _build_agent_init_xyz(points_path: str, point_ids: list[int], z: float) -> torch.Tensor:
+    xy = _extract_xy_points_by_ids(_load_points(points_path)["points"], point_ids)
+    return torch.tensor([[p[0], p[1], z] for p in xy], dtype=torch.float32)
 
-RouteOptionalInitPointsInMap["human_xy"] = _extract_xy_points_by_ids(
-    _points_human["points"], OptionalInitPointIds["human"]
-)
-RouteOptionalInitPointsInMap["robot_xy"] = _extract_xy_points_by_ids(
-    _points_robot["points"], OptionalInitPointIds["robot"]
-)
 
-# Also expose xyz (xy + fixed z) for convenience.
-RouteOptionalInitPointsInMap["human_xyz"] = torch.tensor(
-    [
-        [xy[0], xy[1], float(OptionalInitPointIds["human_z"])]
-        for xy in RouteOptionalInitPointsInMap["human_xy"]
-    ],
-    dtype=torch.float32,
-)
-RouteOptionalInitPointsInMap["robot_xyz"] = torch.tensor(
-    [
-        [xy[0], xy[1], float(OptionalInitPointIds["robot_z"])]
-        for xy in RouteOptionalInitPointsInMap["robot_xy"]
-    ],
-    dtype=torch.float32,
-)
+RouteOptionalInitPointsInMap: dict = {
+    "human_xyz": _build_agent_init_xyz(
+        CfgRoute["points_path_human"], OptionalInitPointIds["human"], OptionalInitPointIds["human_z"]
+    ),
+    "robot_xyz": _build_agent_init_xyz(
+        CfgRoute["points_path_robot"], OptionalInitPointIds["robot"], OptionalInitPointIds["robot_z"]
+    ),
+}
