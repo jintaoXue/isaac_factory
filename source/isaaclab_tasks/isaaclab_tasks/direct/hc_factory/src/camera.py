@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
+from typing import Any
 
 import carb
 import numpy as np
 import torch
-from isaacsim.core.utils.viewports import set_camera_view
-from isaacsim.sensors.camera import Camera as IsaacSimCamera
 from PIL import Image
 
-from ..env_asset_cfg.cfg_camera import CfgCamera, CfgCameraRegistrationInfos, has_registered_cameras
+from ..env_asset_cfg.cfg_camera import CfgCamera, CfgCameraRegistrationInfos
 
 _DEBUG_CAMERA_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output" / "debug_camera"
 
@@ -25,7 +24,7 @@ def _eye_lookat_arrays(
     return np.asarray(eye, dtype=np.float64), np.asarray(lookat, dtype=np.float64)
 
 
-def _apply_spawn_intrinsics(sensor: IsaacSimCamera, spawn_cfg: dict | None) -> None:
+def _apply_spawn_intrinsics(sensor: Any, spawn_cfg: dict | None) -> None:
     """Apply pinhole intrinsics from cfg camera_sensor.spawn (controls FOV)."""
     if not spawn_cfg:
         return
@@ -88,6 +87,8 @@ class CameraManager:
         return env_state_action_dict
 
     def _register_camera_list(self) -> None:
+        if not carb.settings.get_settings().get("/isaaclab/cameras_enabled"):
+            return
         for cfg_key, count in self.cfg_registration_infos.items():
             if count <= 0:
                 continue
@@ -115,7 +116,7 @@ class Camera:
         self.reset_state = copy.deepcopy(cfg["reset_state"])
         self.reset_state["key_variables"] = self._iter_key_variables()
         self.state: dict = {}
-        self._sensor: IsaacSimCamera | None = None
+        self._sensor: Any | None = None
         self._saved_frame_counter = 0
 
     def _iter_key_variables(self) -> dict:
@@ -140,6 +141,12 @@ class Camera:
         eye, target = _eye_lookat_arrays(self.cfg["eye"], self.cfg["lookat"])
         position = np.array([0.0, 0.0, 0.0], dtype=np.float32)
         orientation = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+
+        from isaacsim.core.utils.extensions import enable_extension
+
+        enable_extension("isaacsim.sensors.camera")
+        from isaacsim.core.utils.viewports import set_camera_view
+        from isaacsim.sensors.camera import Camera as IsaacSimCamera
 
         _enable_rtx_sensors_flag()
         self._sensor = IsaacSimCamera(

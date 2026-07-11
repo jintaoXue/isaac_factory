@@ -1,8 +1,10 @@
-# Isaac Factory — HC Factory Production Simulation Environment
+# Isaac Factory — HC Factory Human-Robot Collaborative Production Simulation
 
-A **human-robot collaborative factory production scheduling simulation** built on [NVIDIA Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/index.html) and [NVIDIA Isaac Sim](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html). It simulates multi-step manufacturing workflows for products such as water pipes (`ProductWaterPipe`), and supports training and evaluation of a four-layer real-time decision-making agent stack.
+A **factory-scale production scheduling simulation** built on [NVIDIA Isaac Sim](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html) and [NVIDIA Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/index.html): it reproduces the HC factory scene (machines, workers, robots, logistics) in 3D, simulates multi-step manufacturing for products such as water pipes (`ProductWaterPipe`), and supports training, evaluation, and vision-based perception data collection for a four-layer real-time decision stack.
 
 > 中文版: [README_CN.md](README_CN.md)
+
+**Recommended stack (`master`):** Isaac Sim **5.1.0** + Isaac Lab **2.3.2** · Ubuntu 22.04 · RTX 5090
 
 ---
 
@@ -17,57 +19,133 @@ A **human-robot collaborative factory production scheduling simulation** built o
 - [Framework Architecture (hc_factory)](#framework-architecture-hc_factory)
 - [Project Structure](#project-structure)
 - [Factory and Product Description](#factory-and-product-description)
-
----
+- [Human Subtask Perception Training](#human-subtask-perception-training)
+- [Related Documentation](#related-documentation)
 
 ## Requirements
 
-| Component | Version / Notes |
-|-----------|-----------------|
-| NVIDIA Isaac Sim | **4.5.0** (Workstation installation) |
-| NVIDIA Isaac Lab | Bundled version under `source/` in this repo |
-| Python | 3.10 (conda environment `isaaclab`) |
-| GPU | NVIDIA GPU with CUDA support |
-| OS | Linux (Ubuntu 20.04 / 22.04 recommended) |
+### Verified configurations
+
+The following stacks have been verified in training. Other hardware/OS combinations may also work but have not been tested in this project:
+
+| Isaac Sim | Isaac Lab | OS | GPU | Notes |
+|-----------|-----------|-----|-----|-------|
+| **4.5.0** | **2.0.1** | Ubuntu 20.04 | RTX 4090 | Earlier stable stack |
+| **5.1.0** | **2.3.2** | Ubuntu 22.04 | RTX 5090 | Current recommended stack (`master` branch) |
+
+> Versions must match: 4.x → Python 3.10, 5.x → Python 3.11. Configure the upstream [Isaac Lab](https://github.com/isaac-sim/IsaacLab) repo at the matching tag **before** cloning this project.
+
+### General requirements
+
+For RAM, VRAM, drivers, and other hardware details, see the [Isaac Sim system requirements](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html).
 
 ---
 
 ## Installation
 
-### 1. Install Isaac Sim 4.5.0
+Overall order (**three separate steps — do not skip**):
 
-Follow the [Isaac Sim installation guide](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/install_workstation.html) to install the Workstation edition.
+1. Install and verify **Isaac Sim**
+2. **Separately** clone and configure the official **Isaac Lab** repo (create conda env, install extensions, pass the official tutorial)
+3. Clone **isaac_factory** and reuse the configured conda environment
 
-### 2. Install Isaac Lab Separately
+Recommended directory layout:
 
-Clone the [official Isaac Lab repository](https://github.com/isaac-sim/IsaacLab), create the `_isaac_sim` symlink, and set up the conda environment:
-
-```bash
-git clone https://github.com/isaac-sim/IsaacLab.git
-cd IsaacLab
-
-# Link Isaac Sim into the repo root (choose one)
-# Option A: Symbolic link (recommended)
-ln -s /path/to/isaac-sim _isaac_sim
-# Option B: Install via pip (isaacsim package; configure ISAAC_PATH manually)
-
-# Create conda environment isaaclab
-./isaaclab.sh --conda isaaclab
-
-# Activate the environment
-conda activate isaaclab
-
-# Install all Isaac Lab extensions
-isaaclab -i
+```
+~/work/
+├── IsaacLab/          # Step 2: official Isaac Lab repo (conda env created here)
+└── isaac_factory/     # Step 3: this project (hc_factory + train.py)
 ```
 
-### 3. Install This Repository (isaac_factory)
+See the [Isaac Lab installation overview](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html) and [binaries + source installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html).
 
-With the `isaaclab` environment activated, clone this repo:
+### 1. Install and verify Isaac Sim
+
+Install the Workstation pre-built package for your target version:
+
+| Version | Official guide |
+|---------|----------------|
+| 4.5.0 | [Isaac Sim 4.5.0 installation](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/install_workstation.html) |
+| 5.1.0 | [Isaac Sim 5.1.0 installation](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_workstation.html) |
+
+After extracting, set environment variables (adjust paths as needed):
 
 ```bash
-git clone git@github.com:jintaoXue/isaac_factory.git
+export ISAACSIM_PATH="${HOME}/isaacsim"
+export ISAACSIM_PYTHON_EXE="${ISAACSIM_PATH}/python.sh"
+```
+
+**Verify Isaac Sim can start:**
+
+```bash
+# Launch the simulator (--help for all options)
+${ISAACSIM_PATH}/isaac-sim.sh
+
+# Verify Python and a standalone script
+${ISAACSIM_PYTHON_EXE} -c "print('Isaac Sim configuration is now complete.')"
+${ISAACSIM_PYTHON_EXE} ${ISAACSIM_PATH}/standalone_examples/api/isaacsim.core.api/add_cubes.py
+```
+
+After upgrading from an older release, run once: `${ISAACSIM_PATH}/isaac-sim.sh --reset-user`.
+
+### 2. Configure the Isaac Lab repo separately
+
+> **Important:** Complete this step first. Isaac Lab and `isaac_factory` are **two separate Git repos**. Run conda setup and `./isaaclab.sh --install` inside the **IsaacLab** directory.
+
+Follow the [official Isaac Lab installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html):
+
+```bash
+cd ~/work
+
+# 5.1.0 stack (recommended)
+git clone --branch v2.3.2 --depth 1 https://github.com/isaac-sim/IsaacLab.git
+cd IsaacLab
+
+# 4.5.0 stack
+# git clone --branch v2.0.1 --depth 1 https://github.com/isaac-sim/IsaacLab.git
+# cd IsaacLab
+
+ln -sfn ${ISAACSIM_PATH} _isaac_sim
+
+./isaaclab.sh --conda isaaclab
+conda activate isaaclab
+
+./isaaclab.sh --install
+```
+
+**Verify inside `~/work/IsaacLab` (must pass before step 3):**
+
+```bash
+conda activate isaaclab
+cd ~/work/IsaacLab
+python scripts/tutorials/00_sim/create_empty.py
+```
+
+Version-specific installation guides:
+
+- Sim 4.5.0 + Lab 2.0.1 → [v2.0.1 installation](https://isaac-sim.github.io/IsaacLab/v2.0.1/source/setup/installation/binaries_installation.html)
+- Sim 5.1.0 + Lab 2.3.2 → [v2.3.2 installation](https://isaac-sim.github.io/IsaacLab/v2.3.2/source/setup/installation/binaries_installation.html)
+
+### 3. Clone isaac_factory and trial run
+
+After Isaac Lab is configured and `create_empty.py` runs successfully, clone this project in a **separate directory**:
+
+```bash
+cd ~/work
+git clone https://github.com/jintaoXue/isaac_factory.git
 cd isaac_factory
+
+# _isaac_sim link is also required to run train.py from this repo
+ln -sfn ${ISAACSIM_PATH} _isaac_sim
+
+# Reuse the conda env from step 2 — no need to run --conda / --install again
+conda activate isaaclab
+```
+
+Place USD/map files per [Data Assets](#data-assets), then run:
+
+```bash
+python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0 --headless
 ```
 
 ---
@@ -97,6 +175,9 @@ python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 4 --device cuda:1
 
 # Headless mode (server / batch training)
 python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 4 --device cuda:1 --headless
+
+# Headless + cameras / perception collection (requires rendering kit)
+python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0 --headless --enable_cameras
 ```
 
 The registered Gym environment ID is **`HRTPaHC-v1`** (Human-Robot Task Planning and Allocation for HC Factory). The default algorithm is **`rule_based`** (a four-layer rule-based multi-agent policy).
@@ -116,6 +197,7 @@ Run logs are saved under `logs/rl_games/HcFactory/`.
 | `--num_envs` | Number of parallel simulation environments | 3 |
 | `--device` | CUDA device | `cuda:0` |
 | `--headless` | Run without GUI | off |
+| `--enable_cameras` | Enable cameras and offscreen RTX rendering (required for headless image capture) | off |
 | `--seed` | Random seed | 42 |
 | `--test` | Test mode (load checkpoint) | off |
 | `--wandb_activate` | Enable Weights & Biases logging | off |
@@ -291,9 +373,115 @@ Process and task definitions are in `env_asset_cfg/cfg_process_task_gallery.py` 
 
 ---
 
+## Human Subtask Perception Training
+
+The `perception` module learns to estimate **each working human's current subtask** from factory camera images (and optional structured signals). It runs in two phases: **collect** data inside simulation, then **train** offline.
+
+Configuration: `env_asset_cfg/cfg_perception.py` (collection / training hyperparameters), `env_asset_cfg/cfg_camera.py` (camera poses). Implementation: `src/perception.py`.
+
+### Experiment Design
+
+**Goal:** At every simulation step, for every human with `state != free`, predict:
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `subtask_name` | 9-class classification | Human-column subtask, e.g. `go_to_material`, `control_gantry`, `wait` |
+| `subtask_done` | binary | Whether the current human subtask is finished |
+
+**Inputs (model):**
+
+| Modality | Shape / format | Source |
+|----------|----------------|--------|
+| Multi-camera RGB | `(N_cam, 3, 224, 224)` | Fixed factory cameras (`cfg_camera.py`); ResNet18 per view |
+| Agent signals (optional) | 8-dim vector | Privileged task-record features: `subtask_index`, `num_subtasks`, four `finished` flags, two `wait` flags |
+
+**Ground truth (logged in `meta.jsonl`):**
+
+- From simulation `subtasks_dict`: `subtask_name = ongoing[human]`, `subtask_done = finished[human]`
+- Also logged per step: `task`, `subtask_index`, `area_id`, full-scene `human_labels`, `agent_signals`, `task_records`
+- Humans with `state == free` are context only; they are **not** prediction targets
+- Label vocab: `HumanSubtaskVocab` and `TaskVocab` in `cfg_perception.py` (synced with process galleries)
+
+**Loss:** `CrossEntropy(subtask_name) + BCE(subtask_done)`
+
+**Dataset layout** (default `output/perception_dataset/`):
+
+```
+perception_dataset/
+├── manifest.json
+└── env_00_episode_000000/
+    ├── meta.jsonl              # one JSON object per saved step
+    └── cameras/step_000123/    # multi-camera JPGs for that step
+```
+
+### Data Collection
+
+1. In `env_asset_cfg/cfg_perception.py`, enable collection:
+
+```python
+CfgPerception = {
+    "enabled": True,
+    "mode": "collect",   # collect | infer | off
+    ...
+}
+```
+
+2. Ensure cameras are registered (`CfgCameraRegistrationInfos` in `cfg_camera.py`).
+
+3. Run simulation (single env recommended for a clean dataset):
+
+```bash
+python train.py \
+  --task HRTPaHC-v1 \
+  --algo rule_based \
+  --num_envs 1 \
+  --device cuda:0 \
+  --headless \
+  --enable_cameras
+```
+
+Data is written under:
+
+`source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset/`
+
+Tune `save_interval`, `max_episodes`, and `max_steps_per_episode` in `CfgPerception`.
+
+### Offline Training
+
+From the project root with the `isaaclab` environment activated:
+
+```bash
+python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/perception.py train \
+  --dataset_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset \
+  --output_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_runs \
+  --run_name subtask_baseline \
+  --epochs 20 \
+  --batch_size 16 \
+  --device cuda:0
+```
+
+Checkpoints are saved to `output/perception_runs/subtask_baseline/` (`best.pt`, `last.pt`, `history.json`).
+
+**Evaluation:**
+
+```bash
+python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/perception.py eval \
+  --dataset_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset \
+  --checkpoint source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_runs/subtask_baseline/best.pt \
+  --device cuda:0
+```
+
+**Inference in simulation:** set `CfgPerception["mode"] = "infer"` and `checkpoint_path` to a trained `best.pt`.
+
+---
+
 ## Related Documentation
 
-- [Isaac Lab Documentation](https://isaac-sim.github.io/IsaacLab/main/index.html)
-- [Isaac Sim 4.5.0 Documentation](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/index.html)
-- [Isaac Sim Livestream Client](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/manual_livestream_clients.html)
+- [Isaac Lab installation overview](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html)
+- [Isaac Lab binaries + source installation](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html)
+- [Isaac Lab documentation](https://isaac-sim.github.io/IsaacLab/main/index.html)
+- [Isaac Sim system requirements](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html)
+- [Isaac Sim 5.1.0 documentation](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/index.html)
+- [Isaac Sim 4.5.0 documentation](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/index.html)
+- [Isaac Sim Livestream client](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/manual_livestream_clients.html)
 - Development notes: `coding_note.md`

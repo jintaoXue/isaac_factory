@@ -1,8 +1,10 @@
-# Isaac Factory — 海创工厂生产仿真环境
+# Isaac Factory — 海创（HC）工厂人机协同生产仿真
 
-基于 [NVIDIA Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/index.html) 与 [NVIDIA Isaac Sim](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html) 构建的**人机协同工厂生产调度仿真环境**，用于模拟水喉（`ProductWaterPipe`）等产品的多工序制造流程，并支持四层实时决策智能体的训练与评估。
+基于 [NVIDIA Isaac Sim](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html) 与 [NVIDIA Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/index.html) 的**工厂级生产调度仿真环境**：在三维场景中复现海创（HC）工厂的机器、人员、机器人与物流，模拟水喉（`ProductWaterPipe`）等多工序制造流程，并支持四层实时决策智能体的训练、评估与视觉感知数据采集。
 
-> English version: [README.md](README.md)
+> English: [README.md](README.md)
+
+**推荐软件栈（`master`）：** Isaac Sim **5.1.0** + Isaac Lab **2.3.2** · Ubuntu 22.04 · RTX 5090
 
 ---
 
@@ -16,58 +18,134 @@
 - [远程可视化（Livestream）](#远程可视化livestream)
 - [框架架构（hc_factory）](#框架架构hc_factory)
 - [项目结构](#项目结构)
-- [工厂与产品说明](#工厂与产品说明)
-
----
+- [工厂与产品说明](#工厂与产品说明)  
+- [Human Subtask 感知训练](#human-subtask-感知训练)
+- [相关文档](#相关文档)
 
 ## 环境要求
 
-| 组件 | 版本 / 说明 |
-|------|-------------|
-| NVIDIA Isaac Sim | **4.5.0**（Workstation 安装） |
-| NVIDIA Isaac Lab | 与本仓库 `source/` 目录内嵌版本一致 |
-| Python | 3.10（conda 环境 `isaaclab`） |
-| GPU | 支持 CUDA 的 NVIDIA GPU |
-| 操作系统 | Linux（推荐 Ubuntu 20.04 / 22.04） |
+### 本仓库已验证环境
+
+以下组合已在实际训练中验证通过；其他硬件/系统组合也可能可用，但尚未在本项目中测试：
+
+| Isaac Sim | Isaac Lab | 操作系统 | GPU | 说明 |
+|-----------|-----------|----------|-----|------|
+| **4.5.0** | **2.0.1** | Ubuntu 20.04 | RTX 4090 | 早期稳定栈 |
+| **5.1.0** | **2.3.2** | Ubuntu 22.04 | RTX 5090 | 当前推荐栈（`master` 分支） |
+
+> 版本需配套：4.x 对应 Python 3.10，5.x 对应 Python 3.11。须先按对应标签安装上游 [Isaac Lab](https://github.com/isaac-sim/IsaacLab)，再克隆本仓库。
+
+### 通用要求
+
+RAM、显存、驱动等硬件要求请参考 [Isaac Sim 系统要求（System Requirements）](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html)。
 
 ---
 
 ## 安装步骤
 
-### 1. 安装 Isaac Sim 4.5.0
+整体顺序（**三个独立步骤，不可跳过**）：
 
-按 [Isaac Sim 官方安装文档](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/install_workstation.html) 完成 Workstation 版安装。
+1. 安装并验证 **Isaac Sim**
+2. **单独**克隆、配置官方 **Isaac Lab** 仓库（创建 conda 环境、安装扩展、跑通官方示例）
+3. 再克隆本仓库 **isaac_factory**，复用已配置好的 conda 环境
 
-### 2. 单独安装 Isaac Lab
+推荐目录布局：
 
-克隆 [Isaac Lab 官方仓库](https://github.com/isaac-sim/IsaacLab)，创建符号链接 `_isaac_sim`，并配置 conda 环境：
-
-```bash
-git clone https://github.com/isaac-sim/IsaacLab.git
-cd IsaacLab
-
-# 将 Isaac Sim 链接到仓库根目录（二选一）
-# 方式 A：符号链接（推荐）
-ln -s /path/to/isaac-sim _isaac_sim
-# 方式 B：通过 pip 安装 isaacsim 包（需自行配置 ISAAC_PATH）
-
-# 创建 conda 环境 isaaclab
-./isaaclab.sh --conda isaaclab
-
-# 激活环境
-conda activate isaaclab
-
-# 安装 Isaac Lab 全部扩展
-isaaclab -i
+```
+~/work/
+├── IsaacLab/          # 步骤 2：官方 Isaac Lab 仓库（conda 环境在此创建）
+└── isaac_factory/     # 步骤 3：本项目（hc_factory 环境与 train.py）
 ```
 
-### 3. 安装本仓库（isaac_factory）
+详细流程以 [Isaac Lab 本地安装总览](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html) 与 [预编译 Isaac Sim + 源码 Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html) 为准。
 
-在已激活 `isaaclab` 环境的前提下，克隆本仓库：
+### 1. 安装并验证 Isaac Sim
+
+按所选版本安装 Workstation 预编译包：
+
+| 版本 | 官方安装文档 |
+|------|----------------|
+| 4.5.0 | [Isaac Sim 4.5.0 安装](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/install_workstation.html) |
+| 5.1.0 | [Isaac Sim 5.1.0 安装](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_workstation.html) |
+
+解压后建议设置环境变量（路径按实际安装位置修改）：
 
 ```bash
-git clone git@github.com:jintaoXue/isaac_factory.git
+export ISAACSIM_PATH="${HOME}/isaacsim"
+export ISAACSIM_PYTHON_EXE="${ISAACSIM_PATH}/python.sh"
+```
+
+**验证 Isaac Sim 能否正常启动：**
+
+```bash
+# 启动仿真器（可加 --help 查看参数）
+${ISAACSIM_PATH}/isaac-sim.sh
+
+# 验证 Python 与独立脚本
+${ISAACSIM_PYTHON_EXE} -c "print('Isaac Sim configuration is now complete.')"
+${ISAACSIM_PYTHON_EXE} ${ISAACSIM_PATH}/standalone_examples/api/isaacsim.core.api/add_cubes.py
+```
+
+若从旧版本升级，首次启动建议执行：`${ISAACSIM_PATH}/isaac-sim.sh --reset-user`。
+
+### 2. 单独配置 Isaac Lab 仓库
+
+> **重要：** 必须先完成本步骤。Isaac Lab 与 `isaac_factory` 是**两个独立的 Git 仓库**；conda 环境、`./isaaclab.sh --install` 均在 **IsaacLab** 目录下执行。
+
+按 [Isaac Lab 官方安装文档](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html) 操作：
+
+```bash
+cd ~/work
+
+# 5.1.0 栈（推荐）
+git clone --branch v2.3.2 --depth 1 https://github.com/isaac-sim/IsaacLab.git
+cd IsaacLab
+
+# 4.5.0 栈
+# git clone --branch v2.0.1 --depth 1 https://github.com/isaac-sim/IsaacLab.git
+# cd IsaacLab
+
+ln -sfn ${ISAACSIM_PATH} _isaac_sim
+
+./isaaclab.sh --conda isaaclab
+conda activate isaaclab
+
+./isaaclab.sh --install
+```
+
+**在 IsaacLab 目录下验证（必须通过后再进行步骤 3）：**
+
+```bash
+conda activate isaaclab
+cd ~/work/IsaacLab
+python scripts/tutorials/00_sim/create_empty.py
+```
+
+版本对齐文档：
+
+- Sim 4.5.0 + Lab 2.0.1 → [v2.0.1 安装说明](https://isaac-sim.github.io/IsaacLab/v2.0.1/source/setup/installation/binaries_installation.html)
+- Sim 5.1.0 + Lab 2.3.2 → [v2.3.2 安装说明](https://isaac-sim.github.io/IsaacLab/v2.3.2/source/setup/installation/binaries_installation.html)
+
+### 3. 克隆 isaac_factory 并试跑
+
+Isaac Lab 仓库配置完成且 `create_empty.py` 跑通后，**另起目录**克隆本项目：
+
+```bash
+cd ~/work
+git clone https://github.com/jintaoXue/isaac_factory.git
 cd isaac_factory
+
+# 本仓库运行 train.py 时同样需要 _isaac_sim 链接
+ln -sfn ${ISAACSIM_PATH} _isaac_sim
+
+# 复用步骤 2 中已创建的 conda 环境，无需重新 --conda / --install
+conda activate isaaclab
+```
+
+按 [数据资产](#数据资产) 放置 USD 与地图文件后试跑：
+
+```bash
+python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0 --headless
 ```
 
 ---
@@ -97,6 +175,9 @@ python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 4 --device cuda:1
 
 # 无头模式（服务器 / 批量训练）
 python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 4 --device cuda:1 --headless
+
+# 无头 + 相机 / 感知采集（需启用渲染 kit）
+python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0 --headless --enable_cameras
 ```
 
 当前注册的 Gym 环境 ID 为 **`HRTPaHC-v1`**（Human-Robot Task Planning and Allocation for HC Factory），默认算法为 **`rule_based`**（基于规则的四层多智能体决策）。
@@ -116,6 +197,7 @@ python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 4 --device cuda:1
 | `--num_envs` | 并行仿真环境数量 | 3 |
 | `--device` | CUDA 设备 | `cuda:0` |
 | `--headless` | 无 GUI 模式 | 关闭 |
+| `--enable_cameras` | 启用相机与离屏 RTX 渲染（headless 下采集图像必需） | 关闭 |
 | `--seed` | 随机种子 | 42 |
 | `--test` | 测试模式（加载 checkpoint） | 关闭 |
 | `--wandb_activate` | 启用 Weights & Biases 日志 | 关闭 |
@@ -291,9 +373,115 @@ isaac_factory/
 
 ---
 
+## Human Subtask 感知训练
+
+`perception` 模块用于从工厂多相机图像（及可选结构化信号）估计**每个正在作业的 human 当前 subtask**。流程分两步：仿真内 **collect** 采集数据，再离线 **train** 训练。
+
+配置文件：`env_asset_cfg/cfg_perception.py`（采集与训练超参）、`env_asset_cfg/cfg_camera.py`（相机位姿）。实现代码：`src/perception.py`。
+
+### 实验设计
+
+**目标：** 每个仿真步，对所有 `state != free` 的 human 预测：
+
+| 输出 | 类型 | 说明 |
+|------|------|------|
+| `subtask_name` | 9 类分类 | human 列 subtask，如 `go_to_material`、`control_gantry`、`wait` |
+| `subtask_done` | 二分类 | 当前 human subtask 是否已完成 |
+
+**模型输入：**
+
+| 模态 | 形状 / 格式 | 来源 |
+|------|-------------|------|
+| 多相机 RGB | `(N_cam, 3, 224, 224)` | 固定工厂相机（`cfg_camera.py`）；每视角 ResNet18 编码 |
+| Agent signals（可选） | 8 维向量 | 特权 task-record 特征：`subtask_index`、`num_subtasks`、四列 `finished`、两列 `wait` 标志 |
+
+**Ground Truth（写入 `meta.jsonl`）：**
+
+- 来自仿真 `subtasks_dict`：`subtask_name = ongoing[human]`，`subtask_done = finished[human]`
+- 每步同时记录：`task`、`subtask_index`、`area_id`、全场景 `human_labels`、`agent_signals`、`task_records`
+- `state == free` 的 human 仅作场景上下文，**不作为预测目标**
+- 标签词表见 `cfg_perception.py` 中的 `HumanSubtaskVocab`、`TaskVocab`（与工艺 gallery 同步）
+
+**损失函数：** `CrossEntropy(subtask_name) + BCE(subtask_done)`
+
+**数据集目录结构**（默认 `output/perception_dataset/`）：
+
+```
+perception_dataset/
+├── manifest.json
+└── env_00_episode_000000/
+    ├── meta.jsonl              # 每个保存步一行 JSON
+    └── cameras/step_000123/    # 该步多相机 JPG
+```
+
+### 数据采集
+
+1. 在 `env_asset_cfg/cfg_perception.py` 中开启采集：
+
+```python
+CfgPerception = {
+    "enabled": True,
+    "mode": "collect",   # collect | infer | off
+    ...
+}
+```
+
+2. 确认相机已注册（`cfg_camera.py` 中 `CfgCameraRegistrationInfos`）。
+
+3. 运行仿真（建议 `num_envs=1`，便于整理数据集）：
+
+```bash
+python train.py \
+  --task HRTPaHC-v1 \
+  --algo rule_based \
+  --num_envs 1 \
+  --device cuda:0 \
+  --headless \
+  --enable_cameras
+```
+
+数据默认写入：
+
+`source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset/`
+
+可通过 `CfgPerception` 中的 `save_interval`、`max_episodes`、`max_steps_per_episode` 控制采集量。
+
+### 离线训练
+
+在项目根目录、已激活 `isaaclab` 环境下执行：
+
+```bash
+python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/perception.py train \
+  --dataset_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset \
+  --output_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_runs \
+  --run_name subtask_baseline \
+  --epochs 20 \
+  --batch_size 16 \
+  --device cuda:0
+```
+
+Checkpoint 保存在 `output/perception_runs/subtask_baseline/`（`best.pt`、`last.pt`、`history.json`）。
+
+**评估：**
+
+```bash
+python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/perception.py eval \
+  --dataset_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset \
+  --checkpoint source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_runs/subtask_baseline/best.pt \
+  --device cuda:0
+```
+
+**仿真内推理：** 将 `CfgPerception["mode"]` 设为 `"infer"`，并配置 `checkpoint_path` 指向训练好的 `best.pt`。
+
+---
+
 ## 相关文档
 
+- [Isaac Lab 安装总览](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html)
+- [Isaac Lab 预编译 Sim + 源码 Lab 安装](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/binaries_installation.html)
 - [Isaac Lab 官方文档](https://isaac-sim.github.io/IsaacLab/main/index.html)
+- [Isaac Sim 系统要求](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html)
+- [Isaac Sim 5.1.0 文档](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/index.html)
 - [Isaac Sim 4.5.0 文档](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/index.html)
 - [Isaac Sim Livestream 客户端](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/manual_livestream_clients.html)
 - 开发笔记：`coding_note.md`

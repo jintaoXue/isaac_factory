@@ -24,8 +24,6 @@ import os
 # from .......isaaclab.isaaclab.envs.common import ViewerCfg
 from isaaclab.envs.common import ViewerCfg
 
-from ..hc_env_window import HcEnvWindow
-
 
 
 SingleEnvStateActionDictTemplate : dict = {
@@ -153,7 +151,7 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     camera_capture_interval = 6
     # viewer
     viewer: HcViewerCfg = HcViewerCfg()
-    ui_window_class_type: type | None = HcEnvWindow
+    ui_window_class_type: type | None = None
     #dynamic env len settings, for human 1-3 x robot 1-3, <= 1500
     # train_env_len_setting = [[4000, 4000, 4000], [1800, 1800, 1800], [1500, 1500, 1500]]
     train_env_len_setting = [[3500, 2000, 2000], [1800, 1500, 1500], [1800, 1400, 1400]]

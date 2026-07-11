@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from .cfg_process_subtask_gallery import CfgSubtaskPredefinedTimeGallery
+from .cfg_process_task_gallery import CfgProcessTaskGalleryInAll
 
 # agent column index in subtasks row: human=0, gantry=1, machine=2, robot=3
 AGENT_COL_HUMAN = 0
@@ -13,6 +13,73 @@ AGENT_COL_ROBOT = 3
 _DEFAULT_OUTPUT_DIR = (
     Path(__file__).resolve().parent.parent / "output" / "perception_dataset"
 )
+
+# ---------------------------------------------------------------------------
+# Perception 标签集合（直接枚举，与 cfg_process_*_gallery 一致）
+# 目标：推断每个 human 当前的 task + subtask
+# ---------------------------------------------------------------------------
+
+# human 无任务时 human_labels.state = "free"，task/subtask_name 为 null
+
+# --- human 列 subtask（全集）---
+HumanSubtaskLabels = [
+    "go_to_material",
+    "material_on_gantry",
+    "control_gantry",
+    "material_on_robot",
+    "go_to_goal_area",
+    "material_on_goal_area",
+    "go_to_processing_machine",
+    "control_machine",
+    "wait",
+    "done",
+]
+
+# 训练分类 vocab（排除终端 done）
+HumanSubtaskVocab = [
+    "go_to_material",
+    "material_on_gantry",
+    "control_gantry",
+    "material_on_robot",
+    "go_to_goal_area",
+    "material_on_goal_area",
+    "go_to_processing_machine",
+    "control_machine",
+    "wait",
+]
+
+# --- 工艺 task（与 CfgProcessTaskGalleryInAll 同步）---
+TaskLabelToIndex: dict[str, int] = dict(CfgProcessTaskGalleryInAll)
+TaskLabels: list[str] = sorted(TaskLabelToIndex, key=TaskLabelToIndex.get)
+# 训练用：排除 none，free human 的 GT task 为 null
+TaskVocab: list[str] = [t for t in TaskLabels if t != "none"]
+
+# --- 伙伴列 subtask（供 agent_signals 参考，非 human 预测目标）---
+GantrySubtaskLabels = [
+    "go_to_material",
+    "carry_to_robot",
+    "carry_to_goal_area",
+    "move_to_goal_area",
+    "go_to_processing_machine",
+    "finding_free_gantry",
+    "wait",
+    "done",
+    "none",
+]
+
+MachineSubtaskLabels = [
+    "process",
+    "wait",
+    "done",
+    "none",
+]
+
+RobotSubtaskLabels = [
+    "go_to_material",
+    "carry_to_goal_area",
+    "wait",
+    "done",
+]
 
 # ---------------------------------------------------------------------------
 # 跨智能体 subtask 耦合规则（来自 cfg_process_subtask_gallery.py）
@@ -52,43 +119,30 @@ IndependentSubtaskRows: list[tuple[str, int, str]] = [
     ("wait", AGENT_COL_GANTRY, "finding_free_gantry"),
 ]
 
-# 单步采集样本模板（logger 按此结构写入 meta.jsonl）
+# meta.jsonl：一行 = 一个 working human 的一个样本（free 不写入）
 PerceptionSampleTemplate = {
     "episode_id": 0,
     "step_id": 0,
     "time_step": 0,
     "env_id": 0,
-    # 图像路径相对 episode 目录，如 cameras/step_000123/camera_xxx.jpg
+    "human_key": "num_00_NormalHuman",
+    "human_index": 0,
+    "product_index": 0,
+    "task": "logistic_for_pipe_cutting",
+    "subtask_index": 0,
+    "subtask_name": "go_to_material",
+    "subtask_done": False,
+    "area_id": 202,
+    # 同一步各 human 样本共享相机路径
     "camera_paths": {},
-    # 结构化文本上下文（供训练 / VLM prompt）
+    # 该 human 对应 product 的 task-record 信号（训练可选输入）
+    "agent_signal": {
+        "subtask_index": 0,
+        "num_subtasks": 9,
+        "ongoing_row": ["go_to_material", "go_to_material", "wait", "go_to_material"],
+        "finished": [False, False, False, False],
+    },
     "text_context": "",
-    # GT：每个 human 的 subtask 进度
-    "human_labels": {
-        # "num_00_NormalHuman": {
-        #     "human_index": 0,
-        #     "state": "free",
-        #     "ongoing_task_record_index": None,
-        #     "current_area_id": 56,
-        #     "target_area_id": None,
-        #     "task": None,
-        #     "task_type": None,
-        #     "subtask_index": None,
-        #     "subtask_name": None,
-        #     "subtask_done": None,
-        #     "animation_pose": "idle",
-        # }
-    },
-    # 可直接读取的机器/机器人信号（训练时可作 privileged input）
-    "agent_signals": {
-        # product_index: {
-        #     "task": "logistic_for_pipe_cutting",
-        #     "subtask_index": 2,
-        #     "ongoing_row": ["control_gantry", "carry_to_robot", "wait", "wait"],
-        #     "finished": [False, True, True, False],
-        # }
-    },
-    # 完整 task record（JSON-serializable 子集）
-    "task_records": {},
 }
 
 CfgPerception = {
@@ -103,8 +157,7 @@ CfgPerception = {
     "save_images": True,
     "image_format": "jpg",
     "image_quality": 90,
-    "serialize_task_records": True,
-    "build_text_context": True,
+    "build_text_context": False,
     # infer 模式加载的 checkpoint
     "checkpoint_path": None,
     "use_constraint_propagation": True,
@@ -121,15 +174,9 @@ CfgPerceptionTraining = {
     "val_ratio": 0.15,
     "num_workers": 4,
     "device": "cuda:0",
-    # 训练目标
-    "predict_subtask_name": True,
+    # 训练目标：仅预测 human subtask 是否完成
     "predict_subtask_done": True,
     "use_agent_signals": True,
-    "use_text_features": False,
-    "temporal_window": 1,
+    "signal_dim": 6,
     "image_size": 224,
-    "backbone": "resnet18",
-    "subtask_vocab": sorted(
-        k for k in CfgSubtaskPredefinedTimeGallery if k not in ("done", "none")
-    ),
 }
