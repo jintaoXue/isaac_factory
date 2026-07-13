@@ -175,3 +175,9 @@ storage 的管理
 
 
 #7.10 collision check的逻辑
+
+
+#7.13
+告诉图片里面出现了哪些human id robot id
+human id和robot id 的状态
+如果是working, doing what subtask, done or not done?
