@@ -3,11 +3,11 @@ import os
 import torch
 
 CfgRoute = {
-    "map_path_human": "~/work/isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/cfg_route/occupancy_map4human.png",
-    "points_path_human": "~/work/isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/cfg_route/map_points_human.json",
+    "map_path_human": "~/work/isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/route/occupancy_map4human.png",
+    "points_path_human": "~/work/isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/route/map_points_human.json",
     "routes_path_human": "~/work/Dataset/HC_data/map_data/map_routes_human.json",
-    "map_path_robot": "~/work/isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/cfg_route/occupancy_map4robot.png",
-    "points_path_robot": "~/work/isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/cfg_route/map_points_robot.json",
+    "map_path_robot": "~/work/isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/route/occupancy_map4robot.png",
+    "points_path_robot": "~/work/isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/route/map_points_robot.json",
     "routes_path_robot": "~/work/Dataset/HC_data/map_data/map_routes_robot.json",   
     "png_image_coordinates": {
         "top_left": [0, 0],
@@ -71,8 +71,8 @@ CfgRoute = {
 OptionalInitPointIds = {
     "human": [190, 191, 192, 193, 194, 195, 202, 203, 204, 205, 206, 207, 214, 215, 216, 217, 218, 219],
     "robot": [236, 272],
-    "human_z": 0.1779,
-    "robot_z": 0.24478,
+    "human_z": 0.13395,
+    "robot_z": 0.13395,
 }
 
 

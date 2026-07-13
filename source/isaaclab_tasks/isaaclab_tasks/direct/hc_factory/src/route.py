@@ -1,4 +1,4 @@
-from ..env_asset_cfg.cfg_route.cfg_route import CfgRoute, OptionalInitPointIds
+from ..env_asset_cfg.route.cfg_route import CfgRoute, OptionalInitPointIds
 from .utils import quat_multiply_wxyz, quaternion_wxyz_to_yaw, yaw_to_quaternion_wxyz
 from . import route_collision as rc
 import heapq

@@ -332,7 +332,7 @@ isaac_factory/
 │           │   ├── cfg_human.py              # 人工配置
 │           │   ├── cfg_robot.py              # 机器人配置
 │           │   ├── cfg_storage.py            # 仓储配置
-│           │   └── cfg_route/                # 路径规划配置与地图点
+│           │   └── route/                    # 路径规划配置与地图点
 │           ├── src/                  # 运行时 Manager 实现
 │           │   ├── machine.py
 │           │   ├── material.py
@@ -377,7 +377,7 @@ isaac_factory/
 
 `perception` 模块用于从工厂多相机图像（及可选结构化信号）估计**每个正在作业的 human 当前 subtask**。流程分两步：仿真内 **collect** 采集数据，再离线 **train** 训练。
 
-配置文件：`env_asset_cfg/cfg_perception.py`（采集与训练超参）、`env_asset_cfg/cfg_camera.py`（相机位姿）。实现代码：`src/perception.py`。
+配置文件：`env_asset_cfg/perception/cfg_perception.py`（采集与训练超参）、`env_asset_cfg/perception/cfg_camera.py`（相机位姿与可见区域 JSON）。实现代码：`src/perception.py`。
 
 ### 实验设计
 
@@ -416,7 +416,7 @@ perception_dataset/
 
 ### 数据采集
 
-1. 在 `env_asset_cfg/cfg_perception.py` 中开启采集：
+1. 在 `env_asset_cfg/perception/cfg_perception.py` 中开启采集：
 
 ```python
 CfgPerception = {
@@ -426,7 +426,7 @@ CfgPerception = {
 }
 ```
 
-2. 确认相机已注册（`cfg_camera.py` 中 `CfgCameraRegistrationInfos`）。
+2. 确认相机已注册（`perception/cfg_camera.py` 中 `CfgCameraRegistrationInfos`）。
 
 3. 运行仿真（建议 `num_envs=1`，便于整理数据集）：
 

@@ -36,7 +36,7 @@ from .src.perception import PerceptionManager
 from .src.storage import StorageManager
 from .src.route import RouteManagerVectorEnv
 from .env_asset_cfg.cfg_hc_env import SingleEnvStateActionDictTemplate, HcVectorEnvCfg
-from .env_asset_cfg.cfg_perception import CfgPerception
+from .env_asset_cfg.perception.cfg_perception import CfgPerception
 from .src.algo_multiagent_masker import AlgoMultiAgentMasker
 from .src.task_progress_manager import TaskManager
 from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.src import algo_multiagent_masker

@@ -12,6 +12,7 @@ from typing import Any
 
 _HC_FACTORY = Path(__file__).resolve().parents[1]
 _CFG_DIR = _HC_FACTORY / "env_asset_cfg"
+_CFG_PKG_DIR = _CFG_DIR / "perception"
 
 
 def _load_cfg_perception_module():
@@ -21,7 +22,6 @@ def _load_cfg_perception_module():
         "cfg_machine",
         "cfg_process_subtask_gallery",
         "cfg_process_task_gallery",
-        "cfg_perception",
     ):
         full = f"{pkg}.{name}"
         if full in sys.modules:
@@ -34,11 +34,22 @@ def _load_cfg_perception_module():
         mod.__package__ = pkg
         sys.modules[full] = mod
         spec.loader.exec_module(mod)
-    return sys.modules[f"{pkg}.cfg_perception"]
+
+    full = f"{pkg}.cfg_perception"
+    if full not in sys.modules:
+        path = _CFG_PKG_DIR / "cfg_perception.py"
+        spec = importlib.util.spec_from_file_location(full, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Cannot load {path}")
+        mod = importlib.util.module_from_spec(spec)
+        mod.__package__ = f"{pkg}.perception"
+        sys.modules[full] = mod
+        spec.loader.exec_module(mod)
+    return sys.modules[full]
 
 
 try:
-    from ..env_asset_cfg.cfg_perception import (
+    from ..env_asset_cfg.perception.cfg_perception import (
         AGENT_COL_GANTRY,
         AGENT_COL_HUMAN,
         AGENT_COL_MACHINE,

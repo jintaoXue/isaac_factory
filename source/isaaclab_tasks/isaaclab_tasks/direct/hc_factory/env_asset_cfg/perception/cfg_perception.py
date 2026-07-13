@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from .cfg_process_task_gallery import CfgProcessTaskGalleryInAll
+from ..cfg_process_task_gallery import CfgProcessTaskGalleryInAll
 
 # agent column index in subtasks row: human=0, gantry=1, machine=2, robot=3
 AGENT_COL_HUMAN = 0
@@ -11,7 +11,7 @@ AGENT_COL_MACHINE = 2
 AGENT_COL_ROBOT = 3
 
 _DEFAULT_OUTPUT_DIR = (
-    Path(__file__).resolve().parent.parent / "output" / "perception_dataset"
+    Path(__file__).resolve().parent.parent.parent / "output" / "perception_dataset"
 )
 
 # ---------------------------------------------------------------------------
@@ -83,24 +83,6 @@ RobotSubtaskLabels = [
 
 # ---------------------------------------------------------------------------
 # 跨智能体 subtask 耦合规则（来自 cfg_process_subtask_gallery.py）
-#
-# 同一 subtasks 行里，不同列可以有不同名字；不能用一个全局同义词表强行对齐。
-# 仅当 (human_subtask, partner_col, partner_subtask) 匹配时，
-# 且 partner 列 finished=True，才推断 human 当前 subtask 为 done。
-#
-# logistic_for_pipe_cutting have_AGV 示例:
-#   row2: human=control_gantry,  gantry=carry_to_robot        -> 耦合
-#   row4: human=go_to_goal_area, gantry=move_to_goal_area     -> 不耦合（并行到达）
-#   row6: human=control_gantry,  gantry=carry_to_goal_area    -> 耦合
-#
-# only_have_gantry:
-#   row2: human=go_to_goal_area, gantry=carry_to_goal_area    -> 不耦合
-#
-# pipe_cutting:
-#   row1: human=control_machine, machine=process              -> 耦合
-#   row2: human=wait,            gantry=finding_free_gantry   -> 不耦合
-#   row3: human=control_gantry,  gantry=go_to_processing_machine -> 耦合
-#   row5: human=control_gantry,  gantry=carry_to_goal_area    -> 耦合
 # ---------------------------------------------------------------------------
 CoupledDoneRules: list[tuple[str, int, str]] = [
     ("control_gantry", AGENT_COL_GANTRY, "carry_to_robot"),
@@ -109,7 +91,6 @@ CoupledDoneRules: list[tuple[str, int, str]] = [
     ("control_machine", AGENT_COL_MACHINE, "process"),
 ]
 
-# 以下同名/异名组合为并行任务，伙伴 finished 不能推断 human done
 IndependentSubtaskRows: list[tuple[str, int, str]] = [
     ("go_to_material", AGENT_COL_GANTRY, "go_to_material"),
     ("go_to_material", AGENT_COL_ROBOT, "go_to_material"),
@@ -133,9 +114,7 @@ PerceptionSampleTemplate = {
     "subtask_name": "go_to_material",
     "subtask_done": False,
     "area_id": 202,
-    # 同一步各 human 样本共享相机路径
     "camera_paths": {},
-    # 该 human 对应 product 的 task-record 信号（训练可选输入）
     "agent_signal": {
         "subtask_index": 0,
         "num_subtasks": 9,
@@ -147,10 +126,8 @@ PerceptionSampleTemplate = {
 
 CfgPerception = {
     "enabled": True,
-    # collect: 仿真中采集 | infer: 仿真中推理 | off: 关闭
     "mode": "collect",
     "output_dir": str(_DEFAULT_OUTPUT_DIR),
-    # 每 N 个 env step 存一帧（与 camera_capture_interval 对齐时可设为相同值）
     "save_interval": 1,
     "max_episodes": 200,
     "max_steps_per_episode": None,
@@ -158,7 +135,6 @@ CfgPerception = {
     "image_format": "jpg",
     "image_quality": 90,
     "build_text_context": False,
-    # infer 模式加载的 checkpoint
     "checkpoint_path": None,
     "use_constraint_propagation": True,
 }
@@ -174,7 +150,6 @@ CfgPerceptionTraining = {
     "val_ratio": 0.15,
     "num_workers": 4,
     "device": "cuda:0",
-    # 训练目标：仅预测 human subtask 是否完成
     "predict_subtask_done": True,
     "use_agent_signals": True,
     "signal_dim": 6,

@@ -11,7 +11,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from ..env_asset_cfg.cfg_camera import CfgCamera, CfgCameraRegistrationInfos
+from ..env_asset_cfg.perception.cfg_camera import CfgCamera, CfgCameraRegistrationInfos
 
 _DEBUG_CAMERA_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output" / "debug_camera"
 

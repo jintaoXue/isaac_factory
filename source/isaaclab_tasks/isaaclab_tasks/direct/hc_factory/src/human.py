@@ -3,7 +3,7 @@ import omni.usd
 from pxr import Usd, UsdSkel, Gf, Sdf
 from ..env_asset_cfg.cfg_human import CfgHuman, CfgHumanRegistrationInfos
 from ..env_asset_cfg.cfg_machine import CfgMachine
-from ..env_asset_cfg.cfg_route.cfg_route import RouteOptionalInitPointsInMap, OptionalInitPointIds
+from ..env_asset_cfg.route.cfg_route import RouteOptionalInitPointsInMap, OptionalInitPointIds
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
 from ..env_asset_cfg.cfg_process_subtask_gallery import CfgSubtaskPredefinedTimeGallery
 from .utils import HumanAnimation, quat_multiply_wxyz, yaw_to_quaternion_wxyz
