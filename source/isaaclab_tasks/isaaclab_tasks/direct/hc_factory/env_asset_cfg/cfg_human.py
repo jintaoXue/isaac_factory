@@ -103,6 +103,50 @@ _HUMAN_ANIMATIONS = {
     },
 }
 
+# ---------------------------------------------------------------------------
+# Human ID 外观辨识（安全帽 + 反光马甲颜色）
+#
+# 与 USD 场景中 human_robot_group/human_{idx} 一一对应；idx 即 perception 用的 human id。
+# 参照场景截图（human_00..04 自左向右排列）：
+#   00 红 | 01 绿 | 02 青 | 03 黄 | 04 深蓝
+#
+# USD 材质绑定见 coding_note.md §7.2（Looks/material____________*）。
+# ---------------------------------------------------------------------------
+HumanIdVocab = ["00", "01", "02", "03", "04"]
+
+HumanIdAppearance = {
+    "00": {
+        "prim_suffix": "human_00",
+        "helmet_color": "red",
+        "vest_color": "red",
+        "rgb_hint": (0.90, 0.15, 0.10),
+    },
+    "01": {
+        "prim_suffix": "human_01",
+        "helmet_color": "green",
+        "vest_color": "green",
+        "rgb_hint": (0.20, 0.75, 0.25),
+    },
+    "02": {
+        "prim_suffix": "human_02",
+        "helmet_color": "cyan",
+        "vest_color": "cyan",
+        "rgb_hint": (0.25, 0.80, 0.90),
+    },
+    "03": {
+        "prim_suffix": "human_03",
+        "helmet_color": "yellow",
+        "vest_color": "yellow",
+        "rgb_hint": (0.95, 0.85, 0.15),
+    },
+    "04": {
+        "prim_suffix": "human_04",
+        "helmet_color": "dark_blue",
+        "vest_color": "dark_blue",
+        "rgb_hint": (0.10, 0.25, 0.65),
+    },
+}
+
 CfgHuman = {
     "NumUpperBound": HcVectorEnvCfg().human_number_upper_bound,
     "NormalHuman": {

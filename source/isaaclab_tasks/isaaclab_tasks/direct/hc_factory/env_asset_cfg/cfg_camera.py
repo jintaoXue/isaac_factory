@@ -29,12 +29,12 @@ CAMERA_POSES = {
             "lookat": (-17, 7.76346, 1.0),
         },
     },
-    "storage_for_env":{
-        "camera_num00_storage_for_env": {
-            "eye": (0, 0, 0),
-            "lookat": (0, 0, 0),
-        },
-    },
+    # "storage_for_env":{
+    #     "camera_num00_storage_for_env": {
+    #         "eye": (0, 0, 0),
+    #         "lookat": (0, 0, 0),
+    #     },
+    # },
     "num00_rotaryPipeAutomaticWeldingMachine": {
         "camera_num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
             "eye": (40, 20, 12),
@@ -65,8 +65,8 @@ CAMERA_POSES = {
     },
     "num08_workbench": {
         "camera_num08_workbench": {
-            "eye": (26, 1, 12),
-            "lookat": (26, -4.5, 1.0),
+            "eye": (26, -3, 12),
+            "lookat": (26, -1, 1.0),
         },
     },
 }
