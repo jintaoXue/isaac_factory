@@ -377,7 +377,7 @@ isaac_factory/
 
 `perception` 模块用于从工厂多相机图像（及可选结构化信号）估计**每个正在作业的 human 当前 subtask**。流程分两步：仿真内 **collect** 采集数据，再离线 **train** 训练。
 
-配置文件：`env_asset_cfg/perception/cfg_perception.py`（采集与训练超参）、`env_asset_cfg/perception/cfg_camera.py`（相机位姿与可见区域 JSON）。实现代码：`src/perception.py`。
+配置文件：`env_asset_cfg/perception/cfg_perception.py`（采集与训练超参）、`env_asset_cfg/perception/cfg_camera.py`（相机位姿与手动标定的地面可见区域）。实现代码：`src/perception.py`。
 
 ### 实验设计
 

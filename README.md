@@ -377,7 +377,7 @@ Process and task definitions are in `env_asset_cfg/cfg_process_task_gallery.py` 
 
 The `perception` module learns to estimate **each working human's current subtask** from factory camera images (and optional structured signals). It runs in two phases: **collect** data inside simulation, then **train** offline.
 
-Configuration: `env_asset_cfg/perception/cfg_perception.py` (collection / training hyperparameters), `env_asset_cfg/perception/cfg_camera.py` (camera poses and visibility JSON). Implementation: `src/perception.py`.
+Configuration: `env_asset_cfg/perception/cfg_perception.py` (collection / training hyperparameters), `env_asset_cfg/perception/cfg_camera.py` (camera poses and manually calibrated ground visibility). Implementation: `src/perception.py`.
 
 ### Experiment Design
 
