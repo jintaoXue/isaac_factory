@@ -100,28 +100,108 @@ IndependentSubtaskRows: list[tuple[str, int, str]] = [
     ("wait", AGENT_COL_GANTRY, "finding_free_gantry"),
 ]
 
-# meta.jsonl：一行 = 一个 working human 的一个样本（free 不写入）
+
+
+
+ImageSampleTemplate = {
+    "highrise_for_env": {
+        "camera_num00_highrise_for_env": {
+            "image": "path/to/image.jpg",
+        },
+        "camera_num01_highrise_for_env": {
+            "image": "path/to/image.jpg",
+        },
+    },
+    "storage_area": {
+        "camera_num00_storage_area": {
+            "image": "path/to/image.jpg",
+        },
+    },
+    "num00_rotaryPipeAutomaticWeldingMachine": {
+        "camera_num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
+            "image": "path/to/image.jpg",
+        },
+        "camera_num00_rotaryPipeAutomaticWeldingMachine_part_02_station": {
+            "image": "path/to/image.jpg",
+        },
+    },
+    "num01_weldingRobot": {
+        "camera_num01_weldingRobot_part02_robot_arm_and_base": {
+            "image": "path/to/image.jpg",
+        },
+    },
+    "num02_rollerbedCNCPipeIntersectionCuttingMachine": {
+        "camera_num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
+            "image": "path/to/image.jpg",
+        },
+    },
+    "num04_groovingMachineLarge": {
+        "camera_num04_groovingMachineLarge_part01_large_fixed_base": {
+            "image": "path/to/image.jpg",
+        },
+    },
+    "num08_workbench": {
+        "camera_num08_workbench": {
+            "image": "path/to/image.jpg",
+        },
+    },
+}
+
+
+
+
+# will storage in meta.jsonl file (one line = one env step)
 PerceptionSampleTemplate = {
     "episode_id": 0,
     "step_id": 0,
     "time_step": 0,
     "env_id": 0,
-    "human_key": "num_00_NormalHuman",
-    "human_index": 0,
-    "product_index": 0,
-    "task": "logistic_for_pipe_cutting",
-    "subtask_index": 0,
-    "subtask_name": "go_to_material",
-    "subtask_done": False,
-    "area_id": 202,
-    "camera_paths": {},
-    "agent_signal": {
-        "subtask_index": 0,
-        "num_subtasks": 9,
-        "ongoing_row": ["go_to_material", "go_to_material", "wait", "go_to_material"],
-        "finished": [False, False, False, False],
+    "human_id_recognition": {
+        "input": {
+            "task": "logistic_for_pipe_cutting",
+            "images": ImageSampleTemplate,
+        },
+        "output_label": {
+            "highrise_for_env": {
+                "camera_num00_highrise_for_env": {"human_ids": []},
+                "camera_num01_highrise_for_env": {"human_ids": []},
+            },
+            "storage_area": {
+                "camera_num00_storage_area": {"human_ids": []},
+            },
+            "num00_rotaryPipeAutomaticWeldingMachine": {
+                "camera_num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {"human_ids": []},
+                "camera_num00_rotaryPipeAutomaticWeldingMachine_part_02_station": {"human_ids": []},
+            },
+            "num01_weldingRobot": {
+                "camera_num01_weldingRobot_part02_robot_arm_and_base": {"human_ids": []},
+            },
+            "num02_rollerbedCNCPipeIntersectionCuttingMachine": {
+                "camera_num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {"human_ids": []},
+            },
+            "num04_groovingMachineLarge": {
+                "camera_num04_groovingMachineLarge_part01_large_fixed_base": {"human_ids": []},
+            },
+            "num08_workbench": {
+                "camera_num08_workbench": {"human_ids": []},
+            },
+        },
     },
-    "text_context": "",
+    "human_subtask_recognition": {
+        "input": {
+            "images": ImageSampleTemplate,
+            "human_keys": ["num_00_NormalHuman"],
+            "human_task": ["logistic_for_pipe_cutting"],
+            "human_task_id": [1],
+        },
+        "output_label": {
+            "human_subtask": ["go_to_material"],
+            "human_subtask_id": [0],
+            "human_subtask_done": [False],
+        },
+    },
+    # record only — not used for training
+    "env_state_action_dict": {},
 }
 
 CfgPerception = {
@@ -134,7 +214,7 @@ CfgPerception = {
     "save_images": True,
     "image_format": "jpg",
     "image_quality": 90,
-    "build_text_context": False,
+    "save_env_record": True,
     "checkpoint_path": None,
     "use_constraint_propagation": True,
 }
@@ -142,7 +222,9 @@ CfgPerception = {
 CfgPerceptionTraining = {
     "dataset_dir": str(_DEFAULT_OUTPUT_DIR),
     "output_dir": str(_DEFAULT_OUTPUT_DIR.parent / "perception_runs"),
-    "run_name": "subtask_baseline",
+    "run_name": "perception_baseline",
+    # id | subtask
+    "task": "subtask",
     "batch_size": 16,
     "num_epochs": 20,
     "learning_rate": 1e-4,
@@ -150,8 +232,5 @@ CfgPerceptionTraining = {
     "val_ratio": 0.15,
     "num_workers": 4,
     "device": "cuda:0",
-    "predict_subtask_done": True,
-    "use_agent_signals": True,
-    "signal_dim": 6,
     "image_size": 224,
 }

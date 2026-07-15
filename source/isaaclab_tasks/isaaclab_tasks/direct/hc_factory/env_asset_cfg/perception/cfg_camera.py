@@ -50,47 +50,47 @@ CAMERA_POSES = {
         "camera_num00_storage_area": {
             "eye": (-9, -3, 9),
             "lookat": (-9, -1, 4),
-            "ground_footprint_xy": [[-13.49862, -2.98048], [-4.34776, -2.98048], [-15.0, 4.0], [-3.0, 4.0]],
+            "ground_footprint_xy": [[-13.49862, -2.98048], [-4.34776, -2.98048], [-3.0, 4.0], [-15.0, 4.0]],
         },
     },
     "num00_rotaryPipeAutomaticWeldingMachine": {
         "camera_num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
             "eye": (40, 20, 12),
             "lookat": (40, 14.5, 1.0),
-            "ground_footprint_xy": [[30.39993, 7.7], [49.7, 7.7], [33.7, 19.2], [46.3, 19.2]],
+            "ground_footprint_xy": [[30.39993, 7.7], [49.7, 7.7], [46.3, 19.2], [33.7, 19.2]],
         },
         "camera_num00_rotaryPipeAutomaticWeldingMachine_part_02_station": {
             "eye": (38, 20, 12),
             "lookat": (38, 14.5, 1.0),
-            "ground_footprint_xy": [[29.0, 7.7], [47.5, 7.7], [32.0, 19.2], [44.0, 19.2]],
+            "ground_footprint_xy": [[29.0, 7.7], [47.5, 7.7], [44.0, 19.2], [32.0, 19.2]],
         },
     },
     "num01_weldingRobot": {
         "camera_num01_weldingRobot_part02_robot_arm_and_base": {
             "eye": (24.75003, 20, 12),
             "lookat": (24.75003, 14.5, 1.0),
-            "ground_footprint_xy": [[16.0, 7.7], [34.0, 7.7], [18.52796, 19.2], [30.88481, 19.2]],
+            "ground_footprint_xy": [[16.0, 7.7], [34.0, 7.7], [30.88481, 19.2], [18.52796, 19.2]],
         },
     },
     "num02_rollerbedCNCPipeIntersectionCuttingMachine": {
         "camera_num02_rollerbedCNCPipeIntersectionCuttingMachine_part01_station": {
             "eye": (12, 20.5, 12),
             "lookat": (12, 15, 1.0),
-            "ground_footprint_xy": [[3.0432, 8.2], [20.5, 8.2], [6.0, 19.7], [17.91964, 19.7]],
+            "ground_footprint_xy": [[3.0432, 8.2], [20.5, 8.2], [17.91964, 19.7], [6.0, 19.7]],
         },
     },
     "num04_groovingMachineLarge": {
         "camera_num04_groovingMachineLarge_part01_large_fixed_base": {
             "eye": (-7.65483, 20, 12),
             "lookat": (-7.65483, 14.5, 1.0),
-            "ground_footprint_xy": [[-16.2, 7.7], [1.2, 7.7], [-13.38389, 19.2], [-1.59264, 19.2]],
+            "ground_footprint_xy": [[-16.2, 7.7], [1.2, 7.7], [-1.59264, 19.2], [-13.38389, 19.2]],
         },
     },
     "num08_workbench": {
         "camera_num08_workbench": {
             "eye": (26, -3, 12),
             "lookat": (26, -1, 1.0),
-            "ground_footprint_xy": [[19.59869, -3.7], [32.5, -3.7], [18.75174, 3.7], [33.3215, 3.7]],
+            "ground_footprint_xy": [[19.59869, -3.7], [32.5, -3.7], [33.3215, 3.7], [18.75174, 3.7]],
         },
     },
 }

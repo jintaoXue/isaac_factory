@@ -42,7 +42,7 @@ _WALK_PARAMS = {
     "cycle_length": 22,          # 步态循环帧数（越大越慢）
     "thigh_swing_deg": 18.0,     # 髋关节前后摆幅（步幅）
     "knee_lift_deg": 20.0,       # 摆动相屈膝抬腿高度
-    "knee_stance_deg": 5.0,      # 支撑相膝关节微屈
+    "knprim_suffixee_stance_deg": 5.0,      # 支撑相膝关节微屈
     "foot_lift_deg": 9.0,        # 摆动相踝关节背屈（抬脚）
     "foot_push_deg": 5.0,        # 支撑相蹬地踝关节伸展
     "arm_swing_deg": 22.0,       # 上臂前后摆幅（沿 X 轴）
@@ -115,36 +115,35 @@ _HUMAN_ANIMATIONS = {
 HumanIdVocab = ["00", "01", "02", "03", "04"]
 
 HumanIdAppearance = {
-    "00": {
-        "prim_suffix": "human_00",
-        "helmet_color": "red",
-        "vest_color": "red",
-        "rgb_hint": (0.90, 0.15, 0.10),
-    },
-    "01": {
-        "prim_suffix": "human_01",
-        "helmet_color": "green",
-        "vest_color": "green",
-        "rgb_hint": (0.20, 0.75, 0.25),
-    },
-    "02": {
-        "prim_suffix": "human_02",
-        "helmet_color": "cyan",
-        "vest_color": "cyan",
-        "rgb_hint": (0.25, 0.80, 0.90),
-    },
-    "03": {
-        "prim_suffix": "human_03",
-        "helmet_color": "yellow",
-        "vest_color": "yellow",
-        "rgb_hint": (0.95, 0.85, 0.15),
-    },
-    "04": {
-        "prim_suffix": "human_04",
-        "helmet_color": "dark_blue",
-        "vest_color": "dark_blue",
-        "rgb_hint": (0.10, 0.25, 0.65),
-    },
+    "type_id": 00,
+    "type_name": "NormalHuman",
+    "appearance": {
+        "num_00": {
+            "helmet_color": "red",
+            "vest_color": "red",
+            "rgb_hint": (0.90, 0.15, 0.10),
+        },
+        "num_01": {
+            "helmet_color": "green",
+            "vest_color": "green",
+            "rgb_hint": (0.20, 0.75, 0.25),
+        },
+        "num_02": {
+            "helmet_color": "cyan",
+            "vest_color": "cyan",
+            "rgb_hint": (0.25, 0.80, 0.90),
+        },
+        "num_03": {
+            "helmet_color": "yellow",
+            "vest_color": "yellow",
+            "rgb_hint": (0.95, 0.85, 0.15),
+        },
+        "num_04": {
+            "helmet_color": "dark_blue",
+            "vest_color": "dark_blue",
+            "rgb_hint": (0.10, 0.25, 0.65),
+        },
+    }
 }
 
 CfgHuman = {

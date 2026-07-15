@@ -183,3 +183,11 @@ human id和robot id 的状态
 如果是working, doing what subtask, done or not done?
 
 考虑小车的中心点偏移
+
+#7.15
+
+（2）关于数据采集和任务
+参考cfg_perception.py 模板的input 和 output_label
+
+综上识别任务就两个 一个是多视角各个图片中的human id是哪个
+第二是识别working human的current subtask

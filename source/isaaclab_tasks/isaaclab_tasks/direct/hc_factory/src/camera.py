@@ -172,7 +172,7 @@ class Camera:
 
     @property
     def state_key(self) -> str:
-        return f"num_{self.idx:02d}_{self.type_name}"
+        return f"{self.type_name}"
 
     def reset(self, env_state_action_dict: dict) -> dict:
         self.state = copy.deepcopy(self.reset_state)
