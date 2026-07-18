@@ -1,35 +1,44 @@
 #!/bin/bash
 
-# 检查命令行参数
+# 用法:
+#   ./batch_train.sh 19 cuda:0
+#   ./batch_train.sh 19 20 cuda:0          # 依次跑多个序号
+#   ./batch_train.sh A cuda:0
+#   ./batch_train.sh B
 if [ $# -eq 0 ]; then
-    echo "用法: $0 [A|B|1-21] [cuda:N]"
+    echo "用法: $0 <A|B|序号...> [cuda:N]"
     echo "  A: 运行A组训练 (1-5)"
     echo "  B: 运行B组训练 (6-10)"
-    echo "  1-17: RL / HcFactory 训练序号"
+    echo "  1-17: RL / HcFactory 训练序号（可多个，如 19 20）"
     echo "  18-21: Perception 采集 / 训练 / 评估"
-    echo "  cuda:N: 可选，指定CUDA设备，默认cuda:0"
+    echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
     exit 1
 fi
 
-GROUP=$1
-DEVICE=${2:-cuda:0}
-DEVICE_ARG="--device ${DEVICE}"
-echo "使用设备: ${DEVICE}"
-
-# 检查是否为数字（1-21）
-if [[ "$GROUP" =~ ^([1-9]|1[0-9]|2[01])$ ]]; then
-    echo "运行单个训练序号: $GROUP"
-    SINGLE_TEST=true
-else
-    if [ "$GROUP" != "A" ] && [ "$GROUP" != "B" ]; then
-        echo "错误: 参数必须是 A、B 或 1-21 中的数字"
-        echo "用法: $0 [A|B|1-21] [cuda:N]"
+DEVICE="cuda:0"
+JOBS=()
+for arg in "$@"; do
+    if [[ "$arg" =~ ^cuda:[0-9]+$ ]]; then
+        DEVICE="$arg"
+    elif [[ "$arg" =~ ^([1-9]|1[0-9]|2[01])$ ]] || [ "$arg" = "A" ] || [ "$arg" = "B" ]; then
+        JOBS+=("$arg")
+    else
+        echo "错误: 无法识别参数 '$arg'"
+        echo "用法: $0 <A|B|序号...> [cuda:N]"
         exit 1
     fi
-    SINGLE_TEST=false
+done
+
+if [ ${#JOBS[@]} -eq 0 ]; then
+    echo "错误: 请指定至少一个任务序号或 A/B"
+    exit 1
 fi
 
-# 定义训练函数
+DEVICE_ARG="--device ${DEVICE}"
+echo "使用设备: ${DEVICE}"
+echo "任务列表: ${JOBS[*]}"
+
+# 定义训练函数（run_one_job 在文件末尾调用）
 
 run_test_2() {
     echo "运行训练 2: D3QN penalty"
@@ -150,7 +159,7 @@ run_test_19() {
         --output_dir "${PERCEPTION_RUNS}" \
         --run_name perception_baseline \
         --epochs 20 \
-        --batch_size 16 \
+        --batch_size 32 \
         ${DEVICE_ARG}
 }
 
@@ -163,7 +172,7 @@ run_test_20() {
         --output_dir "${PERCEPTION_RUNS}" \
         --run_name perception_baseline \
         --epochs 20 \
-        --batch_size 16 \
+        --batch_size 32 \
         ${DEVICE_ARG}
 }
 
@@ -182,9 +191,10 @@ run_test_21() {
         ${DEVICE_ARG}
 }
 
-# 单个训练
-if [ "$SINGLE_TEST" = true ]; then
-    case $GROUP in
+# 调度：按序号 / A / B 调用上面的 run_test_*
+run_one_job() {
+    local id=$1
+    case $id in
         1) run_test_1 ;;
         2) run_test_2 ;;
         3) run_test_3 ;;
@@ -206,32 +216,27 @@ if [ "$SINGLE_TEST" = true ]; then
         19) run_test_19 ;;
         20) run_test_20 ;;
         21) run_test_21 ;;
-        *) echo "错误: 无效的训练序号 $GROUP" ;;
+        A)
+            echo "=== 运行A组训练 (1-5) ==="
+            run_test_1; run_test_2; run_test_3; run_test_4; run_test_5; run_test_6
+            echo "A组训练完成！"
+            ;;
+        B)
+            echo "=== 运行B组训练 (6-10) ==="
+            run_test_7; run_test_8; run_test_9; run_test_10
+            echo "B组训练完成！"
+            ;;
+        *) echo "错误: 无效的训练序号 $id"; return 1 ;;
     esac
-    echo "训练 $GROUP 完成！"
-    exit 0
-fi
+    if [[ "$id" =~ ^[0-9]+$ ]]; then
+        echo "训练 $id 完成！"
+    fi
+}
 
-# A组训练 (1-5)
-if [ "$GROUP" = "A" ]; then
-    echo "=== 运行A组训练 (1-5) ==="
-    run_test_1
-    run_test_2
-    run_test_3
-    run_test_4
-    run_test_5
-    run_test_6  
-    echo "A组训练完成！"
-fi
-
-# B组训练 (6-10)
-if [ "$GROUP" = "B" ]; then
-    echo "=== 运行B组训练 (6-10) ==="
-    run_test_7
-    run_test_8
-    run_test_9
-    run_test_10
-    echo "B组训练完成！"
-fi
+# 依次执行任务
+for job in "${JOBS[@]}"; do
+    echo ">>> 开始任务: $job"
+    run_one_job "$job" || exit 1
+done
 
 echo "所有训练完成！"

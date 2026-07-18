@@ -433,14 +433,14 @@ python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/perception.py 
   --task id \
   --dataset_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset \
   --run_name perception_baseline \
-  --epochs 20 --batch_size 16 --device cuda:0
+  --epochs 20 --batch_size 32 --device cuda:0
 
 # 任务 B：subtask
 python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/perception.py train \
   --task subtask \
   --dataset_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset \
   --run_name perception_baseline \
-  --epochs 20 --batch_size 16 --device cuda:0
+  --epochs 20 --batch_size 32 --device cuda:0
 ```
 
 Checkpoint：`output/perception_runs/perception_baseline_{id|subtask}/`
