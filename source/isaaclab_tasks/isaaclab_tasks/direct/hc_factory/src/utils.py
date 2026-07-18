@@ -1,6 +1,14 @@
 import math
+import random
+
 import torch
 from ..env_asset_cfg.cfg_machine import CfgMachine
+
+
+def sample_noisy_steps(base: float, std: float, min_steps: int = 1) -> int:
+    if std <= 0:
+        return max(min_steps, int(round(base)))
+    return max(min_steps, round(base + random.gauss(0, std)))
 
 
 def yaw_to_quaternion_wxyz(yaw: float, device: torch.device, dtype: torch.dtype = torch.float32) -> torch.Tensor:
@@ -71,12 +79,16 @@ class GantryGroupAnimation(PoseAnimation):
         animation_time: int,
         device: torch.device,
         num_gantrys: int,
+        animation_time_noise_std: float = 0.0,
     ):
+        self.base_animation_time = animation_time
         self.animation_time = animation_time
+        self.animation_time_noise_std = animation_time_noise_std
         self.device = device
         self.num_gantrys = num_gantrys
         gantry_cfg = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]
         self.gantry_indexs = gantry_cfg["gantry_indexs"].to(device)
+        self.animation_time_target = [float(animation_time)] * num_gantrys
         self.initialize(start_pose.to(device), end_pose.to(device))
 
     def initialize(self, start_pose: torch.Tensor, end_pose: torch.Tensor):
@@ -84,7 +96,11 @@ class GantryGroupAnimation(PoseAnimation):
         self.end_pose = end_pose
         self.step_time = [0.0] * self.num_gantrys
         self.is_yield_move = [False] * self.num_gantrys
+        self.animation_time_target = [float(self.base_animation_time)] * self.num_gantrys
         self.done = self.is_done()
+
+    def _gantry_animation_time(self, gantry_index: int) -> float:
+        return self.animation_time_target[gantry_index]
 
     def _gantry_mask(self, gantry_index: int) -> torch.Tensor:
         if gantry_index < 0 or gantry_index >= self.num_gantrys:
@@ -125,7 +141,8 @@ class GantryGroupAnimation(PoseAnimation):
             if self.done[gantry_index]:
                 continue
 
-            t_next = min(self.step_time[gantry_index] + 1.0, self.animation_time) / self.animation_time
+            anim_time = self._gantry_animation_time(gantry_index)
+            t_next = min(self.step_time[gantry_index] + 1.0, anim_time) / anim_time
             proposed = self._lerp_gantry_pose(gantry_index, t_next)
             proposed_pose = next_pose.clone()
             proposed_pose[gantry_mask] = proposed
@@ -140,13 +157,13 @@ class GantryGroupAnimation(PoseAnimation):
                     break
 
             if blocked:
-                t_current = self.step_time[gantry_index] / self.animation_time
+                t_current = self.step_time[gantry_index] / anim_time
                 next_pose[gantry_mask] = self._lerp_gantry_pose(gantry_index, t_current)
             else:
                 self.step_time[gantry_index] += 1.0
-                self.step_time[gantry_index] = min(self.step_time[gantry_index], self.animation_time)
+                self.step_time[gantry_index] = min(self.step_time[gantry_index], anim_time)
                 next_pose[gantry_mask] = proposed
-                if self.step_time[gantry_index] >= self.animation_time:
+                if self.step_time[gantry_index] >= anim_time:
                     self.done[gantry_index] = True
 
             committed_world_x[gantry_index] = world_x_fn(gantry_index, next_pose)
@@ -154,7 +171,9 @@ class GantryGroupAnimation(PoseAnimation):
         return next_pose
 
     def is_done(self, gantry_index: int | None = None):
-        done_list = [step_time >= self.animation_time for step_time in self.step_time]
+        done_list = [
+            step_time >= self._gantry_animation_time(i) for i, step_time in enumerate(self.step_time)
+        ]
         if gantry_index is None:
             return done_list
         return done_list[gantry_index]
@@ -174,6 +193,9 @@ class GantryGroupAnimation(PoseAnimation):
         self.step_time[gantry_index] = 0.0
         self.is_yield_move[gantry_index] = is_yield
         self.done[gantry_index] = False
+        self.animation_time_target[gantry_index] = float(
+            sample_noisy_steps(self.base_animation_time, self.animation_time_noise_std)
+        )
 
     def set_target_pose(
         self, target_pose: torch.Tensor, gantry_index: int, current_joint_position: torch.Tensor
@@ -193,7 +215,7 @@ class GantryGroupAnimation(PoseAnimation):
         gantry_mask = self._gantry_mask(gantry_index)
         self.start_pose[gantry_mask] = pose[gantry_mask]
         self.end_pose[gantry_mask] = pose[gantry_mask]
-        self.step_time[gantry_index] = float(self.animation_time)
+        self.step_time[gantry_index] = self._gantry_animation_time(gantry_index)
         self.is_yield_move[gantry_index] = False
         self.done[gantry_index] = True
 

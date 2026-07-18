@@ -6,6 +6,7 @@ import argparse
 import copy
 import importlib.util
 import json
+import random
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,7 +16,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from PIL import Image
-from torch.utils.data import DataLoader, Dataset, random_split
+from torch.utils.data import DataLoader, Dataset
 
 _HC_FACTORY = Path(__file__).resolve().parents[1]
 _CFG_DIR = _HC_FACTORY / "env_asset_cfg"
@@ -314,15 +315,20 @@ class PerceptionLogger:
     def __init__(self, env_id: int, cfg: dict):
         self.env_id, self.cfg = env_id, cfg
         self.output_dir = Path(cfg["output_dir"])
-        self.episode_id = self.step_id = 0
+        self._episode_num: int | None = None
+        self.step_id = 0
         self._ep_dir: Path | None = None
 
-    def reset(self) -> None:
-        if self.episode_id >= self.cfg["max_episodes"]:
+    def reset(self, env: dict) -> None:
+        episode_num = int(env.get("episode_num", 0))
+        self._episode_num = episode_num
+        if episode_num >= self.cfg["max_episodes"]:
+            self._ep_dir = None
+            self.step_id = 0
             return
-        self._ep_dir = self.output_dir / f"env_{self.env_id:02d}_episode_{self.episode_id:06d}"
+        self._ep_dir = self.output_dir / f"env_{self.env_id:02d}_episode_{episode_num:06d}"
         self._ep_dir.mkdir(parents=True, exist_ok=True)
-        if self.episode_id == 0:
+        if episode_num == 0:
             (self.output_dir / "manifest.json").write_text(
                 json.dumps(
                     {
@@ -338,10 +344,10 @@ class PerceptionLogger:
                 encoding="utf-8",
             )
         self.step_id = 0
-        self.episode_id += 1
 
     def maybe_log(self, env: dict) -> dict | None:
-        if not self._ep_dir or self.episode_id > self.cfg["max_episodes"]:
+        episode_num = int(env.get("episode_num", self._episode_num if self._episode_num is not None else 0))
+        if not self._ep_dir or episode_num >= self.cfg["max_episodes"]:
             return None
         if env["time_step"] % self.cfg["save_interval"]:
             return None
@@ -352,7 +358,7 @@ class PerceptionLogger:
         sample = build_step_sample(
             env,
             self.env_id,
-            self.episode_id - 1,
+            episode_num,
             self.step_id,
             images_nested,
             save_env_record=bool(self.cfg.get("save_env_record", True)),
@@ -418,10 +424,10 @@ class PerceptionManager:
         self._logger = PerceptionLogger(env_id, self.cfg) if self.enabled and self.mode == "collect" else None
 
     def reset(self, env: dict) -> dict:
-        env.setdefault("perception", {})["predictions"] = {}
+        env.setdefault("perception", {})["predictions"] = {} 
         env["perception"]["last_sample"] = None
         if self._logger:
-            self._logger.reset()
+            self._logger.reset(env)
         return env
 
     def step(self, env: dict) -> dict:
@@ -455,10 +461,17 @@ def _load_image(ep: Path, rel: str | None, size: int) -> torch.Tensor:
 class HumanIdDataset(Dataset):
     """One item = one camera frame → multi-hot over HumanIdVocab."""
 
-    def __init__(self, dataset_dir: str | Path, image_size: int = 224):
+    def __init__(
+        self,
+        dataset_dir: str | Path,
+        image_size: int = 224,
+        episode_dirs: set[Path] | None = None,
+    ):
         self.image_size = image_size
         self.items: list[dict] = []
         for row, ep in _iter_meta_rows(Path(dataset_dir)):
+            if episode_dirs is not None and ep.resolve() not in episode_dirs:
+                continue
             if "human_id_recognition" not in row:
                 continue
             block = row["human_id_recognition"]
@@ -495,11 +508,18 @@ class HumanIdDataset(Dataset):
 class HumanSubtaskDataset(Dataset):
     """One item = one working human at a step (shared multi-cam images)."""
 
-    def __init__(self, dataset_dir: str | Path, image_size: int = 224):
+    def __init__(
+        self,
+        dataset_dir: str | Path,
+        image_size: int = 224,
+        episode_dirs: set[Path] | None = None,
+    ):
         self.image_size = image_size
         self.camera_order = [cam for _, cams in CAMERA_POSES.items() for cam in cams]
         self.items: list[dict] = []
         for row, ep in _iter_meta_rows(Path(dataset_dir)):
+            if episode_dirs is not None and ep.resolve() not in episode_dirs:
+                continue
             if "human_subtask_recognition" not in row:
                 continue
             block = row["human_subtask_recognition"]
@@ -591,16 +611,36 @@ class PerceptionTrainer:
             return self._train_subtask()
         raise ValueError(f"Unknown training task: {task} (use id|subtask)")
 
-    def _split(self, ds: Dataset):
-        n_val = max(1, int(len(ds) * self.cfg["val_ratio"]))
-        n_train = max(1, len(ds) - n_val)
-        if n_train + n_val > len(ds):
-            n_val = len(ds) - n_train
-        return random_split(ds, [n_train, n_val], generator=torch.Generator().manual_seed(42))
+    def _episode_split(self) -> tuple[set[Path], set[Path], set[Path]]:
+        episodes = sorted(Path(self.cfg["dataset_dir"]).glob("env_*_episode_*"))
+        if not episodes:
+            raise FileNotFoundError(f"No episodes under {self.cfg['dataset_dir']}")
+        order = list(episodes)
+        random.Random(self.cfg.get("split_seed", 42)).shuffle(order)
+        n = len(order)
+        n_train = int(round(n * self.cfg.get("train_ratio", 0.7)))
+        n_val = int(round(n * self.cfg.get("val_ratio", 0.15)))
+        n_train = min(max(n_train, 1), n) if n else 0
+        n_val = min(n_val, max(0, n - n_train))
+        train_eps = {p.resolve() for p in order[:n_train]}
+        val_eps = {p.resolve() for p in order[n_train : n_train + n_val]}
+        test_eps = {p.resolve() for p in order[n_train + n_val :]}
+        if not val_eps and len(train_eps) > 1:
+            moved = next(iter(train_eps))
+            train_eps.remove(moved)
+            val_eps.add(moved)
+        return train_eps, val_eps, test_eps
+
+    def _split(self, ds_cls: type[Dataset]):
+        train_eps, val_eps, _ = self._episode_split()
+        if not val_eps:
+            val_eps = train_eps
+        train_set = ds_cls(self.cfg["dataset_dir"], self.cfg["image_size"], train_eps)
+        val_set = ds_cls(self.cfg["dataset_dir"], self.cfg["image_size"], val_eps)
+        return train_set, val_set
 
     def _train_id(self) -> Path:
-        ds = HumanIdDataset(self.cfg["dataset_dir"], self.cfg["image_size"])
-        train_set, val_set = self._split(ds)
+        train_set, val_set = self._split(HumanIdDataset)
         train_ld = DataLoader(train_set, self.cfg["batch_size"], shuffle=True, num_workers=self.cfg["num_workers"])
         val_ld = DataLoader(val_set, self.cfg["batch_size"], num_workers=self.cfg["num_workers"])
         model = HumanIdModel().to(self.device)
@@ -620,11 +660,18 @@ class PerceptionTrainer:
                 loss_sum += loss.item()
             m = self._eval_id(model, val_ld) | {"epoch": epoch, "train_loss": loss_sum / max(1, len(train_ld))}
             history.append(m)
-            print(f"[id epoch {epoch:03d}] loss={m['train_loss']:.4f} elem_acc={m['elem_acc']:.3f}")
+            print(
+                f"[id epoch {epoch:03d}] loss={m['train_loss']:.4f} "
+                f"elem_acc={m['elem_acc']:.3f} "
+                f"empty_acc={m['empty_elem_acc']:.3f}(n={m['empty_n']}) "
+                f"occ_acc={m['occupied_elem_acc']:.3f}(n={m['occupied_n']})"
+            )
             ckpt = {"model_state_dict": model.state_dict(), "task": "id", "train_cfg": self.cfg}
             torch.save(ckpt, run_dir / "last.pt")
-            if m["elem_acc"] >= best:
-                best = m["elem_acc"]
+            # prefer occupied-frame accuracy for checkpoint selection
+            score = m["occupied_elem_acc"] if m["occupied_n"] > 0 else m["elem_acc"]
+            if score >= best:
+                best = score
                 torch.save(ckpt, run_dir / "best.pt")
         (run_dir / "history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
         print(f"[INFO] Checkpoints -> {run_dir}")
@@ -632,21 +679,42 @@ class PerceptionTrainer:
 
     @torch.no_grad()
     def _eval_id(self, model: nn.Module, loader: DataLoader) -> dict:
+        """Element-wise multi-label acc, split by empty vs occupied frames."""
         model.eval()
         correct = total = 0
+        empty_ok = empty_elem = 0
+        occ_ok = occ_elem = 0
+        empty_frames = occ_frames = 0
         for b in loader:
             pred = (torch.sigmoid(model(b["image"].to(self.device))) > 0.5).float()
             gt = b["target"].to(self.device)
-            correct += int((pred == gt).sum().item())
+            match = pred == gt
+            correct += int(match.sum().item())
             total += int(gt.numel())
-        return {"elem_acc": correct / max(1, total)}
+            is_empty = gt.sum(dim=-1) == 0
+            n_empty = int(is_empty.sum().item())
+            n_occ = int((~is_empty).sum().item())
+            if n_empty:
+                empty_ok += int(match[is_empty].sum().item())
+                empty_elem += n_empty * gt.shape[-1]
+                empty_frames += n_empty
+            if n_occ:
+                occ_ok += int(match[~is_empty].sum().item())
+                occ_elem += n_occ * gt.shape[-1]
+                occ_frames += n_occ
+        return {
+            "elem_acc": correct / max(1, total),
+            "empty_elem_acc": empty_ok / max(1, empty_elem),
+            "occupied_elem_acc": occ_ok / max(1, occ_elem),
+            "empty_n": empty_frames,
+            "occupied_n": occ_frames,
+        }
 
     def _train_subtask(self) -> Path:
-        ds = HumanSubtaskDataset(self.cfg["dataset_dir"], self.cfg["image_size"])
-        train_set, val_set = self._split(ds)
+        train_set, val_set = self._split(HumanSubtaskDataset)
         train_ld = DataLoader(train_set, self.cfg["batch_size"], shuffle=True, num_workers=self.cfg["num_workers"])
         val_ld = DataLoader(val_set, self.cfg["batch_size"], num_workers=self.cfg["num_workers"])
-        model = HumanSubtaskModel(len(ds.camera_order)).to(self.device)
+        model = HumanSubtaskModel(len(train_set.camera_order)).to(self.device)
         opt = torch.optim.AdamW(model.parameters(), lr=self.cfg["learning_rate"], weight_decay=self.cfg["weight_decay"])
         run_dir = Path(self.cfg["output_dir"]) / f"{self.cfg['run_name']}_subtask"
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -673,7 +741,7 @@ class PerceptionTrainer:
             ckpt = {
                 "model_state_dict": model.state_dict(),
                 "task": "subtask",
-                "num_cameras": len(ds.camera_order),
+                "num_cameras": len(train_set.camera_order),
                 "train_cfg": self.cfg,
             }
             torch.save(ckpt, run_dir / "last.pt")
@@ -728,19 +796,29 @@ def main() -> None:
     if not args.checkpoint:
         raise ValueError("--checkpoint required for eval")
     payload = torch.load(args.checkpoint, map_location=trainer.device, weights_only=False)
+    _, _, test_eps = trainer._episode_split()
+    eval_eps = test_eps or None
     task = payload.get("task", args.task)
     if task == "id":
         model = HumanIdModel().to(trainer.device)
         model.load_state_dict(payload["model_state_dict"])
         metrics = trainer._eval_id(
-            model, DataLoader(HumanIdDataset(args.dataset_dir), args.batch_size)
+            model,
+            DataLoader(
+                HumanIdDataset(args.dataset_dir, trainer.cfg["image_size"], eval_eps),
+                args.batch_size,
+            ),
         )
     else:
         n_cam = payload.get("num_cameras", len([c for _, cams in CAMERA_POSES.items() for c in cams]))
         model = HumanSubtaskModel(n_cam).to(trainer.device)
         model.load_state_dict(payload["model_state_dict"])
         metrics = trainer._eval_subtask(
-            model, DataLoader(HumanSubtaskDataset(args.dataset_dir), args.batch_size)
+            model,
+            DataLoader(
+                HumanSubtaskDataset(args.dataset_dir, trainer.cfg["image_size"], eval_eps),
+                args.batch_size,
+            ),
         )
     print(json.dumps(metrics, indent=2, ensure_ascii=False))
 

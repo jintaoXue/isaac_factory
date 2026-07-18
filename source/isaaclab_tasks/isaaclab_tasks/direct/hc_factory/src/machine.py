@@ -403,6 +403,7 @@ class num07_gantry_group(Machine):
                     animation_time=info["animation_time"],
                     device=self.cuda_device,
                     num_gantrys=self.num_workstations,
+                    animation_time_noise_std=info.get("animation_time_noise_std", 0.0),
                 ),
             )
 

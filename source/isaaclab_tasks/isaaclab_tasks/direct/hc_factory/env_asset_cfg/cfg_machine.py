@@ -413,6 +413,7 @@ CfgMachine = {
                 "fixed_hook_height": 8.90808,
                 "safe_x_gap": 4.0,
                 "animation_time": 20,
+                "animation_time_noise_std": 2.0,
             },
         },
     },

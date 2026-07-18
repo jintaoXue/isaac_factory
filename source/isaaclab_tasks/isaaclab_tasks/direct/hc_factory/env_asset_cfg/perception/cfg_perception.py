@@ -209,7 +209,8 @@ CfgPerception = {
     "mode": "collect",
     "output_dir": str(_DEFAULT_OUTPUT_DIR),
     "save_interval": 1,
-    "max_episodes": 200,
+    # 6 episodes → train/val/test = 4 / 1 / 1（每 episode 约 3000+ 步，总量已够）
+    "max_episodes": 6,
     "max_steps_per_episode": None,
     "save_images": True,
     "image_format": "jpg",
@@ -229,7 +230,11 @@ CfgPerceptionTraining = {
     "num_epochs": 20,
     "learning_rate": 1e-4,
     "weight_decay": 1e-5,
-    "val_ratio": 0.15,
+    # 6 episodes → 4 / 1 / 1
+    "train_ratio": 4 / 6,
+    "val_ratio": 1 / 6,
+    "test_ratio": 1 / 6,
+    "split_seed": 42,
     "num_workers": 4,
     "device": "cuda:0",
     "image_size": 224,
