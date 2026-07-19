@@ -1,6 +1,6 @@
 from isaacsim.core.prims import RigidPrim
 from ..env_asset_cfg.cfg_robot import CfgRobot, CfgRobotRegistrationInfos
-from ..env_asset_cfg.cfg_route.cfg_route import RouteOptionalInitPointsInMap, OptionalInitPointIds
+from ..env_asset_cfg.route.cfg_route import RouteOptionalInitPointsInMap, OptionalInitPointIds
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
 
 import copy

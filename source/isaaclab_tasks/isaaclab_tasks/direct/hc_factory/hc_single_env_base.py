@@ -36,9 +36,10 @@ from .src.perception import PerceptionManager
 from .src.storage import StorageManager
 from .src.route import RouteManagerVectorEnv
 from .env_asset_cfg.cfg_hc_env import SingleEnvStateActionDictTemplate, HcVectorEnvCfg
-from .env_asset_cfg.cfg_perception import CfgPerception
+# from .env_asset_cfg.cfg_perception import CfgPerception
 from .env_asset_cfg.cfg_bottleneck_data import CfgBottleneckData
 from .src.bottleneck_data import BottleneckDataCollector # added: for bottleneck data collection
+from .env_asset_cfg.perception.cfg_perception import CfgPerception
 from .src.algo_multiagent_masker import AlgoMultiAgentMasker
 from .src.task_progress_manager import TaskManager
 from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.src import algo_multiagent_masker
@@ -53,6 +54,7 @@ class HcSingleEnvBase():
         # 每个 env 持有独立的 state dict，避免多 env 共享引用导致状态串扰
         self.env_state_action_dict = copy.deepcopy(SingleEnvStateActionDictTemplate)
         self.route_manager = route_manager
+        self.episode_num = 0
         self.register_env_assets()
     
     def register_env_assets(self):
@@ -99,6 +101,8 @@ class HcSingleEnvBase():
         for m in self.iter_managers():
             m.reset(self.env_state_action_dict)
         self.env_state_action_dict["time_step"] = 0
+        self.env_state_action_dict["episode_num"] = self.episode_num
+        self.episode_num += 1
         self.perception_manager.reset(self.env_state_action_dict)
         self.bottleneck_collector.reset(self.env_state_action_dict)
         return self.env_state_action_dict
@@ -127,7 +131,10 @@ class HcSingleEnvBase():
         self.env_state_action_dict["time_step"] += 1
         self.perception_manager.step(self.env_state_action_dict)
         self.bottleneck_collector.step(self.env_state_action_dict)
+        
         # time_end = time.time()
         # print(f"step_env_logic time: {time_end - time_start}")
+        if self.env_state_action_dict["progress"]["production_done"]:
+            self.reset_env()
         return
 

@@ -3,10 +3,10 @@ import omni.usd
 from pxr import Usd, UsdSkel, Gf, Sdf
 from ..env_asset_cfg.cfg_human import CfgHuman, CfgHumanRegistrationInfos
 from ..env_asset_cfg.cfg_machine import CfgMachine
-from ..env_asset_cfg.cfg_route.cfg_route import RouteOptionalInitPointsInMap, OptionalInitPointIds
+from ..env_asset_cfg.route.cfg_route import RouteOptionalInitPointsInMap, OptionalInitPointIds
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
-from ..env_asset_cfg.cfg_process_subtask_gallery import CfgSubtaskPredefinedTimeGallery
-from .utils import HumanAnimation, quat_multiply_wxyz, yaw_to_quaternion_wxyz
+from ..env_asset_cfg.cfg_process_subtask_gallery import CfgSubtaskPredefinedTimeGallery, SubtaskTimeNoiseStdSteps
+from .utils import HumanAnimation, quat_multiply_wxyz, sample_noisy_steps, yaw_to_quaternion_wxyz
 import torch
 import copy
 import random
@@ -246,7 +246,13 @@ class Human:
     def _time_counting_subtask(self, subtasks: dict, human_subtask: str) -> None:
         if subtasks["finished"][0] == True:
             return
-        elif self.state["subtask_time_counter"] < CfgSubtaskPredefinedTimeGallery[human_subtask]:
+        if self.state.get("_counting_subtask") != human_subtask:
+            self.state["_counting_subtask"] = human_subtask
+            self.state["subtask_time_counter"] = 0
+            base = CfgSubtaskPredefinedTimeGallery[human_subtask]
+            self.state["subtask_time_target"] = sample_noisy_steps(base, SubtaskTimeNoiseStdSteps)
+        target = self.state["subtask_time_target"]
+        if self.state["subtask_time_counter"] < target:
             self.state["subtask_time_counter"] += 1
         else:
             subtasks["finished"][0] = True

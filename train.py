@@ -77,7 +77,7 @@ def _has_registered_cameras() -> bool:
 
     cfg_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
-        "source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/cfg_camera.py",
+        "source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/perception/cfg_camera.py",
     )
     spec = importlib.util.spec_from_file_location("_hc_cfg_camera", cfg_path)
     module = importlib.util.module_from_spec(spec)

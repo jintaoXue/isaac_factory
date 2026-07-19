@@ -22,7 +22,8 @@ class TaskManager:
         env_state_action_dict["progress"]["producing_indexs"] = []
         env_state_action_dict["progress"]["finished"] = {}
         env_state_action_dict["progress"]["ongoing_task_records"] = {}
-    
+        env_state_action_dict["progress"]["production_done"] = False
+
     def step(self, env_state_action_dict: dict) -> dict:
         
         self.decode_action_product_sequencing(env_state_action_dict)
@@ -35,7 +36,30 @@ class TaskManager:
                 self.update_new_task_record(env_state_action_dict, new_task_record)
         
         self.step_task_records(env_state_action_dict)
+        self.check_done_production(env_state_action_dict)
         return env_state_action_dict
+
+    def check_done_production(self, env_state_action_dict: dict) -> bool:
+        """True when every product in the order is finished and nothing is still in progress."""
+        progress = env_state_action_dict["progress"]
+        product_order = progress["product_order"]
+        finished = progress.get("finished", {})
+
+        for product_type, required in product_order.items():
+            if len(finished.get(product_type, [])) < required:
+                progress["production_done"] = False
+                return False
+
+        # not_started = progress.get("not_started", {})
+        # if any(count > 0 for count in not_started.values()):
+        #     progress["production_done"] = False
+        #     return False
+        # if progress.get("producing") or progress.get("ongoing_task_records"):
+        #     progress["production_done"] = False
+        #     return False
+
+        progress["production_done"] = True
+        return True
 
     def decode_action_product_sequencing(self, env_state_action_dict):
         action_product_sequencing = env_state_action_dict["action"]["product_sequencing"]
@@ -218,6 +242,10 @@ class TaskManager:
             assert env_state_action_dict["human"][human]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
             env_state_action_dict["human"][human]["ongoing_task_record_index"] = task_record["product_index"]
             env_state_action_dict["human"][human]["state"] = "working_" + task_record["task"]
+            env_state_action_dict["human"][human]["generated_route"] = []
+            env_state_action_dict["human"][human]["route_index"] = 0
+            env_state_action_dict["human"][human]["route_length"] = 0
+            env_state_action_dict["human"][human]["target_area_id"] = None
         #robot
         robot = task_record["robot"]
         if robot != None:

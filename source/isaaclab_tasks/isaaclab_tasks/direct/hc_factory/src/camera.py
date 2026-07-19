@@ -11,7 +11,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from ..env_asset_cfg.cfg_camera import CfgCamera, CfgCameraRegistrationInfos
+from ..env_asset_cfg.perception.cfg_camera import CfgCamera, CfgCameraRegistrationInfos
 
 _DEBUG_CAMERA_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output" / "debug_camera"
 
@@ -172,7 +172,7 @@ class Camera:
 
     @property
     def state_key(self) -> str:
-        return f"num_{self.idx:02d}_{self.type_name}"
+        return f"{self.type_name}"
 
     def reset(self, env_state_action_dict: dict) -> dict:
         self.state = copy.deepcopy(self.reset_state)

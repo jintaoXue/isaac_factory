@@ -28,6 +28,7 @@ from isaaclab.envs.common import ViewerCfg
 
 SingleEnvStateActionDictTemplate : dict = {
     "time_step": 0,
+    "episode_num": 0,
     "machine": {},
     "material": {},
     "human": {},
@@ -51,6 +52,7 @@ SingleEnvStateActionDictTemplate : dict = {
         "producing_indexs": [],
         #finished products with indexs list, e.g., "ProductWaterPipe": [0, 1, 2]
         "finished": {},
+        "production_done": False,
         "ongoing_task_records": {},
     },
     "agent_action_mask": {

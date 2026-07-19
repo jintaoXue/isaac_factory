@@ -29,7 +29,7 @@ import time
 
 from .hc_single_env import HcSingleEnv
 
-from .env_asset_cfg.cfg_camera import has_registered_cameras
+from .env_asset_cfg.perception.cfg_camera import has_registered_cameras
 from .env_asset_cfg.cfg_hc_env import HcRenderCfg
 from .hc_render import apply_hc_render_settings
 
@@ -108,7 +108,7 @@ class HcVectorEnvBase(DirectRLEnv):
         time_start = time.time()
         self.step_env_physics()
         time_end = time.time()
-        print(f"step_env_physics time: {time_end - time_start}")
+        # print(f"step_env_physics time: {time_end - time_start}")
         obs: list[dict] = []
         for env_id, env in enumerate(self.env_list):
             obs.append(env.env_state_action_dict)

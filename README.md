@@ -332,7 +332,7 @@ isaac_factory/
 │           │   ├── cfg_human.py              # Human config
 │           │   ├── cfg_robot.py              # Robot config
 │           │   ├── cfg_storage.py            # Storage config
-│           │   └── cfg_route/                # Route planning config & map points
+│           │   └── route/                    # Route planning config & map points
 │           ├── src/                  # Runtime manager implementations
 │           │   ├── machine.py
 │           │   ├── material.py
@@ -377,7 +377,7 @@ Process and task definitions are in `env_asset_cfg/cfg_process_task_gallery.py` 
 
 The `perception` module learns to estimate **each working human's current subtask** from factory camera images (and optional structured signals). It runs in two phases: **collect** data inside simulation, then **train** offline.
 
-Configuration: `env_asset_cfg/cfg_perception.py` (collection / training hyperparameters), `env_asset_cfg/cfg_camera.py` (camera poses). Implementation: `src/perception.py`.
+Configuration: `env_asset_cfg/perception/cfg_perception.py` (collection / training hyperparameters), `env_asset_cfg/perception/cfg_camera.py` (camera poses and manually calibrated ground visibility). Implementation: `src/perception.py`.
 
 ### Experiment Design
 
@@ -416,7 +416,7 @@ perception_dataset/
 
 ### Data Collection
 
-1. In `env_asset_cfg/cfg_perception.py`, enable collection:
+1. In `env_asset_cfg/perception/cfg_perception.py`, enable collection:
 
 ```python
 CfgPerception = {
@@ -426,7 +426,7 @@ CfgPerception = {
 }
 ```
 
-2. Ensure cameras are registered (`CfgCameraRegistrationInfos` in `cfg_camera.py`).
+2. Ensure cameras are registered (`CfgCameraRegistrationInfos` in `perception/cfg_camera.py`).
 
 3. Run simulation (single env recommended for a clean dataset):
 
