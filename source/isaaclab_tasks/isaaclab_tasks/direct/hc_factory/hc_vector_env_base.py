@@ -47,6 +47,37 @@ class HcVectorEnvBase(DirectRLEnv):
         self.reward_buf = torch.zeros(self.num_envs, dtype=torch.float32, device=self.sim.device)
         self._setup_rendering_resolution()
 
+    def _setup_fullscreen(self) -> None:
+        if not getattr(self.cfg_vector_env, "start_fullscreen", False):
+            return
+        if not self.sim.has_gui():
+            return
+        try:
+            import carb
+            import omni.kit.app
+        except ModuleNotFoundError:
+            return
+
+        settings = carb.settings.get_settings()
+
+        def _apply(_event=None) -> None:
+            settings.set_bool("/app/window/fullscreen", True)
+
+        _apply()
+        sub_holder: list = [None]
+
+        def _apply_once(_event=None) -> None:
+            _apply()
+            if sub_holder[0] is not None:
+                sub_holder[0].unsubscribe()
+                sub_holder[0] = None
+
+        sub_holder[0] = omni.kit.app.get_app().get_update_event_stream().create_subscription_to_pop(
+            _apply_once,
+            name="hc_factory_fullscreen_once",
+            order=1000,
+        )
+
     def _setup_rendering_resolution(self):
         if not self.sim.has_gui():
             return
@@ -56,6 +87,7 @@ class HcVectorEnvBase(DirectRLEnv):
             return
         viewport_window = get_active_viewport_window()
         if viewport_window is None or viewport_window.viewport_api is None:
+            self._setup_fullscreen()
             return
 
         # Disable "Fill Frame" to allow a custom fixed resolution
@@ -63,6 +95,7 @@ class HcVectorEnvBase(DirectRLEnv):
 
         # Set the resolution to the rendering resolution
         viewport_window.viewport_api.resolution = self.cfg_vector_env.rendering_resolution
+        self._setup_fullscreen()
         return
 
     def _setup_scene(self):

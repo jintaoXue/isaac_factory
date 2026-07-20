@@ -173,6 +173,8 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     train_cfg = None
     # rendering_resolution = (3840, 2160)
     rendering_resolution = (1920, 1080)
+    # GUI 模式下启动后全屏（headless 无效）
+    start_fullscreen = True
 
     single_env_parallel_producing_limit = 5
     human_number_upper_bound = 10
