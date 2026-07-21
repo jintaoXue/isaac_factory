@@ -159,8 +159,8 @@ def _make_machine_camera(
         "ground_footprint_xy": pose.get("ground_footprint_xy"),
         "camera_sensor": _CAMERA_SENSOR,
         "reset_state": _CAMERA_RESET_STATE,
-        "debug_save_frames": True,
-        "debug_max_frames": 2500,
+        "debug_save_frames": False,
+        "debug_max_frames": 9000,
     }
 
 
