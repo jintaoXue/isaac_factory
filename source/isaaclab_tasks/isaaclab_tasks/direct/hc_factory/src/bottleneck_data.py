@@ -277,7 +277,8 @@ class _CsvWriter:
     def __init__(self, path: Path, fieldnames: list[str]):
         self.path = path
         self.fieldnames = fieldnames
-        self._initialized = False
+        # Reuse writers are recreated on episode reset; append if the file exists.
+        self._initialized = path.is_file() and path.stat().st_size > 0
 
     def write_header_only(self) -> None:
         if self._initialized:
@@ -368,28 +369,39 @@ class BottleneckDataCollector:
 
     def _setup_output_dir(self) -> None:
         run_id = BottleneckRunContext.run_id or datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        base = Path(self.cfg["output_dir"]) / run_id / f"env_{self.env_id:02d}"
+        run_root = Path(self.cfg["output_dir"]) / run_id
+        base = run_root / f"episode_{self.episode_id:02d}" / f"env_{self.env_id:02d}"
         base.mkdir(parents=True, exist_ok=True)
         self._out_dir = base
 
-        if self.env_id == 0 and self.episode_id == 0:
-            manifest = {
-                "run_id": run_id,
-                "collector_version": self.cfg.get("collector_version", "v0.3"),
-                "logic_dt": BottleneckRunContext.logic_dt,
-                "tables": [
-                    "episode_config.csv",
-                    "disturbance_log.csv",
-                    "resource_event_log.jsonl",
-                    "job_trace.csv",
-                    "buffer_event_log.csv",
-                    "route_transport_task.csv",
-                    "material_inventory_log.csv",
-                ],
-            }
-            manifest_path = Path(self.cfg["output_dir"]) / run_id / "run_manifest.json"
-            manifest_path.parent.mkdir(parents=True, exist_ok=True)
-            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        if self.env_id == 0:
+            manifest_path = run_root / "run_manifest.json"
+            if self.episode_id == 0 and not manifest_path.exists():
+                manifest = {
+                    "run_id": run_id,
+                    "collector_version": self.cfg.get("collector_version", "v0.3"),
+                    "logic_dt": BottleneckRunContext.logic_dt,
+                    "layout": "episode_<id>/env_<id>/",
+                    "tables": [
+                        "episode_config.csv",
+                        "disturbance_log.csv",
+                        "resource_event_log.jsonl",
+                        "job_trace.csv",
+                        "buffer_event_log.csv",
+                        "route_transport_task.csv",
+                        "material_inventory_log.csv",
+                    ],
+                    "episodes": [],
+                }
+                manifest_path.parent.mkdir(parents=True, exist_ok=True)
+                manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+            if manifest_path.exists():
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                ep_entry = f"episode_{self.episode_id:02d}"
+                episodes = manifest.setdefault("episodes", [])
+                if ep_entry not in episodes:
+                    episodes.append(ep_entry)
+                    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
         self._episode_config_writer = _CsvWriter(
             base / "episode_config.csv",

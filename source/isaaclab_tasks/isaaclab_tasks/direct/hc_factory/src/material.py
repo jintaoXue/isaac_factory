@@ -7,6 +7,134 @@ from ..env_asset_cfg.cfg_robot import CfgRobot
 import copy
 import torch
 
+import omni.usd
+
+# (subfolder, name_prefix) under product_water_pipe_group/
+_PRODUCT_PRIM_SPECS: tuple[tuple[str, str], ...] = (
+    ("cubes", "cube"),
+    ("hoops", "hoop"),
+    ("bending_tubes", "bending_tube"),
+    ("products", "semi_product"),
+    ("products", "product"),
+)
+
+
+def ensure_product_water_pipe_prims(env_id: int) -> None:
+    """Clone missing product material prims when order > USD-authored instances.
+
+    HC_import.usd ships with batch indices 00-04 only. Higher ``CfgRegistrationInfos``
+    values are satisfied by duplicating the 00 template at runtime.
+    """
+    required = int(CfgRegistrationInfos.get("ProductWaterPipe", 0) or 0)
+    if required <= 0:
+        return
+
+    stage = omni.usd.get_context().get_stage()
+    if stage is None:
+        raise RuntimeError("USD stage is not available for product prim provisioning")
+
+    group_base = f"/World/envs/env_{env_id}/obj/HC_factory/product_water_pipe_group"
+    template_idx = "00"
+
+    for idx in range(required):
+        idx_str = f"{idx:02d}"
+        for subfolder, prefix in _PRODUCT_PRIM_SPECS:
+            dst = f"{group_base}/{subfolder}/{prefix}_{idx_str}"
+            if stage.GetPrimAtPath(dst).IsValid():
+                continue
+            src = f"{group_base}/{subfolder}/{prefix}_{template_idx}"
+            if not stage.GetPrimAtPath(src).IsValid():
+                raise RuntimeError(
+                    f"Cannot provision {dst}: template prim missing at {src}. "
+                    "Extend HC_import.usd or lower CfgRegistrationInfos."
+                )
+            ok = omni.usd.duplicate_prim(stage, src, dst, duplicate_layers=True)
+            if not ok and not stage.GetPrimAtPath(dst).IsValid():
+                raise RuntimeError(f"Failed to duplicate product prim {src} -> {dst}")
+
+
+def _is_storage_location(storage_name: str | None) -> bool:
+    return bool(storage_name and "Storage_" in storage_name)
+
+
+def _effective_storage_capacity(storage: dict) -> int:
+    """Logical capacity may exceed authored placement poses; clamp to pose count."""
+    cap = int(storage["key_variables"]["capacity"])
+    pose_list = storage["key_variables"]["placement_cfg"]["pose_list"]
+    return min(cap, len(pose_list))
+
+
+def _sync_storage_fill_state(storage: dict) -> None:
+    capacity = _effective_storage_capacity(storage)
+    n = int(storage.get("num_material", 0))
+    if n <= 0:
+        storage["num_material"] = 0
+        storage["state"] = "empty"
+        storage["material_type"] = None
+    elif n >= capacity:
+        storage["num_material"] = capacity
+        storage["state"] = "full"
+    else:
+        storage["state"] = "partial"
+
+
+def _release_storage_slot(env_state_action_dict: dict, storage_name: str | None, batch_idx: int) -> None:
+    if not _is_storage_location(storage_name):
+        return
+    storage = env_state_action_dict["storage"].get(storage_name)
+    if storage is None:
+        return
+    idx_list = storage.get("material_idx_list", [])
+    if batch_idx in idx_list:
+        idx_list.remove(batch_idx)
+        storage["num_material"] = len(idx_list)
+    elif storage.get("num_material", 0) > 0:
+        storage["num_material"] -= 1
+    _sync_storage_fill_state(storage)
+
+
+def _occupy_storage_slot(
+    env_state_action_dict: dict,
+    storage_name: str,
+    batch_idx: int,
+    material_type: str,
+) -> int:
+    """Reserve one slot; return 0-based pose index."""
+    storage = env_state_action_dict["storage"][storage_name]
+    idx_list = storage.setdefault("material_idx_list", [])
+    if batch_idx in idx_list:
+        return idx_list.index(batch_idx)
+
+    eff_cap = _effective_storage_capacity(storage)
+    if len(idx_list) >= eff_cap:
+        raise ValueError(
+            f"Storage {storage_name} is full ({len(idx_list)}/{eff_cap} slots)"
+        )
+
+    idx_list.append(batch_idx)
+    storage["num_material"] = len(idx_list)
+    storage["material_type"] = material_type
+    _sync_storage_fill_state(storage)
+    return len(idx_list) - 1
+
+
+def pick_free_storage(env_state_action_dict: dict, processed_material: str) -> str:
+    """Return the first storage with a free slot for ``processed_material``."""
+    for storage_name, value in env_state_action_dict["storage"].items():
+        supporting_materials = value["key_variables"]["supporting_materials"]
+        if processed_material not in supporting_materials:
+            continue
+        if (
+            value.get("state") == "partial"
+            and value.get("material_type") not in (None, processed_material)
+        ):
+            continue
+        idx_list = value.get("material_idx_list", [])
+        if len(idx_list) >= _effective_storage_capacity(value):
+            continue
+        return storage_name
+    raise ValueError(f"No free storage found for {processed_material}")
+
 
 class ProductMaterialManager:
     def __init__(self, env_id: int, cuda_device: torch.device):
@@ -122,37 +250,24 @@ class MaterialBatch:
         # is partially filled with another material type, we skip it to only mix the same types.
         # We then update the storage's meta state and also register the material's position and orientation.
         material_prims : dict = self.iter_raw_material_prims()
-        storages : dict = env_state_action_dict["storage"]
         for material_type, material_prim in material_prims.items():
             material_name = f"num_{self.idx:02d}_{material_type}"
-            for storage_name, value in storages.items():
-                supporting_materials = value["key_variables"]["supporting_materials"]
-                # If this material isn't supported, or storage is already full, skip
-                if material_type not in supporting_materials or value["state"] == "full":
-                    continue
-                # If storage is partially filled with a different material type, skip
-                if value["state"] == "partial" and material_type != value["material_type"]:
-                    continue
-                # Otherwise, place material in this storage
-                self.state["submaterials"][material_type]["storage_name"] = storage_name
-                value["material_type"] = material_type
-                value["num_material"] += 1
-                value["material_idx_list"].append(self.idx)
-                capacity = value["key_variables"]["capacity"]
-                value["state"] = "full" if value["num_material"] == capacity else "partial"
-                # Retrieve the pose (position & orientation) for this material in storage
-                pose_list = value["key_variables"]["placement_cfg"]["pose_list"]
-                position = pose_list[value["num_material"] - 1]["position"]
-                orientation = pose_list[value["num_material"] - 1]["orientation"]
-                # Register material's prim, position, and orientation in env_state_action_dict
-                env_state_action_dict["rigid_prims"][material_name] = {
-                    "object": material_prim,
-                    "position": position,
-                    "orientation": orientation,
-                }
-                break
-                #usage:
-                #material_prim.set_local_poses(translations=position.unsqueeze(0), orientations=orientation.unsqueeze(0))
+            try:
+                storage_name = pick_free_storage(env_state_action_dict, material_type)
+            except ValueError:
+                continue
+            self.state["submaterials"][material_type]["storage_name"] = storage_name
+            slot_idx = _occupy_storage_slot(
+                env_state_action_dict, storage_name, self.idx, material_type
+            )
+            pose_list = env_state_action_dict["storage"][storage_name]["key_variables"]["placement_cfg"]["pose_list"]
+            position = pose_list[slot_idx]["position"]
+            orientation = pose_list[slot_idx]["orientation"]
+            env_state_action_dict["rigid_prims"][material_name] = {
+                "object": material_prim,
+                "position": position,
+                "orientation": orientation,
+            }
         return
 
     def iter_key_variables(self):
@@ -196,12 +311,12 @@ class MaterialBatch:
         for material_type, material_prim in all_materials.items():
             material_name = f"num_{self.idx:02d}_{material_type}"
             material_state = material_subtask[material_type][ongoing_index]
-            
-            ## the following three variables might be updated in the following code
+
             position = env_state_action_dict["rigid_prims"][material_name]["position"]
             orientation = env_state_action_dict["rigid_prims"][material_name]["orientation"]
-            storage_name = self.state["submaterials"][material_type]["storage_name"]
-            
+            old_storage_name = self.state["submaterials"][material_type]["storage_name"]
+            storage_name = old_storage_name
+
             if material_state == "on_start_area":
                 pass
             elif material_state == "disappear":
@@ -212,7 +327,7 @@ class MaterialBatch:
                 gantry_indexs = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]["gantry_indexs"]
                 joint_position = env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"].clone()[gantry_indexs == gantry_index]
                 xy_position_reset = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]["xy_position_reset"].to(self.cuda_device)[gantry_indexs == gantry_index]
-                joint_positions_reset = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]["joint_positions_reset"].to(self.cuda_device)[gantry_indexs == gantry_index]  
+                joint_positions_reset = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]["joint_positions_reset"].to(self.cuda_device)[gantry_indexs == gantry_index]
                 fixed_hook_height : int = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]["fixed_hook_height"]
                 xy_target = joint_position - joint_positions_reset + xy_position_reset
                 position = torch.tensor([xy_target[0], xy_target[1], fixed_hook_height], device=self.cuda_device).unsqueeze(0)
@@ -226,11 +341,10 @@ class MaterialBatch:
                 storage_name = robot_name
             elif (material_state == "on_goal_area" and (subtasks["material_goal_area"] in CfgMachine)) or \
                 (material_state == "on_machine"):
-                # Both "material on goal area which is a machine" or material_state == "on_machine" are handled here
                 if material_state == "on_goal_area":
                     machine_name = subtasks["material_goal_area"]
                     workstation_key = subtasks["goal_area_workstation_key"]
-                else:  # material_state == "on_machine"
+                else:
                     workstation_key = task_record["chosen_machine_workstation"]
                     machine_name = task_record["target_machine"]
                 position = CfgMachine[machine_name]["material_placement_cfg"][workstation_key]["position"]
@@ -240,15 +354,30 @@ class MaterialBatch:
                 storage_name = workstation_key
             elif material_state == "on_goal_area" and "Storage" in subtasks["material_goal_area"]:
                 storage_name = subtasks["material_goal_area"]
-                storage = env_state_action_dict["storage"][storage_name]
-                pose_list = storage["key_variables"]["placement_cfg"]["pose_list"]
-                storage["num_material"] += 1
-                slot_pose = pose_list[storage["num_material"] - 1]
-                position = slot_pose["position"]
-                orientation = slot_pose["orientation"]
+                if old_storage_name != storage_name:
+                    try:
+                        slot_idx = _occupy_storage_slot(
+                            env_state_action_dict, storage_name, self.idx, material_type
+                        )
+                    except ValueError:
+                        storage_name = pick_free_storage(env_state_action_dict, material_type)
+                        subtasks["material_goal_area"] = storage_name
+                        subtasks["goal_area_ids"] = env_state_action_dict["storage"][storage_name][
+                            "key_variables"
+                        ]["working_area_ids"]
+                        slot_idx = _occupy_storage_slot(
+                            env_state_action_dict, storage_name, self.idx, material_type
+                        )
+                    pose_list = env_state_action_dict["storage"][storage_name]["key_variables"]["placement_cfg"]["pose_list"]
+                    slot_pose = pose_list[slot_idx]
+                    position = slot_pose["position"]
+                    orientation = slot_pose["orientation"]
             else:
                 raise ValueError(f"Invalid material state: {material_state}")
-       
+
+            if old_storage_name != storage_name and _is_storage_location(old_storage_name):
+                _release_storage_slot(env_state_action_dict, old_storage_name, self.idx)
+
             env_state_action_dict["rigid_prims"][material_name]["position"] = position
             env_state_action_dict["rigid_prims"][material_name]["orientation"] = orientation
             self.state["submaterials"][material_type]["storage_name"] = storage_name

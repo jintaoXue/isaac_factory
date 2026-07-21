@@ -2,13 +2,13 @@
 
 CfgRegistrationInfos = {
     
-    "ProductWaterPipe": 5, #idx: 00-04
+    "ProductWaterPipe": 15, #idx: 00-14 (G1 P01_order_scale)
     
 }
 
 CfgProductOrder = {
     # The production order is a map of product type to requested quantity.
-    "ProductWaterPipe": 5, # idx: 00-04
+    "ProductWaterPipe": 15, # idx: 00-14 (G1 P01_order_scale)
 }
 
 for product_type, quantity in CfgProductOrder.items():

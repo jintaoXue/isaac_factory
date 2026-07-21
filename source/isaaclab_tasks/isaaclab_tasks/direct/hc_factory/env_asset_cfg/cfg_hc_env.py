@@ -177,7 +177,7 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     single_env_parallel_producing_limit = 5
     human_number_upper_bound = 10
     robot_upper_bound = 2
-    material_batch_upper_bound = 5
+    material_batch_upper_bound = 15
 
 
 

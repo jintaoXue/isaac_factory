@@ -3,6 +3,7 @@ from ..env_asset_cfg.cfg_storage import CfgStorage
 from ..env_asset_cfg.cfg_material_product import CfgProductOrder, CfgProductProcess
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskGalleryDetailedClassified, CfgSubtaskGallery, TaskRecordTemplate
 from ..env_asset_cfg.cfg_machine import CfgMachine
+from .material import pick_free_storage
 import torch
 import copy
 
@@ -371,16 +372,4 @@ class TaskManager:
                         task_record["subtasks_dict"]["material_goal_area"] = goal_storage_name
     
     def _find_free_storage(self, env_state_action_dict, task_record):
-        storages = env_state_action_dict["storage"]
-        processed_material = task_record["processed_material"]
-
-        for storage_name, value in storages.items():
-            supporting_materials = value["key_variables"]["supporting_materials"]
-            # If this material isn't supported, or storage is already full, skip
-            if processed_material not in supporting_materials or value["state"] == "full":
-                continue
-            # If storage is partially filled with a different material type, skip
-            if value["state"] == "partial" and processed_material != value["material_type"]:
-                continue
-            return storage_name
-        raise ValueError(f"No free storage found for {processed_material}")
+        return pick_free_storage(env_state_action_dict, task_record["processed_material"])

@@ -35,6 +35,7 @@ from .hc_render import apply_hc_render_settings
 
 from .src.route import RouteManagerVectorEnv
 from .src.bottleneck_data import init_bottleneck_run_context # added: for bottleneck data collection
+from .src.material import ensure_product_water_pipe_prims
 
 class HcVectorEnvBase(DirectRLEnv):
     cfg_vector_env: HcVectorEnvCfg
@@ -75,6 +76,7 @@ class HcVectorEnvBase(DirectRLEnv):
             sub_env_path = f"/World/envs/env_{i}"
             # the usd file already has a ground plane
             add_reference_to_stage(usd_path = self.cfg_vector_env.asset_path, prim_path = sub_env_path + "/obj")
+            ensure_product_water_pipe_prims(env_id=i)
             self.setup_one_env(env_id=i)
         # for debug, visualize only prims 
         # stage_utils.print_stage_prim_paths()

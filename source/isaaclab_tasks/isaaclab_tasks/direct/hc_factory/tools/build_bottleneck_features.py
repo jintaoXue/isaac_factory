@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Offline Stage-C pipeline: raw bottleneck tables → window features + labels.
 
-Reads a single-run directory produced by BottleneckDataCollector (v0.2+), e.g.::
+    Reads a single-run directory produced by BottleneckDataCollector (v0.2+), e.g.::
 
-    output/bottleneck_dataset/<run_id>/env_00/
+        output/bottleneck_dataset/<run_id>/episode_00/env_00/
+
+    Legacy flat layout ``<run_id>/env_00/`` is also supported.
 
 Writes::
 
@@ -60,6 +62,27 @@ class ResourceTimeline:
     resource_id: str
     resource_type: str
     intervals: list[Interval] = field(default_factory=list)
+
+
+def _discover_env_dirs(run_dir: Path, env_id: int | None) -> list[Path]:
+    """Return env_* dirs under run_dir or under episode_*/ subfolders."""
+    nested = sorted(run_dir.glob("episode_*/env_*"))
+    if nested:
+        env_dirs = nested
+    else:
+        env_dirs = sorted(run_dir.glob("env_*"))
+    if env_id is not None:
+        env_dirs = [d for d in env_dirs if d.name == f"env_{env_id:02d}"]
+    return env_dirs
+
+
+def _derived_out_dir(out_root: Path, run_dir: Path, env_dir: Path) -> Path:
+    """Mirror episode nesting under derived/, e.g. derived/episode_00/env_00/."""
+    try:
+        rel = env_dir.relative_to(run_dir)
+    except ValueError:
+        return out_root / env_dir.name
+    return out_root / rel
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
@@ -674,15 +697,13 @@ def main() -> None:
     run_dir = args.run_dir.resolve()
     out_root = (args.out_dir or (run_dir / "derived")).resolve()
 
-    env_dirs = sorted(run_dir.glob("env_*"))
-    if args.env_id is not None:
-        env_dirs = [d for d in env_dirs if d.name == f"env_{args.env_id:02d}"]
+    env_dirs = _discover_env_dirs(run_dir, args.env_id)
     if not env_dirs:
-        raise SystemExit(f"No env_* directories under {run_dir}")
+        raise SystemExit(f"No env_* directories under {run_dir} (checked flat and episode_*/ layouts)")
 
     summaries = []
     for env_dir in env_dirs:
-        out_dir = out_root / env_dir.name
+        out_dir = _derived_out_dir(out_root, run_dir, env_dir)
         print(f"[build] {env_dir} → {out_dir}")
         summary = process_env_dir(
             env_dir=env_dir,
