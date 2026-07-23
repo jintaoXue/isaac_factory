@@ -39,6 +39,7 @@ from .env_asset_cfg.cfg_hc_env import SingleEnvStateActionDictTemplate, HcVector
 # from .env_asset_cfg.cfg_perception import CfgPerception
 from .env_asset_cfg.cfg_bottleneck_data import CfgBottleneckData
 from .src.bottleneck_data import BottleneckDataCollector # added: for bottleneck data collection
+from .src.disturbance import DisturbanceInjector
 from .env_asset_cfg.perception.cfg_perception import CfgPerception
 from .src.algo_multiagent_masker import AlgoMultiAgentMasker
 from .src.task_progress_manager import TaskManager
@@ -69,6 +70,9 @@ class HcSingleEnvBase():
         )
         self.bottleneck_collector = BottleneckDataCollector(
             env_id=self.env_id, cfg=CfgBottleneckData # added: for bottleneck data collection
+        )
+        self.disturbance_injector = DisturbanceInjector(
+            env_id=self.env_id, collector=self.bottleneck_collector
         )
         self.algo_multiagent_masker = AlgoMultiAgentMasker(self.cuda_device)
         self.task_manager = TaskManager(self.cuda_device)
@@ -105,6 +109,7 @@ class HcSingleEnvBase():
         self.episode_num += 1
         self.perception_manager.reset(self.env_state_action_dict)
         self.bottleneck_collector.reset(self.env_state_action_dict)
+        self.disturbance_injector.reset(self.env_state_action_dict)
         return self.env_state_action_dict
 
     def apply_data_to_sim(self) -> None:
@@ -126,8 +131,13 @@ class HcSingleEnvBase():
     def step_env_logic(self, action: dict | None = None, action_extra: list[dict] | None = None) -> None:
         # time_start = time.time()
         self.env_state_action_dict['action'] = action
-        for m in self.iter_managers():
+        # Apply action first (task assignment), then inject L2 disturbance on leftover
+        # free resources, then refresh masks so the next action sees DOWN / absent.
+        managers = self.iter_managers()
+        for m in managers[:-1]:
             m.step(self.env_state_action_dict)
+        self.disturbance_injector.step(self.env_state_action_dict)
+        managers[-1].step(self.env_state_action_dict)  # algo_multiagent_masker
         self.env_state_action_dict["time_step"] += 1
         self.perception_manager.step(self.env_state_action_dict)
         self.bottleneck_collector.step(self.env_state_action_dict)

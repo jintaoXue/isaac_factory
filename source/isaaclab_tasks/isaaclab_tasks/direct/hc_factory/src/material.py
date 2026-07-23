@@ -4,6 +4,7 @@ from ..env_asset_cfg.cfg_material_product import CfgProductProcess, CfgProductOr
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskGalleryDetailedClassified
 from ..env_asset_cfg.cfg_machine import CfgMachine
 from ..env_asset_cfg.cfg_robot import CfgRobot
+from .disturbance import should_skip_material_placement
 import copy
 import torch
 
@@ -252,6 +253,18 @@ class MaterialBatch:
         material_prims : dict = self.iter_raw_material_prims()
         for material_type, material_prim in material_prims.items():
             material_name = f"num_{self.idx:02d}_{material_type}"
+            if should_skip_material_placement(self.idx, material_type):
+                # Shortage: park underground so kitting / downstream starve.
+                self.state["submaterials"][material_type]["storage_name"] = "disappear"
+                position = material_prim.get_local_poses()[0]
+                position[0][2] = -100
+                orientation = material_prim.get_local_poses()[1]
+                env_state_action_dict["rigid_prims"][material_name] = {
+                    "object": material_prim,
+                    "position": position,
+                    "orientation": orientation,
+                }
+                continue
             try:
                 storage_name = pick_free_storage(env_state_action_dict, material_type)
             except ValueError:

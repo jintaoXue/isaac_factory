@@ -64,6 +64,37 @@ parser.add_argument(
     default=49100,
     help="Port for Isaac Sim livestream (sets --/app/livestream/port).",
 )
+parser.add_argument(
+    "--disturbance_dim",
+    type=str,
+    default="none",
+    choices=["none", "material", "human", "logistics", "machine"],
+    help="Primary bottleneck disturbance dimension to inject this run.",
+)
+parser.add_argument(
+    "--disturbance_intensity",
+    type=float,
+    default=1.0,
+    help="Disturbance strength (>=0). Scales noise, shortage, and event duration.",
+)
+parser.add_argument(
+    "--disturbance_human_count",
+    type=int,
+    default=None,
+    help="Override human count when --disturbance_dim=human.",
+)
+parser.add_argument(
+    "--disturbance_agv_count",
+    type=int,
+    default=None,
+    help="Override AGV count when --disturbance_dim=logistics.",
+)
+parser.add_argument(
+    "--disturbance_gantry_count",
+    type=int,
+    default=None,
+    help="Override active gantry count when --disturbance_dim=logistics.",
+)
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -155,6 +186,10 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 import wandb
 
 from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
+from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.env_asset_cfg.cfg_disturbance import (
+    apply_disturbance_to_cfgs,
+    configure_disturbance_from_cli,
+)
 from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.hc_render import HcVideoRecorder
 
 @hydra_task_config(args_cli.task, args_cli.algo)
@@ -163,6 +198,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     '''process name'''
     setproctitle.setproctitle("HcFactory")
     '''update args'''
+    configure_disturbance_from_cli(
+        dim=getattr(args_cli, "disturbance_dim", "none"),
+        intensity=getattr(args_cli, "disturbance_intensity", 1.0),
+        human_count=getattr(args_cli, "disturbance_human_count", None),
+        agv_count=getattr(args_cli, "disturbance_agv_count", None),
+        gantry_count=getattr(args_cli, "disturbance_gantry_count", None),
+    )
+    apply_disturbance_to_cfgs()
     if args_cli.wandb_activate:
         algo_cfg["params"]["config"]['wandb_activate'] = args_cli.wandb_activate
     if args_cli.test:

@@ -3,6 +3,7 @@ from abc import abstractmethod
 from ..env_asset_cfg.cfg_machine import CfgMachine
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
 from .utils import GantryGroupAnimation, PoseAnimation
+from .disturbance import machine_process_succeeded, sample_machine_process_time
 import copy
 import torch
 
@@ -203,16 +204,35 @@ class Machine:
             if self.state["target_joints_position"][chosen_workstation_index] is None:
                 self.state["target_joints_position"][chosen_workstation_index] = self.registration_infos[chosen_machine_workstation]["joint_positions_working"].to(self.cuda_device)
                 obj_animation.set_target_pose(self.state["target_joints_position"][chosen_workstation_index])
-        ## processing the material on the machine
+        ## processing the material on the machine (target sampled once per process with optional noise)
+        targets = self.state.setdefault(
+            "processing_time_target", [None] * self.num_workstations
+        )
+        if targets[chosen_workstation_index] is None:
+            if self.type_name != "num08_workbench":
+                info = self.registration_infos[chosen_machine_workstation]
+            else:
+                info = self.registration_infos["num08_workbench"]
+            base = float(info["animation_time"])
+            per_std = float(info.get("animation_time_noise_std", 0.0) or 0.0)
+            targets[chosen_workstation_index] = sample_machine_process_time(base, per_std)
         self.state["processing_time_step"][chosen_workstation_index] += 1
-        animation_time = None
-        if self.type_name != "num08_workbench":
-            animation_time = self.registration_infos[chosen_machine_workstation]["animation_time"]
-        elif self.type_name == "num08_workbench":
-            animation_time = self.registration_infos["num08_workbench"]["animation_time"]
+        animation_time = targets[chosen_workstation_index]
         if self.state["processing_time_step"][chosen_workstation_index] >= animation_time:
-            subtasks["finished"][2] = True
-            self.state["processing_time_step"][chosen_workstation_index] = 0
+            if machine_process_succeeded():
+                subtasks["finished"][2] = True
+                self.state["processing_time_step"][chosen_workstation_index] = 0
+                targets[chosen_workstation_index] = None
+            else:
+                # Rework: re-sample a longer remaining process window.
+                self.state["processing_time_step"][chosen_workstation_index] = 0
+                if self.type_name != "num08_workbench":
+                    info = self.registration_infos[chosen_machine_workstation]
+                else:
+                    info = self.registration_infos["num08_workbench"]
+                base = float(info["animation_time"])
+                per_std = float(info.get("animation_time_noise_std", 0.0) or 0.0)
+                targets[chosen_workstation_index] = sample_machine_process_time(base, per_std)
     
     def _task_done(self, env_state_action_dict: dict, task_record: dict) -> None:
         task_record["subtasks_dict"]["finished"][2] = True

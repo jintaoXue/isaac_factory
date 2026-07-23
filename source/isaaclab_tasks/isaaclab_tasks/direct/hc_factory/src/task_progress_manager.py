@@ -34,11 +34,38 @@ class TaskManager:
             have_new_task = self.decode_action_process_task_planning(env_state_action_dict, new_task_record)
             if have_new_task:
                 self.decode_action_human_robot_allocation(env_state_action_dict, new_task_record)
-                self.update_new_task_record(env_state_action_dict, new_task_record)
+                if self._can_assign_new_task(env_state_action_dict, new_task_record):
+                    self.update_new_task_record(env_state_action_dict, new_task_record)
         
         self.step_task_records(env_state_action_dict)
         self.check_done_production(env_state_action_dict)
         return env_state_action_dict
+
+    def _can_assign_new_task(self, env_state_action_dict: dict, new_task_record: dict) -> bool:
+        """Guard against stale actions when a workstation was marked invalid/DOWN."""
+        if new_task_record.get("human") is None:
+            return False
+        product_type = new_task_record["product"]
+        task_meta = CfgProcessTaskGalleryDetailedClassified[product_type][new_task_record["task"]]
+        target_machine = task_meta["target_machine"]
+        states = env_state_action_dict["machine"][target_machine]["state"]
+        task_type = task_meta["task_type"]
+        if task_type == "logistic":
+            if "free" not in states:
+                return False
+            if self._find_free_gantry(env_state_action_dict, {**new_task_record, **task_meta}) is None:
+                return False
+            return True
+        if task_type == "processing":
+            for state in states:
+                if state == "free" or state == "invalid":
+                    continue
+                pre_name = state.split("_")[0]
+                task_name = state.split("_", 1)[1]
+                if pre_name == "materialReadyFor" and task_name == new_task_record["task"]:
+                    return True
+            return False
+        return False
 
     def check_done_production(self, env_state_action_dict: dict) -> bool:
         """True when every product in the order is finished and nothing is still in progress."""

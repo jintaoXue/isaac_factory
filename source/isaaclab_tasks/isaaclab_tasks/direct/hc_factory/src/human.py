@@ -6,7 +6,8 @@ from ..env_asset_cfg.cfg_machine import CfgMachine
 from ..env_asset_cfg.route.cfg_route import RouteOptionalInitPointsInMap, OptionalInitPointIds
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
 from ..env_asset_cfg.cfg_process_subtask_gallery import CfgSubtaskPredefinedTimeGallery, SubtaskTimeNoiseStdSteps
-from .utils import HumanAnimation, quat_multiply_wxyz, sample_noisy_steps, yaw_to_quaternion_wxyz
+from .utils import HumanAnimation, quat_multiply_wxyz, yaw_to_quaternion_wxyz
+from .disturbance import sample_human_subtask_time
 import torch
 import copy
 import random
@@ -250,7 +251,9 @@ class Human:
             self.state["_counting_subtask"] = human_subtask
             self.state["subtask_time_counter"] = 0
             base = CfgSubtaskPredefinedTimeGallery[human_subtask]
-            self.state["subtask_time_target"] = sample_noisy_steps(base, SubtaskTimeNoiseStdSteps)
+            self.state["subtask_time_target"] = sample_human_subtask_time(
+                base, SubtaskTimeNoiseStdSteps
+            )
         target = self.state["subtask_time_target"]
         if self.state["subtask_time_counter"] < target:
             self.state["subtask_time_counter"] += 1
