@@ -39,8 +39,10 @@ from .env_asset_cfg.cfg_hc_env import SingleEnvStateActionDictTemplate, HcVector
 from .env_asset_cfg.perception.cfg_perception import CfgPerception
 from .src.algo_multiagent_masker import AlgoMultiAgentMasker
 from .src.task_progress_manager import TaskManager
+from .src.tpa_metrics import TpaMetricsLogger
 from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.src import algo_multiagent_masker
 import time
+import os
 
 class HcSingleEnvBase():
     def __init__(self, env_id: int, route_manager: RouteManagerVectorEnv, cuda_device: torch.device):
@@ -66,6 +68,8 @@ class HcSingleEnvBase():
         )
         self.algo_multiagent_masker = AlgoMultiAgentMasker(self.cuda_device)
         self.task_manager = TaskManager(self.cuda_device)
+        self.tpa_metrics_logger = TpaMetricsLogger(env_id=self.env_id)
+        self.env_state_action_dict["paper_exp_finished"] = False
         # self.route_manager = RouteManagerVectorEnv(cuda_device=self.cuda_device)
 
     def iter_managers(self):
@@ -98,6 +102,11 @@ class HcSingleEnvBase():
         self.env_state_action_dict["episode_num"] = self.episode_num
         self.episode_num += 1
         self.perception_manager.reset(self.env_state_action_dict)
+        self.tpa_metrics_logger.reset(self.env_state_action_dict)
+        max_ep = int(os.environ.get("HC_MAX_EPISODES", "0") or "0")
+        if max_ep > 0 and self.episode_num >= max_ep:
+            self.env_state_action_dict["paper_exp_finished"] = True
+            print(f"[paper_exp] env_{self.env_id} reached max episodes={max_ep}, will stop.")
         return self.env_state_action_dict
 
     def apply_data_to_sim(self) -> None:
@@ -123,10 +132,12 @@ class HcSingleEnvBase():
             m.step(self.env_state_action_dict)
         self.env_state_action_dict["time_step"] += 1
         self.perception_manager.step(self.env_state_action_dict)
-        
+        self.tpa_metrics_logger.step(self.env_state_action_dict)
+
         # time_end = time.time()
         # print(f"step_env_logic time: {time_end - time_start}")
         if self.env_state_action_dict["progress"]["production_done"]:
+            self.tpa_metrics_logger.flush_episode(self.env_state_action_dict, success=True)
             self.reset_env()
         return
 

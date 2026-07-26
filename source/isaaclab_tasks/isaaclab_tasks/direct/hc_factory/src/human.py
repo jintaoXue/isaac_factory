@@ -7,9 +7,12 @@ from ..env_asset_cfg.route.cfg_route import RouteOptionalInitPointsInMap, Option
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
 from ..env_asset_cfg.cfg_process_subtask_gallery import CfgSubtaskPredefinedTimeGallery, SubtaskTimeNoiseStdSteps
 from .utils import HumanAnimation, quat_multiply_wxyz, sample_noisy_steps, yaw_to_quaternion_wxyz
+from .paper_exp_config import SCENE_HUMAN_SLOTS
 import torch
 import copy
 import random
+from isaacsim.core.utils.prims import set_prim_visibility
+
 
 class HumanManager:
     def __init__(self, env_id: int, cuda_device: torch.device):
@@ -77,6 +80,24 @@ class HumanManager:
             cls = globals()[type_name]
             for idx in range(n):
                 self.human_list.append(cls(idx, self.cfg_human[type_name], self.env_id, self.cuda_device))
+        # Hide unused USD human slots so footprint / cameras match active Nh.
+        active = int(self.cfg_registration_infos.get("NormalHuman", SCENE_HUMAN_SLOTS))
+        for idx in range(active, SCENE_HUMAN_SLOTS):
+            prim_path = (
+                f"/World/envs/env_{self.env_id}/obj/HC_factory/human_robot_group/human_{idx:02d}"
+            )
+            try:
+                set_prim_visibility(prim_path, False)
+            except Exception as e:
+                print(f"[WARN] hide human_{idx:02d} failed: {e}")
+        for idx in range(min(active, SCENE_HUMAN_SLOTS)):
+            prim_path = (
+                f"/World/envs/env_{self.env_id}/obj/HC_factory/human_robot_group/human_{idx:02d}"
+            )
+            try:
+                set_prim_visibility(prim_path, True)
+            except Exception as e:
+                print(f"[WARN] show human_{idx:02d} failed: {e}")
 
 class Human:
     def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):

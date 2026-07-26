@@ -194,10 +194,14 @@ def _empty_id_labels() -> dict:
 
 
 def build_id_labels(human_xy: dict[str, tuple[float, float]]) -> dict:
+    from .paper_exp_config import active_human_id_vocab
+
+    active = set(active_human_id_vocab())
+    filtered = {k: v for k, v in human_xy.items() if k in active}
     labels = _empty_id_labels()
     for machine, cams in CAMERA_POSES.items():
         for cam in cams:
-            ids = visible_human_ids_for_camera(cam, human_xy) if camera_detects_human_id(cam) else []
+            ids = visible_human_ids_for_camera(cam, filtered) if camera_detects_human_id(cam) else []
             labels[machine][cam]["human_ids"] = ids
     return labels
 
@@ -580,21 +584,31 @@ class HumanIdModel(nn.Module):
 
 
 class HumanSubtaskModel(nn.Module):
-    def __init__(self, num_cameras: int, num_subtasks: int = len(HumanSubtaskVocab), num_tasks: int = 16):
+    def __init__(
+        self,
+        num_cameras: int,
+        num_subtasks: int = len(HumanSubtaskVocab),
+        num_tasks: int = 16,
+        use_task_embedding: bool = True,
+    ):
         super().__init__()
         self.num_cameras = num_cameras
+        self.use_task_embedding = use_task_embedding
         from torchvision import models
 
         self.backbone = nn.Sequential(*list(models.resnet18(weights=models.ResNet18_Weights.DEFAULT).children())[:-1])
         self.cam_enc = nn.Linear(512, 128)
-        self.task_emb = nn.Embedding(num_tasks, 32)
-        dim = 128 * num_cameras + 32
+        self.task_emb = nn.Embedding(num_tasks, 32) if use_task_embedding else None
+        dim = 128 * num_cameras + (32 if use_task_embedding else 0)
         self.head_sub = nn.Sequential(nn.Linear(dim, 128), nn.ReLU(True), nn.Linear(128, num_subtasks))
         self.head_done = nn.Sequential(nn.Linear(dim, 64), nn.ReLU(True), nn.Linear(64, 1))
 
     def forward(self, images: torch.Tensor, task_id: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         feats = [self.cam_enc(self.backbone(images[:, i]).flatten(1)) for i in range(images.shape[1])]
-        fused = torch.cat([*feats, self.task_emb(task_id.clamp(min=0))], dim=-1)
+        if self.use_task_embedding:
+            fused = torch.cat([*feats, self.task_emb(task_id.clamp(min=0))], dim=-1)
+        else:
+            fused = torch.cat(feats, dim=-1)
         return self.head_sub(fused), self.head_done(fused).squeeze(-1)
 
 
@@ -617,12 +631,18 @@ class PerceptionTrainer:
             raise FileNotFoundError(f"No episodes under {self.cfg['dataset_dir']}")
         order = list(episodes)
         random.Random(self.cfg.get("split_seed", 42)).shuffle(order)
+        # optional train_fraction: keep only a prefix of shuffled train pool for learning curves
         n = len(order)
         n_train = int(round(n * self.cfg.get("train_ratio", 0.7)))
         n_val = int(round(n * self.cfg.get("val_ratio", 0.15)))
         n_train = min(max(n_train, 1), n) if n else 0
         n_val = min(n_val, max(0, n - n_train))
-        train_eps = {p.resolve() for p in order[:n_train]}
+        train_pool = order[:n_train]
+        frac = float(self.cfg.get("train_fraction", 1.0))
+        if frac < 1.0:
+            keep = max(1, int(round(len(train_pool) * frac)))
+            train_pool = train_pool[:keep]
+        train_eps = {p.resolve() for p in train_pool}
         val_eps = {p.resolve() for p in order[n_train : n_train + n_val]}
         test_eps = {p.resolve() for p in order[n_train + n_val :]}
         if not val_eps and len(train_eps) > 1:
@@ -714,7 +734,10 @@ class PerceptionTrainer:
         train_set, val_set = self._split(HumanSubtaskDataset)
         train_ld = DataLoader(train_set, self.cfg["batch_size"], shuffle=True, num_workers=self.cfg["num_workers"])
         val_ld = DataLoader(val_set, self.cfg["batch_size"], num_workers=self.cfg["num_workers"])
-        model = HumanSubtaskModel(len(train_set.camera_order)).to(self.device)
+        model = HumanSubtaskModel(
+            len(train_set.camera_order),
+            use_task_embedding=bool(self.cfg.get("use_task_embedding", True)),
+        ).to(self.device)
         opt = torch.optim.AdamW(model.parameters(), lr=self.cfg["learning_rate"], weight_decay=self.cfg["weight_decay"])
         run_dir = Path(self.cfg["output_dir"]) / f"{self.cfg['run_name']}_subtask"
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -742,6 +765,7 @@ class PerceptionTrainer:
                 "model_state_dict": model.state_dict(),
                 "task": "subtask",
                 "num_cameras": len(train_set.camera_order),
+                "use_task_embedding": bool(self.cfg.get("use_task_embedding", True)),
                 "train_cfg": self.cfg,
             }
             torch.save(ckpt, run_dir / "last.pt")
@@ -753,17 +777,47 @@ class PerceptionTrainer:
         return run_dir
 
     @torch.no_grad()
-    def _eval_subtask(self, model: nn.Module, loader: DataLoader) -> dict:
+    def _eval_subtask(self, model: nn.Module, loader: DataLoader, *, detailed: bool = False) -> dict:
         model.eval()
         sub_ok = done_ok = n = 0
+        n_cls = len(HumanSubtaskVocab)
+        cm = [[0 for _ in range(n_cls)] for _ in range(n_cls)]
+        per_class_ok = [0] * n_cls
+        per_class_n = [0] * n_cls
+        done_by_sub_ok = [0] * n_cls
+        done_by_sub_n = [0] * n_cls
         for b in loader:
             sub_logits, done_logit = model(b["images"].to(self.device), b["task_id"].to(self.device))
             sub_pred = sub_logits.argmax(dim=-1)
             done_pred = (torch.sigmoid(done_logit) > 0.5).long()
-            sub_ok += int((sub_pred == b["subtask_id"].to(self.device)).sum().item())
-            done_ok += int((done_pred == b["subtask_done"].to(self.device).long()).sum().item())
-            n += b["subtask_id"].shape[0]
-        return {"subtask_acc": sub_ok / max(1, n), "done_acc": done_ok / max(1, n)}
+            gt_sub = b["subtask_id"].to(self.device)
+            gt_done = b["subtask_done"].to(self.device).long()
+            sub_ok += int((sub_pred == gt_sub).sum().item())
+            done_ok += int((done_pred == gt_done).sum().item())
+            n += gt_sub.shape[0]
+            if detailed:
+                for p, g, dp, gd in zip(sub_pred.tolist(), gt_sub.tolist(), done_pred.tolist(), gt_done.tolist()):
+                    cm[g][p] += 1
+                    per_class_n[g] += 1
+                    per_class_ok[g] += int(p == g)
+                    done_by_sub_n[g] += 1
+                    done_by_sub_ok[g] += int(dp == gd)
+        out = {"subtask_acc": sub_ok / max(1, n), "done_acc": done_ok / max(1, n), "n": n}
+        if detailed:
+            out.update(
+                {
+                    "confusion_matrix": cm,
+                    "per_class_acc": {
+                        HumanSubtaskVocab[i]: (per_class_ok[i] / max(1, per_class_n[i])) for i in range(n_cls)
+                    },
+                    "per_class_n": {HumanSubtaskVocab[i]: per_class_n[i] for i in range(n_cls)},
+                    "done_acc_by_subtask": {
+                        HumanSubtaskVocab[i]: (done_by_sub_ok[i] / max(1, done_by_sub_n[i])) for i in range(n_cls)
+                    },
+                    "class_names": list(HumanSubtaskVocab),
+                }
+            )
+        return out
 
 
 def main() -> None:
@@ -777,6 +831,11 @@ def main() -> None:
     p.add_argument("--epochs", type=int, default=CfgPerceptionTraining["num_epochs"])
     p.add_argument("--batch_size", type=int, default=CfgPerceptionTraining["batch_size"])
     p.add_argument("--device", default=CfgPerceptionTraining["device"])
+    p.add_argument("--train_fraction", type=float, default=1.0, help="Fraction of train episodes (learning curve).")
+    p.add_argument("--no_task_embedding", action="store_true", help="Ablate process-task embedding (Task B).")
+    p.add_argument("--split", choices=["test", "val", "all"], default="test", help="Eval split.")
+    p.add_argument("--detailed", action="store_true", help="Dump confusion matrix / per-class metrics.")
+    p.add_argument("--metrics_out", type=str, default=None, help="Write metrics JSON to this path.")
     args = p.parse_args()
 
     cfg = copy.deepcopy(CfgPerceptionTraining) | {
@@ -787,17 +846,33 @@ def main() -> None:
         "num_epochs": args.epochs,
         "batch_size": args.batch_size,
         "device": args.device,
+        "train_fraction": float(args.train_fraction),
+        "use_task_embedding": not bool(args.no_task_embedding),
     }
     trainer = PerceptionTrainer(cfg)
     if args.command == "train":
-        trainer.train()
+        run_dir = trainer.train()
+        # also dump a small train meta for ICCBEI
+        meta = {
+            "run_dir": str(run_dir),
+            "task": args.task,
+            "train_fraction": float(args.train_fraction),
+            "use_task_embedding": not bool(args.no_task_embedding),
+            "dataset_dir": args.dataset_dir,
+        }
+        (run_dir / "run_meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
         return
 
     if not args.checkpoint:
         raise ValueError("--checkpoint required for eval")
     payload = torch.load(args.checkpoint, map_location=trainer.device, weights_only=False)
-    _, _, test_eps = trainer._episode_split()
-    eval_eps = test_eps or None
+    train_eps, val_eps, test_eps = trainer._episode_split()
+    if args.split == "test":
+        eval_eps = test_eps or None
+    elif args.split == "val":
+        eval_eps = val_eps or None
+    else:
+        eval_eps = None  # all episodes under dataset_dir
     task = payload.get("task", args.task)
     if task == "id":
         model = HumanIdModel().to(trainer.device)
@@ -811,7 +886,8 @@ def main() -> None:
         )
     else:
         n_cam = payload.get("num_cameras", len([c for _, cams in CAMERA_POSES.items() for c in cams]))
-        model = HumanSubtaskModel(n_cam).to(trainer.device)
+        use_emb = payload.get("use_task_embedding", True)
+        model = HumanSubtaskModel(n_cam, use_task_embedding=use_emb).to(trainer.device)
         model.load_state_dict(payload["model_state_dict"])
         metrics = trainer._eval_subtask(
             model,
@@ -819,8 +895,21 @@ def main() -> None:
                 HumanSubtaskDataset(args.dataset_dir, trainer.cfg["image_size"], eval_eps),
                 args.batch_size,
             ),
+            detailed=bool(args.detailed),
         )
+    metrics = {
+        **metrics,
+        "task": task,
+        "split": args.split,
+        "dataset_dir": args.dataset_dir,
+        "checkpoint": args.checkpoint,
+    }
     print(json.dumps(metrics, indent=2, ensure_ascii=False))
+    if args.metrics_out:
+        out = Path(args.metrics_out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(metrics, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(f"[INFO] Wrote metrics -> {out}")
 
 
 if __name__ == "__main__":

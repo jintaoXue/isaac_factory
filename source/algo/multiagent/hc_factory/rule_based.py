@@ -60,6 +60,18 @@ class RuleBasedMultiAgent():
         # 'obs' is a list where each element is a dictionary representing the state of a single environment instance.
         obs : list[dict] = self.vec_env.reset()
         while True:
+            if self._paper_exp_should_stop():
+                print("[paper_exp] all envs finished; exiting rule_based.train()")
+                break
             action, action_extra = self.act(obs)
             next_obs = self.vec_env.step(action, action_extra)
             obs = next_obs
+
+    def _paper_exp_should_stop(self) -> bool:
+        env_list = getattr(self.vec_env, "env_list", None)
+        if not env_list:
+            inner = getattr(self.vec_env, "env", None) or getattr(self.vec_env, "unwrapped", None)
+            env_list = getattr(inner, "env_list", None) if inner is not None else None
+        if not env_list:
+            return False
+        return all(bool(e.env_state_action_dict.get("paper_exp_finished")) for e in env_list)

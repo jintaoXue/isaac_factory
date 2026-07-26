@@ -64,6 +64,15 @@ parser.add_argument(
     default=49100,
     help="Port for Isaac Sim livestream (sets --/app/livestream/port).",
 )
+# ICCBEI paper experiment overrides
+parser.add_argument("--num_humans", type=int, default=None, help="Active humans Nh in 1..5.")
+parser.add_argument("--product_order", type=int, default=None, help="ProductWaterPipe order size O.")
+parser.add_argument("--max_episodes", type=int, default=None, help="Stop rule_based after this many episodes.")
+parser.add_argument("--perception_output_dir", type=str, default=None, help="Override CfgPerception output_dir.")
+parser.add_argument("--perception_max_episodes", type=int, default=None, help="Override perception collect max_episodes.")
+parser.add_argument("--tpa_metrics_dir", type=str, default=None, help="Directory for TPA makespan/idle JSONL.")
+parser.add_argument("--disable_perception", action="store_true", default=False, help="Disable perception collect.")
+parser.add_argument("--no_save_images", action="store_true", default=False, help="Perception meta only, no RGB.")
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -217,6 +226,20 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     # set the environment seed (after multi-gpu config for updated rank from agent seed)
     # note: certain randomizations occur in the environment initialization so we set the seed here
     env_cfg.seed = algo_cfg["params"]["seed"]
+
+    # ICCBEI paper overrides (before gym.make constructs managers)
+    from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.src.paper_exp_config import apply_runtime_overrides
+
+    apply_runtime_overrides(
+        num_humans=args_cli.num_humans,
+        product_order=args_cli.product_order,
+        perception_output_dir=args_cli.perception_output_dir,
+        perception_max_episodes=args_cli.perception_max_episodes,
+        perception_enabled=False if args_cli.disable_perception else None,
+        tpa_metrics_dir_path=args_cli.tpa_metrics_dir,
+        max_episodes=args_cli.max_episodes,
+        save_images=False if args_cli.no_save_images else None,
+    )
 
     # specify directory for logging experiments
     log_root_path = os.path.join("logs", "rl_games", algo_cfg["params"]["config"]["name"])

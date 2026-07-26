@@ -5,12 +5,16 @@
 #   ./batch_train.sh 19 20 cuda:0          # 依次跑多个序号
 #   ./batch_train.sh A cuda:0
 #   ./batch_train.sh B
+#   ./batch_train.sh P cuda:0              # ICCBEI 论文实验全流程
+#   ./batch_train.sh 30 cuda:0             # 仅 TPA grid
 if [ $# -eq 0 ]; then
-    echo "用法: $0 <A|B|序号...> [cuda:N]"
+    echo "用法: $0 <A|B|P|序号...> [cuda:N]"
     echo "  A: 运行A组训练 (1-5)"
     echo "  B: 运行B组训练 (6-10)"
+    echo "  P: ICCBEI paper_exp 全流程 (30-39)"
     echo "  1-17: RL / HcFactory 训练序号（可多个，如 19 20）"
-    echo "  18-21: Perception 采集 / 训练 / 评估"
+    echo "  18-21: Perception 旧入口（baseline）"
+    echo "  30-39: ICCBEI paper_exp（见下方注释）"
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
     exit 1
 fi
@@ -20,11 +24,11 @@ JOBS=()
 for arg in "$@"; do
     if [[ "$arg" =~ ^cuda:[0-9]+$ ]]; then
         DEVICE="$arg"
-    elif [[ "$arg" =~ ^([1-9]|1[0-9]|2[01])$ ]] || [ "$arg" = "A" ] || [ "$arg" = "B" ]; then
+    elif [[ "$arg" =~ ^([1-9]|[1-3][0-9]|A|B|P)$ ]] || [ "$arg" = "A" ] || [ "$arg" = "B" ] || [ "$arg" = "P" ]; then
         JOBS+=("$arg")
     else
         echo "错误: 无法识别参数 '$arg'"
-        echo "用法: $0 <A|B|序号...> [cuda:N]"
+        echo "用法: $0 <A|B|P|序号...> [cuda:N]"
         exit 1
     fi
 done
@@ -191,7 +195,269 @@ run_test_21() {
         ${DEVICE_ARG}
 }
 
-# 调度：按序号 / A / B 调用上面的 run_test_*
+##### ICCBEI paper_exp (main.tex Experiments) #####
+# 原始结果根目录：source/.../hc_factory/output/paper_exp/
+#   datasets/Nh{h}_O{o}/     感知采集
+#   tpa/Nh{h}_O{o}/          makespan/idle JSONL
+#   perception_runs/         checkpoints + history.json
+#   metrics/                 eval JSON（供 ICCBEI 画图）
+PAPER_EXP_ROOT="source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/paper_exp"
+PAPER_DATASETS="${PAPER_EXP_ROOT}/datasets"
+PAPER_TPA="${PAPER_EXP_ROOT}/tpa"
+PAPER_RUNS="${PAPER_EXP_ROOT}/perception_runs"
+PAPER_METRICS="${PAPER_EXP_ROOT}/metrics"
+SOURCE_DS="${PAPER_DATASETS}/Nh5_O5"
+AGG_PY="source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/scripts/aggregate_paper_exp.py"
+
+_paper_mkdir() {
+    mkdir -p "${PAPER_DATASETS}" "${PAPER_TPA}" "${PAPER_RUNS}" "${PAPER_METRICS}"
+}
+
+run_test_30() {
+    # TPA scalability：Nh×O grid，无相机，记 makespan / idle
+    echo "运行 30: Paper TPA scalability grid (Nh=1..5, O=1..5)"
+    _paper_mkdir
+    for nh in 1 2 3 4 5; do
+        for o in 1 2 3 4 5; do
+            cell="Nh${nh}_O${o}"
+            echo "=== TPA cell ${cell} ==="
+            python train.py \
+                --task HRTPaHC-v1 \
+                --algo rule_based \
+                --num_envs 1 \
+                --headless \
+                --disable_perception \
+                --num_humans "${nh}" \
+                --product_order "${o}" \
+                --max_episodes 3 \
+                --tpa_metrics_dir "${PAPER_TPA}/${cell}" \
+                ${DEVICE_ARG}
+        done
+    done
+}
+
+run_test_31() {
+    # 源设置感知采集 (5,5)，6 episodes → train/val/test = 4/1/1
+    echo "运行 31: Paper collect source Nh5_O5 (6 episodes, cameras on)"
+    _paper_mkdir
+    python train.py \
+        --task HRTPaHC-v1 \
+        --algo rule_based \
+        --num_envs 1 \
+        --headless \
+        --enable_cameras \
+        --num_humans 5 \
+        --product_order 5 \
+        --max_episodes 6 \
+        --perception_max_episodes 6 \
+        --perception_output_dir "${SOURCE_DS}" \
+        --tpa_metrics_dir "${PAPER_TPA}/Nh5_O5" \
+        ${DEVICE_ARG}
+}
+
+run_test_32() {
+    # OOD 测试采集：每个 (Nh,O) 1 个 episode（含源设置额外 test 也可复用 31）
+    echo "运行 32: Paper collect OOD grid (1 episode / cell, cameras on)"
+    _paper_mkdir
+    for nh in 1 2 3 4 5; do
+        for o in 1 2 3 4 5; do
+            cell="Nh${nh}_O${o}"
+            # 源设置已有 6 ep；仍补 1 个独立 OOD 评测 episode 到同目录或单独 ood_ 前缀
+            out="${PAPER_DATASETS}/${cell}"
+            if [ "${nh}" -eq 5 ] && [ "${o}" -eq 5 ]; then
+                echo "=== skip collect ${cell} (use job 31 source); will eval on its test split ==="
+                continue
+            fi
+            echo "=== collect OOD ${cell} ==="
+            python train.py \
+                --task HRTPaHC-v1 \
+                --algo rule_based \
+                --num_envs 1 \
+                --headless \
+                --enable_cameras \
+                --num_humans "${nh}" \
+                --product_order "${o}" \
+                --max_episodes 1 \
+                --perception_max_episodes 1 \
+                --perception_output_dir "${out}" \
+                --tpa_metrics_dir "${PAPER_TPA}/${cell}" \
+                ${DEVICE_ARG}
+        done
+    done
+}
+
+run_test_33() {
+    # Learning curve Task A (id)：25/50/75/100%
+    echo "运行 33: Paper learning-curve train human-id"
+    _paper_mkdir
+    for frac in 0.25 0.50 0.75 1.0; do
+        tag=$(python3 - <<PY
+f=float("${frac}")
+print(f"curve_id_f{int(round(f*100)):03d}")
+PY
+)
+        echo "=== train ${tag} ==="
+        python "${PERCEPTION_PY}" train \
+            --task id \
+            --dataset_dir "${SOURCE_DS}" \
+            --output_dir "${PAPER_RUNS}" \
+            --run_name "${tag}" \
+            --train_fraction "${frac}" \
+            --epochs 20 \
+            --batch_size 32 \
+            ${DEVICE_ARG}
+    done
+}
+
+run_test_34() {
+    # Learning curve Task B (subtask)
+    echo "运行 34: Paper learning-curve train human-subtask"
+    _paper_mkdir
+    for frac in 0.25 0.50 0.75 1.0; do
+        tag=$(python3 - <<PY
+f=float("${frac}")
+print(f"curve_subtask_f{int(round(f*100)):03d}")
+PY
+)
+        echo "=== train ${tag} ==="
+        python "${PERCEPTION_PY}" train \
+            --task subtask \
+            --dataset_dir "${SOURCE_DS}" \
+            --output_dir "${PAPER_RUNS}" \
+            --run_name "${tag}" \
+            --train_fraction "${frac}" \
+            --epochs 20 \
+            --batch_size 32 \
+            ${DEVICE_ARG}
+    done
+}
+
+run_test_35() {
+    # 全量源设置 checkpoint（与 curve f100 同设定，固定命名便于后续 eval）
+    echo "运行 35: Paper full source train id+subtask"
+    _paper_mkdir
+    python "${PERCEPTION_PY}" train \
+        --task id \
+        --dataset_dir "${SOURCE_DS}" \
+        --output_dir "${PAPER_RUNS}" \
+        --run_name "source_full" \
+        --train_fraction 1.0 \
+        --epochs 20 \
+        --batch_size 32 \
+        ${DEVICE_ARG}
+    python "${PERCEPTION_PY}" train \
+        --task subtask \
+        --dataset_dir "${SOURCE_DS}" \
+        --output_dir "${PAPER_RUNS}" \
+        --run_name "source_full" \
+        --train_fraction 1.0 \
+        --epochs 20 \
+        --batch_size 32 \
+        ${DEVICE_ARG}
+}
+
+run_test_36() {
+    # Ablation: w/o process-task embedding
+    echo "运行 36: Paper ablate no task embedding (subtask)"
+    _paper_mkdir
+    python "${PERCEPTION_PY}" train \
+        --task subtask \
+        --dataset_dir "${SOURCE_DS}" \
+        --output_dir "${PAPER_RUNS}" \
+        --run_name "ablate_no_taskemb" \
+        --no_task_embedding \
+        --train_fraction 1.0 \
+        --epochs 20 \
+        --batch_size 32 \
+        ${DEVICE_ARG}
+}
+
+run_test_37() {
+    # In-distribution eval + Task B diagnostics
+    echo "运行 37: Paper ID eval + detailed subtask diagnostics"
+    _paper_mkdir
+    python "${PERCEPTION_PY}" eval \
+        --task id \
+        --dataset_dir "${SOURCE_DS}" \
+        --checkpoint "${PAPER_RUNS}/source_full_id/best.pt" \
+        --split test \
+        --metrics_out "${PAPER_METRICS}/id_source_test.json" \
+        ${DEVICE_ARG}
+    python "${PERCEPTION_PY}" eval \
+        --task subtask \
+        --dataset_dir "${SOURCE_DS}" \
+        --checkpoint "${PAPER_RUNS}/source_full_subtask/best.pt" \
+        --split test \
+        --detailed \
+        --metrics_out "${PAPER_METRICS}/subtask_source_test_detailed.json" \
+        ${DEVICE_ARG}
+    python "${PERCEPTION_PY}" eval \
+        --task subtask \
+        --dataset_dir "${SOURCE_DS}" \
+        --checkpoint "${PAPER_RUNS}/ablate_no_taskemb_subtask/best.pt" \
+        --split test \
+        --metrics_out "${PAPER_METRICS}/ablate_no_taskemb_test.json" \
+        ${DEVICE_ARG}
+    # learning-curve test points
+    for frac in 025 050 075 100; do
+        python "${PERCEPTION_PY}" eval \
+            --task id \
+            --dataset_dir "${SOURCE_DS}" \
+            --checkpoint "${PAPER_RUNS}/curve_id_f${frac}_id/best.pt" \
+            --split test \
+            --metrics_out "${PAPER_METRICS}/curve_id_f${frac}_test.json" \
+            ${DEVICE_ARG} || true
+        python "${PERCEPTION_PY}" eval \
+            --task subtask \
+            --dataset_dir "${SOURCE_DS}" \
+            --checkpoint "${PAPER_RUNS}/curve_subtask_f${frac}_subtask/best.pt" \
+            --split test \
+            --metrics_out "${PAPER_METRICS}/curve_subtask_f${frac}_test.json" \
+            ${DEVICE_ARG} || true
+    done
+}
+
+run_test_38() {
+    # Cross-setting OOD eval（固定 source_full checkpoint）
+    echo "运行 38: Paper OOD eval grid"
+    _paper_mkdir
+    for nh in 1 2 3 4 5; do
+        for o in 1 2 3 4 5; do
+            cell="Nh${nh}_O${o}"
+            ds="${PAPER_DATASETS}/${cell}"
+            split="all"
+            if [ "${nh}" -eq 5 ] && [ "${o}" -eq 5 ]; then
+                ds="${SOURCE_DS}"
+                split="test"
+            fi
+            if [ ! -d "${ds}" ]; then
+                echo "[WARN] missing dataset ${ds}, skip"
+                continue
+            fi
+            python "${PERCEPTION_PY}" eval \
+                --task id \
+                --dataset_dir "${ds}" \
+                --checkpoint "${PAPER_RUNS}/source_full_id/best.pt" \
+                --split "${split}" \
+                --metrics_out "${PAPER_METRICS}/ood_id_${cell}.json" \
+                ${DEVICE_ARG} || true
+            python "${PERCEPTION_PY}" eval \
+                --task subtask \
+                --dataset_dir "${ds}" \
+                --checkpoint "${PAPER_RUNS}/source_full_subtask/best.pt" \
+                --split "${split}" \
+                --metrics_out "${PAPER_METRICS}/ood_subtask_${cell}.json" \
+                ${DEVICE_ARG} || true
+        done
+    done
+}
+
+run_test_39() {
+    echo "运行 39: Aggregate paper_exp metrics"
+    python "${AGG_PY}"
+}
+
+# 调度：按序号 / A / B / P 调用上面的 run_test_*
 run_one_job() {
     local id=$1
     case $id in
@@ -216,6 +482,16 @@ run_one_job() {
         19) run_test_19 ;;
         20) run_test_20 ;;
         21) run_test_21 ;;
+        30) run_test_30 ;;
+        31) run_test_31 ;;
+        32) run_test_32 ;;
+        33) run_test_33 ;;
+        34) run_test_34 ;;
+        35) run_test_35 ;;
+        36) run_test_36 ;;
+        37) run_test_37 ;;
+        38) run_test_38 ;;
+        39) run_test_39 ;;
         A)
             echo "=== 运行A组训练 (1-5) ==="
             run_test_1; run_test_2; run_test_3; run_test_4; run_test_5; run_test_6
@@ -225,6 +501,20 @@ run_one_job() {
             echo "=== 运行B组训练 (6-10) ==="
             run_test_7; run_test_8; run_test_9; run_test_10
             echo "B组训练完成！"
+            ;;
+        P)
+            echo "=== ICCBEI paper_exp (30-39) ==="
+            run_test_30
+            run_test_31
+            run_test_32
+            run_test_33
+            run_test_34
+            run_test_35
+            run_test_36
+            run_test_37
+            run_test_38
+            run_test_39
+            echo "paper_exp 完成！原始结果在 ${PAPER_EXP_ROOT}"
             ;;
         *) echo "错误: 无效的训练序号 $id"; return 1 ;;
     esac
