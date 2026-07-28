@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import os
 from datetime import datetime
@@ -111,9 +112,9 @@ def map_machine_state(raw_state: str) -> tuple[str, str | None]:
     if raw_state.startswith("working_"):
         return "PROCESSING", f"task={raw_state.split('_', 1)[1]}"
     if raw_state.startswith("waiting_"):
-        return "BLOCKED", "downstream_not_ready"
+        return "WAITING", "reserved_waiting_for_material"
     if raw_state.startswith("materialReadyFor_"):
-        return "WAITING", "material_ready"
+        return "READY", "material_ready"
     return "IDLE", f"unknown_state={raw_state}"
 
 
@@ -310,6 +311,7 @@ class BottleneckDataCollector:
         self.episode_id = -1
         self._out_dir: Path | None = None
         self._steps_logged = 0
+        self._episode_end_logged = False
 
         self._prev_resource: dict[str, tuple] = {}
         self._prev_buffer: dict[str, tuple] = {}
@@ -321,6 +323,7 @@ class BottleneckDataCollector:
         self._prev_material: dict[str, tuple] = {}
 
         self._episode_config_writer: _CsvWriter | None = None
+        self._episode_lifecycle_writer: _CsvWriter | None = None
         self._job_trace_writer: _CsvWriter | None = None
         self._buffer_writer: _CsvWriter | None = None
         self._transport_writer: _CsvWriter | None = None
@@ -333,9 +336,11 @@ class BottleneckDataCollector:
             return
         self.episode_id += 1
         self._steps_logged = 0
+        self._episode_end_logged = False
         self._clear_episode_state()
         self._setup_output_dir()
         self._write_episode_config(env)
+        self._write_episode_lifecycle(env, "START", time_step=0)
         if self._disturbance_writer:
             self._disturbance_writer.write_header_only()
         self._snapshot_all_resources(env, initial=True)
@@ -348,6 +353,7 @@ class BottleneckDataCollector:
             return
         max_steps = self.cfg.get("max_steps_per_episode")
         if max_steps is not None and self._steps_logged >= max_steps:
+            self._maybe_write_episode_end(env)
             return
 
         time_step = int(env["time_step"])
@@ -363,6 +369,7 @@ class BottleneckDataCollector:
             self._log_material_inventory(env, time_step)
 
         self._steps_logged += 1
+        self._maybe_write_episode_end(env)
 
     def log_disturbance(self, row: dict) -> None:
         """Append one disturbance_log row (called by DisturbanceInjector)."""
@@ -382,6 +389,7 @@ class BottleneckDataCollector:
             {
                 "run_id": BottleneckRunContext.run_id,
                 "env_id": self.env_id,
+                "episode_id": self.episode_id,
                 "disturbance_id": row.get("disturbance_id", ""),
                 "disturbance_type": row.get("disturbance_type", ""),
                 "target_resource_id": row.get("target_resource_id", ""),
@@ -418,6 +426,7 @@ class BottleneckDataCollector:
                     "layout": "episode_<id>/env_<id>/",
                     "tables": [
                         "episode_config.csv",
+                        "episode_lifecycle.csv",
                         "disturbance_log.csv",
                         "resource_event_log.jsonl",
                         "job_trace.csv",
@@ -440,13 +449,21 @@ class BottleneckDataCollector:
         self._episode_config_writer = _CsvWriter(
             base / "episode_config.csv",
             [
-                "run_id", "episode_id", "env_id", "seed", "algo", "num_envs",
+                "run_id", "episode_id", "env_id", "seed", "algo", "policy_type",
+                "scenario_id", "num_envs",
                 "sim_dt", "logic_dt", "decimation", "duration_limit_steps", "product_order",
                 "product_mix", "process_time_config", "subtask_time_config",
                 "buffer_capacity_config", "human_config", "robot_config", "gantry_config",
                 "parallel_producing_limit", "arrival_rate",
                 "disturbance_dim", "disturbance_intensity", "disturbance_applied",
                 "env_yaml_path", "agent_yaml_path", "collector_version",
+            ],
+        )
+        self._episode_lifecycle_writer = _CsvWriter(
+            base / "episode_lifecycle.csv",
+            [
+                "run_id", "env_id", "episode_id", "event", "time_step",
+                "logic_time_s", "production_done", "completed_jobs",
             ],
         )
         self._job_trace_writer = _CsvWriter(
@@ -491,10 +508,10 @@ class BottleneckDataCollector:
         self._disturbance_writer = _CsvWriter(
             base / "disturbance_log.csv",
             [
-                "run_id", "env_id", "disturbance_id", "disturbance_type",
+                "run_id", "env_id", "episode_id", "disturbance_id", "disturbance_type",
                 "target_resource_id", "target_resource_type",
                 "start_time_step", "end_time_step", "start_logic_time_s", "end_logic_time_s",
-                "severity", "parameter_before", "parameter_after", "notes",
+                "intensity", "parameter_before", "parameter_after", "notes",
             ],
         )
 
@@ -504,7 +521,10 @@ class BottleneckDataCollector:
         buffer_cap = {}
         for key, st in env.get("storage", {}).items():
             kv = st.get("key_variables", {})
-            buffer_cap[key] = kv.get("capacity", 0)
+            buffer_cap[key] = {
+                "capacity": kv.get("capacity", 0),
+                "supporting_materials": to_serializable(kv.get("supporting_materials", [])),
+            }
 
         process_times = {}
         for product, gallery in CfgProductProcessGallery.items():
@@ -512,6 +532,8 @@ class BottleneckDataCollector:
                 step: {
                     "process_time": info["process_time"],
                     "gaussian_random_time": info.get("gaussian_random_time", 0),
+                    "machine": info.get("machine"),
+                    "required_materials": to_serializable(info.get("required_materials", {})),
                 }
                 for step, info in gallery.get("process_steps", {}).items()
             }
@@ -523,6 +545,8 @@ class BottleneckDataCollector:
             "env_id": self.env_id,
             "seed": BottleneckRunContext.seed,
             "algo": BottleneckRunContext.algo,
+            "policy_type": BottleneckRunContext.algo,
+            "scenario_id": self._scenario_id(),
             "num_envs": BottleneckRunContext.num_envs,
             "sim_dt": BottleneckRunContext.sim_dt,
             "logic_dt": BottleneckRunContext.logic_dt,
@@ -543,9 +567,55 @@ class BottleneckDataCollector:
             "disturbance_applied": json.dumps(RuntimeDisturbanceCfg.get("applied") or {}),
             "env_yaml_path": BottleneckRunContext.env_yaml_path,
             "agent_yaml_path": BottleneckRunContext.agent_yaml_path,
-            "collector_version": self.cfg.get("collector_version", "v0.2"),
+            "collector_version": self.cfg.get("collector_version", "v0.4"),
         }
         self._episode_config_writer.write_row(row)
+
+    def _scenario_id(self) -> str:
+        dim = str(RuntimeDisturbanceCfg.get("dim", "none"))
+        intensity = float(RuntimeDisturbanceCfg.get("intensity", 0.0) or 0.0)
+        human_count = sum(int(v) for v in CfgHumanRegistrationInfos.values())
+        robot_count = sum(int(v) for v in CfgRobotRegistrationInfos.values())
+        gantry_count = len(
+            CfgMachine.get("num07_gantry_group", {}).get("active_gantry_indices", [])
+        )
+        order_payload = json.dumps(
+            to_serializable(CfgProductOrder), sort_keys=True, separators=(",", ":")
+        )
+        order_signature = hashlib.sha1(order_payload.encode("utf-8")).hexdigest()[:8]
+        return (
+            f"{dim}_i{intensity:g}_h{human_count}_r{robot_count}"
+            f"_g{gantry_count}_order{order_signature}"
+        )
+
+    def _write_episode_lifecycle(self, env: dict, event: str, time_step: int) -> None:
+        if self._episode_lifecycle_writer is None:
+            return
+        completed_jobs = sum(
+            len(indices) for indices in env.get("progress", {}).get("finished", {}).values()
+        )
+        self._episode_lifecycle_writer.write_row(
+            {
+                "run_id": BottleneckRunContext.run_id,
+                "env_id": self.env_id,
+                "episode_id": self.episode_id,
+                "event": event,
+                "time_step": time_step,
+                "logic_time_s": _logic_time_s(time_step),
+                "production_done": int(
+                    bool(env.get("progress", {}).get("production_done", False))
+                ),
+                "completed_jobs": completed_jobs,
+            }
+        )
+
+    def _maybe_write_episode_end(self, env: dict) -> None:
+        if self._episode_end_logged:
+            return
+        if not env.get("progress", {}).get("production_done", False):
+            return
+        self._write_episode_lifecycle(env, "END", int(env.get("time_step", 0)))
+        self._episode_end_logged = True
 
     def _clear_episode_state(self) -> None:
         self._prev_resource.clear()
@@ -737,6 +807,46 @@ class BottleneckDataCollector:
             state = st.get("state", "empty")
             jobs = frozenset(_jobs_in_storage(env, key))
             self._prev_buffer[f"storage_{key}"] = (occ, state, jobs)
+            if initial and self.cfg.get("log_buffer_events", True):
+                self._write_buffer_row(key, st, jobs, time_step=0, event="init")
+
+    def _write_buffer_row(
+        self,
+        key: str,
+        st: dict,
+        jobs: frozenset[int],
+        time_step: int,
+        event: str,
+        enqueue_job_id: int | None = None,
+        dequeue_job_id: int | None = None,
+    ) -> None:
+        if self._buffer_writer is None:
+            return
+        kv = st.get("key_variables", {})
+        capacity = int(kv.get("capacity", 1) or 1)
+        occupancy = max(int(st.get("num_material", 0)), len(jobs))
+        self._buffer_writer.write_row(
+            {
+                "run_id": BottleneckRunContext.run_id,
+                "env_id": self.env_id,
+                "episode_id": self.episode_id,
+                "time_step": time_step,
+                "logic_time_s": _logic_time_s(time_step),
+                "buffer_id": f"storage_{key}",
+                "buffer_type": kv.get("class_name", key.split("_")[0]),
+                "occupancy": occupancy,
+                "capacity": capacity,
+                "occupancy_ratio": occupancy / capacity if capacity else 0.0,
+                "state": st.get("state", "empty"),
+                "material_type": st.get("material_type"),
+                "event": event,
+                "enqueue_job_id": enqueue_job_id,
+                "dequeue_job_id": dequeue_job_id,
+                "supporting_materials": json.dumps(
+                    to_serializable(kv.get("supporting_materials", []))
+                ),
+            }
+        )
 
     def _log_buffer_events(self, env: dict, time_step: int) -> None:
         interval = int(self.cfg.get("buffer_snapshot_interval", 0) or 0)
@@ -753,45 +863,20 @@ class BottleneckDataCollector:
             periodic = interval > 0 and time_step % interval == 0
             if not changed and not periodic:
                 continue
-            kv = st.get("key_variables", {})
-            capacity = int(kv.get("capacity", 1) or 1)
-            # Prefer material-inferred occupancy when sim num_material is stale
-            # (runtime placement increments but never decrements).
-            occupancy = max(occ, len(jobs))
-
-            def _write_buffer_row(event: str, enqueue_job_id=None, dequeue_job_id=None) -> None:
-                row = {
-                    "run_id": BottleneckRunContext.run_id,
-                    "env_id": self.env_id,
-                    "episode_id": self.episode_id,
-                    "time_step": time_step,
-                    "logic_time_s": _logic_time_s(time_step),
-                    "buffer_id": buffer_id,
-                    "buffer_type": kv.get("class_name", key.split("_")[0]),
-                    "occupancy": occupancy,
-                    "capacity": capacity,
-                    "occupancy_ratio": occupancy / capacity if capacity else 0.0,
-                    "state": state,
-                    "material_type": st.get("material_type"),
-                    "event": event,
-                    "enqueue_job_id": enqueue_job_id,
-                    "dequeue_job_id": dequeue_job_id,
-                    "supporting_materials": json.dumps(
-                        to_serializable(kv.get("supporting_materials", []))
-                    ),
-                }
-                if self._buffer_writer:
-                    self._buffer_writer.write_row(row)
 
             if added or removed:
                 for jid in sorted(added):
-                    _write_buffer_row("enqueue", enqueue_job_id=jid)
+                    self._write_buffer_row(
+                        key, st, jobs, time_step, "enqueue", enqueue_job_id=jid
+                    )
                 for jid in sorted(removed):
-                    _write_buffer_row("dequeue", dequeue_job_id=jid)
+                    self._write_buffer_row(
+                        key, st, jobs, time_step, "dequeue", dequeue_job_id=jid
+                    )
             elif changed:
-                _write_buffer_row("state_change")
+                self._write_buffer_row(key, st, jobs, time_step, "state_change")
             elif periodic:
-                _write_buffer_row("snapshot")
+                self._write_buffer_row(key, st, jobs, time_step, "snapshot")
 
             self._prev_buffer[buffer_id] = (occ, state, jobs)
 
@@ -1088,6 +1173,37 @@ class BottleneckDataCollector:
                 mid = f"material_{batch_job_id}_{sub_name}" if batch_job_id is not None else f"material_{sub_name}"
                 storage = sub_info.get("storage_name")
                 self._prev_material[mid] = (storage, ms.get("finished_task"), batch_job_id)
+                if (
+                    initial
+                    and self.cfg.get("log_material_inventory", True)
+                    and self._material_writer is not None
+                ):
+                    self._material_writer.write_row(
+                        {
+                            "run_id": BottleneckRunContext.run_id,
+                            "env_id": self.env_id,
+                            "episode_id": self.episode_id,
+                            "time_step": 0,
+                            "logic_time_s": 0.0,
+                            "material_id": mid,
+                            "material_type": sub_name,
+                            "job_id": batch_job_id,
+                            "inventory_level": int(
+                                storage not in (None, "disappear")
+                            ),
+                            "reserved_quantity": int(
+                                ms.get("ongoing_task_record_index") is not None
+                            ),
+                            "consume_quantity": 0,
+                            "replenish_quantity": 0,
+                            "storage_location": storage,
+                            "shortage_flag": self._material_shortage_flag(
+                                env, ms, sub_name
+                            ),
+                            "finished_task": ms.get("finished_task", "none"),
+                            "event": "init",
+                        }
+                    )
 
     def _log_material_inventory(self, env: dict, time_step: int) -> None:
         if not self._material_writer:
@@ -1155,24 +1271,25 @@ class BottleneckDataCollector:
                 self._prev_material[mid] = (storage, finished_task, job_id)
 
     def _material_shortage_flag(self, env: dict, ms: dict, sub_name: str) -> int:
-        job_id = ms.get("ongoing_task_record_index")
-        if job_id is None:
-            return 0
-        tr = env["progress"]["ongoing_task_records"].get(job_id)
-        if not tr:
-            return 0
-        if tr.get("task_type") == "processing":
-            required = tr.get("processing_submaterials") or []
-            if sub_name in required:
-                loc = ms.get("submaterials", {}).get(sub_name, {}).get("storage_name")
-                if loc in (None, "disappear"):
-                    return 1
-        if tr.get("task_type") == "logistic":
-            logistic_mat = tr.get("logistic_submaterial")
-            if sub_name == logistic_mat:
-                loc = ms.get("submaterials", {}).get(sub_name, {}).get("storage_name")
-                if loc in (None, "disappear"):
-                    return 1
+        task_record_id = ms.get("ongoing_task_record_index")
+        tr = (
+            env["progress"]["ongoing_task_records"].get(task_record_id)
+            if task_record_id is not None
+            else None
+        )
+        if tr:
+            if tr.get("task_type") == "processing":
+                required = tr.get("processing_submaterials") or []
+                if sub_name in required:
+                    loc = ms.get("submaterials", {}).get(sub_name, {}).get("storage_name")
+                    if loc in (None, "disappear"):
+                        return 1
+            if tr.get("task_type") == "logistic":
+                logistic_mat = tr.get("logistic_submaterial")
+                if sub_name == logistic_mat:
+                    loc = ms.get("submaterials", {}).get(sub_name, {}).get("storage_name")
+                    if loc in (None, "disappear"):
+                        return 1
         finished = ms.get("finished_task", "none")
         if finished in ("none", "logistic_for_pipe_cutting", "pipe_cutting"):
             if sub_name in ("product_00_flange", "product_00_elbow"):
