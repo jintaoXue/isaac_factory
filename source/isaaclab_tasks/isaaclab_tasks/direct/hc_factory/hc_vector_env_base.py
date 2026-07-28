@@ -29,12 +29,13 @@ import time
 
 from .hc_single_env import HcSingleEnv
 
-from .env_asset_cfg.cfg_camera import has_registered_cameras
+from .env_asset_cfg.perception.cfg_camera import has_registered_cameras
 from .env_asset_cfg.cfg_hc_env import HcRenderCfg
 from .hc_render import apply_hc_render_settings
 
 from .src.route import RouteManagerVectorEnv
 from .src.bottleneck_data import init_bottleneck_run_context # added: for bottleneck data collection
+from .src.material import ensure_product_water_pipe_prims
 
 class HcVectorEnvBase(DirectRLEnv):
     cfg_vector_env: HcVectorEnvCfg
@@ -75,6 +76,7 @@ class HcVectorEnvBase(DirectRLEnv):
             sub_env_path = f"/World/envs/env_{i}"
             # the usd file already has a ground plane
             add_reference_to_stage(usd_path = self.cfg_vector_env.asset_path, prim_path = sub_env_path + "/obj")
+            ensure_product_water_pipe_prims(env_id=i)
             self.setup_one_env(env_id=i)
         # for debug, visualize only prims 
         # stage_utils.print_stage_prim_paths()
@@ -85,7 +87,12 @@ class HcVectorEnvBase(DirectRLEnv):
         light_cfg.func("/World/Light", light_cfg)
 
     def setup_one_env(self, env_id: int):
-        single_env = HcSingleEnv(env_id=env_id, route_manager=self.route_manager, cuda_device=self.cuda_device)
+        single_env = HcSingleEnv(
+            env_id=env_id,
+            route_manager=self.route_manager,
+            cuda_device=self.cuda_device,
+            max_episodes=getattr(self.cfg_vector_env, "max_episodes", None),
+        )
         self.env_list.append(single_env)
 
     def reset(self, num_worker=None, num_robot=None, evaluate=False):
@@ -108,7 +115,7 @@ class HcVectorEnvBase(DirectRLEnv):
         time_start = time.time()
         self.step_env_physics()
         time_end = time.time()
-        print(f"step_env_physics time: {time_end - time_start}")
+        # print(f"step_env_physics time: {time_end - time_start}")
         obs: list[dict] = []
         for env_id, env in enumerate(self.env_list):
             obs.append(env.env_state_action_dict)

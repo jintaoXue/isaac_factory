@@ -332,7 +332,7 @@ isaac_factory/
 │           │   ├── cfg_human.py              # 人工配置
 │           │   ├── cfg_robot.py              # 机器人配置
 │           │   ├── cfg_storage.py            # 仓储配置
-│           │   └── cfg_route/                # 路径规划配置与地图点
+│           │   └── route/                    # 路径规划配置与地图点
 │           ├── src/                  # 运行时 Manager 实现
 │           │   ├── machine.py
 │           │   ├── material.py
@@ -375,60 +375,43 @@ isaac_factory/
 
 ## Human Subtask 感知训练
 
-`perception` 模块用于从工厂多相机图像（及可选结构化信号）估计**每个正在作业的 human 当前 subtask**。流程分两步：仿真内 **collect** 采集数据，再离线 **train** 训练。
+`perception` 模块用工厂多相机图像做两个任务：**(1) 各视角画面中的 human id**；**(2) working human 的当前 subtask / done**。流程：仿真内 **collect** → 离线 **train**。
 
-配置文件：`env_asset_cfg/cfg_perception.py`（采集与训练超参）、`env_asset_cfg/cfg_camera.py`（相机位姿）。实现代码：`src/perception.py`。
+配置：`env_asset_cfg/perception/cfg_perception.py`、`cfg_camera.py`（含手动 `ground_footprint_xy`）。实现：`src/perception.py`。
 
 ### 实验设计
 
-**目标：** 每个仿真步，对所有 `state != free` 的 human 预测：
+**任务 A — human id recognition（每相机多标签）**
 
-| 输出 | 类型 | 说明 |
-|------|------|------|
-| `subtask_name` | 9 类分类 | human 列 subtask，如 `go_to_material`、`control_gantry`、`wait` |
-| `subtask_done` | 二分类 | 当前 human subtask 是否已完成 |
+| 项 | 说明 |
+|----|------|
+| GT | `rigid_prims` XY 落在该相机 `ground_footprint_xy` 多边形内 → `human_ids` |
+| 跳过 | `detect_human_id=False` 的高空相机（仍存图） |
+| 训练 | 单目 ResNet18 + BCE multi-hot（`HumanIdVocab`） |
 
-**模型输入：**
+**任务 B — human subtask recognition（working human）**
 
-| 模态 | 形状 / 格式 | 来源 |
-|------|-------------|------|
-| 多相机 RGB | `(N_cam, 3, 224, 224)` | 固定工厂相机（`cfg_camera.py`）；每视角 ResNet18 编码 |
-| Agent signals（可选） | 8 维向量 | 特权 task-record 特征：`subtask_index`、`num_subtasks`、四列 `finished`、两列 `wait` 标志 |
+| 输出 | 说明 |
+|------|------|
+| `human_subtask` | 9 类（`HumanSubtaskVocab`） |
+| `human_subtask_done` | 二分类 |
+| 输入 | 多相机 RGB + `human_task_id` |
 
-**Ground Truth（写入 `meta.jsonl`）：**
-
-- 来自仿真 `subtasks_dict`：`subtask_name = ongoing[human]`，`subtask_done = finished[human]`
-- 每步同时记录：`task`、`subtask_index`、`area_id`、全场景 `human_labels`、`agent_signals`、`task_records`
-- `state == free` 的 human 仅作场景上下文，**不作为预测目标**
-- 标签词表见 `cfg_perception.py` 中的 `HumanSubtaskVocab`、`TaskVocab`（与工艺 gallery 同步）
-
-**损失函数：** `CrossEntropy(subtask_name) + BCE(subtask_done)`
-
-**数据集目录结构**（默认 `output/perception_dataset/`）：
+**`meta.jsonl`：** 每个保存步 **一行**，结构对齐 `PerceptionSampleTemplate`（`human_id_recognition` / `human_subtask_recognition` / 精简 `env_state_action_dict`）。
 
 ```
 perception_dataset/
 ├── manifest.json
 └── env_00_episode_000000/
-    ├── meta.jsonl              # 每个保存步一行 JSON
-    └── cameras/step_000123/    # 该步多相机 JPG
+    ├── meta.jsonl
+    └── cameras/step_000123/
 ```
 
 ### 数据采集
 
-1. 在 `env_asset_cfg/cfg_perception.py` 中开启采集：
-
-```python
-CfgPerception = {
-    "enabled": True,
-    "mode": "collect",   # collect | infer | off
-    ...
-}
-```
-
-2. 确认相机已注册（`cfg_camera.py` 中 `CfgCameraRegistrationInfos`）。
-
-3. 运行仿真（建议 `num_envs=1`，便于整理数据集）：
+1. `CfgPerception["mode"] = "collect"`，`enabled=True`
+2. 确认 `cfg_camera.py` 已注册相机并标定 footprint
+3. 运行：
 
 ```bash
 python train.py \
@@ -440,38 +423,34 @@ python train.py \
   --enable_cameras
 ```
 
-数据默认写入：
-
-`source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset/`
-
-可通过 `CfgPerception` 中的 `save_interval`、`max_episodes`、`max_steps_per_episode` 控制采集量。
+数据目录：`.../hc_factory/output/perception_dataset/`
 
 ### 离线训练
 
-在项目根目录、已激活 `isaaclab` 环境下执行：
-
 ```bash
+# 任务 A：human id
 python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/perception.py train \
+  --task id \
   --dataset_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset \
-  --output_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_runs \
-  --run_name subtask_baseline \
-  --epochs 20 \
-  --batch_size 16 \
-  --device cuda:0
+  --run_name perception_baseline \
+  --epochs 20 --batch_size 32 --device cuda:0
+
+# 任务 B：subtask
+python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/perception.py train \
+  --task subtask \
+  --dataset_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset \
+  --run_name perception_baseline \
+  --epochs 20 --batch_size 32 --device cuda:0
 ```
 
-Checkpoint 保存在 `output/perception_runs/subtask_baseline/`（`best.pt`、`last.pt`、`history.json`）。
-
-**评估：**
+Checkpoint：`output/perception_runs/perception_baseline_{id|subtask}/`
 
 ```bash
-python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/perception.py eval \
-  --dataset_dir source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_dataset \
-  --checkpoint source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/perception_runs/subtask_baseline/best.pt \
+python .../perception.py eval --task subtask \
+  --dataset_dir .../perception_dataset \
+  --checkpoint .../perception_baseline_subtask/best.pt \
   --device cuda:0
 ```
-
-**仿真内推理：** 将 `CfgPerception["mode"]` 设为 `"infer"`，并配置 `checkpoint_path` 指向训练好的 `best.pt`。
 
 ---
 

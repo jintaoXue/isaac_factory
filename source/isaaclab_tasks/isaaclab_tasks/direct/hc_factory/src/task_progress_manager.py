@@ -3,6 +3,7 @@ from ..env_asset_cfg.cfg_storage import CfgStorage
 from ..env_asset_cfg.cfg_material_product import CfgProductOrder, CfgProductProcess
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskGalleryDetailedClassified, CfgSubtaskGallery, TaskRecordTemplate
 from ..env_asset_cfg.cfg_machine import CfgMachine
+from .material import pick_free_storage
 import torch
 import copy
 
@@ -22,7 +23,8 @@ class TaskManager:
         env_state_action_dict["progress"]["producing_indexs"] = []
         env_state_action_dict["progress"]["finished"] = {}
         env_state_action_dict["progress"]["ongoing_task_records"] = {}
-    
+        env_state_action_dict["progress"]["production_done"] = False
+
     def step(self, env_state_action_dict: dict) -> dict:
         
         self.decode_action_product_sequencing(env_state_action_dict)
@@ -32,10 +34,60 @@ class TaskManager:
             have_new_task = self.decode_action_process_task_planning(env_state_action_dict, new_task_record)
             if have_new_task:
                 self.decode_action_human_robot_allocation(env_state_action_dict, new_task_record)
-                self.update_new_task_record(env_state_action_dict, new_task_record)
+                if self._can_assign_new_task(env_state_action_dict, new_task_record):
+                    self.update_new_task_record(env_state_action_dict, new_task_record)
         
         self.step_task_records(env_state_action_dict)
+        self.check_done_production(env_state_action_dict)
         return env_state_action_dict
+
+    def _can_assign_new_task(self, env_state_action_dict: dict, new_task_record: dict) -> bool:
+        """Guard against stale actions when a workstation was marked invalid/DOWN."""
+        if new_task_record.get("human") is None:
+            return False
+        product_type = new_task_record["product"]
+        task_meta = CfgProcessTaskGalleryDetailedClassified[product_type][new_task_record["task"]]
+        target_machine = task_meta["target_machine"]
+        states = env_state_action_dict["machine"][target_machine]["state"]
+        task_type = task_meta["task_type"]
+        if task_type == "logistic":
+            if "free" not in states:
+                return False
+            if self._find_free_gantry(env_state_action_dict, {**new_task_record, **task_meta}) is None:
+                return False
+            return True
+        if task_type == "processing":
+            for state in states:
+                if state == "free" or state == "invalid":
+                    continue
+                pre_name = state.split("_")[0]
+                task_name = state.split("_", 1)[1]
+                if pre_name == "materialReadyFor" and task_name == new_task_record["task"]:
+                    return True
+            return False
+        return False
+
+    def check_done_production(self, env_state_action_dict: dict) -> bool:
+        """True when every product in the order is finished and nothing is still in progress."""
+        progress = env_state_action_dict["progress"]
+        product_order = progress["product_order"]
+        finished = progress.get("finished", {})
+
+        for product_type, required in product_order.items():
+            if len(finished.get(product_type, [])) < required:
+                progress["production_done"] = False
+                return False
+
+        # not_started = progress.get("not_started", {})
+        # if any(count > 0 for count in not_started.values()):
+        #     progress["production_done"] = False
+        #     return False
+        # if progress.get("producing") or progress.get("ongoing_task_records"):
+        #     progress["production_done"] = False
+        #     return False
+
+        progress["production_done"] = True
+        return True
 
     def decode_action_product_sequencing(self, env_state_action_dict):
         action_product_sequencing = env_state_action_dict["action"]["product_sequencing"]
@@ -218,6 +270,10 @@ class TaskManager:
             assert env_state_action_dict["human"][human]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
             env_state_action_dict["human"][human]["ongoing_task_record_index"] = task_record["product_index"]
             env_state_action_dict["human"][human]["state"] = "working_" + task_record["task"]
+            env_state_action_dict["human"][human]["generated_route"] = []
+            env_state_action_dict["human"][human]["route_index"] = 0
+            env_state_action_dict["human"][human]["route_length"] = 0
+            env_state_action_dict["human"][human]["target_area_id"] = None
         #robot
         robot = task_record["robot"]
         if robot != None:
@@ -343,16 +399,4 @@ class TaskManager:
                         task_record["subtasks_dict"]["material_goal_area"] = goal_storage_name
     
     def _find_free_storage(self, env_state_action_dict, task_record):
-        storages = env_state_action_dict["storage"]
-        processed_material = task_record["processed_material"]
-
-        for storage_name, value in storages.items():
-            supporting_materials = value["key_variables"]["supporting_materials"]
-            # If this material isn't supported, or storage is already full, skip
-            if processed_material not in supporting_materials or value["state"] == "full":
-                continue
-            # If storage is partially filled with a different material type, skip
-            if value["state"] == "partial" and processed_material != value["material_type"]:
-                continue
-            return storage_name
-        raise ValueError(f"No free storage found for {processed_material}")
+        return pick_free_storage(env_state_action_dict, task_record["processed_material"])

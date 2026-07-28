@@ -11,7 +11,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from ..env_asset_cfg.cfg_camera import CfgCamera, CfgCameraRegistrationInfos
+from ..env_asset_cfg.perception.cfg_camera import CfgCamera, CfgCameraRegistrationInfos
 
 _DEBUG_CAMERA_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output" / "debug_camera"
 
@@ -42,8 +42,14 @@ def _apply_spawn_intrinsics(sensor: Any, spawn_cfg: dict | None) -> None:
 
 
 def _rgb_from_frame(frame: dict) -> np.ndarray | None:
-    """Extract RGB uint8 array from Isaac Sim Camera.get_current_frame() dict."""
-    rgba = frame.get("rgba")
+    """Extract RGB uint8 array from Isaac Sim Camera.get_current_frame() dict.
+
+    Isaac Sim 5.x attaches the ``rgb`` annotator, so the frame key is ``rgb``
+    (often HxWx4 RGBA). Older builds may still expose ``rgba``.
+    """
+    rgba = frame.get("rgb")
+    if rgba is None:
+        rgba = frame.get("rgba")
     if rgba is None:
         return None
     if isinstance(rgba, torch.Tensor):
@@ -172,7 +178,7 @@ class Camera:
 
     @property
     def state_key(self) -> str:
-        return f"num_{self.idx:02d}_{self.type_name}"
+        return f"{self.type_name}"
 
     def reset(self, env_state_action_dict: dict) -> dict:
         self.state = copy.deepcopy(self.reset_state)

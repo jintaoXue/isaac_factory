@@ -172,3 +172,31 @@ storage 的管理
 还有摄像头需要加进去
 
 ##7.5 subtask time需要加噪声
+
+
+#7.10 collision check的逻辑
+
+
+#7.13
+告诉图片里面出现了哪些human id robot id
+human id和robot id 的状态
+如果是working, doing what subtask, done or not done?
+
+考虑小车的中心点偏移
+
+#7.15
+
+关于数据采集和任务定义的更新
+参考cfg_perception.py 模板的input 和 output_label
+
+综上识别任务就两个 一个是多视角各个图片中的human id是哪个
+第二是识别working human的current subtask
+
+现在需要你： 1.修改相关代码，尤其是perception.py的逻辑，储存的数据格式，读取数据并训练的接口，和终端输出等
+2. 要求perception的代码简洁高效
+
+# 7.17 
+关于实验随机数的制定
+要求每个subtask的完成时间每一次都加上高斯噪声
+要求training validate 和测试集的随机数要不同
+增加在batch_train里面 把运行代码写进去 方便跑训练

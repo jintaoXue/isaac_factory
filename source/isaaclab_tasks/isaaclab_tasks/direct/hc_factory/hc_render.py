@@ -51,10 +51,12 @@ def apply_hc_render_settings(render_cfg: RenderCfg) -> None:
     settings.set_int("/rtx/directLighting/sampledLighting/denoisingTechnique", 0)
     settings.set_bool("/rtx-transient/dldenoiser/enabled", False)
 
+    aa = getattr(render_cfg, "antialiasing_mode", "DLSS") or "DLSS"
+
     try:
         import omni.replicator.core as rep
 
-        rep.settings.set_render_rtx_realtime(antialiasing=render_cfg.antialiasing_mode)
+        rep.settings.set_render_rtx_realtime(antialiasing=aa)
     except Exception:
         pass
 

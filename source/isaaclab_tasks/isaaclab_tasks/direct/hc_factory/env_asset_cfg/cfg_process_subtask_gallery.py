@@ -14,6 +14,9 @@ CfgSubtaskPredefinedTimeGallery = {
    "done": None,
 }
 
+# Gaussian noise (steps) sampled once when entering a time-counting subtask.
+SubtaskTimeNoiseStdSteps = 2.0
+
 CfgSubtaskGallery = {
     "ProductWaterPipe": {
         # task id 1

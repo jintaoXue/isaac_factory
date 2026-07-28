@@ -28,6 +28,8 @@ from isaaclab.envs.common import ViewerCfg
 
 SingleEnvStateActionDictTemplate : dict = {
     "time_step": 0,
+    "episode_num": 0,
+    "run_done": False,
     "machine": {},
     "material": {},
     "human": {},
@@ -51,6 +53,7 @@ SingleEnvStateActionDictTemplate : dict = {
         "producing_indexs": [],
         #finished products with indexs list, e.g., "ProductWaterPipe": [0, 1, 2]
         "finished": {},
+        "production_done": False,
         "ongoing_task_records": {},
     },
     "agent_action_mask": {
@@ -175,7 +178,9 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     single_env_parallel_producing_limit = 5
     human_number_upper_bound = 10
     robot_upper_bound = 2
-    material_batch_upper_bound = 5
+    material_batch_upper_bound = 15
+    # None = run until manually stopped; 1 = single episode then exit.
+    max_episodes: int | None = None
 
 
 

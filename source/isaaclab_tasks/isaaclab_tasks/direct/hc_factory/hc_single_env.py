@@ -32,5 +32,11 @@ import torch
 
 class HcSingleEnv(HcSingleEnvBase):
     
-    def __init__(self, env_id: int, route_manager: RouteManagerVectorEnv, cuda_device: torch.device):
-        super().__init__(env_id, route_manager, cuda_device)
+    def __init__(
+        self,
+        env_id: int,
+        route_manager: RouteManagerVectorEnv,
+        cuda_device: torch.device,
+        max_episodes: int | None = None,
+    ):
+        super().__init__(env_id, route_manager, cuda_device, max_episodes=max_episodes)

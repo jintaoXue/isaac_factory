@@ -64,6 +64,43 @@ parser.add_argument(
     default=49100,
     help="Port for Isaac Sim livestream (sets --/app/livestream/port).",
 )
+parser.add_argument(
+    "--disturbance_dim",
+    type=str,
+    default="none",
+    choices=["none", "material", "human", "logistics", "machine"],
+    help="Primary bottleneck disturbance dimension to inject this run.",
+)
+parser.add_argument(
+    "--disturbance_intensity",
+    type=float,
+    default=1.0,
+    help="Disturbance strength (>=0). Scales noise, shortage, and event duration.",
+)
+parser.add_argument(
+    "--disturbance_human_count",
+    type=int,
+    default=None,
+    help="Override human count when --disturbance_dim=human.",
+)
+parser.add_argument(
+    "--disturbance_agv_count",
+    type=int,
+    default=None,
+    help="Override AGV count when --disturbance_dim=logistics.",
+)
+parser.add_argument(
+    "--disturbance_gantry_count",
+    type=int,
+    default=None,
+    help="Override active gantry count when --disturbance_dim=logistics.",
+)
+parser.add_argument(
+    "--max_episodes",
+    type=int,
+    default=None,
+    help="Stop after this many completed episodes per env (default: unlimited). Use 1 for single-episode data collection.",
+)
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -77,7 +114,7 @@ def _has_registered_cameras() -> bool:
 
     cfg_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
-        "source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/cfg_camera.py",
+        "source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/perception/cfg_camera.py",
     )
     spec = importlib.util.spec_from_file_location("_hc_cfg_camera", cfg_path)
     module = importlib.util.module_from_spec(spec)
@@ -155,6 +192,10 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 import wandb
 
 from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
+from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.env_asset_cfg.cfg_disturbance import (
+    apply_disturbance_to_cfgs,
+    configure_disturbance_from_cli,
+)
 from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.hc_render import HcVideoRecorder
 
 @hydra_task_config(args_cli.task, args_cli.algo)
@@ -163,6 +204,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     '''process name'''
     setproctitle.setproctitle("HcFactory")
     '''update args'''
+    configure_disturbance_from_cli(
+        dim=getattr(args_cli, "disturbance_dim", "none"),
+        intensity=getattr(args_cli, "disturbance_intensity", 1.0),
+        human_count=getattr(args_cli, "disturbance_human_count", None),
+        agv_count=getattr(args_cli, "disturbance_agv_count", None),
+        gantry_count=getattr(args_cli, "disturbance_gantry_count", None),
+    )
+    apply_disturbance_to_cfgs()
     if args_cli.wandb_activate:
         algo_cfg["params"]["config"]['wandb_activate'] = args_cli.wandb_activate
     if args_cli.test:
@@ -190,6 +239,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     algo_cfg["params"]["config"]["device"] = args_cli.device if args_cli.device is not None else algo_cfg["params"]["config"]["device"]
     algo_cfg["params"]["config"]["device_name"] = args_cli.device if args_cli.device is not None else algo_cfg["params"]["config"]["device_name"]
     env_cfg.cuda_device_str = args_cli.device if args_cli.device is not None else env_cfg.cuda_device_str
+    if args_cli.max_episodes is not None:
+        env_cfg.max_episodes = args_cli.max_episodes
+        algo_cfg["params"]["config"]["max_episodes"] = args_cli.max_episodes
     # randomly sample a seed if seed = -1
     if args_cli.seed == -1:
         args_cli.seed = random.randint(0, 10000)
