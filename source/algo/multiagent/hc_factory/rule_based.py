@@ -20,6 +20,7 @@ class RuleBasedMultiAgent():
     def __init__(self, base_name, params):
         config = params['config']
         self.env_config = config.get('env_config', {})
+        self.max_episodes = config.get('max_episodes')
         self.num_actors = config.get('num_actors', 1)
         self.env_name = config['env_name']
         print("Env name:", self.env_name)
@@ -63,3 +64,6 @@ class RuleBasedMultiAgent():
             action, action_extra = self.act(obs)
             next_obs = self.vec_env.step(action, action_extra)
             obs = next_obs
+            if self.max_episodes is not None and any(o.get("run_done") for o in obs):
+                print(f"[INFO] Completed {self.max_episodes} episode(s); stopping training loop.")
+                break

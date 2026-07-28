@@ -95,6 +95,12 @@ parser.add_argument(
     default=None,
     help="Override active gantry count when --disturbance_dim=logistics.",
 )
+parser.add_argument(
+    "--max_episodes",
+    type=int,
+    default=None,
+    help="Stop after this many completed episodes per env (default: unlimited). Use 1 for single-episode data collection.",
+)
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -233,6 +239,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     algo_cfg["params"]["config"]["device"] = args_cli.device if args_cli.device is not None else algo_cfg["params"]["config"]["device"]
     algo_cfg["params"]["config"]["device_name"] = args_cli.device if args_cli.device is not None else algo_cfg["params"]["config"]["device_name"]
     env_cfg.cuda_device_str = args_cli.device if args_cli.device is not None else env_cfg.cuda_device_str
+    if args_cli.max_episodes is not None:
+        env_cfg.max_episodes = args_cli.max_episodes
+        algo_cfg["params"]["config"]["max_episodes"] = args_cli.max_episodes
     # randomly sample a seed if seed = -1
     if args_cli.seed == -1:
         args_cli.seed = random.randint(0, 10000)

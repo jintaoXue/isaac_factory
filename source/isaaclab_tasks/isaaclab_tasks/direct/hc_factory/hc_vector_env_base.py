@@ -87,7 +87,12 @@ class HcVectorEnvBase(DirectRLEnv):
         light_cfg.func("/World/Light", light_cfg)
 
     def setup_one_env(self, env_id: int):
-        single_env = HcSingleEnv(env_id=env_id, route_manager=self.route_manager, cuda_device=self.cuda_device)
+        single_env = HcSingleEnv(
+            env_id=env_id,
+            route_manager=self.route_manager,
+            cuda_device=self.cuda_device,
+            max_episodes=getattr(self.cfg_vector_env, "max_episodes", None),
+        )
         self.env_list.append(single_env)
 
     def reset(self, num_worker=None, num_robot=None, evaluate=False):

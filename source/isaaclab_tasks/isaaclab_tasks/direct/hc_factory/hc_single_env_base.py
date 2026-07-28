@@ -47,10 +47,17 @@ from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.src import algo_mult
 import time
 
 class HcSingleEnvBase():
-    def __init__(self, env_id: int, route_manager: RouteManagerVectorEnv, cuda_device: torch.device):
+    def __init__(
+        self,
+        env_id: int,
+        route_manager: RouteManagerVectorEnv,
+        cuda_device: torch.device,
+        max_episodes: int | None = None,
+    ):
         self.env_id : int = env_id
         self.env_id_str : str = f"env_{env_id}"
         self.cuda_device = cuda_device
+        self.max_episodes = max_episodes
         self.reward_buf = torch.zeros(1, dtype=torch.float32, device=self.cuda_device)
         # 每个 env 持有独立的 state dict，避免多 env 共享引用导致状态串扰
         self.env_state_action_dict = copy.deepcopy(SingleEnvStateActionDictTemplate)
@@ -106,6 +113,7 @@ class HcSingleEnvBase():
             m.reset(self.env_state_action_dict)
         self.env_state_action_dict["time_step"] = 0
         self.env_state_action_dict["episode_num"] = self.episode_num
+        self.env_state_action_dict["run_done"] = False
         self.episode_num += 1
         self.perception_manager.reset(self.env_state_action_dict)
         self.bottleneck_collector.reset(self.env_state_action_dict)
@@ -145,6 +153,9 @@ class HcSingleEnvBase():
         # time_end = time.time()
         # print(f"step_env_logic time: {time_end - time_start}")
         if self.env_state_action_dict["progress"]["production_done"]:
-            self.reset_env()
+            if self.max_episodes is not None and self.episode_num >= self.max_episodes:
+                self.env_state_action_dict["run_done"] = True
+            else:
+                self.reset_env()
         return
 
