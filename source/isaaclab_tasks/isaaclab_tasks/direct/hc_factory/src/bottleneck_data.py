@@ -108,7 +108,7 @@ def map_machine_state(raw_state: str) -> tuple[str, str | None]:
     if raw_state == "free":
         return "IDLE", None
     if raw_state == "invalid":
-        return "STOP", "invalid_workstation"
+        return "DOWN", "invalid_workstation"
     if raw_state.startswith("working_"):
         return "PROCESSING", f"task={raw_state.split('_', 1)[1]}"
     if raw_state.startswith("waiting_"):
@@ -124,6 +124,8 @@ def map_human_robot_state(
 ) -> tuple[str, str | None]:
     if raw_state == "free":
         return "IDLE", None
+    if raw_state == "working_disturbance_absent":
+        return "DOWN", "runtime_disturbance_absent"
     if not raw_state.startswith("working_"):
         return "IDLE", f"unknown_state={raw_state}"
     if subtask_name == "wait":
@@ -391,6 +393,7 @@ class BottleneckDataCollector:
                 "env_id": self.env_id,
                 "episode_id": self.episode_id,
                 "disturbance_id": row.get("disturbance_id", ""),
+                "event_phase": row.get("event_phase", ""),
                 "disturbance_type": row.get("disturbance_type", ""),
                 "target_resource_id": row.get("target_resource_id", ""),
                 "target_resource_type": row.get("target_resource_type", ""),
@@ -398,6 +401,13 @@ class BottleneckDataCollector:
                 "end_time_step": end if end_int is None else end_int,
                 "start_logic_time_s": _logic_time_s(t_int),
                 "end_logic_time_s": "" if end_int is None else _logic_time_s(end_int),
+                "planned_start_time_step": row.get("planned_start_time_step", ""),
+                "actual_start_time_step": row.get("actual_start_time_step", ""),
+                "actual_end_time_step": row.get("actual_end_time_step", ""),
+                "planned_duration_steps": row.get("planned_duration_steps", ""),
+                "actual_target_resource_id": row.get(
+                    "actual_target_resource_id", row.get("target_resource_id", "")
+                ),
                 "intensity": row.get("intensity", ""),
                 "parameter_before": row.get("parameter_before", ""),
                 "parameter_after": row.get("parameter_after", ""),
@@ -509,9 +519,13 @@ class BottleneckDataCollector:
         self._disturbance_writer = _CsvWriter(
             base / "disturbance_log.csv",
             [
-                "run_id", "env_id", "episode_id", "disturbance_id", "disturbance_type",
+                "run_id", "env_id", "episode_id", "disturbance_id", "event_phase",
+                "disturbance_type",
                 "target_resource_id", "target_resource_type",
                 "start_time_step", "end_time_step", "start_logic_time_s", "end_logic_time_s",
+                "planned_start_time_step", "actual_start_time_step",
+                "actual_end_time_step", "planned_duration_steps",
+                "actual_target_resource_id",
                 "intensity", "parameter_before", "parameter_after", "notes",
             ],
         )
@@ -568,7 +582,7 @@ class BottleneckDataCollector:
             "disturbance_applied": json.dumps(RuntimeDisturbanceCfg.get("applied") or {}),
             "env_yaml_path": BottleneckRunContext.env_yaml_path,
             "agent_yaml_path": BottleneckRunContext.agent_yaml_path,
-            "collector_version": self.cfg.get("collector_version", "v0.4"),
+            "collector_version": self.cfg.get("collector_version", "v0.5"),
         }
         self._episode_config_writer.write_row(row)
 
@@ -1192,7 +1206,13 @@ class BottleneckDataCollector:
             for sub_name, sub_info in (ms.get("submaterials") or {}).items():
                 mid = f"material_{batch_job_id}_{sub_name}" if batch_job_id is not None else f"material_{sub_name}"
                 storage = sub_info.get("storage_name")
-                self._prev_material[mid] = (storage, ms.get("finished_task"), batch_job_id)
+                shortage = self._material_shortage_flag(env, ms, sub_name)
+                self._prev_material[mid] = (
+                    storage,
+                    ms.get("finished_task"),
+                    batch_job_id,
+                    shortage,
+                )
                 if (
                     initial
                     and self.cfg.get("log_material_inventory", True)
@@ -1217,9 +1237,7 @@ class BottleneckDataCollector:
                             "consume_quantity": 0,
                             "replenish_quantity": 0,
                             "storage_location": storage,
-                            "shortage_flag": self._material_shortage_flag(
-                                env, ms, sub_name
-                            ),
+                            "shortage_flag": shortage,
                             "finished_task": ms.get("finished_task", "none"),
                             "event": "init",
                         }
@@ -1249,7 +1267,8 @@ class BottleneckDataCollector:
                 mid = f"material_{job_id}_{sub_name}" if job_id is not None else f"material_{sub_name}"
                 storage = sub_info.get("storage_name")
                 prev = self._prev_material.get(mid)
-                changed = prev != (storage, finished_task, job_id)
+                shortage_flag = self._material_shortage_flag(env, ms, sub_name)
+                changed = prev != (storage, finished_task, job_id, shortage_flag)
                 periodic = interval > 0 and time_step % interval == 0
                 if not changed and not periodic:
                     continue
@@ -1272,8 +1291,6 @@ class BottleneckDataCollector:
                 if prev and prev[1] != finished_task:
                     event = "task_progress"
 
-                shortage_flag = self._material_shortage_flag(env, ms, sub_name)
-
                 self._material_writer.write_row({
                     **base,
                     "material_id": mid,
@@ -1288,9 +1305,16 @@ class BottleneckDataCollector:
                     "finished_task": finished_task,
                     "event": event,
                 })
-                self._prev_material[mid] = (storage, finished_task, job_id)
+                self._prev_material[mid] = (
+                    storage,
+                    finished_task,
+                    job_id,
+                    shortage_flag,
+                )
 
     def _material_shortage_flag(self, env: dict, ms: dict, sub_name: str) -> int:
+        if ms.get("disturbance_material_hold") == sub_name:
+            return 1
         task_record_id = ms.get("ongoing_task_record_index")
         tr = (
             env["progress"]["ongoing_task_records"].get(task_record_id)

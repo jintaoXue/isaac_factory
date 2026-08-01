@@ -5,7 +5,10 @@ from __future__ import annotations
 import random
 from typing import Any
 
-from ..env_asset_cfg.cfg_disturbance import RuntimeDisturbanceCfg
+from ..env_asset_cfg.cfg_disturbance import (
+    RuntimeDisturbanceCfg,
+    sample_episode_event_schedule,
+)
 
 
 class DisturbanceInjector:
@@ -25,6 +28,9 @@ class DisturbanceInjector:
         self._event_id = 0
         self._activated_at = -1
         self._duration = 0
+        self._planned_start = -1
+        self._actual_target: str | None = None
+        self._rng = random.Random()
 
     def reset(self, env: dict) -> None:
         self._restore_if_needed(env)
@@ -34,7 +40,12 @@ class DisturbanceInjector:
         self._saved_state = None
         self._event_id = 0
         self._activated_at = -1
-        self._duration = 0
+        self._actual_target = None
+
+        episode_id = int(env.get("episode_num", 0) or 0)
+        self._planned_start, self._duration, self._rng = sample_episode_event_schedule(
+            self.env_id, episode_id
+        )
 
         dim = RuntimeDisturbanceCfg.get("dim", "none")
         if dim == "none":
@@ -46,11 +57,17 @@ class DisturbanceInjector:
             self.collector.log_disturbance(
                 {
                     "disturbance_id": f"{dim}_cfg",
+                    "event_phase": "CONFIG",
                     "disturbance_type": f"{dim}_config",
                     "target_resource_id": "episode",
                     "target_resource_type": dim,
                     "start_time_step": 0,
                     "end_time_step": "",
+                    "planned_start_time_step": self._planned_start,
+                    "actual_start_time_step": "",
+                    "actual_end_time_step": "",
+                    "planned_duration_steps": self._duration,
+                    "actual_target_resource_id": "episode",
                     "intensity": RuntimeDisturbanceCfg.get("intensity", 1.0),
                     "parameter_before": "nominal",
                     "parameter_after": str(applied),
@@ -60,43 +77,53 @@ class DisturbanceInjector:
 
     def step(self, env: dict) -> None:
         dim = RuntimeDisturbanceCfg.get("dim", "none")
-        start = int(RuntimeDisturbanceCfg.get("event_start_step", -1))
-        duration = int(RuntimeDisturbanceCfg.get("event_duration_steps", 0))
-        if dim == "none" or start < 0 or duration <= 0 or self._event_done:
+        if (
+            dim == "none"
+            or self._planned_start < 0
+            or self._duration <= 0
+            or self._event_done
+        ):
             return
 
         t = int(env.get("time_step", 0))
         target = RuntimeDisturbanceCfg.get("event_target")
 
+        if env.get("progress", {}).get("production_done", False):
+            if self._active:
+                self._finish_active_event(env, dim, t)
+            return
+
         # Arm pending window once: do not force-fail a busy resource; do not re-arm after done.
-        if t >= start and not self._active and not self._pending:
+        if t >= self._planned_start and not self._active and not self._pending:
             self._pending = True
-            self._duration = duration
 
         if self._pending and not self._active:
-            ok = self._activate(env, dim, target)
-            if ok:
+            actual_target = self._activate(env, dim, target)
+            if actual_target:
                 self._active = True
                 self._pending = False
                 self._activated_at = t
                 self._event_id += 1
+                self._actual_target = actual_target
                 end = t + self._duration
-                self._log_event(env, dim, target, t, end, starting=True)
+                self._log_event(env, dim, t, end, starting=True)
 
         if self._active and self._activated_at >= 0 and t >= self._activated_at + self._duration:
-            end = self._activated_at + self._duration
-            self._restore_if_needed(env)
-            self._log_event(env, dim, target, self._activated_at, end, starting=False)
-            self._active = False
-            self._saved_state = None
-            self._activated_at = -1
-            self._event_done = True  # one L2 event per episode
+            self._finish_active_event(env, dim, self._activated_at + self._duration)
+
+    def _finish_active_event(self, env: dict, dim: str, end: int) -> None:
+        start = self._activated_at
+        self._restore_if_needed(env)
+        self._log_event(env, dim, start, end, starting=False)
+        self._active = False
+        self._saved_state = None
+        self._activated_at = -1
+        self._event_done = True
 
     def _log_event(
         self,
         env: dict,
         dim: str,
-        target: str | None,
         start: int,
         end: int,
         *,
@@ -107,16 +134,22 @@ class DisturbanceInjector:
         self.collector.log_disturbance(
             {
                 "disturbance_id": f"{dim}_event_{self._event_id}",
+                "event_phase": "START" if starting else "END",
                 "disturbance_type": {
                     "machine": "machine_failure",
                     "human": "human_unavailable",
                     "logistics": "transport_delay",
                     "material": "material_shortage",
                 }.get(dim, dim),
-                "target_resource_id": target or "",
+                "target_resource_id": self._actual_target or "",
                 "target_resource_type": dim,
                 "start_time_step": start,
                 "end_time_step": "" if starting else end,
+                "planned_start_time_step": self._planned_start,
+                "actual_start_time_step": start,
+                "actual_end_time_step": "" if starting else end,
+                "planned_duration_steps": self._duration,
+                "actual_target_resource_id": self._actual_target or "",
                 "intensity": RuntimeDisturbanceCfg.get("intensity", 1.0),
                 "parameter_before": "nominal" if starting else "disturbed",
                 "parameter_after": "disturbed" if starting else "restored",
@@ -124,40 +157,54 @@ class DisturbanceInjector:
             }
         )
 
-    def _activate(self, env: dict, dim: str, target: str | None) -> bool:
+    def _activate(self, env: dict, dim: str, target: str | None) -> str | None:
         if dim == "machine":
             return self._activate_machine_down(env, target)
         if dim == "human":
             return self._activate_human_absent(env, target)
         if dim == "logistics":
             return self._activate_gantry_down(env, target)
-        return False
+        if dim == "material":
+            return self._activate_material_hold(env)
+        return None
 
-    def _activate_machine_down(self, env: dict, target: str | None) -> bool:
+    def _activate_machine_down(self, env: dict, target: str | None) -> str | None:
         """Only mark a truly idle workstation DOWN; never interrupt an ongoing task."""
-        machine_name = target or "num02_rollerbedCNCPipeIntersectionCuttingMachine"
-        machines = env.get("machine", {})
-        if machine_name not in machines:
-            return False
-        m = machines[machine_name]
-        state = m["state"]
-        ongoing = m.get("ongoing_task_record_index", [None] * len(state))
-        for i, s in enumerate(state):
-            if s == "free" and (i >= len(ongoing) or ongoing[i] is None):
-                self._saved_state = {
-                    "kind": "machine",
-                    "machine": machine_name,
-                    "ws": i,
-                    "prev": s,
-                }
-                state[i] = "invalid"
-                return True
-        return False
+        from ..env_asset_cfg.cfg_machine import CfgMachine
 
-    def _activate_human_absent(self, env: dict, target: str | None) -> bool:
+        machines = env.get("machine", {})
+        candidates = [
+            name
+            for name in machines
+            if name != "num07_gantry_group"
+            and CfgMachine.get(name, {}).get("corresponding_process_task") != ["none"]
+        ]
+        self._rng.shuffle(candidates)
+        if target in candidates:
+            candidates.remove(target)
+            candidates.insert(0, target)
+        for machine_name in candidates:
+            m = machines[machine_name]
+            state = m["state"]
+            ongoing = m.get("ongoing_task_record_index", [None] * len(state))
+            workstation_indices = list(range(len(state)))
+            self._rng.shuffle(workstation_indices)
+            for i in workstation_indices:
+                if state[i] == "free" and (i >= len(ongoing) or ongoing[i] is None):
+                    self._saved_state = {
+                        "kind": "machine",
+                        "machine": machine_name,
+                        "ws": i,
+                        "prev": state[i],
+                    }
+                    state[i] = "invalid"
+                    return f"{machine_name}_ws{i}"
+        return None
+
+    def _activate_human_absent(self, env: dict, target: str | None) -> str | None:
         humans = env.get("human", {})
         if not humans:
-            return False
+            return None
         idx = 0
         if target and target.startswith("human_"):
             try:
@@ -165,10 +212,11 @@ class DisturbanceInjector:
             except ValueError:
                 idx = 0
         preferred = f"num_{idx:02d}_NormalHuman"
-        candidates = []
+        candidates: list[str] = []
         if preferred in humans:
             candidates.append(preferred)
         candidates.extend(k for k in humans if k != preferred)
+        self._rng.shuffle(candidates)
 
         for key in candidates:
             h = humans[key]
@@ -181,27 +229,28 @@ class DisturbanceInjector:
             }
             # Non-free + no task → idle animation, excluded from allocator mask.
             h["state"] = "working_disturbance_absent"
-            return True
-        return False
+            return key
+        return None
 
-    def _activate_gantry_down(self, env: dict, target: str | None) -> bool:
+    def _activate_gantry_down(self, env: dict, target: str | None) -> str | None:
         """Only disable an idle active gantry."""
         gantry = env.get("machine", {}).get("num07_gantry_group")
         if gantry is None:
-            return False
+            return None
         state = gantry["state"]
         ongoing = gantry.get("ongoing_task_record_index", [None] * len(state))
-        preferred = 0
+        preferred: int | None = None
         if target and target.startswith("gantry_"):
             try:
                 preferred = int(target.split("_", 1)[1])
             except ValueError:
-                preferred = 0
+                preferred = None
 
         from ..env_asset_cfg.cfg_machine import CfgMachine
 
         active = list(CfgMachine["num07_gantry_group"].get("active_gantry_indices", range(len(state))))
-        order = [preferred] + [i for i in active if i != preferred]
+        self._rng.shuffle(active)
+        order = [preferred] + [i for i in active if i != preferred] if preferred in active else active
         for idx in order:
             if idx < 0 or idx >= len(state):
                 continue
@@ -215,8 +264,52 @@ class DisturbanceInjector:
                 "prev": state[idx],
             }
             state[idx] = "invalid"
-            return True
-        return False
+            return f"gantry_{idx}"
+        return None
+
+    def _activate_material_hold(self, env: dict) -> str | None:
+        candidates = []
+        progress = env.get("progress", {})
+        finished_jobs = {
+            int(job_id)
+            for job_ids in progress.get("finished", {}).values()
+            for job_id in job_ids
+        }
+        producing = {int(job_id) for job_id in progress.get("producing_indexs", [])}
+        next_product = progress.get("next_product_index")
+        for material_key, material_state in env.get("material", {}).items():
+            batch_idx = int(material_state.get("key_variables", {}).get("idx", -1))
+            if batch_idx in finished_jobs:
+                continue
+            if material_state.get("ongoing_task_record_index") is not None:
+                continue
+            if material_state.get("disturbance_material_hold"):
+                continue
+            submaterials = material_state.get("submaterials") or {}
+            available = [
+                name
+                for name, info in submaterials.items()
+                if name != "product_00_pipe"
+                and info.get("storage_name") not in (None, "disappear")
+            ]
+            if available:
+                priority = 0 if batch_idx in producing else (1 if batch_idx == next_product else 2)
+                candidates.append((priority, material_key, material_state, available))
+        if not candidates:
+            return None
+
+        best_priority = min(candidate[0] for candidate in candidates)
+        eligible = [candidate for candidate in candidates if candidate[0] == best_priority]
+        _, material_key, material_state, available = self._rng.choice(eligible)
+        material_type = self._rng.choice(available)
+        material_state["disturbance_material_hold"] = material_type
+        self._saved_state = {
+            "kind": "material",
+            "material_key": material_key,
+            "material_type": material_type,
+        }
+        batch_idx = int(material_state["key_variables"]["idx"])
+        return f"material_{batch_idx}_{material_type}"
 
     def _restore_if_needed(self, env: dict) -> None:
         if not self._saved_state:
@@ -240,6 +333,10 @@ class DisturbanceInjector:
                 idx = self._saved_state["idx"]
                 if g["state"][idx] == "invalid":
                     g["state"][idx] = "free"
+        elif kind == "material":
+            material = env.get("material", {}).get(self._saved_state["material_key"])
+            if material is not None:
+                material.pop("disturbance_material_hold", None)
         self._saved_state = None
 
 

@@ -204,14 +204,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     '''process name'''
     setproctitle.setproctitle("HcFactory")
     '''update args'''
-    configure_disturbance_from_cli(
-        dim=getattr(args_cli, "disturbance_dim", "none"),
-        intensity=getattr(args_cli, "disturbance_intensity", 1.0),
-        human_count=getattr(args_cli, "disturbance_human_count", None),
-        agv_count=getattr(args_cli, "disturbance_agv_count", None),
-        gantry_count=getattr(args_cli, "disturbance_gantry_count", None),
-    )
-    apply_disturbance_to_cfgs()
     if args_cli.wandb_activate:
         algo_cfg["params"]["config"]['wandb_activate'] = args_cli.wandb_activate
     if args_cli.test:
@@ -269,6 +261,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     # set the environment seed (after multi-gpu config for updated rank from agent seed)
     # note: certain randomizations occur in the environment initialization so we set the seed here
     env_cfg.seed = algo_cfg["params"]["seed"]
+    configure_disturbance_from_cli(
+        dim=getattr(args_cli, "disturbance_dim", "none"),
+        intensity=getattr(args_cli, "disturbance_intensity", 1.0),
+        human_count=getattr(args_cli, "disturbance_human_count", None),
+        agv_count=getattr(args_cli, "disturbance_agv_count", None),
+        gantry_count=getattr(args_cli, "disturbance_gantry_count", None),
+        base_seed=algo_cfg["params"]["seed"],
+    )
+    apply_disturbance_to_cfgs()
 
     # specify directory for logging experiments
     log_root_path = os.path.join("logs", "rl_games", algo_cfg["params"]["config"]["name"])

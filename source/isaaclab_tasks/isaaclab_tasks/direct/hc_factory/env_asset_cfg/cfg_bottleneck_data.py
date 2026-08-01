@@ -9,7 +9,7 @@ _DEFAULT_OUTPUT_DIR = (
 CfgBottleneckData = {
     "enabled": True,
     "output_dir": str(_DEFAULT_OUTPUT_DIR),
-    "collector_version": "v0.4",
+    "collector_version": "v0.5",
     # Buffer / material periodic snapshots (0 = event-only).
     "buffer_snapshot_interval": 30,
     "material_snapshot_interval": 60,

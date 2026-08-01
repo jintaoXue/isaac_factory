@@ -192,11 +192,17 @@ class HcSingleEnvBase():
                 self.bottleneck_collector.log_disturbance(
                     {
                         "disturbance_id": "deadlock_watchdog",
+                        "event_phase": "SYSTEM",
                         "disturbance_type": "deadlock_reset",
                         "target_resource_id": "episode",
                         "target_resource_type": "system",
                         "start_time_step": t,
                         "end_time_step": t,
+                        "planned_start_time_step": "",
+                        "actual_start_time_step": t,
+                        "actual_end_time_step": t,
+                        "planned_duration_steps": 0,
+                        "actual_target_resource_id": "episode",
                         "intensity": 1.0,
                         "parameter_before": "stalled",
                         "parameter_after": "reset",

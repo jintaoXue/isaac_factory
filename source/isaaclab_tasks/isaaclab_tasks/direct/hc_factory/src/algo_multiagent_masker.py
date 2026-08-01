@@ -124,6 +124,8 @@ class AlgoMultiAgentMasker:
             material_batch_index = material_state["key_variables"]["idx"]
             if material_batch_index in ongoing_task_records:
                 continue
+            if material_state.get("disturbance_material_hold"):
+                continue
             product_type = material_state["key_variables"]["type_name"]
             finished_task = material_state["finished_task"]
             one_process_task_gallery = CfgProcessTaskGalleryDetailedClassified[product_type]
@@ -253,4 +255,3 @@ class HumanRobotMachineAllocatorAgentMasker:
             "human_mask": human_mask,
             "robot_mask": robot_mask,
         }
-

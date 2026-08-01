@@ -12,6 +12,7 @@ Usage (train.py)::
 from __future__ import annotations
 
 from copy import deepcopy
+import random
 from typing import Any
 
 DISTURBANCE_DIMS = ("none", "material", "human", "logistics", "machine")
@@ -26,6 +27,7 @@ RuntimeDisturbanceCfg: dict[str, Any] = {
     "human_count": None,
     "agv_count": None,
     "gantry_count": None,
+    "base_seed": 42,
     # Derived / applied values (filled by apply_disturbance_to_cfgs).
     "applied": {},
     # L1 noise / multipliers read by managers at runtime.
@@ -35,13 +37,31 @@ RuntimeDisturbanceCfg: dict[str, Any] = {
     "human_time_scale": 1.0,
     "gantry_animation_noise_std": 2.0,
     "gantry_time_scale": 1.0,
-    # Material: fraction of raw submaterials skipped at reset (shortage).
+    # Legacy permanent shortage knob. Formal v0.5 collection keeps this at zero.
     "material_shortage_frac": 0.0,
-    # L2 event schedule (logic steps). end < 0 means disabled.
+    # L2 event schedule (logic steps). The concrete start is sampled per episode.
     "event_start_step": -1,
+    "event_start_range": None,
     "event_duration_steps": 0,
+    "event_duration_jitter": 0.20,
     "event_target": None,  # e.g. machine type name or human idx
 }
+
+
+def sample_episode_event_schedule(env_id: int, episode_id: int) -> tuple[int, int, random.Random]:
+    """Return a deterministic per-episode L2 start, duration, and target RNG."""
+    base_seed = int(RuntimeDisturbanceCfg.get("base_seed", 42) or 42)
+    rng = random.Random(base_seed + int(env_id) * 100_003 + int(episode_id) * 1_009)
+    start_range = RuntimeDisturbanceCfg.get("event_start_range")
+    if start_range:
+        start = rng.randint(int(start_range[0]), int(start_range[1]))
+    else:
+        start = int(RuntimeDisturbanceCfg.get("event_start_step", -1))
+    base_duration = int(RuntimeDisturbanceCfg.get("event_duration_steps", 0) or 0)
+    jitter = float(RuntimeDisturbanceCfg.get("event_duration_jitter", 0.0) or 0.0)
+    duration_scale = rng.uniform(max(0.1, 1.0 - jitter), 1.0 + jitter)
+    duration = max(1, int(round(base_duration * duration_scale))) if base_duration else 0
+    return start, duration, rng
 
 
 def configure_disturbance_from_cli(
@@ -50,6 +70,7 @@ def configure_disturbance_from_cli(
     human_count: int | None = None,
     agv_count: int | None = None,
     gantry_count: int | None = None,
+    base_seed: int = 42,
 ) -> dict[str, Any]:
     """Fill RuntimeDisturbanceCfg from CLI; call before gym.make / apply."""
     dim = (dim or "none").lower().strip()
@@ -62,6 +83,7 @@ def configure_disturbance_from_cli(
     RuntimeDisturbanceCfg["human_count"] = human_count
     RuntimeDisturbanceCfg["agv_count"] = agv_count
     RuntimeDisturbanceCfg["gantry_count"] = gantry_count
+    RuntimeDisturbanceCfg["base_seed"] = int(base_seed)
     RuntimeDisturbanceCfg["applied"] = {}
 
     # Reset derived fields to safe baseline, then specialize by dim.
@@ -73,6 +95,7 @@ def configure_disturbance_from_cli(
     RuntimeDisturbanceCfg["gantry_time_scale"] = 1.0
     RuntimeDisturbanceCfg["material_shortage_frac"] = 0.0
     RuntimeDisturbanceCfg["event_start_step"] = -1
+    RuntimeDisturbanceCfg["event_start_range"] = None
     RuntimeDisturbanceCfg["event_duration_steps"] = 0
     RuntimeDisturbanceCfg["event_target"] = None
 
@@ -84,24 +107,30 @@ def configure_disturbance_from_cli(
         RuntimeDisturbanceCfg["machine_process_noise_std"] = 5.0 * intensity
         RuntimeDisturbanceCfg["machine_success_rate"] = max(0.7, 1.0 - 0.08 * intensity)
         RuntimeDisturbanceCfg["event_start_step"] = 800
+        RuntimeDisturbanceCfg["event_start_range"] = (650, 1200)
         RuntimeDisturbanceCfg["event_duration_steps"] = int(120 * intensity)
-        RuntimeDisturbanceCfg["event_target"] = "num02_rollerbedCNCPipeIntersectionCuttingMachine"
+        RuntimeDisturbanceCfg["event_target"] = None
     elif dim == "human":
         RuntimeDisturbanceCfg["human_subtask_noise_std"] = 2.0 + 8.0 * intensity
         RuntimeDisturbanceCfg["human_time_scale"] = 1.0 + 0.35 * intensity
         RuntimeDisturbanceCfg["event_start_step"] = 600
+        RuntimeDisturbanceCfg["event_start_range"] = (450, 900)
         RuntimeDisturbanceCfg["event_duration_steps"] = int(150 * intensity)
-        RuntimeDisturbanceCfg["event_target"] = "human_0"
+        RuntimeDisturbanceCfg["event_target"] = None
     elif dim == "logistics":
         RuntimeDisturbanceCfg["gantry_animation_noise_std"] = 2.0 + 6.0 * intensity
         RuntimeDisturbanceCfg["gantry_time_scale"] = 1.0 + 0.4 * intensity
         RuntimeDisturbanceCfg["event_start_step"] = 700
+        RuntimeDisturbanceCfg["event_start_range"] = (550, 1050)
         RuntimeDisturbanceCfg["event_duration_steps"] = int(100 * intensity)
-        RuntimeDisturbanceCfg["event_target"] = "gantry_0"
+        RuntimeDisturbanceCfg["event_target"] = None
     elif dim == "material":
-        RuntimeDisturbanceCfg["material_shortage_frac"] = min(0.6, 0.25 * intensity)
-        RuntimeDisturbanceCfg["machine_success_rate"] = max(0.75, 1.0 - 0.1 * intensity)
-        RuntimeDisturbanceCfg["event_start_step"] = -1
+        # Recoverable supply hold; do not permanently remove reset inventory.
+        RuntimeDisturbanceCfg["material_shortage_frac"] = 0.0
+        RuntimeDisturbanceCfg["machine_success_rate"] = 1.0
+        RuntimeDisturbanceCfg["event_start_step"] = 600
+        RuntimeDisturbanceCfg["event_start_range"] = (400, 950)
+        RuntimeDisturbanceCfg["event_duration_steps"] = int(180 * intensity)
 
     return RuntimeDisturbanceCfg
 
@@ -246,7 +275,9 @@ def apply_disturbance_to_cfgs() -> dict[str, Any]:
         applied["machine_success_rate"] = RuntimeDisturbanceCfg["machine_success_rate"]
 
     applied["event_start_step"] = RuntimeDisturbanceCfg["event_start_step"]
+    applied["event_start_range"] = RuntimeDisturbanceCfg["event_start_range"]
     applied["event_duration_steps"] = RuntimeDisturbanceCfg["event_duration_steps"]
+    applied["event_duration_jitter"] = RuntimeDisturbanceCfg["event_duration_jitter"]
     applied["event_target"] = RuntimeDisturbanceCfg["event_target"]
     RuntimeDisturbanceCfg["applied"] = applied
 
