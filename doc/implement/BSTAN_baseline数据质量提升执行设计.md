@@ -2,7 +2,7 @@
 
 ## 1. 文档状态
 
-- 状态：Phase E0-E1 已通过服务器 Pilot；Phase E2 已完成本地实现，待服务器标签验收
+- 状态：Phase E0-E2 已通过服务器 Pilot；准备进入 Phase E3 多 episode Pilot 与正式采集
 - 基线：现有 `BSTAN-style GAT-GRU baseline`
 - 前置版本：Phase A-D 已跑通，`dev_tyx` 的 18 单、扰动与龙门架修复已合入
 - 本轮目标：提高训练数据的正确性、覆盖度和评估可信度，再重新训练 baseline
@@ -49,6 +49,8 @@ threshold=0.70, margin=0.10 candidate rate = 19.7%–24.6%
 ```
 
 因此 v1 的强制 argmax 和 buffer 支配问题成立。敏感性复算后，`0.65` 的总体正样本率为 `6.85%`，28 个事件，hot window 中 buffer 占约 `52.6%`；`0.70` 的总体正样本率仅 `3.9%`。Phase E2 冻结参数为 `score_threshold=0.65`、同类节点优势 `>=0.10`，并增加系统影响门槛。
+
+material 有效目标修正后重跑：计划 step 514，等待在制批次工序间隙后于 step 773 激活，step 919 结束，库存短缺标记在 step 920 恢复为 0，最终完成 `15/15`。其 v2 结果为 5 个事件、`6.92%` 正样本率、28 个 hot windows，不再与 none 场景完全相同。替换该 run 后，五场景总体正样本率约 `6.4%`，Phase E2 标签验收通过。
 
 ## 2. 当前基线与问题判断
 
