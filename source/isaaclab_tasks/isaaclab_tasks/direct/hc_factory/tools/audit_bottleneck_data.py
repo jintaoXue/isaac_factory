@@ -94,6 +94,7 @@ def _audit_events(
     rows: list[dict[str, str]],
     disturbance_dim: str,
     episode_end_step: int | None,
+    resource_ids: set[str],
 ) -> tuple[list[str], list[str], list[dict[str, Any]]]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -117,12 +118,17 @@ def _audit_events(
         start = _int(start_row.get("actual_start_time_step"), _int(start_row.get("start_time_step")))
         end = _int(end_row.get("actual_end_time_step"), _int(end_row.get("end_time_step")))
         target = start_row.get("actual_target_resource_id") or start_row.get("target_resource_id") or ""
+        end_target = end_row.get("actual_target_resource_id") or end_row.get("target_resource_id") or ""
         if start is None or end is None or end < start:
             errors.append(f"event:{event_id}:invalid_interval={start}:{end}")
         if episode_end_step is not None and end is not None and end > episode_end_step:
             errors.append(f"event:{event_id}:ends_after_episode={end}>{episode_end_step}")
         if not target:
             errors.append(f"event:{event_id}:missing_actual_target")
+        elif disturbance_dim in {"machine", "human", "logistics"} and target not in resource_ids:
+            errors.append(f"event:{event_id}:target_not_in_resource_catalog={target}")
+        if end_target != target:
+            errors.append(f"event:{event_id}:target_changed={target}:{end_target}")
         event_summaries.append(
             {
                 "event_id": event_id,
@@ -203,7 +209,7 @@ def audit_env_dir(
 
     disturbance_dim = str(config.get("disturbance_dim") or "none")
     event_errors, event_warnings, event_summaries = _audit_events(
-        disturbance, disturbance_dim, episode_end_step
+        disturbance, disturbance_dim, episode_end_step, resource_ids
     )
     errors.extend(event_errors)
     warnings.extend(event_warnings)

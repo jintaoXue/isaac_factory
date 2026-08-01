@@ -229,7 +229,8 @@ class DisturbanceInjector:
             }
             # Non-free + no task → idle animation, excluded from allocator mask.
             h["state"] = "working_disturbance_absent"
-            return key
+            human_idx = int(h.get("key_variables", {}).get("idx", idx))
+            return f"human_{human_idx}"
         return None
 
     def _activate_gantry_down(self, env: dict, target: str | None) -> str | None:

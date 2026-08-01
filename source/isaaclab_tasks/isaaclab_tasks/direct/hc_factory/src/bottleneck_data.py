@@ -582,7 +582,7 @@ class BottleneckDataCollector:
             "disturbance_applied": json.dumps(RuntimeDisturbanceCfg.get("applied") or {}),
             "env_yaml_path": BottleneckRunContext.env_yaml_path,
             "agent_yaml_path": BottleneckRunContext.agent_yaml_path,
-            "collector_version": self.cfg.get("collector_version", "v0.5"),
+            "collector_version": self.cfg.get("collector_version", "v0.6"),
         }
         self._episode_config_writer.write_row(row)
 

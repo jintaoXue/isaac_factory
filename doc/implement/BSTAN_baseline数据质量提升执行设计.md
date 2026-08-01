@@ -15,7 +15,7 @@
 本地已完成：
 
 ```text
-collector_version = v0.5
+collector_version = v0.6
 disturbance event phase = CONFIG / START / END / SYSTEM
 planned/actual event time and actual target logging
 deterministic per-episode event schedule and target sampling
@@ -252,6 +252,8 @@ episodes per load = 1
 三个档位均使用 `tmux` 完整运行，并记录完成时间、`completed_jobs`、episode 结束原因和资源利用率。选择能够稳定完成且形成明显排队竞争的档位作为正式数据负载；当前首选为 15 单，10 单作为低负载对照，18 单作为压力测试。未显式传参时保持现有 18 单行为。
 
 降低订单数只减少实际进入生产的批次，不减少已注册的 18 批实体。产品排序 mask 必须在 `not_started` 数量为 0 后停止放行该产品，避免低负载配置继续启动额外批次。
+
+服务器 Pilot 发现 human 扰动曾将内部对象名 `num_02_NormalHuman` 写入 `actual_target_resource_id`，而图节点目录使用 `human_2`。`v0.6` 起所有资源型扰动目标统一使用图节点 ID，raw audit 同时校验 machine、human、logistics 的 START 目标存在于资源目录且 END 目标不变。
 
 ### 6.2 Pilot 校验
 

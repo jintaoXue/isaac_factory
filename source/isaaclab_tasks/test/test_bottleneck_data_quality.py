@@ -118,6 +118,22 @@ class TestDisturbanceSchedule(unittest.TestCase):
             collector.rows[2]["actual_target_resource_id"],
         )
 
+    def test_human_event_returns_graph_resource_id(self):
+        injector = DISTURBANCE.DisturbanceInjector(env_id=0, collector=_Collector())
+        human = {
+            "key_variables": {"idx": 2},
+            "state": "free",
+            "ongoing_task_record_index": None,
+        }
+        env = {"human": {"num_02_NormalHuman": human}}
+
+        target = injector._activate_human_absent(env, "human_2")
+
+        self.assertEqual(target, "human_2")
+        self.assertEqual(human["state"], "working_disturbance_absent")
+        injector._restore_if_needed(env)
+        self.assertEqual(human["state"], "free")
+
 
 class TestRawDataAudit(unittest.TestCase):
     @staticmethod
@@ -142,7 +158,7 @@ class TestRawDataAudit(unittest.TestCase):
             "run_id": "run_seed42",
             "env_id": 0,
             "episode_id": 0,
-            "collector_version": "v0.5",
+            "collector_version": "v0.6",
             "scenario_id": "human_i1",
             "disturbance_dim": "human",
             "disturbance_intensity": 1.0,
@@ -194,8 +210,8 @@ class TestRawDataAudit(unittest.TestCase):
                 "end_time_step": "",
                 "actual_start_time_step": 700,
                 "actual_end_time_step": "",
-                "actual_target_resource_id": "num_01_NormalHuman",
-                "target_resource_id": "num_01_NormalHuman",
+                "actual_target_resource_id": "human_1",
+                "target_resource_id": "human_1",
             },
         ]
         if include_event_end:
@@ -214,6 +230,12 @@ class TestRawDataAudit(unittest.TestCase):
                 for row in (
                     {
                         "resource_id": "machine_a_ws0",
+                        "time_step": 0,
+                        "from_state": "INIT",
+                        "to_state": "IDLE",
+                    },
+                    {
+                        "resource_id": "human_1",
                         "time_step": 0,
                         "from_state": "INIT",
                         "to_state": "IDLE",
@@ -257,6 +279,25 @@ class TestRawDataAudit(unittest.TestCase):
             self.assertEqual(row["lifecycle_event"], "ABORTED")
             self.assertTrue(
                 any(error.startswith("episode_aborted=") for error in row["errors"])
+            )
+
+    def test_runtime_target_must_use_resource_catalog_id(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir, env_dir = self._make_episode(Path(temp_dir))
+            disturbance_path = env_dir / "disturbance_log.csv"
+            rows = AUDIT._read_csv(disturbance_path)
+            for event in rows:
+                if event["event_phase"] in {"START", "END"}:
+                    event["actual_target_resource_id"] = "num_01_NormalHuman"
+                    event["target_resource_id"] = "num_01_NormalHuman"
+            self._write_csv(disturbance_path, list(rows[0]), rows)
+
+            row = AUDIT.audit_env_dir(run_dir, env_dir)
+
+            self.assertFalse(row["trainable"])
+            self.assertIn(
+                "event:human_event_1:target_not_in_resource_catalog=num_01_NormalHuman",
+                row["errors"],
             )
 
 
