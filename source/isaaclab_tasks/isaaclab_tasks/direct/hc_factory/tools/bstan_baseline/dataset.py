@@ -378,7 +378,9 @@ class BstanTensorDataset(Dataset):
 
     def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
         sample_index = self.indices[index]
-        return {key: self.payload[key][sample_index] for key in self.TENSOR_KEYS}
+        sample = {key: self.payload[key][sample_index] for key in self.TENSOR_KEYS}
+        sample["sample_index"] = torch.tensor(sample_index, dtype=torch.int64)
+        return sample
 
 
 def build_bstan_dataset(

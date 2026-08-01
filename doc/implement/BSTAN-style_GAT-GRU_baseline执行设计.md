@@ -2,7 +2,7 @@
 
 ## 1. 文档状态
 
-- 状态：实施中（Phase A、Phase B 已验收）
+- 状态：实施中（Phase A-C 已通过服务器验收；Phase D 待服务器 CUDA 验收）
 - 目标：先跑通一套可复现、可训练、可评估的 BSTAN-style GAT-GRU baseline
 - 本文范围：数据采集修正、离线特征与标签、图数据集、模型、训练和验收
 - 本文不包含：具体代码实现、完整动态图库、预测反馈调度、主模型实现
@@ -175,6 +175,19 @@ dataset validator = passed
 ```
 
 34 个图节点由 18 个 buffer、2 个 gantry、5 个人、7 个生产 workstation 和 2 个 transport robot 组成；未参与当前产品工艺的机器已排除。train/validation/test 按 episode 完全隔离，normalization 只使用 train split 拟合。当前 6 个 episode 均属于同一个无扰动 scenario，因此该数据集用于模型 smoke run，不用于最终泛化指标。
+
+Phase D 已完成模型、损失、训练器、指标、checkpoint 和命令行入口实现，并通过不依赖 Isaac Sim 的轻量测试：
+
+```text
+model/loss/dataset tests = 9 passed
+synthetic end-to-end = 2 epochs completed
+best/last checkpoint = generated and reloadable
+validation/test metrics = generated
+test predictions = traceable by sample_index
+server CUDA validation = pending
+```
+
+本地测试只验证纯 PyTorch 链路和文件契约。最终运行环境以服务器的 PyTorch 2.5.1 + CUDA 为准，真实 smoke dataset 的训练结果需在服务器验收后补充到本文。
 
 ## 4. Baseline 范围决策
 
@@ -941,6 +954,8 @@ DataLoader 能输出固定 shape batch。
 
 ### Phase D：模型和训练
 
+状态：实现完成并通过纯 PyTorch synthetic smoke；待服务器真实数据 CUDA 验收。
+
 1. 实现纯 PyTorch dense GAT。
 2. 接 GRU 和多任务 heads。
 3. 实现 masked loss、metrics、checkpoint。
@@ -989,13 +1004,16 @@ python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools/build_bstan_
 # 4. 训练
 python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools/train_bstan_baseline.py \
   --dataset_dir <dataset_dir> \
+  --output_dir <model_output_dir> \
   --device cuda:0
 
 # 5. 独立评估
 python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools/evaluate_bstan_baseline.py \
   --dataset_dir <dataset_dir> \
   --checkpoint <best.pt> \
-  --split test
+  --output_dir <evaluation_output_dir> \
+  --split test \
+  --device cuda:0
 ```
 
 ## 13. 数据量建议
