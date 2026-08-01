@@ -159,6 +159,23 @@ positive labels = 28 / 413（6.78%）
 
 6 个 episode 均通过 Phase B 主键唯一性、输入有限值和删失标签门禁。该 smoke dataset 同时包含正负样本，但规模和场景多样性仍只适合管线验收，不作为正式训练数据。
 
+Phase C 使用上述 Phase B 产物完成服务器验收：
+
+```text
+dataset_version = bstan_dataset_v1
+input shape contract = [S, 4, 34, 17]
+global features = 6
+total samples = 395
+positive samples = 28（7.09%）
+split samples = 264 / 65 / 66
+split episodes = 4 / 1 / 1
+positive samples by split = 20 / 4 / 4
+edge types = 6
+dataset validator = passed
+```
+
+34 个图节点由 18 个 buffer、2 个 gantry、5 个人、7 个生产 workstation 和 2 个 transport robot 组成；未参与当前产品工艺的机器已排除。train/validation/test 按 episode 完全隔离，normalization 只使用 train split 拟合。当前 6 个 episode 均属于同一个无扰动 scenario，因此该数据集用于模型 smoke run，不用于最终泛化指标。
+
 ## 4. Baseline 范围决策
 
 ### 4.1 第一版节点
@@ -907,7 +924,7 @@ train/validation/test episode 无交集
 
 ### Phase C：图数据集
 
-状态：本地实现和纯 PyTorch 测试已完成，待服务器使用 Phase B 真实产物验收。
+状态：已完成本地测试并通过服务器真实数据验收。
 
 1. 构建 node catalog 和 static prior graph。
 2. 构建四窗口序列。
