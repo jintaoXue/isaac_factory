@@ -2,7 +2,7 @@
 
 ## 1. 文档状态
 
-- 状态：实施中（Phase A-C 已通过服务器验收；Phase D 待服务器 CUDA 验收）
+- 状态：Phase A-D 已通过服务器 smoke 验收
 - 目标：先跑通一套可复现、可训练、可评估的 BSTAN-style GAT-GRU baseline
 - 本文范围：数据采集修正、离线特征与标签、图数据集、模型、训练和验收
 - 本文不包含：具体代码实现、完整动态图库、预测反馈调度、主模型实现
@@ -176,18 +176,29 @@ dataset validator = passed
 
 34 个图节点由 18 个 buffer、2 个 gantry、5 个人、7 个生产 workstation 和 2 个 transport robot 组成；未参与当前产品工艺的机器已排除。train/validation/test 按 episode 完全隔离，normalization 只使用 train split 拟合。当前 6 个 episode 均属于同一个无扰动 scenario，因此该数据集用于模型 smoke run，不用于最终泛化指标。
 
-Phase D 已完成模型、损失、训练器、指标、checkpoint 和命令行入口实现，并通过不依赖 Isaac Sim 的轻量测试：
+Phase D 已完成模型、损失、训练器、指标、checkpoint 和命令行入口实现，并通过轻量测试及服务器 CUDA smoke 验收：
 
 ```text
 model/loss/dataset tests = 9 passed
 synthetic end-to-end = 2 epochs completed
-best/last checkpoint = generated and reloadable
-validation/test metrics = generated
-test predictions = traceable by sample_index
-server CUDA validation = pending
+server runtime = PyTorch 2.6 + CUDA
+epochs trained = 23（early stopping patience=15）
+best epoch = 8
+best validation PR-AUC = 0.26096
+test PR-AUC / ROC-AUC = 0.15714 / 0.78629
+test precision / recall / F1 at 0.5 = 0.15385 / 0.50000 / 0.23529
+test no-event PR-AUC = 0.06061
+test node Top-1 / Top-3 / MRR = 1.0 / 1.0 / 1.0
+test type accuracy / macro-F1 = 1.0 / 0.2
+test time-to-start / duration MAE = 27.29s / 3.58s
+test severity MAE = 0.00780
+best checkpoint independent evaluation = passed
+test predictions traceable by sample_index = passed
 ```
 
-本地测试只验证纯 PyTorch 链路和文件契约。最终运行环境以服务器的 PyTorch 2.5.1 + CUDA 为准，真实 smoke dataset 的训练结果需在服务器验收后补充到本文。
+训练结束后的首次 checkpoint 重载暴露了 PyTorch 2.6 将 `torch.load` 默认切换为 `weights_only=True` 的兼容问题；提交 `7649cfe` 已对自生成 checkpoint 显式使用完整加载，并将后续 checkpoint 的 PyTorch 版本转存为普通字符串。现有第 8 轮 `best.pt` 随后完成独立 validation/test 评估，无需重新训练。
+
+test occurrence PR-AUC 是 no-event baseline 的约 2.59 倍，说明闭环输出不是恒定无事件预测。但是 validation 和 test 各只有 4 个正样本，且正样本类型只覆盖 5 类中的 1 类，因此 node 满分、type accuracy 满分和较低的回归 MAE 都不能解释为跨节点、跨类型或跨场景泛化能力。当前结果只用于确认 baseline 工程链路可训练、可选模、可重载和可追溯，不作为正式对比实验结论。
 
 ## 4. Baseline 范围决策
 
@@ -954,7 +965,7 @@ DataLoader 能输出固定 shape batch。
 
 ### Phase D：模型和训练
 
-状态：实现完成并通过纯 PyTorch synthetic smoke；待服务器真实数据 CUDA 验收。
+状态：已完成并通过服务器真实 smoke dataset CUDA 验收。
 
 1. 实现纯 PyTorch dense GAT。
 2. 接 GRU 和多任务 heads。
