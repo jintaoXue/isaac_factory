@@ -147,7 +147,8 @@ class TestPhaseBFeatures(unittest.TestCase):
         self.assertEqual(first["route_delay_s"], 20.0)
         self.assertEqual(first["material_shortage_flag_s"], 1.0)
         self.assertEqual(first["total_WIP"], 1)
-        self.assertEqual(first["disturbance_flag"], 1)
+        self.assertEqual(first["runtime_disturbance_active"], 1)
+        self.assertEqual(first["disturbance_flag"], 0)
 
         unrelated = next(
             row
@@ -164,6 +165,37 @@ class TestPhaseBFeatures(unittest.TestCase):
             and row["window_index"] == 0
         )
         self.assertAlmostEqual(buffer["occupancy_ratio_s"], 1 / 3, places=6)
+
+    def test_runtime_disturbance_pair_excludes_config_row(self):
+        rows = [
+            {
+                "disturbance_id": "human_cfg",
+                "event_phase": "CONFIG",
+                "start_logic_time_s": "0",
+                "actual_target_resource_id": "episode",
+            },
+            {
+                "disturbance_id": "human_event_1",
+                "event_phase": "START",
+                "start_logic_time_s": "10",
+                "actual_target_resource_id": "human_2",
+                "disturbance_type": "human_unavailable",
+            },
+            {
+                "disturbance_id": "human_event_1",
+                "event_phase": "END",
+                "end_logic_time_s": "20",
+                "actual_target_resource_id": "human_2",
+                "disturbance_type": "human_unavailable",
+            },
+        ]
+
+        events = MODULE._paired_disturbance_events(rows, logic_dt=1.0, episode_end=100.0)
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["start"], 10.0)
+        self.assertEqual(events[0]["end"], 20.0)
+        self.assertEqual(events[0]["target"], "human_2")
 
     def test_label_anchor_and_tail_censoring(self):
         rows = []
@@ -189,6 +221,8 @@ class TestPhaseBFeatures(unittest.TestCase):
                     "active_pct_s": 1.0 if hot else 0.0,
                     "queue_length_s": 0.0,
                     "avg_waiting_time_s": 0.0,
+                    "total_WIP": window_index,
+                    "throughput_rolling": 0.0,
                 }
             )
 
@@ -198,11 +232,30 @@ class TestPhaseBFeatures(unittest.TestCase):
             score_threshold=0.55,
             min_event_windows=2,
             episode_end=150.0,
+            disturbance_rows=[
+                {
+                    "disturbance_id": "machine_event_1",
+                    "event_phase": "START",
+                    "start_logic_time_s": "30",
+                    "disturbance_type": "machine_failure",
+                    "actual_target_resource_id": "machine_a_ws0",
+                },
+                {
+                    "disturbance_id": "machine_event_1",
+                    "event_phase": "END",
+                    "end_logic_time_s": "90",
+                    "disturbance_type": "machine_failure",
+                    "actual_target_resource_id": "machine_a_ws0",
+                },
+            ],
         )
 
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]["start_s"], 60.0)
         self.assertEqual(events[0]["duration_observed"], 1)
+        self.assertEqual(events[0]["candidate_cause_type"], "machine_failure")
+        self.assertEqual(events[0]["cause_target_resource_id"], "machine_a_ws0")
+        self.assertEqual(events[0]["cause_label_confidence"], 1.0)
         self.assertEqual(labels[0]["anchor_time_s"], 30.0)
         self.assertEqual(labels[0]["will_bottleneck"], 1)
         self.assertEqual(labels[0]["time_to_start"], 30.0)
@@ -220,6 +273,52 @@ class TestPhaseBFeatures(unittest.TestCase):
             ],
             labels,
         )
+
+    def test_high_score_without_system_impact_does_not_force_event(self):
+        rows = []
+        for window_index in range(4):
+            rows.append(
+                {
+                    "run_id": "run",
+                    "env_id": 0,
+                    "episode_id": 0,
+                    "window_index": window_index,
+                    "window_start_step": window_index * 30,
+                    "window_end_step": (window_index + 1) * 30,
+                    "window_start_s": window_index * 30.0,
+                    "window_end_s": (window_index + 1) * 30.0,
+                    "window_size_s": 30.0,
+                    "stride_s": 30.0,
+                    "resource_id": "storage_buffer_a",
+                    "resource_type": "buffer",
+                    "bottleneck_score_s": 0.9,
+                    "blocked_time_s": 0.0,
+                    "starved_time_s": 0.0,
+                    "active_pct_s": 0.0,
+                    "queue_length_s": 4.0,
+                    "avg_waiting_time_s": 0.0,
+                    "total_WIP": 5,
+                    "throughput_rolling": 0.0,
+                }
+            )
+
+        labels, events = MODULE.build_labels_and_events(
+            rows, 30.0, 0.70, 2, 120.0
+        )
+
+        self.assertEqual(events, [])
+        self.assertTrue(all(label["is_bottleneck_window"] == 0 for label in labels))
+
+        _, v1_events = MODULE.build_labels_and_events(
+            rows,
+            30.0,
+            0.55,
+            2,
+            120.0,
+            label_version=MODULE.LABEL_VERSION_V1,
+        )
+        self.assertEqual(len(v1_events), 1)
+        self.assertEqual(v1_events[0]["label_version"], "bstan_weak_v1")
 
     def test_process_prefers_lifecycle_end_and_writes_metadata(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -301,7 +400,8 @@ class TestPhaseBFeatures(unittest.TestCase):
             metadata = json.loads(
                 (out_dir / "label_metadata.json").read_text(encoding="utf-8")
             )
-            self.assertEqual(metadata["label_version"], "bstan_weak_v1")
+            self.assertEqual(metadata["label_version"], "bstan_weak_v2")
+            self.assertEqual(metadata["relative_score_margin"], 0.1)
             self.assertEqual(metadata["strides_s"], {"30.0": 30.0})
 
     def test_process_skips_aborted_episode_and_keeps_audit_summary(self):

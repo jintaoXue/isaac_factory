@@ -2,7 +2,7 @@
 
 ## 1. 文档状态
 
-- 状态：方案已确认；Phase E0-E1 已完成本地实现，正在进行服务器负载校准与 Pilot 验收
+- 状态：Phase E0-E1 已通过服务器 Pilot；Phase E2 已完成本地实现，待服务器标签验收
 - 基线：现有 `BSTAN-style GAT-GRU baseline`
 - 前置版本：Phase A-D 已跑通，`dev_tyx` 的 18 单、扰动与龙门架修复已合入
 - 本轮目标：提高训练数据的正确性、覆盖度和评估可信度，再重新训练 baseline
@@ -31,10 +31,24 @@ material hold 优先选择当前 `producing` 且没有 ongoing task 的批次，
 本地验收：
 
 ```text
-Phase E0-E1 + existing Phase B pure-Python tests = 10 passed
+Phase E0-E2 pure-Python tests = 18 passed
 Python syntax compilation = passed
-Isaac Sim runtime = pending server Pilot
+Isaac Sim five-scenario smoke Pilot = passed
 ```
+
+### 1.2 服务器 Pilot 验收记录
+
+15 单负载下，none、machine、human、logistics、material 均完成 `15/15`，raw audit 均为 `trainable=1`。machine、human、gantry 均观察到 `DOWN -> IDLE` 恢复；material 在 step 515–660 为 `shortage_flag=1`，step 661 恢复为 0。
+
+v1 标签校准统计显示：
+
+```text
+will_bottleneck_rate = 37.2%–52.9%
+buffer argmax rate = 80.0%–89.2%
+threshold=0.70, margin=0.10 candidate rate = 19.7%–24.6%
+```
+
+因此 v1 的强制 argmax 和 buffer 支配问题成立。Phase E2 冻结第一版参数为 `score_threshold=0.70`、同类节点优势 `>=0.10`，并增加系统影响门槛。
 
 ## 2. 当前基线与问题判断
 
@@ -212,12 +226,23 @@ v2 仍保持 baseline 的单节点预测接口，但候选瓶颈必须同时满�
 
 若没有节点满足绝对条件，则该窗口为无瓶颈，不因存在 argmax 就强制产生正样本。
 
+第一版系统影响门槛使用最近 3 个窗口作为历史基线，满足以下任一条件：
+
+```text
+WIP growth >= 1.0
+rolling throughput drop ratio >= 0.25
+```
+
+最终事件仍需同一节点连续至少 2 个窗口。场景配置写入分析字段，配对后的 runtime disturbance 只用于解释字段，不进入 `MODEL_FEATURE_FIELDS`。为保持现有张量形状，v2 的旧 `disturbance_flag` 输入槽固定为 0，真实运行区间只写入非模型字段 `runtime_disturbance_active`；v1 复现模式保留旧值。
+
+Phase C 接受 `bstan_weak_v1` 和 `bstan_weak_v2`，但同一个 dataset 禁止混用两个版本，manifest 必须记录实际版本。
+
 ### 5.3 阈值校准
 
 阈值不能根据 test 指标反向调节。建议流程：
 
 1. 使用独立 pilot 数据中的正常场景和已知扰动场景检查特征分布；
-2. 固定 v2 score 权重与阈值；
+2. 固定 v2 score 权重与阈值，本轮为 `0.70` 和相对优势 `0.10`；
 3. 将完整 `score_config` 写入 `label_metadata.json`；
 4. 冻结配置后再采正式 train/validation/test 数据；
 5. 对阈值上下浮动 `0.05` 做敏感性分析，确认事件数量不会剧烈坍缩。

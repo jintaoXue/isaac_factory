@@ -48,9 +48,16 @@ W_ACTIVE_DUR = 0.10
 W_UPSTREAM = 0.10
 W_DOWNSTREAM = 0.10
 
-DEFAULT_SCORE_THRESHOLD = 0.55
+V1_SCORE_THRESHOLD = 0.55
+DEFAULT_SCORE_THRESHOLD = 0.70
 DEFAULT_MIN_EVENT_WINDOWS = 2
-LABEL_VERSION = "bstan_weak_v1"
+DEFAULT_RELATIVE_MARGIN = 0.10
+SYSTEM_HISTORY_WINDOWS = 3
+MIN_WIP_GROWTH = 1.0
+MIN_THROUGHPUT_DROP_RATIO = 0.25
+LABEL_VERSION_V1 = "bstan_weak_v1"
+LABEL_VERSION_V2 = "bstan_weak_v2"
+LABEL_VERSION = LABEL_VERSION_V2
 
 SCORE_CONFIG = {
     "process": {
@@ -65,6 +72,13 @@ SCORE_CONFIG = {
         "occupancy_ratio": 0.50,
         "queue_length": 0.30,
         "positive_queue_growth_rate": 0.20,
+    },
+    "label_gates": {
+        "relative_margin": DEFAULT_RELATIVE_MARGIN,
+        "system_history_windows": SYSTEM_HISTORY_WINDOWS,
+        "min_wip_growth": MIN_WIP_GROWTH,
+        "min_throughput_drop_ratio": MIN_THROUGHPUT_DROP_RATIO,
+        "min_event_windows": DEFAULT_MIN_EVENT_WINDOWS,
     },
 }
 
@@ -191,6 +205,61 @@ def _json_dict(value: Any) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _paired_disturbance_events(
+    rows: list[dict[str, Any]], logic_dt: float, episode_end: float
+) -> list[dict[str, Any]]:
+    """Return paired runtime intervals; CONFIG rows never become active features."""
+    phased = any(str(row.get("event_phase") or "").upper() in {"START", "END"} for row in rows)
+    if not phased:
+        return [
+            {
+                "event_id": str(row.get("disturbance_id") or f"legacy_{index}"),
+                "start": _f(row.get("start_logic_time_s"), _f(row.get("start_time_step")) * logic_dt),
+                "end": _f(
+                    row.get("end_logic_time_s"),
+                    _f(row.get("end_time_step"), episode_end / logic_dt) * logic_dt,
+                ),
+                "type": str(row.get("disturbance_type") or "legacy"),
+                "target": str(row.get("actual_target_resource_id") or row.get("target_resource_id") or ""),
+            }
+            for index, row in enumerate(rows)
+        ]
+
+    grouped: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+    for row in rows:
+        phase = str(row.get("event_phase") or "").upper()
+        if phase in {"START", "END"}:
+            grouped[str(row.get("disturbance_id") or "missing_id")][phase] = row
+
+    events = []
+    for event_id, phases in sorted(grouped.items()):
+        if "START" not in phases or "END" not in phases:
+            continue
+        start_row, end_row = phases["START"], phases["END"]
+        start = _f(
+            start_row.get("start_logic_time_s"),
+            _f(start_row.get("actual_start_time_step"), _f(start_row.get("start_time_step"))) * logic_dt,
+        )
+        end = _f(
+            end_row.get("end_logic_time_s"),
+            _f(end_row.get("actual_end_time_step"), _f(end_row.get("end_time_step"))) * logic_dt,
+        )
+        events.append(
+            {
+                "event_id": event_id,
+                "start": start,
+                "end": max(end, start),
+                "type": str(start_row.get("disturbance_type") or ""),
+                "target": str(
+                    start_row.get("actual_target_resource_id")
+                    or start_row.get("target_resource_id")
+                    or ""
+                ),
+            }
+        )
+    return events
+
+
 def build_timelines(
     events: list[dict[str, Any]], episode_end: float, logic_dt: float = 1.0
 ) -> dict[str, ResourceTimeline]:
@@ -286,6 +355,7 @@ def compute_window_features(
     env_id: int,
     episode_id: int,
     logic_dt: float,
+    label_version: str = LABEL_VERSION,
 ) -> list[dict]:
     # Precompute job waiting intervals keyed by station
     wait_by_station: dict[str, list[tuple[float, float]]] = defaultdict(list)
@@ -420,16 +490,16 @@ def compute_window_features(
             )
         )
 
-    disturbance_intervals: list[tuple[float, float]] = []
-    for row in disturbance_rows:
-        start = _f(
-            row.get("start_logic_time_s"), _f(row.get("start_time_step")) * logic_dt
-        )
-        end = _f(
-            row.get("end_logic_time_s"),
-            _f(row.get("end_time_step"), episode_end / logic_dt) * logic_dt,
-        )
-        disturbance_intervals.append((start, max(end, start)))
+    disturbance_events = _paired_disturbance_events(
+        disturbance_rows, logic_dt, episode_end
+    )
+    disturbance_intervals = [
+        (event["start"], event["end"]) for event in disturbance_events
+    ]
+    scenario_disturbance_dim = str(episode_config.get("disturbance_dim") or "none")
+    scenario_disturbance_intensity = _f(
+        episode_config.get("disturbance_intensity"), 0.0
+    )
 
     # Ensure buffer resources appear even without resource events
     for bid in buffer_occ:
@@ -581,7 +651,14 @@ def compute_window_features(
                     "num_busy_resources": num_busy,
                     "num_blocked_resources": num_blocked,
                     "num_starved_resources": num_starved,
-                    "disturbance_flag": disturbance_flag,
+                    "scenario_disturbance_dim": scenario_disturbance_dim,
+                    "scenario_disturbance_intensity": scenario_disturbance_intensity,
+                    "runtime_disturbance_active": disturbance_flag,
+                    "disturbance_flag": (
+                        disturbance_flag
+                        if label_version == LABEL_VERSION_V1
+                        else 0
+                    ),
                 }
             )
     return rows_out
@@ -654,12 +731,70 @@ def add_bottleneck_scores(feature_rows: list[dict]) -> list[dict]:
     return feature_rows
 
 
+def _node_category(row: dict[str, Any]) -> str:
+    if row["resource_type"] == "buffer" or row["resource_id"].startswith("storage_"):
+        return "buffer"
+    return "process"
+
+
+def _symptom_type(row: dict[str, Any]) -> str:
+    if _f(row.get("material_shortage_flag_s")) > 0:
+        return "material_shortage"
+    if _f(row.get("blocked_time_s")) > _f(row.get("starved_time_s")):
+        return "blocked_downstream"
+    if _f(row.get("starved_time_s")) > 0:
+        return "starved_upstream"
+    if _f(row.get("queue_growth_rate_s")) > 0:
+        return "queue_growth"
+    if _f(row.get("queue_length_s")) > 0 or _f(row.get("avg_waiting_time_s")) > 0:
+        return "queue_buildup"
+    if _f(row.get("active_pct_s")) >= 0.8:
+        return "high_utilization"
+    return "system_pressure"
+
+
+def _candidate_cause(
+    event: dict[str, Any], disturbance_events: list[dict[str, Any]], horizon: float
+) -> dict[str, Any]:
+    candidates = [
+        item
+        for item in disturbance_events
+        if item["start"] <= event["start_s"]
+        and event["start_s"] - item["start"] <= horizon
+    ]
+    if not candidates:
+        return {
+            "candidate_cause_type": "",
+            "cause_target_resource_id": "",
+            "cause_label_confidence": "",
+            "disturbance_to_bottleneck_delay_s": "",
+        }
+    cause = max(candidates, key=lambda item: item["start"])
+    delay = event["start_s"] - cause["start"]
+    overlaps = cause["end"] >= event["start_s"]
+    if cause["target"] == event["resource_id"]:
+        confidence = 1.0
+    elif overlaps:
+        confidence = 0.6
+    else:
+        confidence = 0.3
+    return {
+        "candidate_cause_type": cause["type"],
+        "cause_target_resource_id": cause["target"],
+        "cause_label_confidence": confidence,
+        "disturbance_to_bottleneck_delay_s": round(delay, 6),
+    }
+
+
 def build_labels_and_events(
     feature_rows: list[dict],
     horizon: float,
     score_threshold: float,
     min_event_windows: int,
     episode_end: float,
+    disturbance_rows: list[dict[str, Any]] | None = None,
+    logic_dt: float = 1.0,
+    label_version: str = LABEL_VERSION,
 ) -> tuple[list[dict], list[dict]]:
     """Build weak bottleneck events and right-censored future labels."""
     by_ws: dict[tuple[float, float], list[dict]] = defaultdict(list)
@@ -670,6 +805,9 @@ def build_labels_and_events(
     event_rows: list[dict] = []
 
     score_config_json = json.dumps(SCORE_CONFIG, sort_keys=True, separators=(",", ":"))
+    disturbance_events = _paired_disturbance_events(
+        disturbance_rows or [], logic_dt, episode_end
+    )
     for (window_size, stride), rows in by_ws.items():
         # Per window: argmax resource
         windows: dict[int, list[dict]] = defaultdict(list)
@@ -677,8 +815,41 @@ def build_labels_and_events(
             windows[r["window_index"]].append(r)
 
         window_meta: dict[int, dict] = {}
+        system_history: list[dict[str, float]] = []
         for wi, rs in sorted(windows.items()):
             best = max(rs, key=lambda x: x["bottleneck_score_s"])
+            peers = sorted(
+                (
+                    row["bottleneck_score_s"]
+                    for row in rs
+                    if _node_category(row) == _node_category(best)
+                ),
+                reverse=True,
+            )
+            relative_margin = peers[0] - peers[1] if len(peers) > 1 else peers[0]
+            current_wip = _f(rs[0].get("total_WIP"))
+            current_throughput = _f(rs[0].get("throughput_rolling"))
+            recent = system_history[-SYSTEM_HISTORY_WINDOWS:]
+            if recent:
+                baseline_wip = statistics.mean(item["wip"] for item in recent)
+                baseline_throughput = statistics.mean(
+                    item["throughput"] for item in recent
+                )
+            else:
+                baseline_wip = current_wip
+                baseline_throughput = current_throughput
+            wip_growth = current_wip - baseline_wip
+            throughput_drop_ratio = (
+                max((baseline_throughput - current_throughput) / baseline_throughput, 0.0)
+                if baseline_throughput > 0
+                else 0.0
+            )
+            system_impact = int(
+                wip_growth >= MIN_WIP_GROWTH
+                or throughput_drop_ratio >= MIN_THROUGHPUT_DROP_RATIO
+            )
+            absolute_gate = best["bottleneck_score_s"] >= score_threshold
+            relative_gate = relative_margin >= DEFAULT_RELATIVE_MARGIN
             window_meta[wi] = {
                 "window_index": wi,
                 "window_start_s": rs[0]["window_start_s"],
@@ -693,10 +864,20 @@ def build_labels_and_events(
                 "bottleneck_node_t": best["resource_id"],
                 "bottleneck_type_t": best["resource_type"],
                 "bottleneck_score_t": best["bottleneck_score_s"],
+                "relative_score_margin_t": round(relative_margin, 6),
+                "wip_growth_t": round(wip_growth, 6),
+                "throughput_drop_ratio_t": round(throughput_drop_ratio, 6),
+                "system_impact_flag_t": system_impact,
+                "bottleneck_symptom_type_t": _symptom_type(best),
                 "is_bottleneck_window": int(
-                    best["bottleneck_score_s"] >= score_threshold
+                    absolute_gate
+                    if label_version == LABEL_VERSION_V1
+                    else absolute_gate and relative_gate and system_impact
                 ),
             }
+            system_history.append(
+                {"wip": current_wip, "throughput": current_throughput}
+            )
 
         # Merge consecutive high-score windows into events
         events: list[dict] = []
@@ -735,6 +916,7 @@ def build_labels_and_events(
                         "duration_s": meta["window_end_s"] - meta["window_start_s"],
                         "max_score": meta["bottleneck_score_t"],
                         "n_windows": 1,
+                        "bottleneck_symptom_type": meta["bottleneck_symptom_type_t"],
                     }
             else:
                 if cur and cur["n_windows"] >= min_event_windows:
@@ -750,9 +932,11 @@ def build_labels_and_events(
             ev["severity_weak"] = round(
                 0.7 * ev["max_score"] + 0.3 * min(ev["duration_s"] / horizon, 1.0), 6
             )
-            ev["label_version"] = LABEL_VERSION
+            ev["label_version"] = label_version
             ev["score_threshold"] = score_threshold
+            ev["relative_score_margin"] = DEFAULT_RELATIVE_MARGIN
             ev["min_event_windows"] = min_event_windows
+            ev.update(_candidate_cause(ev, disturbance_events, horizon))
             event_rows.append(ev)
 
         # Future labels per window
@@ -775,6 +959,11 @@ def build_labels_and_events(
                 dur = first["duration_s"]
                 duration_observed = first["duration_observed"]
                 severity = first["severity_weak"]
+                symptom_type = first["bottleneck_symptom_type"]
+                cause_type = first["candidate_cause_type"]
+                cause_target = first["cause_target_resource_id"]
+                cause_confidence = first["cause_label_confidence"]
+                cause_delay = first["disturbance_to_bottleneck_delay_s"]
             elif label_observed:
                 will = 0
                 fut_id = ""
@@ -783,6 +972,11 @@ def build_labels_and_events(
                 dur = ""
                 duration_observed = ""
                 severity = ""
+                symptom_type = ""
+                cause_type = ""
+                cause_target = ""
+                cause_confidence = ""
+                cause_delay = ""
             else:
                 will = ""
                 fut_id = ""
@@ -791,6 +985,11 @@ def build_labels_and_events(
                 dur = ""
                 duration_observed = 0
                 severity = ""
+                symptom_type = ""
+                cause_type = ""
+                cause_target = ""
+                cause_confidence = ""
+                cause_delay = ""
 
             # Heuristic root cause without disturbance_log
             reason = ""
@@ -828,13 +1027,18 @@ def build_labels_and_events(
                     "time_to_start": tts,
                     "duration": dur,
                     "severity_weak": severity,
-                    "label_version": LABEL_VERSION,
+                    "label_version": label_version,
                     "score_config": score_config_json,
                     "score_threshold": score_threshold,
                     "min_event_windows": min_event_windows,
                     "label_observed": label_observed,
                     "duration_observed": duration_observed,
                     "root_cause_reason": reason,
+                    "bottleneck_symptom_type": symptom_type,
+                    "candidate_cause_type": cause_type,
+                    "cause_target_resource_id": cause_target,
+                    "cause_label_confidence": cause_confidence,
+                    "disturbance_to_bottleneck_delay_s": cause_delay,
                 }
             )
 
@@ -1010,6 +1214,7 @@ def process_env_dir(
     horizon: float,
     score_threshold: float,
     min_event_windows: int,
+    label_version: str = LABEL_VERSION,
 ) -> dict:
     events = _read_jsonl(env_dir / "resource_event_log.jsonl")
     job_rows = _read_csv(env_dir / "job_trace.csv")
@@ -1097,6 +1302,7 @@ def process_env_dir(
             env_id=env_id if env_id is not None else 0,
             episode_id=episode_id if episode_id is not None else 0,
             logic_dt=logic_dt,
+            label_version=label_version,
         )
         all_features.extend(feats)
 
@@ -1106,7 +1312,14 @@ def process_env_dir(
             f"No complete windows in {env_dir}; episode_end={episode_end}, window_sizes={window_sizes}"
         )
     labels, event_rows = build_labels_and_events(
-        all_features, horizon, score_threshold, min_event_windows, episode_end
+        all_features,
+        horizon,
+        score_threshold,
+        min_event_windows,
+        episode_end,
+        disturbance_rows=disturbance_rows,
+        logic_dt=logic_dt,
+        label_version=label_version,
     )
     job_kpi_rows, order_kpi = build_job_kpis(
         job_rows,
@@ -1121,9 +1334,15 @@ def process_env_dir(
     _write_csv(out_dir / "bottleneck_label.csv", labels)
     _write_csv(out_dir / "bottleneck_event.csv", event_rows)
     label_metadata = {
-        "label_version": LABEL_VERSION,
+        "label_version": label_version,
         "score_config": SCORE_CONFIG,
         "score_threshold": score_threshold,
+        "relative_score_margin": DEFAULT_RELATIVE_MARGIN,
+        "system_impact_config": {
+            "history_windows": SYSTEM_HISTORY_WINDOWS,
+            "min_wip_growth": MIN_WIP_GROWTH,
+            "min_throughput_drop_ratio": MIN_THROUGHPUT_DROP_RATIO,
+        },
         "min_event_windows": min_event_windows,
         "prediction_horizon": horizon,
         "window_sizes": window_sizes,
@@ -1173,6 +1392,7 @@ def process_env_dir(
 
     summary = {
         "status": "processed",
+        "label_version": label_version,
         "run_id": run_id,
         "env_id": env_id,
         "episode_id": episode_id,
@@ -1212,6 +1432,23 @@ def process_env_dir(
                 )
             )
             for ws in window_sizes
+        },
+        "threshold_sensitivity": {
+            f"{threshold:.2f}": (
+                sum(
+                    1
+                    for label in labels
+                    if label["bottleneck_score_t"] >= threshold
+                    and label["relative_score_margin_t"] >= DEFAULT_RELATIVE_MARGIN
+                    and label["system_impact_flag_t"] == 1
+                )
+                / max(len(labels), 1)
+            )
+            for threshold in (
+                max(score_threshold - 0.05, 0.0),
+                score_threshold,
+                min(score_threshold + 0.05, 1.0),
+            )
         },
         "observed_label_rows": sum(1 for l in labels if l["label_observed"] == 1),
         "censored_label_rows": sum(1 for l in labels if l["label_observed"] == 0),
@@ -1260,10 +1497,19 @@ def main() -> None:
         "--horizon", type=float, default=120.0, help="Future horizon H (logic seconds)"
     )
     parser.add_argument(
-        "--score_threshold", type=float, default=DEFAULT_SCORE_THRESHOLD
+        "--score_threshold",
+        type=float,
+        default=None,
+        help="Override score threshold (defaults: v1=0.55, v2=0.70).",
     )
     parser.add_argument(
         "--min_event_windows", type=int, default=DEFAULT_MIN_EVENT_WINDOWS
+    )
+    parser.add_argument(
+        "--label_version",
+        choices=[LABEL_VERSION_V1, LABEL_VERSION_V2],
+        default=LABEL_VERSION,
+        help="Weak-label contract to generate (default: bstan_weak_v2).",
     )
     parser.add_argument(
         "--out_dir",
@@ -1272,6 +1518,16 @@ def main() -> None:
         help="Output directory (default: <run_dir>/derived)",
     )
     args = parser.parse_args()
+
+    score_threshold = (
+        args.score_threshold
+        if args.score_threshold is not None
+        else (
+            V1_SCORE_THRESHOLD
+            if args.label_version == LABEL_VERSION_V1
+            else DEFAULT_SCORE_THRESHOLD
+        )
+    )
 
     window_sizes = (
         [args.window_size]
@@ -1297,8 +1553,9 @@ def main() -> None:
             window_sizes=window_sizes,
             stride=args.stride,
             horizon=args.horizon,
-            score_threshold=args.score_threshold,
+            score_threshold=score_threshold,
             min_event_windows=args.min_event_windows,
+            label_version=args.label_version,
         )
         summaries.append(summary)
         if summary.get("status") == "skipped":

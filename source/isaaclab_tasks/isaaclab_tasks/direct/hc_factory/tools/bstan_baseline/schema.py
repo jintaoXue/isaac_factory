@@ -4,7 +4,8 @@ from __future__ import annotations
 
 
 DATASET_VERSION = "bstan_dataset_v1"
-LABEL_VERSION = "bstan_weak_v1"
+LABEL_VERSION = "bstan_weak_v2"
+SUPPORTED_LABEL_VERSIONS = frozenset({"bstan_weak_v1", "bstan_weak_v2"})
 
 CONTINUOUS_FEATURES = (
     "queue_length_s",
