@@ -907,6 +907,8 @@ train/validation/test episode 无交集
 
 ### Phase C：图数据集
 
+状态：本地实现和纯 PyTorch 测试已完成，待服务器使用 Phase B 真实产物验收。
+
 1. 构建 node catalog 和 static prior graph。
 2. 构建四窗口序列。
 3. episode-level split。
@@ -960,7 +962,9 @@ python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools/build_bottle
 # 3. 构建 BSTAN 数据集
 python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools/build_bstan_dataset.py \
   --run_dirs <run_dir_1> <run_dir_2> \
+  --derived_dir_name derived_phase_b_v1 \
   --window_size 30 \
+  --stride 30 \
   --input_windows 4 \
   --horizon 120 \
   --out_dir <dataset_dir>
