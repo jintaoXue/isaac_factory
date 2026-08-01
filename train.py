@@ -101,6 +101,13 @@ parser.add_argument(
     default=None,
     help="Stop after this many completed episodes per env (default: unlimited). Use 1 for single-episode data collection.",
 )
+parser.add_argument(
+    "--product_order_count",
+    type=int,
+    default=None,
+    choices=[10, 15, 18],
+    help="Override the ProductWaterPipe order count for load calibration (default: configured value, currently 18).",
+)
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -196,6 +203,11 @@ from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.env_asset_cfg.cfg_di
     apply_disturbance_to_cfgs,
     configure_disturbance_from_cli,
 )
+from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.env_asset_cfg.cfg_material_product import (
+    CfgProductOrder,
+    CfgRegistrationInfos,
+    configure_product_order_count,
+)
 from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.hc_render import HcVideoRecorder
 
 @hydra_task_config(args_cli.task, args_cli.algo)
@@ -261,6 +273,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     # set the environment seed (after multi-gpu config for updated rank from agent seed)
     # note: certain randomizations occur in the environment initialization so we set the seed here
     env_cfg.seed = algo_cfg["params"]["seed"]
+    if args_cli.product_order_count is not None:
+        configure_product_order_count(args_cli.product_order_count)
+    print(
+        "[Order] ProductWaterPipe="
+        f"{CfgProductOrder['ProductWaterPipe']} "
+        f"(registered={CfgRegistrationInfos['ProductWaterPipe']})"
+    )
     configure_disturbance_from_cli(
         dim=getattr(args_cli, "disturbance_dim", "none"),
         intensity=getattr(args_cli, "disturbance_intensity", 1.0),

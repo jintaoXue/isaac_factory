@@ -11,14 +11,27 @@ CfgProductOrder = {
     "ProductWaterPipe": 18, # idx: 00-17 (G1 P01_order_scale)
 }
 
-for product_type, quantity in CfgProductOrder.items():
+
+def configure_product_order_count(quantity: int, product_type: str = "ProductWaterPipe") -> dict:
+    """Set the run order while keeping the registered material capacity unchanged."""
     if product_type not in CfgRegistrationInfos:
-        raise ValueError(f"Unknown product type in CfgProductOrder: {product_type}")
-    if quantity > CfgRegistrationInfos[product_type]:
+        raise ValueError(f"Unknown product type: {product_type}")
+    if quantity <= 0:
+        raise ValueError(f"Requested quantity for {product_type} must be positive")
+    registered = CfgRegistrationInfos[product_type]
+    if quantity > registered:
         raise ValueError(
             f"Requested quantity for {product_type} ({quantity}) exceeds registered max "
-            f"({CfgRegistrationInfos[product_type]})"
+            f"({registered})"
         )
+    CfgProductOrder[product_type] = quantity
+    return CfgProductOrder
+
+
+for product_type, quantity in tuple(CfgProductOrder.items()):
+    if product_type not in CfgRegistrationInfos:
+        raise ValueError(f"Unknown product type in CfgProductOrder: {product_type}")
+    configure_product_order_count(quantity, product_type)
 
 CfgProductProcess = {
     "ProductWaterPipe": {

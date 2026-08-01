@@ -162,8 +162,9 @@ class ProductSequencerAgentMasker:
         mask = torch.zeros(self.num_product_types, dtype=torch.int32, device=self.cuda_device)
         if next_product is None and len(not_started.keys()) > 0:
             #can select the product in not_started
-            for product_type in not_started.keys():
-                mask[self.product_types[product_type]] = 1
+            for product_type, remaining in not_started.items():
+                if remaining > 0:
+                    mask[self.product_types[product_type]] = 1
         env_state_action_dict["agent_action_mask"]["agent_A_product_sequencer"] = mask
 
 class ProductSelectorAgentMasker:

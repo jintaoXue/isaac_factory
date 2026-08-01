@@ -2,7 +2,7 @@
 
 ## 1. 文档状态
 
-- 状态：方案已确认；Phase E0-E1 已完成本地实现，待服务器 Pilot 验收
+- 状态：方案已确认；Phase E0-E1 已完成本地实现，正在进行服务器负载校准与 Pilot 验收
 - 基线：现有 `BSTAN-style GAT-GRU baseline`
 - 前置版本：Phase A-D 已跑通，`dev_tyx` 的 18 单、扰动与龙门架修复已合入
 - 本轮目标：提高训练数据的正确性、覆盖度和评估可信度，再重新训练 baseline
@@ -238,7 +238,22 @@ disturbance_to_bottleneck_delay_s
 
 ## 6. 正式数据采集矩阵
 
-### 6.1 Pilot 校验
+### 6.1 订单负载校准
+
+保持 `CfgRegistrationInfos["ProductWaterPipe"] = 18`，通过运行参数改变实际订单数：
+
+```text
+--product_order_count = 10, 15, 18
+dimension = none
+seed = 42
+episodes per load = 1
+```
+
+三个档位均使用 `tmux` 完整运行，并记录完成时间、`completed_jobs`、episode 结束原因和资源利用率。选择能够稳定完成且形成明显排队竞争的档位作为正式数据负载；当前首选为 15 单，10 单作为低负载对照，18 单作为压力测试。未显式传参时保持现有 18 单行为。
+
+降低订单数只减少实际进入生产的批次，不减少已注册的 18 批实体。产品排序 mask 必须在 `not_started` 数量为 0 后停止放行该产品，避免低负载配置继续启动额外批次。
+
+### 6.2 Pilot 校验
 
 先用最小矩阵验证数据正确性，不立即大规模采集：
 
@@ -247,12 +262,12 @@ dimensions = none, machine, human, logistics, material
 intensity = 1.0
 seed = 42
 episodes per run = 2
-orders per episode = 18
+orders per episode = calibrated load (candidate: 15)
 ```
 
 共 10 个 attempted episodes。Pilot 只用于检查事件、状态、标签与完成率，不进入正式 test 指标。
 
-### 6.2 正式 v1 矩阵
+### 6.3 正式 v1 矩阵
 
 Pilot 通过后采集：
 
@@ -261,7 +276,7 @@ none: intensity 0.0
 machine/human/logistics/material: intensity 0.5, 1.0, 1.5
 seeds: 42, 43, 44
 episodes per configuration: 3
-orders per episode: 18
+orders per episode: calibrated load (candidate: 15)
 policy: rule_based
 ```
 
@@ -282,7 +297,7 @@ test       = seed 44
 
 这样每个 split 都包含全部 scenario cell，同时同一 run 的 episode 不会跨 split。该划分用于第一版同分布比较；未见强度和未见 policy 的 OOD 测试留到后续扩展。
 
-### 6.3 不通过重复负样本制造规模
+### 6.4 不通过重复负样本制造规模
 
 若某场景持续没有正样本，应先检查扰动是否生效和标签是否合理，不直接增加大量相同 episode。正式采集允许根据 pilot 删除无效强度或调整扰动范围，但调整后必须重新冻结配置。
 
@@ -297,7 +312,7 @@ START = 1
 END = 1
 ABORTED = 0
 production_done = 1
-completed_jobs = 18
+completed_jobs = configured product order count
 all expected resources have t=0 state
 all L2 START events have exactly one END
 actual target exists in node catalog or mapped buffer/material catalog
@@ -520,7 +535,7 @@ output/bottleneck_dataset/experiments/<experiment_id>/
 
 ## 13. 本轮需要确认的决策
 
-1. 正式 baseline 数据使用 18 单，不再沿用旧 3 单 smoke 数据。
+1. 正式 baseline 数据不再沿用旧 3 单 smoke 数据；先比较 10/15/18 单，当前以 15 单为正式负载候选，18 单保留为压力测试。
 2. `ABORTED` 只用于诊断，不进入本轮 BSTAN 训练。
 3. material shortage 改为可恢复事件，永久缺料只做压力测试。
 4. 正式矩阵采用 13 scenario cells、3 seeds、每格 3 episode，共 117 attempted episodes。
