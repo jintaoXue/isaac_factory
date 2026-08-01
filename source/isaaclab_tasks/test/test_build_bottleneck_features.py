@@ -304,6 +304,77 @@ class TestPhaseBFeatures(unittest.TestCase):
             self.assertEqual(metadata["label_version"], "bstan_weak_v1")
             self.assertEqual(metadata["strides_s"], {"30.0": 30.0})
 
+    def test_process_skips_aborted_episode_and_keeps_audit_summary(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_dir = Path(temp_dir) / "episode_00" / "env_00"
+            out_dir = Path(temp_dir) / "derived" / "episode_00" / "env_00"
+            env_dir.mkdir(parents=True)
+            (env_dir / "resource_event_log.jsonl").write_text("", encoding="utf-8")
+            self._write_csv(
+                env_dir / "episode_config.csv",
+                ["run_id", "env_id", "episode_id", "logic_dt"],
+                [
+                    {
+                        "run_id": "run",
+                        "env_id": 0,
+                        "episode_id": 0,
+                        "logic_dt": 0.5,
+                    }
+                ],
+            )
+            self._write_csv(
+                env_dir / "episode_lifecycle.csv",
+                [
+                    "event",
+                    "time_step",
+                    "logic_time_s",
+                    "completed_jobs",
+                    "termination_reason",
+                ],
+                [
+                    {
+                        "event": "START",
+                        "time_step": 0,
+                        "logic_time_s": 0,
+                        "completed_jobs": 0,
+                        "termination_reason": "",
+                    },
+                    {
+                        "event": "ABORTED",
+                        "time_step": 5000,
+                        "logic_time_s": 2500,
+                        "completed_jobs": 2,
+                        "termination_reason": "deadlock_watchdog",
+                    },
+                ],
+            )
+            for filename in (
+                "job_trace.csv",
+                "buffer_event_log.csv",
+                "route_transport_task.csv",
+                "material_inventory_log.csv",
+                "disturbance_log.csv",
+            ):
+                self._write_csv(env_dir / filename, ["time_step"], [])
+
+            summary = MODULE.process_env_dir(
+                env_dir=env_dir,
+                out_dir=out_dir,
+                window_sizes=[30.0],
+                stride=30.0,
+                horizon=60.0,
+                score_threshold=0.55,
+                min_event_windows=2,
+            )
+
+            self.assertEqual(summary["status"], "skipped")
+            self.assertEqual(summary["termination_reason"], "deadlock_watchdog")
+            self.assertEqual(summary["abort_time_s"], 2500.0)
+            self.assertEqual(summary["completed_jobs"], 2)
+            self.assertTrue((out_dir / "pipeline_summary.json").is_file())
+            self.assertFalse((out_dir / "window_feature_table.csv").exists())
+            self.assertFalse((out_dir / "bottleneck_labels.csv").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

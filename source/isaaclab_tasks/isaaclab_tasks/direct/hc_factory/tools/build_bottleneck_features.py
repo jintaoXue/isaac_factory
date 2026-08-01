@@ -1036,6 +1036,31 @@ def process_env_dir(
     episode_config: dict[str, Any] = ep_rows[0] if ep_rows else {}
     logic_dt = _f(episode_config.get("logic_dt"), 1.0) or 1.0
 
+    aborted_rows = [
+        row
+        for row in lifecycle_rows
+        if str(row.get("event", "")).upper() == "ABORTED"
+    ]
+    if aborted_rows:
+        aborted = aborted_rows[-1]
+        summary = {
+            "status": "skipped",
+            "skip_reason": "aborted_episode",
+            "termination_event": "ABORTED",
+            "termination_reason": aborted.get("termination_reason") or "unknown",
+            "run_id": run_id,
+            "env_id": env_id,
+            "episode_id": episode_id,
+            "abort_time_s": _time_s(aborted, logic_dt),
+            "completed_jobs": _i(aborted.get("completed_jobs"), 0),
+        }
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "pipeline_summary.json").write_text(
+            json.dumps(summary, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        return summary
+
     times = []
     for e in events:
         times.append(_time_s(e, logic_dt))
@@ -1147,6 +1172,7 @@ def process_env_dir(
         )
 
     summary = {
+        "status": "processed",
         "run_id": run_id,
         "env_id": env_id,
         "episode_id": episode_id,
@@ -1275,6 +1301,13 @@ def main() -> None:
             min_event_windows=args.min_event_windows,
         )
         summaries.append(summary)
+        if summary.get("status") == "skipped":
+            print(
+                f"  skipped={summary['skip_reason']}  "
+                f"reason={summary['termination_reason']}  "
+                f"abort_time={summary['abort_time_s']:.0f}s"
+            )
+            continue
         print(
             f"  episode_end={summary['episode_end_s']:.0f}s  "
             f"features={summary['n_feature_rows']}  "

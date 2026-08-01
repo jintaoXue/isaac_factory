@@ -464,6 +464,7 @@ class BottleneckDataCollector:
             [
                 "run_id", "env_id", "episode_id", "event", "time_step",
                 "logic_time_s", "production_done", "completed_jobs",
+                "termination_reason",
             ],
         )
         self._job_trace_writer = _CsvWriter(
@@ -588,7 +589,25 @@ class BottleneckDataCollector:
             f"_g{gantry_count}_order{order_signature}"
         )
 
-    def _write_episode_lifecycle(self, env: dict, event: str, time_step: int) -> None:
+    def abort_episode(self, env: dict, reason: str) -> None:
+        """Close the current episode as unusable for model training."""
+        if not self.enabled or self._out_dir is None or self._episode_end_logged:
+            return
+        self._write_episode_lifecycle(
+            env,
+            "ABORTED",
+            int(env.get("time_step", 0)),
+            termination_reason=reason,
+        )
+        self._episode_end_logged = True
+
+    def _write_episode_lifecycle(
+        self,
+        env: dict,
+        event: str,
+        time_step: int,
+        termination_reason: str = "",
+    ) -> None:
         if self._episode_lifecycle_writer is None:
             return
         completed_jobs = sum(
@@ -606,6 +625,7 @@ class BottleneckDataCollector:
                     bool(env.get("progress", {}).get("production_done", False))
                 ),
                 "completed_jobs": completed_jobs,
+                "termination_reason": termination_reason,
             }
         )
 

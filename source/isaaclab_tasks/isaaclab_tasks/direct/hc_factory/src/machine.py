@@ -392,6 +392,10 @@ class num07_gantry_group(Machine):
         2: torch.tensor([-46.0, 10.18675]),
         3: torch.tensor([-42.0, 10.18675]),
     }
+    # Logic steps a lower-priority gantry may stay in yield before forced unlock.
+    YIELD_TIMEOUT_STEPS = 400
+    # Passed to GantryGroupAnimation.step_next_pose for mutual safe_x_gap deadlocks.
+    BLOCK_TIMEOUT_STEPS = 400
 
     def __init__(self, env_id: int, cuda_device: torch.device):
         self.num07_gantry_group = None
@@ -405,6 +409,15 @@ class num07_gantry_group(Machine):
         self.safe_x_gap: float = gantry_info["safe_x_gap"]
         self._yielding = [False] * self.num_workstations
         self._yield_target_x: list[float | None] = [None] * self.num_workstations
+        self._yield_steps = [0] * self.num_workstations
+
+    def reset(self, env_state_action_dict: dict) -> dict:
+        self._yielding = [False] * self.num_workstations
+        self._yield_target_x = [None] * self.num_workstations
+        self._yield_steps = [0] * self.num_workstations
+        if self.animation_num07_gantry_group is not None:
+            self.animation_num07_gantry_group.blocked_steps = [0] * self.num_workstations
+        return super().reset(env_state_action_dict)
 
     def _register_articulation_animation(self):
         for obj_name, info in self.registration_infos.items():
@@ -489,11 +502,34 @@ class num07_gantry_group(Machine):
             return
         self._yielding[gantry_index] = False
         self._yield_target_x[gantry_index] = None
+        self._yield_steps[gantry_index] = 0
         animation = self.animation_num07_gantry_group
         animation.is_yield_move[gantry_index] = False
         task_target = self.state["target_joints_position"][gantry_index]
         if task_target is not None:
             animation.set_target_pose(task_target, gantry_index=gantry_index, current_joint_position=joint_position)
+
+    def _force_clear_yield(self, gantry_index: int, joint_position: torch.Tensor, reason: str) -> None:
+        """Timeout unlock: stop endless yield so the gantry can resume its task target."""
+        if not self._yielding[gantry_index]:
+            self._yield_steps[gantry_index] = 0
+            return
+        print(
+            f"[GantryUnlock] clear yield gantry_{gantry_index} after "
+            f"{self._yield_steps[gantry_index]} steps ({reason})"
+        )
+        self._clear_yield(gantry_index, joint_position)
+
+    def _resolve_yield_timeouts(self, joint_position: torch.Tensor) -> None:
+        for gantry_index in self.ACTIVE_GANTRY_INDICES:
+            if self._yielding[gantry_index]:
+                self._yield_steps[gantry_index] += 1
+                if self._yield_steps[gantry_index] >= self.YIELD_TIMEOUT_STEPS:
+                    self._force_clear_yield(
+                        gantry_index, joint_position, reason="yield_timeout"
+                    )
+            else:
+                self._yield_steps[gantry_index] = 0
 
     def _update_yield(self, joint_position: torch.Tensor, env_state_action_dict: dict) -> None:
         animation = self.animation_num07_gantry_group
@@ -586,6 +622,8 @@ class num07_gantry_group(Machine):
     def step(self, env_state_action_dict):
         joint_position = env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"]
         self._sync_invalid_gantries(joint_position)
+        # Unlock stale yields before assigning new task targets this step.
+        self._resolve_yield_timeouts(joint_position)
 
         for gantry_index in self.ACTIVE_GANTRY_INDICES:
             task_record_index = self.state["ongoing_task_record_index"][gantry_index]
@@ -626,6 +664,7 @@ class num07_gantry_group(Machine):
                 self.safe_x_gap,
                 world_x_fn,
                 priority_fn,
+                block_timeout=self.BLOCK_TIMEOUT_STEPS,
             )
         )
         return env_state_action_dict
@@ -660,6 +699,8 @@ class num07_gantry_group(Machine):
         if self.state["target_joints_position"][gantry_index] is None:
             if self.state["target_area_xy"][gantry_index] is None:
                 return
+            # Only pause target acquisition while actively yielding; after yield timeout
+            # _resolve_yield_timeouts clears the flag so we can proceed.
             if self._yielding[gantry_index]:
                 return
             joint_position = env_state_action_dict["articulations"]["num07_gantry_group"]["joint_position"]
@@ -676,6 +717,9 @@ class num07_gantry_group(Machine):
             return
 
         if self.animation_num07_gantry_group.is_done(gantry_index=gantry_index):
+            # Ignore completion of a pure yield sidestep; wait for real task animation.
+            if self._yielding[gantry_index] or self.animation_num07_gantry_group.is_yield_move[gantry_index]:
+                return
             subtasks["finished"][1] = True
             self.state["target_area_id"][gantry_index] = None
             self.state["target_area_xy"][gantry_index] = None
@@ -705,6 +749,7 @@ class num07_gantry_group(Machine):
         self.state["target_joints_position"][chosen_gantry_index] = None
         self._yielding[chosen_gantry_index] = False
         self._yield_target_x[chosen_gantry_index] = None
+        self._yield_steps[chosen_gantry_index] = 0
         home_xy = torch.tensor(
             [
                 float(self.xy_position_reset[chosen_gantry_index].item()),
