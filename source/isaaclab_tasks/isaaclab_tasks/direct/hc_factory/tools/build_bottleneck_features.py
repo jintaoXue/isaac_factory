@@ -1129,6 +1129,11 @@ def process_env_dir(
     )
 
     # Summary stats
+    feature_node_ids = {row["resource_id"] for row in all_features}
+    resource_event_node_ids = set(timelines)
+    buffer_node_ids = {
+        node_id for node_id in feature_node_ids if node_id.startswith("storage_")
+    }
     top_nodes = []
     for ws in window_sizes:
         ws_labels = [l for l in labels if l["window_size_s"] == ws]
@@ -1146,7 +1151,9 @@ def process_env_dir(
         "env_id": env_id,
         "episode_id": episode_id,
         "episode_end_s": episode_end,
-        "n_resources": len(timelines),
+        "n_resources": len(feature_node_ids),
+        "n_resource_event_nodes": len(resource_event_node_ids),
+        "n_buffer_nodes": len(buffer_node_ids),
         "n_feature_rows": len(all_features),
         "n_label_rows": len(labels),
         "n_events": len(event_rows),

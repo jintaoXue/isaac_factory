@@ -292,6 +292,9 @@ class TestPhaseBFeatures(unittest.TestCase):
             )
 
             self.assertEqual(summary["episode_end_s"], 150.0)
+            self.assertEqual(summary["n_resources"], 1)
+            self.assertEqual(summary["n_resource_event_nodes"], 1)
+            self.assertEqual(summary["n_buffer_nodes"], 0)
             self.assertEqual(summary["n_feature_rows"], 5)
             self.assertEqual(summary["observed_label_rows"], 3)
             self.assertEqual(summary["censored_label_rows"], 2)

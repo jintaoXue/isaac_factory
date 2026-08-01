@@ -2,7 +2,7 @@
 
 ## 1. 文档状态
 
-- 状态：实施中（Phase A 已验收；Phase B 本地实现完成，待服务器真实数据验收）
+- 状态：实施中（Phase A、Phase B 已验收）
 - 目标：先跑通一套可复现、可训练、可评估的 BSTAN-style GAT-GRU baseline
 - 本文范围：数据采集修正、离线特征与标签、图数据集、模型、训练和验收
 - 本文不包含：具体代码实现、完整动态图库、预测反馈调度、主模型实现
@@ -140,7 +140,24 @@ resource_nodes = 19 / episode
 episode lifecycle = 6/6 START=1, END=1, production_done=1
 ```
 
-6 个 episode 均可被原有离线脚本解析，订单 makespan 为 2118-2247 logic seconds，未发现缺失 episode 或未完成 job。该次运行证明 Phase A schema 和真实 Isaac Sim 运行链路可用；Phase B 改造后的特征与标签仍需使用同一 raw run 在服务器重跑验收。
+6 个 episode 均可被原有离线脚本解析，订单 makespan 为 2118-2247 logic seconds，未发现缺失 episode 或未完成 job。该次运行证明 Phase A schema 和真实 Isaac Sim 运行链路可用。
+
+Phase B 随后使用同一 raw run 完成服务器验收：
+
+```text
+window_size = 30s
+stride = 30s
+prediction_horizon = 120s
+feature nodes = 37 / window（19 个事件资源 + 18 个 buffer）
+feature rows = 16169
+label rows = 437
+observed labels = 413
+censored tail labels = 24（每 episode 4 个）
+merged bottleneck events = 13
+positive labels = 28 / 413（6.78%）
+```
+
+6 个 episode 均通过 Phase B 主键唯一性、输入有限值和删失标签门禁。该 smoke dataset 同时包含正负样本，但规模和场景多样性仍只适合管线验收，不作为正式训练数据。
 
 ## 4. Baseline 范围决策
 
@@ -874,7 +891,7 @@ train/validation/test episode 无交集
 
 ### Phase B：特征与标签
 
-状态：本地实现和纯 Python 测试已完成，待服务器使用 v0.4 raw run 验收。
+状态：已完成本地测试并通过服务器真实数据验收。
 
 1. 增加 episode 主键和 stride。
 2. 补 ratio、局部 transport/material、global features。
