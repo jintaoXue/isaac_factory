@@ -26,12 +26,12 @@ ABORTED episode audit rejection
 raw data quality JSON/CSV report
 ```
 
-material hold 优先选择当前 `producing` 且没有 ongoing task 的批次，其次选择 `next_product`，最后才选择其它未完成批次。hold 只屏蔽该批次的下一工序 action mask，并保留实际物理库存；恢复后自动继续生产。
+material hold 只选择当前 `producing` 且刚好没有 ongoing task 的批次；若计划时刻没有候选，则等待到某个在制批次进入工序间隙后再实际激活。hold 只屏蔽该批次的下一工序 action mask，并保留实际物理库存；恢复后自动继续生产。未启动批次不再作为 fallback，避免事件完成后生产轨迹完全不受影响。
 
 本地验收：
 
 ```text
-Phase E0-E2 pure-Python tests = 18 passed
+Phase E0-E2 pure-Python tests = 19 passed
 Python syntax compilation = passed
 Isaac Sim five-scenario smoke Pilot = passed
 ```
@@ -48,7 +48,7 @@ buffer argmax rate = 80.0%–89.2%
 threshold=0.70, margin=0.10 candidate rate = 19.7%–24.6%
 ```
 
-因此 v1 的强制 argmax 和 buffer 支配问题成立。Phase E2 冻结第一版参数为 `score_threshold=0.70`、同类节点优势 `>=0.10`，并增加系统影响门槛。
+因此 v1 的强制 argmax 和 buffer 支配问题成立。敏感性复算后，`0.65` 的总体正样本率为 `6.85%`，28 个事件，hot window 中 buffer 占约 `52.6%`；`0.70` 的总体正样本率仅 `3.9%`。Phase E2 冻结参数为 `score_threshold=0.65`、同类节点优势 `>=0.10`，并增加系统影响门槛。
 
 ## 2. 当前基线与问题判断
 
@@ -242,7 +242,7 @@ Phase C 接受 `bstan_weak_v1` 和 `bstan_weak_v2`，但同一个 dataset 禁止
 阈值不能根据 test 指标反向调节。建议流程：
 
 1. 使用独立 pilot 数据中的正常场景和已知扰动场景检查特征分布；
-2. 固定 v2 score 权重与阈值，本轮为 `0.70` 和相对优势 `0.10`；
+2. 固定 v2 score 权重与阈值，本轮为 `0.65` 和相对优势 `0.10`；
 3. 将完整 `score_config` 写入 `label_metadata.json`；
 4. 冻结配置后再采正式 train/validation/test 数据；
 5. 对阈值上下浮动 `0.05` 做敏感性分析，确认事件数量不会剧烈坍缩。

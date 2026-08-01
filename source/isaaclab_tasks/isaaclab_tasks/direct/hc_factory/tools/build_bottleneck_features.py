@@ -49,7 +49,7 @@ W_UPSTREAM = 0.10
 W_DOWNSTREAM = 0.10
 
 V1_SCORE_THRESHOLD = 0.55
-DEFAULT_SCORE_THRESHOLD = 0.70
+DEFAULT_SCORE_THRESHOLD = 0.65
 DEFAULT_MIN_EVENT_WINDOWS = 2
 DEFAULT_RELATIVE_MARGIN = 0.10
 SYSTEM_HISTORY_WINDOWS = 3
@@ -1500,7 +1500,7 @@ def main() -> None:
         "--score_threshold",
         type=float,
         default=None,
-        help="Override score threshold (defaults: v1=0.55, v2=0.70).",
+        help="Override score threshold (defaults: v1=0.55, v2=0.65).",
     )
     parser.add_argument(
         "--min_event_windows", type=int, default=DEFAULT_MIN_EVENT_WINDOWS

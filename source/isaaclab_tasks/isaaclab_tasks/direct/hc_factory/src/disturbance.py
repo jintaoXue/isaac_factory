@@ -277,10 +277,11 @@ class DisturbanceInjector:
             for job_id in job_ids
         }
         producing = {int(job_id) for job_id in progress.get("producing_indexs", [])}
-        next_product = progress.get("next_product_index")
         for material_key, material_state in env.get("material", {}).items():
             batch_idx = int(material_state.get("key_variables", {}).get("idx", -1))
             if batch_idx in finished_jobs:
+                continue
+            if batch_idx not in producing:
                 continue
             if material_state.get("ongoing_task_record_index") is not None:
                 continue
@@ -294,14 +295,11 @@ class DisturbanceInjector:
                 and info.get("storage_name") not in (None, "disappear")
             ]
             if available:
-                priority = 0 if batch_idx in producing else (1 if batch_idx == next_product else 2)
-                candidates.append((priority, material_key, material_state, available))
+                candidates.append((material_key, material_state, available))
         if not candidates:
             return None
 
-        best_priority = min(candidate[0] for candidate in candidates)
-        eligible = [candidate for candidate in candidates if candidate[0] == best_priority]
-        _, material_key, material_state, available = self._rng.choice(eligible)
+        material_key, material_state, available = self._rng.choice(candidates)
         material_type = self._rng.choice(available)
         material_state["disturbance_material_hold"] = material_type
         self._saved_state = {

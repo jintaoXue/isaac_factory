@@ -95,6 +95,7 @@ class TestDisturbanceSchedule(unittest.TestCase):
             "material": {"num_00_ProductWaterPipe": material_state},
             "progress": {
                 "finished": {},
+                "producing_indexs": [0],
                 "production_done": False,
             },
         }
@@ -117,6 +118,25 @@ class TestDisturbanceSchedule(unittest.TestCase):
             collector.rows[1]["actual_target_resource_id"],
             collector.rows[2]["actual_target_resource_id"],
         )
+
+    def test_material_hold_waits_for_an_in_process_batch(self):
+        injector = DISTURBANCE.DisturbanceInjector(env_id=0, collector=_Collector())
+        material_state = {
+            "key_variables": {"idx": 0},
+            "ongoing_task_record_index": None,
+            "submaterials": {
+                "product_00_flange": {"storage_name": "YellowStorage_00"},
+            },
+        }
+        env = {
+            "material": {"num_00_ProductWaterPipe": material_state},
+            "progress": {"finished": {}, "producing_indexs": []},
+        }
+
+        target = injector._activate_material_hold(env)
+
+        self.assertIsNone(target)
+        self.assertNotIn("disturbance_material_hold", material_state)
 
     def test_human_event_returns_graph_resource_id(self):
         injector = DISTURBANCE.DisturbanceInjector(env_id=0, collector=_Collector())
