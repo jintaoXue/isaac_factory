@@ -2,7 +2,7 @@
 
 ## 1. 文档状态
 
-- 状态：待评审
+- 状态：实施中（Phase A 已验收；Phase B 本地实现完成，待服务器真实数据验收）
 - 目标：先跑通一套可复现、可训练、可评估的 BSTAN-style GAT-GRU baseline
 - 本文范围：数据采集修正、离线特征与标签、图数据集、模型、训练和验收
 - 本文不包含：具体代码实现、完整动态图库、预测反馈调度、主模型实现
@@ -89,6 +89,7 @@ output/bottleneck_dataset/<run_id>/
   episode_<id>/
     env_<id>/
       episode_config.csv
+      episode_lifecycle.csv
       disturbance_log.csv
       resource_event_log.jsonl
       job_trace.csv
@@ -107,7 +108,7 @@ job_kpi.csv
 pipeline_summary.json
 ```
 
-### 3.2 当前不能直接训练 GAT-GRU 的问题
+### 3.2 初始代码不能直接训练 GAT-GRU 的问题
 
 | 优先级 | 问题 | 影响 |
 |---|---|---|
@@ -125,7 +126,21 @@ pipeline_summary.json
 | P1 | 当前 bottleneck type 等于 resource type | 类型任务与节点任务高度重复，暂时只能作为兼容输出 |
 | P1 | 没有相关单元测试和可用样例数据 | 修改后容易产生静默 schema 回归 |
 
-当前工作区没有可直接核验的 raw/derived 样例文件，因此实现阶段必须重新采集至少一个 smoke run。
+### 3.3 实施验收记录
+
+Phase A 已于 2026-08-01 使用服务器真实仿真完成 smoke 验收：
+
+```text
+run_id = 2026-08-01_15-45-47_seed42
+collector_version = v0.4
+num_envs = 1
+episodes = 6
+completed_jobs = 3 / episode
+resource_nodes = 19 / episode
+episode lifecycle = 6/6 START=1, END=1, production_done=1
+```
+
+6 个 episode 均可被原有离线脚本解析，订单 makespan 为 2118-2247 logic seconds，未发现缺失 episode 或未完成 job。该次运行证明 Phase A schema 和真实 Isaac Sim 运行链路可用；Phase B 改造后的特征与标签仍需使用同一 raw run 在服务器重跑验收。
 
 ## 4. Baseline 范围决策
 
@@ -842,6 +857,8 @@ train/validation/test episode 无交集
 
 ### Phase A：采集层 P0 修正
 
+状态：已完成并通过服务器 smoke 验收。
+
 1. 升级 collector schema 到 v0.4。
 2. 写 INIT、buffer/material 初值和 episode lifecycle。
 3. 修正 state mapping 和 disturbance intensity。
@@ -856,6 +873,8 @@ train/validation/test episode 无交集
 ```
 
 ### Phase B：特征与标签
+
+状态：本地实现和纯 Python 测试已完成，待服务器使用 v0.4 raw run 验收。
 
 1. 增加 episode 主键和 stride。
 2. 补 ratio、局部 transport/material、global features。
