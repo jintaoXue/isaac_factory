@@ -68,10 +68,16 @@ class RuleBasedMultiAgent():
             obs = next_obs
 
     def _paper_exp_should_stop(self) -> bool:
-        env_list = getattr(self.vec_env, "env_list", None)
-        if not env_list:
-            inner = getattr(self.vec_env, "env", None) or getattr(self.vec_env, "unwrapped", None)
-            env_list = getattr(inner, "env_list", None) if inner is not None else None
-        if not env_list:
-            return False
-        return all(bool(e.env_state_action_dict.get("paper_exp_finished")) for e in env_list)
+        # Unwrap chain: RlGamesGpuEnvHRTPA -> RlGamesVecEnvWrapperHRTPA -> HcVectorEnv
+        env = self.vec_env
+        seen: set[int] = set()
+        while env is not None and id(env) not in seen:
+            seen.add(id(env))
+            env_list = getattr(env, "env_list", None)
+            if env_list:
+                return all(bool(e.env_state_action_dict.get("paper_exp_finished")) for e in env_list)
+            nxt = getattr(env, "unwrapped", None)
+            if nxt is None or nxt is env:
+                nxt = getattr(env, "env", None)
+            env = nxt if nxt is not env else None
+        return False

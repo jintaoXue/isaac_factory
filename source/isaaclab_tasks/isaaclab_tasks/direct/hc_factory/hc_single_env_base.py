@@ -96,6 +96,19 @@ class HcSingleEnvBase():
     #     self.robot_manager.update_self_availability_mask(self.env_state_action_dict)
 
     def reset_env(self):
+        max_ep = int(os.environ.get("HC_MAX_EPISODES", "0") or "0")
+        # Stop after completing max_ep episodes (episode_num counts completed+started).
+        if max_ep > 0 and self.episode_num >= max_ep:
+            self.env_state_action_dict["paper_exp_finished"] = True
+            # Avoid tight re-reset loop via production_done while waiting for train() to exit.
+            progress = self.env_state_action_dict.get("progress")
+            if isinstance(progress, dict):
+                progress["production_done"] = False
+            if not getattr(self, "_paper_exp_stop_logged", False):
+                print(f"[paper_exp] env_{self.env_id} reached max episodes={max_ep}, will stop.")
+                self._paper_exp_stop_logged = True
+            return self.env_state_action_dict
+
         for m in self.iter_managers():
             m.reset(self.env_state_action_dict)
         self.env_state_action_dict["time_step"] = 0
@@ -103,10 +116,6 @@ class HcSingleEnvBase():
         self.episode_num += 1
         self.perception_manager.reset(self.env_state_action_dict)
         self.tpa_metrics_logger.reset(self.env_state_action_dict)
-        max_ep = int(os.environ.get("HC_MAX_EPISODES", "0") or "0")
-        if max_ep > 0 and self.episode_num >= max_ep:
-            self.env_state_action_dict["paper_exp_finished"] = True
-            print(f"[paper_exp] env_{self.env_id} reached max episodes={max_ep}, will stop.")
         return self.env_state_action_dict
 
     def apply_data_to_sim(self) -> None:
@@ -126,6 +135,8 @@ class HcSingleEnvBase():
             rigid_prim.set_velocities(torch.zeros((1,6), device=self.cuda_device))
 
     def step_env_logic(self, action: dict | None = None, action_extra: list[dict] | None = None) -> None:
+        if self.env_state_action_dict.get("paper_exp_finished"):
+            return
         # time_start = time.time()
         self.env_state_action_dict['action'] = action
         for m in self.iter_managers():
