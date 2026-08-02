@@ -17,6 +17,7 @@ from torch.utils.data import Dataset
 
 from .graph_builder import build_static_graph
 from .schema import (
+    COLLECTOR_VERSION,
     CONTINUOUS_FEATURES,
     DATASET_VERSION,
     GLOBAL_FEATURES,
@@ -386,7 +387,7 @@ class BstanTensorDataset(Dataset):
 def build_bstan_dataset(
     run_dirs: Iterable[Path],
     out_dir: Path,
-    derived_dir_name: str = "derived_phase_b_v1",
+    derived_dir_name: str = "derived_phase_b_v2_2",
     window_size: float = 30.0,
     stride: float = 30.0,
     input_windows: int = 4,
@@ -400,6 +401,12 @@ def build_bstan_dataset(
     out_dir = Path(out_dir).resolve()
     groups = _discover_groups(run_dirs, derived_dir_name)
     for group in groups:
+        if group["collector_version"] != COLLECTOR_VERSION:
+            raise ValueError(
+                f"Unexpected collector version for {group['group_id']}: "
+                f"expected {COLLECTOR_VERSION!r}, "
+                f"got {group['collector_version']!r}"
+            )
         group["feature_rows"] = _filter_rows(group["feature_rows"], window_size, stride)
         group["label_rows"] = _filter_rows(group["label_rows"], window_size, stride)
         if not group["feature_rows"] or not group["label_rows"]:

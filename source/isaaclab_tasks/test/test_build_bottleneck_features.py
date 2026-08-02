@@ -36,7 +36,7 @@ class TestPhaseBFeatures(unittest.TestCase):
         resource_id="machine_a_ws0",
         resource_type="machine",
         point_wip=0,
-        completed=0,
+        completed_operations=0,
         cycles=None,
         queue_growth=0.0,
         occupancy=0.0,
@@ -67,9 +67,9 @@ class TestPhaseBFeatures(unittest.TestCase):
             "downstream_starved_ratio_s": 0.0,
             "total_WIP": point_wip,
             "wip_at_window_end": point_wip,
-            "throughput_rolling": completed / 30.0,
-            "completed_jobs_in_window": completed,
-            "completed_cycle_times_s": json.dumps(cycles or []),
+            "operation_throughput_rolling": completed_operations / 30.0,
+            "completed_operations_in_window": completed_operations,
+            "completed_operation_cycle_times_s": json.dumps(cycles or []),
         }
 
     def test_complete_strided_windows_and_local_features(self):
@@ -91,6 +91,7 @@ class TestPhaseBFeatures(unittest.TestCase):
                 "job_id": "0",
                 "task": "cut",
                 "station_id": "machine_a_ws0",
+                "task_type": "processing",
                 "event": "job_selected",
                 "time_step": "0",
             },
@@ -98,6 +99,7 @@ class TestPhaseBFeatures(unittest.TestCase):
                 "job_id": "0",
                 "task": "cut",
                 "station_id": "machine_a_ws0",
+                "task_type": "processing",
                 "event": "queue_enter",
                 "time_step": "0",
             },
@@ -105,6 +107,7 @@ class TestPhaseBFeatures(unittest.TestCase):
                 "job_id": "0",
                 "task": "cut",
                 "station_id": "machine_a_ws0",
+                "task_type": "processing",
                 "event": "departure",
                 "time_step": "40",
             },
@@ -166,7 +169,22 @@ class TestPhaseBFeatures(unittest.TestCase):
             buffer_rows=buffer_rows,
             transport_rows=transport_rows,
             material_rows=material_rows,
-            disturbance_rows=[{"start_time_step": "10", "end_time_step": "30"}],
+            disturbance_rows=[
+                {
+                    "disturbance_id": "machine_event_1",
+                    "event_phase": "START",
+                    "actual_start_time_step": "10",
+                    "actual_target_resource_id": "machine_a_ws0",
+                    "disturbance_type": "machine_failure",
+                },
+                {
+                    "disturbance_id": "machine_event_1",
+                    "event_phase": "END",
+                    "actual_end_time_step": "30",
+                    "actual_target_resource_id": "machine_a_ws0",
+                    "disturbance_type": "machine_failure",
+                },
+            ],
             episode_config=episode_config,
             window_size=30.0,
             stride=15.0,
@@ -192,8 +210,8 @@ class TestPhaseBFeatures(unittest.TestCase):
         self.assertEqual(first["total_WIP"], 0)
         self.assertEqual(first["wip_overlap_count"], 1)
         self.assertEqual(first["wip_at_window_end"], 0)
-        self.assertEqual(first["completed_jobs_in_window"], 1)
-        self.assertEqual(json.loads(first["completed_cycle_times_s"]), [25.0])
+        self.assertEqual(first["completed_operations_in_window"], 1)
+        self.assertEqual(json.loads(first["completed_operation_cycle_times_s"]), [20.0])
         self.assertEqual(first["runtime_disturbance_active"], 1)
         self.assertEqual(first["disturbance_flag"], 0)
 
@@ -224,20 +242,22 @@ class TestPhaseBFeatures(unittest.TestCase):
             {
                 "disturbance_id": "human_event_1",
                 "event_phase": "START",
-                "start_logic_time_s": "10",
+                "actual_start_time_step": "10",
                 "actual_target_resource_id": "human_2",
                 "disturbance_type": "human_unavailable",
             },
             {
                 "disturbance_id": "human_event_1",
                 "event_phase": "END",
-                "end_logic_time_s": "20",
+                "actual_end_time_step": "20",
                 "actual_target_resource_id": "human_2",
                 "disturbance_type": "human_unavailable",
             },
         ]
 
-        events = MODULE._paired_disturbance_events(rows, logic_dt=1.0, episode_end=100.0)
+        events = MODULE._paired_disturbance_events(
+            rows, logic_dt=1.0, episode_end=100.0
+        )
 
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]["start"], 10.0)
@@ -249,11 +269,9 @@ class TestPhaseBFeatures(unittest.TestCase):
         for window_index in range(8):
             row = self._system_row(
                 window_index,
-                point_wip=0 if window_index < 5 else window_index - 3,
+                point_wip=0 if window_index < 5 else 1,
             )
-            row["bottleneck_score_s"] = (
-                0.8 if window_index in (5, 6) else 0.1
-            )
+            row["bottleneck_score_s"] = 0.8 if window_index in (5, 6) else 0.1
             rows.append(row)
 
         labels, events = MODULE.build_labels_and_events(
@@ -266,14 +284,14 @@ class TestPhaseBFeatures(unittest.TestCase):
                 {
                     "disturbance_id": "machine_event_1",
                     "event_phase": "START",
-                    "start_logic_time_s": "120",
+                    "actual_start_time_step": "120",
                     "disturbance_type": "machine_failure",
                     "actual_target_resource_id": "machine_a_ws0",
                 },
                 {
                     "disturbance_id": "machine_event_1",
                     "event_phase": "END",
-                    "end_logic_time_s": "210",
+                    "actual_end_time_step": "210",
                     "disturbance_type": "machine_failure",
                     "actual_target_resource_id": "machine_a_ws0",
                 },
@@ -290,6 +308,9 @@ class TestPhaseBFeatures(unittest.TestCase):
         self.assertEqual(labels[3]["will_bottleneck"], 1)
         self.assertEqual(labels[3]["time_to_start"], 30.0)
         self.assertEqual(labels[4]["will_bottleneck"], 0)
+        self.assertEqual(labels[6]["system_impact_raw_flag_t"], 0)
+        self.assertEqual(labels[6]["system_impact_flag_t"], 1)
+        self.assertEqual(labels[6]["system_impact_age_windows_t"], 1)
         self.assertEqual(labels[-1]["label_observed"], 0)
         self.assertEqual(labels[-1]["will_bottleneck"], "")
 
@@ -328,27 +349,25 @@ class TestPhaseBFeatures(unittest.TestCase):
                     "queue_length_s": 4.0,
                     "avg_waiting_time_s": 0.0,
                     "total_WIP": 5,
-                    "throughput_rolling": 0.0,
+                    "operation_throughput_rolling": 0.0,
+                    "completed_operations_in_window": 0,
+                    "completed_operation_cycle_times_s": "[]",
                 }
             )
 
-        labels, events = MODULE.build_labels_and_events(
-            rows, 30.0, 0.70, 2, 120.0
-        )
+        labels, events = MODULE.build_labels_and_events(rows, 30.0, 0.70, 2, 120.0)
 
         self.assertEqual(events, [])
         self.assertTrue(all(label["is_bottleneck_window"] == 0 for label in labels))
 
-    def test_v2_1_uses_point_wip_after_warmup(self):
+    def test_v2_2_uses_point_wip_after_warmup(self):
         point_wip = [0, 0, 0, 0, 0, 1, 2, 3, 4, 5]
         rows = [
             self._system_row(index, point_wip=value)
             for index, value in enumerate(point_wip)
         ]
 
-        labels, events = MODULE.build_labels_and_events(
-            rows, 60.0, 0.65, 2, 300.0
-        )
+        labels, events = MODULE.build_labels_and_events(rows, 60.0, 0.65, 2, 300.0)
 
         self.assertEqual(labels[3]["warmup_gate_t"], 0)
         self.assertEqual(labels[5]["warmup_gate_t"], 1)
@@ -356,7 +375,7 @@ class TestPhaseBFeatures(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertGreaterEqual(events[0]["start_s"], MODULE.WARMUP_S)
 
-    def test_v2_1_rejects_static_full_buffer(self):
+    def test_v2_2_rejects_static_full_buffer(self):
         rows = [
             self._system_row(
                 index,
@@ -368,18 +387,14 @@ class TestPhaseBFeatures(unittest.TestCase):
             for index in range(10)
         ]
 
-        labels, events = MODULE.build_labels_and_events(
-            rows, 60.0, 0.65, 2, 300.0
-        )
+        labels, events = MODULE.build_labels_and_events(rows, 60.0, 0.65, 2, 300.0)
 
         self.assertEqual(events, [])
-        self.assertTrue(
-            all(label["buffer_pressure_gate_t"] == 0 for label in labels)
-        )
+        self.assertTrue(all(label["buffer_pressure_gate_t"] == 0 for label in labels))
 
-    def test_v2_1_uses_smoothed_throughput_and_cycle_growth(self):
+    def test_v2_2_uses_operation_throughput_and_cycle_growth(self):
         throughput_rows = [
-            self._system_row(index, completed=1 if index < 4 else 0)
+            self._system_row(index, completed_operations=1 if index < 4 else 0)
             for index in range(10)
         ]
         throughput_labels, throughput_events = MODULE.build_labels_and_events(
@@ -389,14 +404,17 @@ class TestPhaseBFeatures(unittest.TestCase):
         self.assertEqual(len(throughput_events), 1)
         self.assertEqual(throughput_labels[6]["system_impact_flag_t"], 0)
         self.assertIn(
-            "throughput_drop", throughput_labels[7]["system_impact_reason_t"]
+            "operation_throughput_drop",
+            throughput_labels[7]["system_impact_reason_t"],
         )
-        self.assertGreaterEqual(throughput_labels[7]["baseline_completed_jobs_t"], 2)
+        self.assertGreaterEqual(
+            throughput_labels[7]["baseline_completed_operations_t"], 2
+        )
 
         cycle_rows = [
             self._system_row(
                 index,
-                completed=1,
+                completed_operations=1,
                 cycles=[10.0 if index < 4 else 13.0],
             )
             for index in range(10)
@@ -407,7 +425,8 @@ class TestPhaseBFeatures(unittest.TestCase):
 
         self.assertEqual(len(cycle_events), 1)
         self.assertIn(
-            "cycle_time_growth", cycle_labels[7]["system_impact_reason_t"]
+            "operation_cycle_time_growth",
+            cycle_labels[7]["system_impact_reason_t"],
         )
         self.assertGreaterEqual(cycle_labels[7]["cycle_time_growth_ratio_t"], 0.2)
 
@@ -439,6 +458,7 @@ class TestPhaseBFeatures(unittest.TestCase):
                     "run_id",
                     "env_id",
                     "episode_id",
+                    "collector_version",
                     "logic_dt",
                     "process_time_config",
                     "buffer_capacity_config",
@@ -448,6 +468,7 @@ class TestPhaseBFeatures(unittest.TestCase):
                         "run_id": "run",
                         "env_id": 0,
                         "episode_id": 0,
+                        "collector_version": "v0.6",
                         "logic_dt": 0.5,
                         "process_time_config": "{}",
                         "buffer_capacity_config": "{}",
@@ -491,7 +512,8 @@ class TestPhaseBFeatures(unittest.TestCase):
             metadata = json.loads(
                 (out_dir / "label_metadata.json").read_text(encoding="utf-8")
             )
-            self.assertEqual(metadata["label_version"], "bstan_weak_v2_1")
+            self.assertEqual(metadata["label_version"], "bstan_weak_v2_2")
+            self.assertEqual(metadata["system_impact_config"]["impact_hold_windows"], 2)
             self.assertEqual(metadata["relative_score_margin"], 0.1)
             self.assertEqual(metadata["strides_s"], {"30.0": 30.0})
 
@@ -503,12 +525,13 @@ class TestPhaseBFeatures(unittest.TestCase):
             (env_dir / "resource_event_log.jsonl").write_text("", encoding="utf-8")
             self._write_csv(
                 env_dir / "episode_config.csv",
-                ["run_id", "env_id", "episode_id", "logic_dt"],
+                ["run_id", "env_id", "episode_id", "collector_version", "logic_dt"],
                 [
                     {
                         "run_id": "run",
                         "env_id": 0,
                         "episode_id": 0,
+                        "collector_version": "v0.6",
                         "logic_dt": 0.5,
                     }
                 ],

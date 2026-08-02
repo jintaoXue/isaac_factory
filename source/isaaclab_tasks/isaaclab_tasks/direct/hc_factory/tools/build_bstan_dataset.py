@@ -13,7 +13,7 @@ from bstan_baseline.dataset import build_bstan_dataset
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run_dirs", type=Path, nargs="+", required=True)
-    parser.add_argument("--derived_dir_name", default="derived_phase_b_v1")
+    parser.add_argument("--derived_dir_name", default="derived_phase_b_v2_2")
     parser.add_argument("--window_size", type=float, default=30.0)
     parser.add_argument("--stride", type=float, default=30.0)
     parser.add_argument("--input_windows", type=int, default=4)

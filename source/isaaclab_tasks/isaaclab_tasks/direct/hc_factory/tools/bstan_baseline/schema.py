@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 
-DATASET_VERSION = "bstan_dataset_v1"
-LABEL_VERSION = "bstan_weak_v2_1"
+DATASET_VERSION = "bstan_dataset_v2"
+LABEL_VERSION = "bstan_weak_v2_2"
+COLLECTOR_VERSION = "v0.6"
 
 CONTINUOUS_FEATURES = (
     "queue_length_s",
@@ -23,7 +24,7 @@ CONTINUOUS_FEATURES = (
 
 GLOBAL_FEATURES = (
     "total_WIP",
-    "throughput_rolling",
+    "operation_throughput_rolling",
     "num_busy_resources",
     "num_blocked_resources",
     "num_starved_resources",

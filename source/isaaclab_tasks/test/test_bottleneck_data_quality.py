@@ -105,7 +105,9 @@ class TestDisturbanceSchedule(unittest.TestCase):
         injector.step(env)
         held_material = material_state.get("disturbance_material_hold")
         self.assertEqual(held_material, "product_00_flange")
-        self.assertEqual([row["event_phase"] for row in collector.rows], ["CONFIG", "START"])
+        self.assertEqual(
+            [row["event_phase"] for row in collector.rows], ["CONFIG", "START"]
+        )
 
         env["time_step"] = injector._planned_start + injector._duration
         injector.step(env)
@@ -243,7 +245,9 @@ class TestRawDataAudit(unittest.TestCase):
                     "actual_end_time_step": 850,
                 }
             )
-        self._write_csv(env_dir / "disturbance_log.csv", list(event_rows[0]), event_rows)
+        self._write_csv(
+            env_dir / "disturbance_log.csv", list(event_rows[0]), event_rows
+        )
         (env_dir / "resource_event_log.jsonl").write_text(
             "\n".join(
                 json.dumps(row)
@@ -319,6 +323,26 @@ class TestRawDataAudit(unittest.TestCase):
                 "event:human_event_1:target_not_in_resource_catalog=num_01_NormalHuman",
                 row["errors"],
             )
+
+    def test_old_collector_version_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir, env_dir = self._make_episode(Path(temp_dir))
+            config_path = env_dir / "episode_config.csv"
+            config = AUDIT._read_csv(config_path)[0]
+            config["collector_version"] = "v0.5"
+            self._write_csv(config_path, list(config), [config])
+
+            row = AUDIT.audit_env_dir(run_dir, env_dir)
+
+            self.assertFalse(row["trainable"])
+            self.assertIn("collector_version='v0.5', expected='v0.6'", row["errors"])
+
+    def test_flat_env_layout_is_not_discovered(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run_seed42"
+            (run_dir / "env_00").mkdir(parents=True)
+
+            self.assertEqual(AUDIT.discover_env_dirs([run_dir]), [])
 
 
 if __name__ == "__main__":

@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """Offline Phase-B pipeline: raw bottleneck tables → window features + labels.
 
-    Reads a single-run directory produced by BottleneckDataCollector (v0.2+), e.g.::
+    Reads a single-run directory produced by BottleneckDataCollector v0.6, e.g.::
 
         output/bottleneck_dataset/<run_id>/episode_00/env_00/
 
-    Legacy flat layout ``<run_id>/env_00/`` is also supported.
-
 Writes::
 
-    derived/window_feature_table.csv
-    derived/bottleneck_label.csv
-    derived/bottleneck_event.csv
-    derived/label_metadata.json
-    derived/job_kpi.csv              # per-job start / complete / cycle time
-    derived/pipeline_summary.json    # includes order makespan & mean cycle
+    derived_phase_b_v2_2/window_feature_table.csv
+    derived_phase_b_v2_2/bottleneck_label.csv
+    derived_phase_b_v2_2/bottleneck_event.csv
+    derived_phase_b_v2_2/label_metadata.json
+    derived_phase_b_v2_2/job_kpi.csv              # per-job start / complete / cycle time
+    derived_phase_b_v2_2/pipeline_summary.json    # includes order makespan & mean cycle
 
 Usage::
 
@@ -56,11 +54,13 @@ MIN_WIP_GROWTH = 1.0
 MIN_THROUGHPUT_DROP_RATIO = 0.25
 SYSTEM_LOOKBACK_S = 120.0
 WARMUP_S = 120.0
-MIN_BASELINE_COMPLETIONS = 2
-MIN_CYCLE_COMPLETIONS = 3
+MIN_BASELINE_OPERATIONS = 2
+MIN_CYCLE_OPERATIONS = 3
 MIN_CYCLE_TIME_GROWTH_RATIO = 0.20
 BUFFER_HIGH_OCCUPANCY_RATIO = 0.90
-LABEL_VERSION = "bstan_weak_v2_1"
+LABEL_VERSION = "bstan_weak_v2_2"
+COLLECTOR_VERSION = "v0.6"
+DERIVED_DIR_NAME = "derived_phase_b_v2_2"
 
 SCORE_CONFIG = {
     "process": {
@@ -83,8 +83,8 @@ SCORE_CONFIG = {
         "min_throughput_drop_ratio": MIN_THROUGHPUT_DROP_RATIO,
         "system_lookback_s": SYSTEM_LOOKBACK_S,
         "warmup_s": WARMUP_S,
-        "min_baseline_completions": MIN_BASELINE_COMPLETIONS,
-        "min_cycle_completions": MIN_CYCLE_COMPLETIONS,
+        "min_baseline_operations": MIN_BASELINE_OPERATIONS,
+        "min_cycle_operations": MIN_CYCLE_OPERATIONS,
         "min_cycle_time_growth_ratio": MIN_CYCLE_TIME_GROWTH_RATIO,
         "buffer_high_occupancy_ratio": BUFFER_HIGH_OCCUPANCY_RATIO,
         "min_event_windows": DEFAULT_MIN_EVENT_WINDOWS,
@@ -122,12 +122,8 @@ class ResourceTimeline:
 
 
 def _discover_env_dirs(run_dir: Path, env_id: int | None) -> list[Path]:
-    """Return env_* dirs under run_dir or under episode_*/ subfolders."""
-    nested = sorted(run_dir.glob("episode_*/env_*"))
-    if nested:
-        env_dirs = nested
-    else:
-        env_dirs = sorted(run_dir.glob("env_*"))
+    """Return collector-v0.6 env directories under episode_* folders."""
+    env_dirs = sorted(run_dir.glob("episode_*/env_*"))
     if env_id is not None:
         env_dirs = [d for d in env_dirs if d.name == f"env_{env_id:02d}"]
     return env_dirs
@@ -135,11 +131,7 @@ def _discover_env_dirs(run_dir: Path, env_id: int | None) -> list[Path]:
 
 def _derived_out_dir(out_root: Path, run_dir: Path, env_dir: Path) -> Path:
     """Mirror episode nesting under derived/, e.g. derived/episode_00/env_00/."""
-    try:
-        rel = env_dir.relative_to(run_dir)
-    except ValueError:
-        return out_root / env_dir.name
-    return out_root / rel
+    return out_root / env_dir.relative_to(run_dir)
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
@@ -234,52 +226,43 @@ def _paired_disturbance_events(
     rows: list[dict[str, Any]], logic_dt: float, episode_end: float
 ) -> list[dict[str, Any]]:
     """Return paired runtime intervals; CONFIG rows never become active features."""
-    phased = any(str(row.get("event_phase") or "").upper() in {"START", "END"} for row in rows)
-    if not phased:
-        return [
-            {
-                "event_id": str(row.get("disturbance_id") or f"legacy_{index}"),
-                "start": _f(row.get("start_logic_time_s"), _f(row.get("start_time_step")) * logic_dt),
-                "end": _f(
-                    row.get("end_logic_time_s"),
-                    _f(row.get("end_time_step"), episode_end / logic_dt) * logic_dt,
-                ),
-                "type": str(row.get("disturbance_type") or "legacy"),
-                "target": str(row.get("actual_target_resource_id") or row.get("target_resource_id") or ""),
-            }
-            for index, row in enumerate(rows)
-        ]
-
     grouped: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
     for row in rows:
         phase = str(row.get("event_phase") or "").upper()
+        if phase not in {"CONFIG", "START", "END", "SYSTEM"}:
+            raise ValueError(f"Invalid disturbance event_phase: {phase!r}")
         if phase in {"START", "END"}:
-            grouped[str(row.get("disturbance_id") or "missing_id")][phase] = row
+            event_id = str(row.get("disturbance_id") or "")
+            if not event_id:
+                raise ValueError("Runtime disturbance is missing disturbance_id")
+            if phase in grouped[event_id]:
+                raise ValueError(f"Duplicate disturbance {phase}: {event_id}")
+            grouped[event_id][phase] = row
 
     events = []
     for event_id, phases in sorted(grouped.items()):
         if "START" not in phases or "END" not in phases:
-            continue
+            raise ValueError(f"Unpaired runtime disturbance: {event_id}")
         start_row, end_row = phases["START"], phases["END"]
-        start = _f(
-            start_row.get("start_logic_time_s"),
-            _f(start_row.get("actual_start_time_step"), _f(start_row.get("start_time_step"))) * logic_dt,
-        )
-        end = _f(
-            end_row.get("end_logic_time_s"),
-            _f(end_row.get("actual_end_time_step"), _f(end_row.get("end_time_step"))) * logic_dt,
-        )
+        actual_start = _i(start_row.get("actual_start_time_step"))
+        actual_end = _i(end_row.get("actual_end_time_step"))
+        target = str(start_row.get("actual_target_resource_id") or "")
+        end_target = str(end_row.get("actual_target_resource_id") or "")
+        if actual_start is None or actual_end is None:
+            raise ValueError(f"Disturbance lacks actual interval: {event_id}")
+        if not target or end_target != target:
+            raise ValueError(f"Disturbance target mismatch: {event_id}")
+        start = actual_start * logic_dt
+        end = actual_end * logic_dt
+        if end < start or end > episode_end:
+            raise ValueError(f"Invalid disturbance interval: {event_id}={start}:{end}")
         events.append(
             {
                 "event_id": event_id,
                 "start": start,
-                "end": max(end, start),
+                "end": end,
                 "type": str(start_row.get("disturbance_type") or ""),
-                "target": str(
-                    start_row.get("actual_target_resource_id")
-                    or start_row.get("target_resource_id")
-                    or ""
-                ),
+                "target": target,
             }
         )
     return events
@@ -386,20 +369,23 @@ def compute_window_features(
     departures_by_station: dict[str, list[float]] = defaultdict(list)
     open_queue: dict[tuple[int, str], tuple[float, str]] = {}
     job_lifetimes: dict[int, dict[str, float]] = defaultdict(dict)
-    completed_jobs: list[float] = []
+    operation_starts: dict[tuple[int, str], float] = {}
+    completed_operations: list[tuple[float, float]] = []
 
     for row in sorted(job_rows, key=lambda r: _time_s(r, logic_dt)):
         event = row.get("event")
         job_id = _i(row.get("job_id"), -1)
         task = row.get("task") or ""
+        task_type = row.get("task_type") or ""
         station = _canonical_node_id(row.get("station_id")) or "unknown"
         t = _time_s(row, logic_dt)
         key = (job_id if job_id is not None else -1, task)
         if job_id is not None and job_id >= 0 and event == "job_selected":
             job_lifetimes[job_id].setdefault("start", t)
+            if task_type == "processing":
+                operation_starts[key] = t
         elif job_id is not None and job_id >= 0 and event == "stage_complete":
             job_lifetimes[job_id]["end"] = t
-            completed_jobs.append(t)
         if event == "queue_enter":
             open_queue[key] = (t, station)
         elif event == "queue_leave":
@@ -411,16 +397,18 @@ def compute_window_features(
                 wait_by_station[station].append((qe, t))
         elif event == "departure":
             departures_by_station[station].append(t)
+            if task_type == "processing":
+                operation_start = operation_starts.pop(key, None)
+                if operation_start is None:
+                    raise ValueError(
+                        "processing departure has no matching job_selected: "
+                        f"job_id={job_id}, task={task!r}, time={t}"
+                    )
+                completed_operations.append((t, t - operation_start))
 
     # Close open queues at episode end
     for key, (t0, st) in open_queue.items():
         wait_by_station[st].append((t0, episode_end))
-
-    completed_cycle_times = [
-        (life["end"], life["end"] - life["start"])
-        for life in job_lifetimes.values()
-        if "start" in life and "end" in life and life["end"] >= life["start"]
-    ]
 
     # Buffer occupancy time series (step events)
     buffer_occ: dict[str, list[tuple[float, float, float]]] = defaultdict(list)
@@ -573,10 +561,14 @@ def compute_window_features(
             if life.get("start", float("inf")) < w1
             and life.get("end", float("inf")) > w1
         )
-        window_completed_jobs = sum(1 for t in completed_jobs if w0 <= t < w1)
-        throughput_rolling = window_completed_jobs / wlen
-        window_cycle_times = [
-            cycle for completed_at, cycle in completed_cycle_times if w0 <= completed_at < w1
+        window_completed_operations = sum(
+            1 for completed_at, _ in completed_operations if w0 <= completed_at < w1
+        )
+        operation_throughput_rolling = window_completed_operations / wlen
+        window_operation_cycle_times = [
+            cycle
+            for completed_at, cycle in completed_operations
+            if w0 <= completed_at < w1
         ]
         states_at_end = [_state_at(tl.intervals, w1) for tl in timelines.values()]
         num_busy = sum(state in ACTIVE_STATES for state in states_at_end)
@@ -689,12 +681,16 @@ def compute_window_features(
                     "total_WIP": wip_at_window_end,
                     "wip_overlap_count": total_wip,
                     "wip_at_window_end": wip_at_window_end,
-                    "throughput_rolling": round(throughput_rolling, 6),
-                    "completed_jobs_in_window": window_completed_jobs,
-                    "completed_cycle_times_s": json.dumps(window_cycle_times),
-                    "cycle_time_median_s": (
-                        round(statistics.median(window_cycle_times), 6)
-                        if window_cycle_times
+                    "operation_throughput_rolling": round(
+                        operation_throughput_rolling, 6
+                    ),
+                    "completed_operations_in_window": window_completed_operations,
+                    "completed_operation_cycle_times_s": json.dumps(
+                        window_operation_cycle_times
+                    ),
+                    "operation_cycle_time_median_s": (
+                        round(statistics.median(window_operation_cycle_times), 6)
+                        if window_operation_cycle_times
                         else ""
                     ),
                     "num_busy_resources": num_busy,
@@ -849,6 +845,7 @@ def build_labels_and_events(
     event_rows: list[dict] = []
 
     score_config_json = json.dumps(SCORE_CONFIG, sort_keys=True, separators=(",", ":"))
+    impact_hold_windows = max(min_event_windows, 1)
     disturbance_events = _paired_disturbance_events(
         disturbance_rows or [], logic_dt, episode_end
     )
@@ -860,6 +857,7 @@ def build_labels_and_events(
 
         window_meta: dict[int, dict] = {}
         system_history: list[dict[str, Any]] = []
+        impact_history: list[list[str]] = []
         for wi, rs in sorted(windows.items()):
             best = max(rs, key=lambda x: x["bottleneck_score_s"])
             peers = sorted(
@@ -872,18 +870,18 @@ def build_labels_and_events(
             )
             relative_margin = peers[0] - peers[1] if len(peers) > 1 else peers[0]
             point_wip = _f(rs[0].get("wip_at_window_end"))
-            current_throughput = _f(rs[0].get("throughput_rolling"))
-            current_completed = _i(
-                rs[0].get("completed_jobs_in_window"),
-                int(round(current_throughput * window_size)),
-            ) or 0
-            current_cycles = _json_float_list(
-                rs[0].get("completed_cycle_times_s")
+            current_completed_operations = _i(
+                rs[0].get("completed_operations_in_window")
+            )
+            if current_completed_operations is None:
+                raise ValueError("completed_operations_in_window is required")
+            current_operation_cycles = _json_float_list(
+                rs[0].get("completed_operation_cycle_times_s")
             )
             current_system = {
                 "point_wip": point_wip,
-                "completed": current_completed,
-                "cycles": current_cycles,
+                "completed_operations": current_completed_operations,
+                "operation_cycles": current_operation_cycles,
             }
 
             point_history = system_history[-SYSTEM_HISTORY_WINDOWS:]
@@ -902,32 +900,36 @@ def build_labels_and_events(
                 len(recent_period) == lookback_windows
                 and len(baseline_period) == lookback_windows
             )
-            recent_completed = sum(item["completed"] for item in recent_period)
-            baseline_completed = sum(item["completed"] for item in baseline_period)
+            recent_completed = sum(
+                item["completed_operations"] for item in recent_period
+            )
+            baseline_completed = sum(
+                item["completed_operations"] for item in baseline_period
+            )
+            throughput_support_available = int(
+                complete_periods and baseline_completed >= MIN_BASELINE_OPERATIONS
+            )
             smoothed_throughput_drop = (
                 max((baseline_completed - recent_completed) / baseline_completed, 0.0)
-                if complete_periods
-                and baseline_completed >= MIN_BASELINE_COMPLETIONS
+                if throughput_support_available
                 else 0.0
             )
             recent_cycles = [
-                cycle for item in recent_period for cycle in item["cycles"]
+                cycle for item in recent_period for cycle in item["operation_cycles"]
             ]
             baseline_cycles = [
-                cycle for item in baseline_period for cycle in item["cycles"]
+                cycle for item in baseline_period for cycle in item["operation_cycles"]
             ]
-            if (
+            cycle_support_available = int(
                 complete_periods
-                and len(recent_cycles) >= MIN_CYCLE_COMPLETIONS
-                and len(baseline_cycles) >= MIN_CYCLE_COMPLETIONS
-            ):
+                and len(recent_cycles) >= MIN_CYCLE_OPERATIONS
+                and len(baseline_cycles) >= MIN_CYCLE_OPERATIONS
+            )
+            if cycle_support_available:
                 baseline_cycle_median = statistics.median(baseline_cycles)
                 cycle_time_growth_ratio = (
                     max(
-                        (
-                            statistics.median(recent_cycles)
-                            - baseline_cycle_median
-                        )
+                        (statistics.median(recent_cycles) - baseline_cycle_median)
                         / baseline_cycle_median,
                         0.0,
                     )
@@ -937,14 +939,29 @@ def build_labels_and_events(
             else:
                 cycle_time_growth_ratio = 0.0
 
-            impact_reasons = []
+            raw_impact_reasons = []
             if point_wip_growth >= MIN_WIP_GROWTH:
-                impact_reasons.append("wip_growth")
+                raw_impact_reasons.append("wip_growth")
             if smoothed_throughput_drop >= MIN_THROUGHPUT_DROP_RATIO:
-                impact_reasons.append("throughput_drop")
+                raw_impact_reasons.append("operation_throughput_drop")
             if cycle_time_growth_ratio >= MIN_CYCLE_TIME_GROWTH_RATIO:
-                impact_reasons.append("cycle_time_growth")
-            v2_1_system_impact = int(bool(impact_reasons))
+                raw_impact_reasons.append("operation_cycle_time_growth")
+            impact_history.append(raw_impact_reasons)
+            held_impact_period = impact_history[-impact_hold_windows:]
+            impact_reasons = list(
+                dict.fromkeys(
+                    reason for reasons in held_impact_period for reason in reasons
+                )
+            )
+            impact_age_windows = next(
+                (
+                    age
+                    for age, reasons in enumerate(reversed(held_impact_period))
+                    if reasons
+                ),
+                -1,
+            )
+            system_impact = int(bool(impact_reasons))
 
             absolute_gate = best["bottleneck_score_s"] >= score_threshold
             relative_gate = relative_margin >= DEFAULT_RELATIVE_MARGIN
@@ -958,18 +975,12 @@ def build_labels_and_events(
                 not is_buffer
                 or _f(best.get("queue_growth_rate_s")) > 0
                 or (
-                    _f(best.get("occupancy_ratio_s"))
-                    >= BUFFER_HIGH_OCCUPANCY_RATIO
+                    _f(best.get("occupancy_ratio_s")) >= BUFFER_HIGH_OCCUPANCY_RATIO
                     and propagation
                 )
             )
             context_gate = int(warmup_gate and buffer_pressure_gate)
-            is_hot = (
-                absolute_gate
-                and relative_gate
-                and v2_1_system_impact
-                and context_gate
-            )
+            is_hot = absolute_gate and relative_gate and system_impact and context_gate
             window_meta[wi] = {
                 "window_index": wi,
                 "window_start_s": rs[0]["window_start_s"],
@@ -988,10 +999,15 @@ def build_labels_and_events(
                 "wip_growth_t": round(point_wip_growth, 6),
                 "throughput_drop_ratio_t": round(smoothed_throughput_drop, 6),
                 "cycle_time_growth_ratio_t": round(cycle_time_growth_ratio, 6),
-                "baseline_completed_jobs_t": baseline_completed,
-                "recent_completed_jobs_t": recent_completed,
-                "system_impact_flag_t": v2_1_system_impact,
+                "baseline_completed_operations_t": baseline_completed,
+                "recent_completed_operations_t": recent_completed,
+                "throughput_support_available_t": throughput_support_available,
+                "cycle_support_available_t": cycle_support_available,
+                "system_impact_raw_flag_t": int(bool(raw_impact_reasons)),
+                "system_impact_raw_reason_t": "+".join(raw_impact_reasons),
+                "system_impact_flag_t": system_impact,
                 "system_impact_reason_t": "+".join(impact_reasons),
+                "system_impact_age_windows_t": impact_age_windows,
                 "warmup_gate_t": warmup_gate,
                 "buffer_pressure_gate_t": buffer_pressure_gate,
                 "label_context_gate_t": context_gate,
@@ -1237,8 +1253,7 @@ def build_job_kpis(
 
     Definitions (logic seconds, logic_dt=1 → same as time_step):
       - start: first ``job_selected`` for this job_id
-      - complete: ``stage_complete`` (product enters progress["finished"]);
-        fallback: last ``process_end`` on paint_rust_proof if stage_complete missing
+      - complete: ``stage_complete`` (product enters progress["finished"])
       - cycle_time_s: complete - start (flow / sojourn time of one pipe)
       - order_makespan_s: max(complete) among completed jobs (from episode t=0)
     """
@@ -1262,18 +1277,10 @@ def build_job_kpis(
         completes = [
             _time_s(e, logic_dt) for e in evs if e.get("event") == "stage_complete"
         ]
-        paint_ends = [
-            _time_s(e, logic_dt)
-            for e in evs
-            if e.get("event") == "process_end" and e.get("task") == "paint_rust_proof"
-        ]
         start_s = min(starts) if starts else None
         if completes:
             complete_s = min(completes)
             complete_source = "stage_complete"
-        elif paint_ends:
-            complete_s = min(paint_ends)
-            complete_source = "paint_process_end"
         else:
             complete_s = None
             complete_source = ""
@@ -1345,26 +1352,29 @@ def process_env_dir(
     lifecycle_rows = _read_csv(env_dir / "episode_lifecycle.csv")
     ep_rows = _read_csv(env_dir / "episode_config.csv")
 
-    run_id = ep_rows[0]["run_id"] if ep_rows else env_dir.parent.name
-    env_id = _i(ep_rows[0].get("env_id"), 0) if ep_rows else 0
-    episode_id = _i(ep_rows[0].get("episode_id"), None) if ep_rows else None
-    if episode_id is None:
-        # Infer from path episode_XX/env_YY
-        for part in env_dir.parts:
-            if part.startswith("episode_"):
-                try:
-                    episode_id = int(part.split("_", 1)[1])
-                except ValueError:
-                    pass
-                break
+    if len(ep_rows) != 1:
+        raise ValueError(
+            f"Expected one episode_config row in {env_dir}, got {len(ep_rows)}"
+        )
+    if ep_rows[0].get("collector_version") != COLLECTOR_VERSION:
+        raise ValueError(
+            f"Expected collector {COLLECTOR_VERSION!r} in {env_dir}, "
+            f"got {ep_rows[0].get('collector_version')!r}"
+        )
 
-    episode_config: dict[str, Any] = ep_rows[0] if ep_rows else {}
-    logic_dt = _f(episode_config.get("logic_dt"), 1.0) or 1.0
+    run_id = ep_rows[0].get("run_id") or ""
+    env_id = _i(ep_rows[0].get("env_id"))
+    episode_id = _i(ep_rows[0].get("episode_id"))
+    if not run_id or env_id is None or episode_id is None:
+        raise ValueError(f"Invalid run/env/episode identity in {env_dir}")
+
+    episode_config: dict[str, Any] = ep_rows[0]
+    logic_dt = _f(episode_config.get("logic_dt"))
+    if logic_dt <= 0:
+        raise ValueError(f"Invalid logic_dt in {env_dir}: {logic_dt}")
 
     aborted_rows = [
-        row
-        for row in lifecycle_rows
-        if str(row.get("event", "")).upper() == "ABORTED"
+        row for row in lifecycle_rows if str(row.get("event", "")).upper() == "ABORTED"
     ]
     if aborted_rows:
         aborted = aborted_rows[-1]
@@ -1462,10 +1472,11 @@ def process_env_dir(
             "min_throughput_drop_ratio": MIN_THROUGHPUT_DROP_RATIO,
             "system_lookback_s": SYSTEM_LOOKBACK_S,
             "warmup_s": WARMUP_S,
-            "min_baseline_completions": MIN_BASELINE_COMPLETIONS,
-            "min_cycle_completions": MIN_CYCLE_COMPLETIONS,
+            "min_baseline_operations": MIN_BASELINE_OPERATIONS,
+            "min_cycle_operations": MIN_CYCLE_OPERATIONS,
             "min_cycle_time_growth_ratio": MIN_CYCLE_TIME_GROWTH_RATIO,
             "buffer_high_occupancy_ratio": BUFFER_HIGH_OCCUPANCY_RATIO,
+            "impact_hold_windows": min_event_windows,
         },
         "min_event_windows": min_event_windows,
         "prediction_horizon": horizon,
@@ -1634,7 +1645,7 @@ def main() -> None:
         "--out_dir",
         type=Path,
         default=None,
-        help="Output directory (default: <run_dir>/derived)",
+        help=f"Output directory (default: <run_dir>/{DERIVED_DIR_NAME})",
     )
     args = parser.parse_args()
 
@@ -1650,13 +1661,11 @@ def main() -> None:
         else [float(x) for x in args.window_sizes.split(",") if x.strip()]
     )
     run_dir = args.run_dir.resolve()
-    out_root = (args.out_dir or (run_dir / "derived")).resolve()
+    out_root = (args.out_dir or (run_dir / DERIVED_DIR_NAME)).resolve()
 
     env_dirs = _discover_env_dirs(run_dir, args.env_id)
     if not env_dirs:
-        raise SystemExit(
-            f"No env_* directories under {run_dir} (checked flat and episode_*/ layouts)"
-        )
+        raise SystemExit(f"No episode_*/env_* directories under {run_dir}")
 
     summaries = []
     for env_dir in env_dirs:

@@ -36,14 +36,17 @@ class TestBstanDataset(unittest.TestCase):
         for episode_id in range(6):
             raw_dir = run_dir / f"episode_{episode_id:02d}" / "env_00"
             derived_dir = (
-                run_dir / "derived_phase_b_v1" / f"episode_{episode_id:02d}" / "env_00"
+                run_dir
+                / "derived_phase_b_v2_2"
+                / f"episode_{episode_id:02d}"
+                / "env_00"
             )
             config = {
                 "run_id": "run_seed42",
                 "env_id": 0,
                 "episode_id": episode_id,
                 "scenario_id": f"scenario_{episode_id % 2}",
-                "collector_version": "v0.4",
+                "collector_version": "v0.6",
                 "process_time_config": json.dumps(
                     {
                         "Product": {
@@ -119,7 +122,7 @@ class TestBstanDataset(unittest.TestCase):
                         "duration": 60 if positive else "",
                         "severity_weak": 0.8 if positive else "",
                         "duration_observed": int(positive),
-                        "label_version": "bstan_weak_v2_1",
+                        "label_version": "bstan_weak_v2_2",
                         "prediction_horizon": 120,
                     }
                 )

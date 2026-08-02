@@ -12,6 +12,7 @@ from typing import Any, Iterable
 
 
 AUDIT_VERSION = "bottleneck_raw_audit_v1"
+COLLECTOR_VERSION = "v0.6"
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
@@ -25,7 +26,9 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
     rows = []
-    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    for line_number, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), 1
+    ):
         if not line.strip():
             continue
         try:
@@ -70,8 +73,6 @@ def discover_env_dirs(run_dirs: Iterable[Path]) -> list[tuple[Path, Path]]:
     for raw_run_dir in run_dirs:
         run_dir = Path(raw_run_dir).resolve()
         candidates = sorted(run_dir.glob("episode_*/env_*"))
-        if not candidates:
-            candidates = sorted(run_dir.glob("env_*"))
         discovered.extend((run_dir, path) for path in candidates if path.is_dir())
     return discovered
 
@@ -115,17 +116,22 @@ def _audit_events(
         if len(starts) != 1 or len(ends) != 1:
             continue
         start_row, end_row = starts[0], ends[0]
-        start = _int(start_row.get("actual_start_time_step"), _int(start_row.get("start_time_step")))
-        end = _int(end_row.get("actual_end_time_step"), _int(end_row.get("end_time_step")))
-        target = start_row.get("actual_target_resource_id") or start_row.get("target_resource_id") or ""
-        end_target = end_row.get("actual_target_resource_id") or end_row.get("target_resource_id") or ""
+        start = _int(start_row.get("actual_start_time_step"))
+        end = _int(end_row.get("actual_end_time_step"))
+        target = start_row.get("actual_target_resource_id") or ""
+        end_target = end_row.get("actual_target_resource_id") or ""
         if start is None or end is None or end < start:
             errors.append(f"event:{event_id}:invalid_interval={start}:{end}")
         if episode_end_step is not None and end is not None and end > episode_end_step:
-            errors.append(f"event:{event_id}:ends_after_episode={end}>{episode_end_step}")
+            errors.append(
+                f"event:{event_id}:ends_after_episode={end}>{episode_end_step}"
+            )
         if not target:
             errors.append(f"event:{event_id}:missing_actual_target")
-        elif disturbance_dim in {"machine", "human", "logistics"} and target not in resource_ids:
+        elif (
+            disturbance_dim in {"machine", "human", "logistics"}
+            and target not in resource_ids
+        ):
             errors.append(f"event:{event_id}:target_not_in_resource_catalog={target}")
         if end_target != target:
             errors.append(f"event:{event_id}:target_changed={target}:{end_target}")
@@ -134,21 +140,25 @@ def _audit_events(
                 "event_id": event_id,
                 "start_step": start,
                 "end_step": end,
-                "duration_steps": end - start if start is not None and end is not None else None,
+                "duration_steps": end - start
+                if start is not None and end is not None
+                else None,
                 "target": target,
                 "type": start_row.get("disturbance_type") or "",
             }
         )
 
     runtime_rows = [
-        row for row in rows if str(row.get("event_phase") or "").upper() in {"START", "END"}
+        row
+        for row in rows
+        if str(row.get("event_phase") or "").upper() in {"START", "END"}
     ]
     if disturbance_dim == "none" and runtime_rows:
         errors.append("none_scenario_has_runtime_events")
     if disturbance_dim != "none" and not phases:
         errors.append("disturbed_scenario_missing_runtime_event")
     if rows and any(not row.get("event_phase") for row in rows):
-        warnings.append("legacy_or_missing_event_phase")
+        errors.append("disturbance_row_missing_event_phase")
     return errors, warnings, event_summaries
 
 
@@ -167,16 +177,27 @@ def audit_env_dir(
     warnings: list[str] = []
     if len(config_rows) != 1:
         errors.append(f"episode_config_count={len(config_rows)}")
+    if config.get("collector_version") != COLLECTOR_VERSION:
+        errors.append(
+            f"collector_version={config.get('collector_version')!r},"
+            f" expected={COLLECTOR_VERSION!r}"
+        )
 
-    start_rows = [row for row in lifecycle if str(row.get("event", "")).upper() == "START"]
+    start_rows = [
+        row for row in lifecycle if str(row.get("event", "")).upper() == "START"
+    ]
     end_rows = [row for row in lifecycle if str(row.get("event", "")).upper() == "END"]
-    aborted_rows = [row for row in lifecycle if str(row.get("event", "")).upper() == "ABORTED"]
+    aborted_rows = [
+        row for row in lifecycle if str(row.get("event", "")).upper() == "ABORTED"
+    ]
     if len(start_rows) != 1:
         errors.append(f"lifecycle_start_count={len(start_rows)}")
     if len(end_rows) != 1:
         errors.append(f"lifecycle_end_count={len(end_rows)}")
     if aborted_rows:
-        errors.append(f"episode_aborted={aborted_rows[-1].get('termination_reason') or 'unknown'}")
+        errors.append(
+            f"episode_aborted={aborted_rows[-1].get('termination_reason') or 'unknown'}"
+        )
 
     end_row = end_rows[-1] if end_rows else {}
     episode_end_step = _int(end_row.get("time_step"))
@@ -189,7 +210,9 @@ def audit_env_dir(
     elif completed_jobs != expected_jobs:
         errors.append(f"completed_jobs={completed_jobs}/{expected_jobs}")
 
-    resource_ids = {str(row.get("resource_id")) for row in resource_events if row.get("resource_id")}
+    resource_ids = {
+        str(row.get("resource_id")) for row in resource_events if row.get("resource_id")
+    }
     init_ids = {
         str(row.get("resource_id"))
         for row in resource_events
@@ -229,7 +252,9 @@ def audit_env_dir(
         "expected_jobs": expected_jobs,
         "completed_jobs": completed_jobs,
         "episode_end_step": episode_end_step,
-        "lifecycle_event": "ABORTED" if aborted_rows else ("END" if end_rows else "INCOMPLETE"),
+        "lifecycle_event": "ABORTED"
+        if aborted_rows
+        else ("END" if end_rows else "INCOMPLETE"),
         "resource_count": len(resource_ids),
         "runtime_event_count": len(event_summaries),
         "runtime_events": event_summaries,
@@ -274,14 +299,20 @@ def build_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "aborted_rate": aborted / attempted if attempted else 0.0,
             "runtime_event_count": len(events),
             "runtime_event_targets": dict(sorted(targets.items())),
-            "runtime_event_start_steps": sorted(value for value in starts if value is not None),
-            "runtime_event_duration_steps": sorted(value for value in durations if value is not None),
+            "runtime_event_start_steps": sorted(
+                value for value in starts if value is not None
+            ),
+            "runtime_event_duration_steps": sorted(
+                value for value in durations if value is not None
+            ),
             "warnings": scenario_warnings,
         }
 
     return {
         "audit_version": AUDIT_VERSION,
-        "status": "passed" if rows and all(row["trainable"] for row in rows) else "failed",
+        "status": "passed"
+        if rows and all(row["trainable"] for row in rows)
+        else "failed",
         "attempted_episodes": len(rows),
         "trainable_episodes": sum(row["trainable"] for row in rows),
         "rejected_episodes": sum(not row["trainable"] for row in rows),
