@@ -4,6 +4,9 @@ Reads::
 
     <run_dir>/derived/episode_*/env_00/{window_feature_table,bottleneck_label}.csv
 
+Multiple ``--run_dir`` values are merged into one bundle (episode keys
+``{run_id}__episode_XX``).
+
 Writes::
 
     PDFormer/raw_data/FactoryBN/
@@ -298,12 +301,12 @@ def _write_libcity_atomic(
     (out_dir / "config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
 
 
-def export_run(
+def _collect_run_episodes(
     run_dir: Path,
-    out_dir: Path,
-    window_size: float = 60.0,
-    write_atomic: bool = True,
-) -> Path:
+    window_size: float,
+    *,
+    name_prefix: str | None = None,
+) -> tuple[dict[str, str], list[tuple[str, list[dict[str, str]], dict[int, dict[str, str]], list[dict[str, Any]]]]]:
     derived = run_dir / "derived"
     if not derived.is_dir():
         raise FileNotFoundError(f"derived/ not found under {run_dir}")
@@ -312,7 +315,6 @@ def export_run(
     if not episode_dirs:
         raise FileNotFoundError(f"No episode env dirs under {derived}")
 
-    # Node universe from first episode that has features; union across episodes
     all_ids: dict[str, str] = {}
     per_ep_rows: list[
         tuple[str, list[dict[str, str]], dict[int, dict[str, str]], list[dict[str, Any]]]
@@ -330,11 +332,49 @@ def export_run(
             continue
         for row in rows:
             all_ids.setdefault(row["resource_id"], row["resource_type"])
-        ep_name = ep_dir.parent.name if ep_dir.parent.name.startswith("episode_") else "episode_00"
+        ep_base = ep_dir.parent.name if ep_dir.parent.name.startswith("episode_") else "episode_00"
+        ep_name = f"{name_prefix}__{ep_base}" if name_prefix else ep_base
         per_ep_rows.append((ep_name, rows, labs, events))
+    return all_ids, per_ep_rows
+
+
+def export_runs(
+    run_dirs: list[Path],
+    out_dir: Path,
+    window_size: float = 60.0,
+    write_atomic: bool = True,
+) -> Path:
+    """Export one or more bottleneck runs into a single FactoryBN training bundle.
+
+    Multiple runs get episode names ``{run_id}__episode_XX`` to avoid collisions.
+    Nodes / adjacency are the union across all runs.
+    """
+    if not run_dirs:
+        raise ValueError("At least one run_dir is required")
+
+    run_dirs = [Path(p).resolve() for p in run_dirs]
+    multi = len(run_dirs) > 1
+
+    all_ids: dict[str, str] = {}
+    per_ep_rows: list[
+        tuple[str, list[dict[str, str]], dict[int, dict[str, str]], list[dict[str, Any]]]
+    ] = []
+    for run_dir in run_dirs:
+        prefix = run_dir.name if multi else None
+        ids, rows = _collect_run_episodes(run_dir, window_size, name_prefix=prefix)
+        for rid, rtype in ids.items():
+            all_ids.setdefault(rid, rtype)
+        per_ep_rows.extend(rows)
 
     if not per_ep_rows:
         raise RuntimeError("No feature rows found for the requested window_size")
+
+    # Deduplicate episode names if a run is listed twice
+    seen_names: set[str] = set()
+    for ep_name, *_ in per_ep_rows:
+        if ep_name in seen_names:
+            raise ValueError(f"Duplicate episode key after merge: {ep_name}")
+        seen_names.add(ep_name)
 
     type_rank = {t: i for i, t in enumerate(RESOURCE_TYPES)}
     items = sorted(all_ids.items(), key=lambda kv: (type_rank.get(kv[1], 99), kv[0]))
@@ -351,8 +391,6 @@ def export_run(
     for ep_name, rows, labs, events in per_ep_rows:
         packed = _pivot_episode(rows, labs, resource_ids, resource_types, events=events)
         episodes_payload[ep_name] = packed
-        # atomic: score + ops features (no type onehot)
-        t, n, _ = packed["features"].shape
         atomic = np.concatenate(
             [packed["scores"], packed["features"][:, :, : len(FEATURE_COLS)]],
             axis=-1,
@@ -360,7 +398,6 @@ def export_run(
         score_series_for_atomic.append(atomic)
         concat_features.append(packed["features"][:, :, : len(FEATURE_COLS)])
 
-    # semantic distance on concatenated operational features
     concat = np.concatenate(concat_features, axis=0)
     sem_mx = semantic_distance_matrix(concat)
 
@@ -391,7 +428,8 @@ def export_run(
     )
 
     meta = {
-        "run_dir": str(run_dir),
+        "run_dir": str(run_dirs[0]) if len(run_dirs) == 1 else None,
+        "run_dirs": [str(p) for p in run_dirs],
         "window_size_s": window_size,
         "num_nodes": len(resource_ids),
         "feature_dim": len(FEATURE_COLS) + len(RESOURCE_TYPES),
@@ -413,6 +451,7 @@ def export_run(
             "Score head (PDFormer): future bottleneck_score_s.",
             "Event path (STGNPP): per-node sequences from bottleneck_event.csv + NLL intensity.",
             "Window will/mark/tts kept as auxiliary when events are sparse.",
+            "Multi-run merge uses episode keys {run_id}__episode_XX.",
         ],
     }
     (out_dir / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
@@ -438,7 +477,11 @@ def export_run(
             time_intervals=int(window_size),
         )
 
-    print(f"[export] nodes={len(resource_ids)} episodes={list(episodes_payload)} → {out_dir}")
+    n_events = sum(len(v["event_node"]) for v in episodes_payload.values())
+    print(
+        f"[export] runs={len(run_dirs)} nodes={len(resource_ids)} "
+        f"episodes={len(episodes_payload)} events={n_events} → {out_dir}"
+    )
     for ep, v in episodes_payload.items():
         print(
             f"  {ep}: T={v['features'].shape[0]} will+={int(v['will_bottleneck'].sum())} "
@@ -447,13 +490,23 @@ def export_run(
     return out_dir
 
 
+def export_run(
+    run_dir: Path,
+    out_dir: Path,
+    window_size: float = 60.0,
+    write_atomic: bool = True,
+) -> Path:
+    return export_runs([run_dir], out_dir, window_size=window_size, write_atomic=write_atomic)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export FactoryBN training data")
     parser.add_argument(
         "--run_dir",
         type=str,
+        action="append",
         required=True,
-        help="bottleneck_dataset/<run_id> containing derived/",
+        help="bottleneck_dataset/<run_id> containing derived/ (repeat for multi-run merge)",
     )
     parser.add_argument(
         "--out_dir",
@@ -467,9 +520,9 @@ def main() -> None:
 
     here = Path(__file__).resolve().parent
     pdformer_root = here.parent
-    run_dir = Path(args.run_dir).resolve()
+    run_dirs = [Path(p).resolve() for p in args.run_dir]
     out_dir = Path(args.out_dir).resolve() if args.out_dir else (pdformer_root / "raw_data" / "FactoryBN")
-    export_run(run_dir, out_dir, window_size=args.window_size, write_atomic=not args.no_atomic)
+    export_runs(run_dirs, out_dir, window_size=args.window_size, write_atomic=not args.no_atomic)
 
 
 if __name__ == "__main__":
