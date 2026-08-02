@@ -209,15 +209,15 @@ target sampled from active and process-relevant resources
 
 ## 5. 标签质量提升
 
-### 5.1 保留旧标签用于对照
+### 5.1 标签版本约束
 
-现有 `bstan_weak_v1` 和 `bstan_weak_v2` 保留，只用于复现实验和回归测试。正式数据生成小幅修订版本：
+当前代码只生成并接受小幅修订后的正式标签版本：
 
 ```text
 label_version = bstan_weak_v2_1
 ```
 
-不得在同一个 dataset 中混用不同标签版本。
+旧版本实验通过对应 Git commit 复现，不在当前运行路径保留兼容分支。Phase C 收到旧标签时必须直接报版本错误。
 
 ### 5.2 v2.1 标签定义
 
@@ -240,9 +240,9 @@ end-of-window WIP 相对最近 3 个窗口增长 >= 1.0
 
 buffer 候选还必须满足队列增长为正，或者 occupancy 至少 90% 且伴随 blocked/starved propagation，避免静态高库存被当作瓶颈。最终事件仍需同一节点连续至少 2 个窗口。
 
-场景配置写入分析字段，配对后的 runtime disturbance 只用于解释字段，不进入 `MODEL_FEATURE_FIELDS`。为保持现有张量形状，v2/v2.1 的旧 `disturbance_flag` 输入槽固定为 0，真实运行区间只写入非模型字段 `runtime_disturbance_active`；v1 复现模式保留旧值。
+场景配置写入分析字段，配对后的 runtime disturbance 只用于解释字段，不进入 `MODEL_FEATURE_FIELDS`。现有张量中的 `disturbance_flag` 输入槽固定为 0，真实运行区间只写入非模型字段 `runtime_disturbance_active`。
 
-Phase C 接受 `bstan_weak_v1`、`bstan_weak_v2` 和 `bstan_weak_v2_1`，但同一个 dataset 禁止混用版本，manifest 必须记录实际版本。
+Phase C 仅接受 `bstan_weak_v2_1`，manifest 固定记录该版本。
 
 ### 5.3 阈值校准
 

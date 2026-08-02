@@ -48,7 +48,6 @@ W_ACTIVE_DUR = 0.10
 W_UPSTREAM = 0.10
 W_DOWNSTREAM = 0.10
 
-V1_SCORE_THRESHOLD = 0.55
 DEFAULT_SCORE_THRESHOLD = 0.65
 DEFAULT_MIN_EVENT_WINDOWS = 2
 DEFAULT_RELATIVE_MARGIN = 0.10
@@ -61,10 +60,7 @@ MIN_BASELINE_COMPLETIONS = 2
 MIN_CYCLE_COMPLETIONS = 3
 MIN_CYCLE_TIME_GROWTH_RATIO = 0.20
 BUFFER_HIGH_OCCUPANCY_RATIO = 0.90
-LABEL_VERSION_V1 = "bstan_weak_v1"
-LABEL_VERSION_V2 = "bstan_weak_v2"
-LABEL_VERSION_V2_1 = "bstan_weak_v2_1"
-LABEL_VERSION = LABEL_VERSION_V2_1
+LABEL_VERSION = "bstan_weak_v2_1"
 
 SCORE_CONFIG = {
     "process": {
@@ -384,7 +380,6 @@ def compute_window_features(
     env_id: int,
     episode_id: int,
     logic_dt: float,
-    label_version: str = LABEL_VERSION,
 ) -> list[dict]:
     # Precompute job waiting intervals keyed by station
     wait_by_station: dict[str, list[tuple[float, float]]] = defaultdict(list)
@@ -691,11 +686,7 @@ def compute_window_features(
                     "transport_waiting_time_s": round(transport_waiting, 6),
                     "route_delay_s": round(route_delay, 6),
                     "material_shortage_flag_s": round(material_shortage, 6),
-                    "total_WIP": (
-                        wip_at_window_end
-                        if label_version == LABEL_VERSION_V2_1
-                        else total_wip
-                    ),
+                    "total_WIP": wip_at_window_end,
                     "wip_overlap_count": total_wip,
                     "wip_at_window_end": wip_at_window_end,
                     "throughput_rolling": round(throughput_rolling, 6),
@@ -712,11 +703,7 @@ def compute_window_features(
                     "scenario_disturbance_dim": scenario_disturbance_dim,
                     "scenario_disturbance_intensity": scenario_disturbance_intensity,
                     "runtime_disturbance_active": disturbance_flag,
-                    "disturbance_flag": (
-                        disturbance_flag
-                        if label_version == LABEL_VERSION_V1
-                        else 0
-                    ),
+                    "disturbance_flag": 0,
                 }
             )
     return rows_out
@@ -852,7 +839,6 @@ def build_labels_and_events(
     episode_end: float,
     disturbance_rows: list[dict[str, Any]] | None = None,
     logic_dt: float = 1.0,
-    label_version: str = LABEL_VERSION,
 ) -> tuple[list[dict], list[dict]]:
     """Build weak bottleneck events and right-censored future labels."""
     by_ws: dict[tuple[float, float], list[dict]] = defaultdict(list)
@@ -885,8 +871,7 @@ def build_labels_and_events(
                 reverse=True,
             )
             relative_margin = peers[0] - peers[1] if len(peers) > 1 else peers[0]
-            legacy_wip = _f(rs[0].get("total_WIP"))
-            point_wip = _f(rs[0].get("wip_at_window_end"), legacy_wip)
+            point_wip = _f(rs[0].get("wip_at_window_end"))
             current_throughput = _f(rs[0].get("throughput_rolling"))
             current_completed = _i(
                 rs[0].get("completed_jobs_in_window"),
@@ -896,43 +881,10 @@ def build_labels_and_events(
                 rs[0].get("completed_cycle_times_s")
             )
             current_system = {
-                "legacy_wip": legacy_wip,
                 "point_wip": point_wip,
-                "throughput": current_throughput,
                 "completed": current_completed,
                 "cycles": current_cycles,
             }
-
-            recent_legacy = system_history[-SYSTEM_HISTORY_WINDOWS:]
-            if recent_legacy:
-                legacy_wip_baseline = statistics.mean(
-                    item["legacy_wip"] for item in recent_legacy
-                )
-                legacy_throughput_baseline = statistics.mean(
-                    item["throughput"] for item in recent_legacy
-                )
-            else:
-                legacy_wip_baseline = legacy_wip
-                legacy_throughput_baseline = current_throughput
-            legacy_wip_growth = legacy_wip - legacy_wip_baseline
-            legacy_throughput_drop = (
-                max(
-                    (legacy_throughput_baseline - current_throughput)
-                    / legacy_throughput_baseline,
-                    0.0,
-                )
-                if legacy_throughput_baseline > 0
-                else 0.0
-            )
-            legacy_system_impact = int(
-                legacy_wip_growth >= MIN_WIP_GROWTH
-                or legacy_throughput_drop >= MIN_THROUGHPUT_DROP_RATIO
-            )
-            legacy_impact_reasons = []
-            if legacy_wip_growth >= MIN_WIP_GROWTH:
-                legacy_impact_reasons.append("wip_growth")
-            if legacy_throughput_drop >= MIN_THROUGHPUT_DROP_RATIO:
-                legacy_impact_reasons.append("throughput_drop")
 
             point_history = system_history[-SYSTEM_HISTORY_WINDOWS:]
             point_wip_baseline = (
@@ -1012,29 +964,12 @@ def build_labels_and_events(
                 )
             )
             context_gate = int(warmup_gate and buffer_pressure_gate)
-            if label_version == LABEL_VERSION_V1:
-                is_hot = absolute_gate
-                selected_wip_growth = legacy_wip_growth
-                selected_throughput_drop = legacy_throughput_drop
-                selected_system_impact = legacy_system_impact
-                selected_impact_reasons = legacy_impact_reasons
-            elif label_version == LABEL_VERSION_V2:
-                is_hot = absolute_gate and relative_gate and legacy_system_impact
-                selected_wip_growth = legacy_wip_growth
-                selected_throughput_drop = legacy_throughput_drop
-                selected_system_impact = legacy_system_impact
-                selected_impact_reasons = legacy_impact_reasons
-            else:
-                is_hot = (
-                    absolute_gate
-                    and relative_gate
-                    and v2_1_system_impact
-                    and context_gate
-                )
-                selected_wip_growth = point_wip_growth
-                selected_throughput_drop = smoothed_throughput_drop
-                selected_system_impact = v2_1_system_impact
-                selected_impact_reasons = impact_reasons
+            is_hot = (
+                absolute_gate
+                and relative_gate
+                and v2_1_system_impact
+                and context_gate
+            )
             window_meta[wi] = {
                 "window_index": wi,
                 "window_start_s": rs[0]["window_start_s"],
@@ -1050,13 +985,13 @@ def build_labels_and_events(
                 "bottleneck_type_t": best["resource_type"],
                 "bottleneck_score_t": best["bottleneck_score_s"],
                 "relative_score_margin_t": round(relative_margin, 6),
-                "wip_growth_t": round(selected_wip_growth, 6),
-                "throughput_drop_ratio_t": round(selected_throughput_drop, 6),
+                "wip_growth_t": round(point_wip_growth, 6),
+                "throughput_drop_ratio_t": round(smoothed_throughput_drop, 6),
                 "cycle_time_growth_ratio_t": round(cycle_time_growth_ratio, 6),
                 "baseline_completed_jobs_t": baseline_completed,
                 "recent_completed_jobs_t": recent_completed,
-                "system_impact_flag_t": selected_system_impact,
-                "system_impact_reason_t": "+".join(selected_impact_reasons),
+                "system_impact_flag_t": v2_1_system_impact,
+                "system_impact_reason_t": "+".join(impact_reasons),
                 "warmup_gate_t": warmup_gate,
                 "buffer_pressure_gate_t": buffer_pressure_gate,
                 "label_context_gate_t": context_gate,
@@ -1118,7 +1053,7 @@ def build_labels_and_events(
             ev["severity_weak"] = round(
                 0.7 * ev["max_score"] + 0.3 * min(ev["duration_s"] / horizon, 1.0), 6
             )
-            ev["label_version"] = label_version
+            ev["label_version"] = LABEL_VERSION
             ev["score_threshold"] = score_threshold
             ev["relative_score_margin"] = DEFAULT_RELATIVE_MARGIN
             ev["min_event_windows"] = min_event_windows
@@ -1213,7 +1148,7 @@ def build_labels_and_events(
                     "time_to_start": tts,
                     "duration": dur,
                     "severity_weak": severity,
-                    "label_version": label_version,
+                    "label_version": LABEL_VERSION,
                     "score_config": score_config_json,
                     "score_threshold": score_threshold,
                     "min_event_windows": min_event_windows,
@@ -1400,7 +1335,6 @@ def process_env_dir(
     horizon: float,
     score_threshold: float,
     min_event_windows: int,
-    label_version: str = LABEL_VERSION,
 ) -> dict:
     events = _read_jsonl(env_dir / "resource_event_log.jsonl")
     job_rows = _read_csv(env_dir / "job_trace.csv")
@@ -1488,7 +1422,6 @@ def process_env_dir(
             env_id=env_id if env_id is not None else 0,
             episode_id=episode_id if episode_id is not None else 0,
             logic_dt=logic_dt,
-            label_version=label_version,
         )
         all_features.extend(feats)
 
@@ -1505,7 +1438,6 @@ def process_env_dir(
         episode_end,
         disturbance_rows=disturbance_rows,
         logic_dt=logic_dt,
-        label_version=label_version,
     )
     job_kpi_rows, order_kpi = build_job_kpis(
         job_rows,
@@ -1520,7 +1452,7 @@ def process_env_dir(
     _write_csv(out_dir / "bottleneck_label.csv", labels)
     _write_csv(out_dir / "bottleneck_event.csv", event_rows)
     label_metadata = {
-        "label_version": label_version,
+        "label_version": LABEL_VERSION,
         "score_config": SCORE_CONFIG,
         "score_threshold": score_threshold,
         "relative_score_margin": DEFAULT_RELATIVE_MARGIN,
@@ -1584,7 +1516,7 @@ def process_env_dir(
 
     summary = {
         "status": "processed",
-        "label_version": label_version,
+        "label_version": LABEL_VERSION,
         "run_id": run_id,
         "env_id": env_id,
         "episode_id": episode_id,
@@ -1633,10 +1565,7 @@ def process_env_dir(
                     if label["bottleneck_score_t"] >= threshold
                     and label["relative_score_margin_t"] >= DEFAULT_RELATIVE_MARGIN
                     and label["system_impact_flag_t"] == 1
-                    and (
-                        label_version != LABEL_VERSION_V2_1
-                        or label["label_context_gate_t"] == 1
-                    )
+                    and label["label_context_gate_t"] == 1
                 )
                 / max(len(labels), 1)
             )
@@ -1696,16 +1625,10 @@ def main() -> None:
         "--score_threshold",
         type=float,
         default=None,
-        help="Override score threshold (defaults: v1=0.55, v2/v2.1=0.65).",
+        help="Override score threshold (default: 0.65).",
     )
     parser.add_argument(
         "--min_event_windows", type=int, default=DEFAULT_MIN_EVENT_WINDOWS
-    )
-    parser.add_argument(
-        "--label_version",
-        choices=[LABEL_VERSION_V1, LABEL_VERSION_V2, LABEL_VERSION_V2_1],
-        default=LABEL_VERSION,
-        help="Weak-label contract to generate (default: bstan_weak_v2_1).",
     )
     parser.add_argument(
         "--out_dir",
@@ -1718,11 +1641,7 @@ def main() -> None:
     score_threshold = (
         args.score_threshold
         if args.score_threshold is not None
-        else (
-            V1_SCORE_THRESHOLD
-            if args.label_version == LABEL_VERSION_V1
-            else DEFAULT_SCORE_THRESHOLD
-        )
+        else DEFAULT_SCORE_THRESHOLD
     )
 
     window_sizes = (
@@ -1751,7 +1670,6 @@ def main() -> None:
             horizon=args.horizon,
             score_threshold=score_threshold,
             min_event_windows=args.min_event_windows,
-            label_version=args.label_version,
         )
         summaries.append(summary)
         if summary.get("status") == "skipped":

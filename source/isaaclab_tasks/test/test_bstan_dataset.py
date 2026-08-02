@@ -119,7 +119,7 @@ class TestBstanDataset(unittest.TestCase):
                         "duration": 60 if positive else "",
                         "severity_weak": 0.8 if positive else "",
                         "duration_observed": int(positive),
-                        "label_version": "bstan_weak_v1",
+                        "label_version": "bstan_weak_v2_1",
                         "prediction_horizon": 120,
                     }
                 )

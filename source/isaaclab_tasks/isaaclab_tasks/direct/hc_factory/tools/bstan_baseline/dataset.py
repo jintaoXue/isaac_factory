@@ -21,7 +21,6 @@ from .schema import (
     DATASET_VERSION,
     GLOBAL_FEATURES,
     LABEL_VERSION,
-    SUPPORTED_LABEL_VERSIONS,
     feature_is_applicable,
 )
 
@@ -400,7 +399,6 @@ def build_bstan_dataset(
         raise ValueError("input_windows must be positive")
     out_dir = Path(out_dir).resolve()
     groups = _discover_groups(run_dirs, derived_dir_name)
-    dataset_label_versions: set[str] = set()
     for group in groups:
         group["feature_rows"] = _filter_rows(group["feature_rows"], window_size, stride)
         group["label_rows"] = _filter_rows(group["label_rows"], window_size, stride)
@@ -408,20 +406,13 @@ def build_bstan_dataset(
             raise ValueError(f"No matching Phase-B rows for {group['group_id']}")
         for label in group["label_rows"]:
             label_version = label.get("label_version") or ""
-            if label_version not in SUPPORTED_LABEL_VERSIONS:
+            if label_version != LABEL_VERSION:
                 raise ValueError(
                     f"Unexpected label version for {group['group_id']}: "
-                    f"{label_version!r}"
+                    f"expected {LABEL_VERSION!r}, got {label_version!r}"
                 )
-            dataset_label_versions.add(label_version)
             if not math.isclose(_f(label.get("prediction_horizon")), horizon):
                 raise ValueError(f"Prediction horizon mismatch for {group['group_id']}")
-    if len(dataset_label_versions) != 1:
-        raise ValueError(
-            "A BSTAN dataset cannot mix label versions: "
-            f"{sorted(dataset_label_versions)}"
-        )
-    dataset_label_version = next(iter(dataset_label_versions), LABEL_VERSION)
 
     node_ids, node_types = _build_node_catalog(groups)
     node_index = {node_id: index for index, node_id in enumerate(node_ids)}
@@ -736,7 +727,7 @@ def build_bstan_dataset(
     ]
     manifest = {
         "dataset_version": DATASET_VERSION,
-        "label_version": dataset_label_version,
+        "label_version": LABEL_VERSION,
         "source_run_directories": sorted({str(group["run_dir"]) for group in groups}),
         "derived_dir_name": derived_dir_name,
         "collector_versions": collector_versions,

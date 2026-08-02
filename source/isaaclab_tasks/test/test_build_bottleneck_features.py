@@ -246,68 +246,50 @@ class TestPhaseBFeatures(unittest.TestCase):
 
     def test_label_anchor_and_tail_censoring(self):
         rows = []
-        for window_index in range(5):
-            hot = window_index in (2, 3)
-            rows.append(
-                {
-                    "run_id": "run",
-                    "env_id": 0,
-                    "episode_id": 0,
-                    "window_index": window_index,
-                    "window_start_step": window_index * 30,
-                    "window_end_step": (window_index + 1) * 30,
-                    "window_start_s": window_index * 30.0,
-                    "window_end_s": (window_index + 1) * 30.0,
-                    "window_size_s": 30.0,
-                    "stride_s": 30.0,
-                    "resource_id": "machine_a_ws0",
-                    "resource_type": "machine",
-                    "bottleneck_score_s": 0.8 if hot else 0.1,
-                    "blocked_time_s": 0.0,
-                    "starved_time_s": 0.0,
-                    "active_pct_s": 1.0 if hot else 0.0,
-                    "queue_length_s": 0.0,
-                    "avg_waiting_time_s": 0.0,
-                    "total_WIP": window_index,
-                    "throughput_rolling": 0.0,
-                }
+        for window_index in range(8):
+            row = self._system_row(
+                window_index,
+                point_wip=0 if window_index < 5 else window_index - 3,
             )
+            row["bottleneck_score_s"] = (
+                0.8 if window_index in (5, 6) else 0.1
+            )
+            rows.append(row)
 
         labels, events = MODULE.build_labels_and_events(
             rows,
             horizon=30.0,
             score_threshold=0.55,
             min_event_windows=2,
-            episode_end=150.0,
+            episode_end=240.0,
             disturbance_rows=[
                 {
                     "disturbance_id": "machine_event_1",
                     "event_phase": "START",
-                    "start_logic_time_s": "30",
+                    "start_logic_time_s": "120",
                     "disturbance_type": "machine_failure",
                     "actual_target_resource_id": "machine_a_ws0",
                 },
                 {
                     "disturbance_id": "machine_event_1",
                     "event_phase": "END",
-                    "end_logic_time_s": "90",
+                    "end_logic_time_s": "210",
                     "disturbance_type": "machine_failure",
                     "actual_target_resource_id": "machine_a_ws0",
                 },
             ],
-            label_version=MODULE.LABEL_VERSION_V2,
         )
 
         self.assertEqual(len(events), 1)
-        self.assertEqual(events[0]["start_s"], 60.0)
+        self.assertEqual(events[0]["start_s"], 150.0)
         self.assertEqual(events[0]["duration_observed"], 1)
         self.assertEqual(events[0]["candidate_cause_type"], "machine_failure")
         self.assertEqual(events[0]["cause_target_resource_id"], "machine_a_ws0")
         self.assertEqual(events[0]["cause_label_confidence"], 1.0)
-        self.assertEqual(labels[0]["anchor_time_s"], 30.0)
-        self.assertEqual(labels[0]["will_bottleneck"], 1)
-        self.assertEqual(labels[0]["time_to_start"], 30.0)
-        self.assertEqual(labels[1]["will_bottleneck"], 0)
+        self.assertEqual(labels[3]["anchor_time_s"], 120.0)
+        self.assertEqual(labels[3]["will_bottleneck"], 1)
+        self.assertEqual(labels[3]["time_to_start"], 30.0)
+        self.assertEqual(labels[4]["will_bottleneck"], 0)
         self.assertEqual(labels[-1]["label_observed"], 0)
         self.assertEqual(labels[-1]["will_bottleneck"], "")
 
@@ -356,17 +338,6 @@ class TestPhaseBFeatures(unittest.TestCase):
 
         self.assertEqual(events, [])
         self.assertTrue(all(label["is_bottleneck_window"] == 0 for label in labels))
-
-        _, v1_events = MODULE.build_labels_and_events(
-            rows,
-            30.0,
-            0.55,
-            2,
-            120.0,
-            label_version=MODULE.LABEL_VERSION_V1,
-        )
-        self.assertEqual(len(v1_events), 1)
-        self.assertEqual(v1_events[0]["label_version"], "bstan_weak_v1")
 
     def test_v2_1_uses_point_wip_after_warmup(self):
         point_wip = [0, 0, 0, 0, 0, 1, 2, 3, 4, 5]
