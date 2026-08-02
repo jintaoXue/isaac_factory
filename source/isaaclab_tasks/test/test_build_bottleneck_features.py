@@ -29,6 +29,49 @@ class TestPhaseBFeatures(unittest.TestCase):
             writer.writeheader()
             writer.writerows(rows)
 
+    @staticmethod
+    def _system_row(
+        window_index,
+        *,
+        resource_id="machine_a_ws0",
+        resource_type="machine",
+        point_wip=0,
+        completed=0,
+        cycles=None,
+        queue_growth=0.0,
+        occupancy=0.0,
+        propagation=0.0,
+    ):
+        return {
+            "run_id": "run",
+            "env_id": 0,
+            "episode_id": 0,
+            "window_index": window_index,
+            "window_start_step": window_index * 30,
+            "window_end_step": (window_index + 1) * 30,
+            "window_start_s": window_index * 30.0,
+            "window_end_s": (window_index + 1) * 30.0,
+            "window_size_s": 30.0,
+            "stride_s": 30.0,
+            "resource_id": resource_id,
+            "resource_type": resource_type,
+            "bottleneck_score_s": 0.8,
+            "blocked_time_s": 0.0,
+            "starved_time_s": 0.0,
+            "active_pct_s": 1.0 if resource_type != "buffer" else 0.0,
+            "queue_length_s": 1.0,
+            "avg_waiting_time_s": 0.0,
+            "queue_growth_rate_s": queue_growth,
+            "occupancy_ratio_s": occupancy,
+            "upstream_blocked_ratio_s": propagation,
+            "downstream_starved_ratio_s": 0.0,
+            "total_WIP": point_wip,
+            "wip_at_window_end": point_wip,
+            "throughput_rolling": completed / 30.0,
+            "completed_jobs_in_window": completed,
+            "completed_cycle_times_s": json.dumps(cycles or []),
+        }
+
     def test_complete_strided_windows_and_local_features(self):
         timelines = {
             "machine_a_ws0": MODULE.ResourceTimeline(
@@ -146,7 +189,11 @@ class TestPhaseBFeatures(unittest.TestCase):
         self.assertEqual(first["transport_waiting_time_s"], 10.0)
         self.assertEqual(first["route_delay_s"], 20.0)
         self.assertEqual(first["material_shortage_flag_s"], 1.0)
-        self.assertEqual(first["total_WIP"], 1)
+        self.assertEqual(first["total_WIP"], 0)
+        self.assertEqual(first["wip_overlap_count"], 1)
+        self.assertEqual(first["wip_at_window_end"], 0)
+        self.assertEqual(first["completed_jobs_in_window"], 1)
+        self.assertEqual(json.loads(first["completed_cycle_times_s"]), [25.0])
         self.assertEqual(first["runtime_disturbance_active"], 1)
         self.assertEqual(first["disturbance_flag"], 0)
 
@@ -248,6 +295,7 @@ class TestPhaseBFeatures(unittest.TestCase):
                     "actual_target_resource_id": "machine_a_ws0",
                 },
             ],
+            label_version=MODULE.LABEL_VERSION_V2,
         )
 
         self.assertEqual(len(events), 1)
@@ -319,6 +367,78 @@ class TestPhaseBFeatures(unittest.TestCase):
         )
         self.assertEqual(len(v1_events), 1)
         self.assertEqual(v1_events[0]["label_version"], "bstan_weak_v1")
+
+    def test_v2_1_uses_point_wip_after_warmup(self):
+        point_wip = [0, 0, 0, 0, 0, 1, 2, 3, 4, 5]
+        rows = [
+            self._system_row(index, point_wip=value)
+            for index, value in enumerate(point_wip)
+        ]
+
+        labels, events = MODULE.build_labels_and_events(
+            rows, 60.0, 0.65, 2, 300.0
+        )
+
+        self.assertEqual(labels[3]["warmup_gate_t"], 0)
+        self.assertEqual(labels[5]["warmup_gate_t"], 1)
+        self.assertEqual(labels[5]["system_impact_reason_t"], "wip_growth")
+        self.assertEqual(len(events), 1)
+        self.assertGreaterEqual(events[0]["start_s"], MODULE.WARMUP_S)
+
+    def test_v2_1_rejects_static_full_buffer(self):
+        rows = [
+            self._system_row(
+                index,
+                resource_id="storage_buffer_a",
+                resource_type="buffer",
+                point_wip=index,
+                occupancy=1.0,
+            )
+            for index in range(10)
+        ]
+
+        labels, events = MODULE.build_labels_and_events(
+            rows, 60.0, 0.65, 2, 300.0
+        )
+
+        self.assertEqual(events, [])
+        self.assertTrue(
+            all(label["buffer_pressure_gate_t"] == 0 for label in labels)
+        )
+
+    def test_v2_1_uses_smoothed_throughput_and_cycle_growth(self):
+        throughput_rows = [
+            self._system_row(index, completed=1 if index < 4 else 0)
+            for index in range(10)
+        ]
+        throughput_labels, throughput_events = MODULE.build_labels_and_events(
+            throughput_rows, 60.0, 0.65, 2, 300.0
+        )
+
+        self.assertEqual(len(throughput_events), 1)
+        self.assertEqual(throughput_labels[6]["system_impact_flag_t"], 0)
+        self.assertIn(
+            "throughput_drop", throughput_labels[7]["system_impact_reason_t"]
+        )
+        self.assertGreaterEqual(throughput_labels[7]["baseline_completed_jobs_t"], 2)
+
+        cycle_rows = [
+            self._system_row(
+                index,
+                completed=1,
+                cycles=[10.0 if index < 4 else 13.0],
+            )
+            for index in range(10)
+        ]
+        cycle_labels, cycle_events = MODULE.build_labels_and_events(
+            cycle_rows, 60.0, 0.65, 2, 300.0
+        )
+
+        self.assertEqual(len(cycle_events), 1)
+        self.assertIn(
+            "cycle_time_growth", cycle_labels[7]["system_impact_reason_t"]
+        )
+        self.assertGreaterEqual(cycle_labels[7]["cycle_time_growth_ratio_t"], 0.2)
 
     def test_process_prefers_lifecycle_end_and_writes_metadata(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -400,7 +520,7 @@ class TestPhaseBFeatures(unittest.TestCase):
             metadata = json.loads(
                 (out_dir / "label_metadata.json").read_text(encoding="utf-8")
             )
-            self.assertEqual(metadata["label_version"], "bstan_weak_v2")
+            self.assertEqual(metadata["label_version"], "bstan_weak_v2_1")
             self.assertEqual(metadata["relative_score_margin"], 0.1)
             self.assertEqual(metadata["strides_s"], {"30.0": 30.0})
 

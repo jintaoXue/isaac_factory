@@ -2,7 +2,7 @@
 
 ## 1. 文档状态
 
-- 状态：Phase E0-E2 两轮服务器 Pilot 已通过；准备进入 Phase E3 正式采集
+- 状态：Phase E0-E2 两轮服务器 Pilot 已通过；weak v2.1 小幅修订已完成本地实现，待离线复算后进入 Phase E3
 - 基线：现有 `BSTAN-style GAT-GRU baseline`
 - 前置版本：Phase A-D 已跑通，`dev_tyx` 的 18 单、扰动与龙门架修复已合入
 - 本轮目标：提高训练数据的正确性、覆盖度和评估可信度，再重新训练 baseline
@@ -31,7 +31,7 @@ material hold 只选择当前 `producing` 且刚好没有 ongoing task 的批次
 本地验收：
 
 ```text
-Phase E0-E2 pure-Python tests = 19 passed
+Phase E0-E2 pure-Python tests = 22 passed
 Python syntax compilation = passed
 Isaac Sim five-scenario smoke Pilot = passed
 ```
@@ -211,17 +211,17 @@ target sampled from active and process-relevant resources
 
 ### 5.1 保留旧标签用于对照
 
-现有 `bstan_weak_v1` 保留，只用于复现实验和回归测试。正式重采集数据生成新版本：
+现有 `bstan_weak_v1` 和 `bstan_weak_v2` 保留，只用于复现实验和回归测试。正式数据生成小幅修订版本：
 
 ```text
-label_version = bstan_weak_v2
+label_version = bstan_weak_v2_1
 ```
 
-不得在同一个 dataset 中混用 v1 和 v2。
+不得在同一个 dataset 中混用不同标签版本。
 
-### 5.2 v2 标签定义
+### 5.2 v2.1 标签定义
 
-v2 仍保持 baseline 的单节点预测接口，但候选瓶颈必须同时满足：
+v2.1 仍保持 baseline 的单节点预测接口，但候选瓶颈必须同时满足：
 
 1. 节点局部压力达到阈值：队列、occupancy、active duration、blocked/starved propagation 等；
 2. 连续至少 2 个窗口，即持续至少 60 logic seconds；
@@ -230,23 +230,26 @@ v2 仍保持 baseline 的单节点预测接口，但候选瓶颈必须同时满�
 
 若没有节点满足绝对条件，则该窗口为无瓶颈，不因存在 argmax 就强制产生正样本。
 
-第一版系统影响门槛使用最近 3 个窗口作为历史基线，满足以下任一条件：
+v2.1 排除前 120 logic seconds 的 warm-up，并将模型输入 `total_WIP` 和标签系统影响统一为窗口结束时点 WIP；旧窗口重叠计数仅保留在分析字段 `wip_overlap_count`。系统影响满足以下任一条件：
 
 ```text
-WIP growth >= 1.0
-rolling throughput drop ratio >= 0.25
+end-of-window WIP 相对最近 3 个窗口增长 >= 1.0
+最近 120 秒吞吐较此前 120 秒下降 >= 25%，且此前至少 2 个完工样本
+最近 120 秒 cycle-time median 较此前 120 秒增长 >= 20%，且两段各至少 3 个完工样本
 ```
 
-最终事件仍需同一节点连续至少 2 个窗口。场景配置写入分析字段，配对后的 runtime disturbance 只用于解释字段，不进入 `MODEL_FEATURE_FIELDS`。为保持现有张量形状，v2 的旧 `disturbance_flag` 输入槽固定为 0，真实运行区间只写入非模型字段 `runtime_disturbance_active`；v1 复现模式保留旧值。
+buffer 候选还必须满足队列增长为正，或者 occupancy 至少 90% 且伴随 blocked/starved propagation，避免静态高库存被当作瓶颈。最终事件仍需同一节点连续至少 2 个窗口。
 
-Phase C 接受 `bstan_weak_v1` 和 `bstan_weak_v2`，但同一个 dataset 禁止混用两个版本，manifest 必须记录实际版本。
+场景配置写入分析字段，配对后的 runtime disturbance 只用于解释字段，不进入 `MODEL_FEATURE_FIELDS`。为保持现有张量形状，v2/v2.1 的旧 `disturbance_flag` 输入槽固定为 0，真实运行区间只写入非模型字段 `runtime_disturbance_active`；v1 复现模式保留旧值。
+
+Phase C 接受 `bstan_weak_v1`、`bstan_weak_v2` 和 `bstan_weak_v2_1`，但同一个 dataset 禁止混用版本，manifest 必须记录实际版本。
 
 ### 5.3 阈值校准
 
 阈值不能根据 test 指标反向调节。建议流程：
 
 1. 使用独立 pilot 数据中的正常场景和已知扰动场景检查特征分布；
-2. 固定 v2 score 权重与阈值，本轮为 `0.65` 和相对优势 `0.10`；
+2. 固定 v2.1 score 权重与阈值，本轮初始沿用 `0.65` 和相对优势 `0.10`；
 3. 将完整 `score_config` 写入 `label_metadata.json`；
 4. 冻结配置后再采正式 train/validation/test 数据；
 5. 对阈值上下浮动 `0.05` 做敏感性分析，确认事件数量不会剧烈坍缩。
@@ -511,11 +514,11 @@ tools/bstan_baseline/trainer.py
 
 退出条件：5 场景 pilot 的事件区间、目标和生命周期全部通过门禁。
 
-### Phase E2：Phase B 标签 v2
+### Phase E2：Phase B 标签 v2.1
 
 1. 正确配对扰动区间；
 2. 拆分 scenario 与 runtime 特征；
-3. 实现 weak label v2 和 metadata；
+3. 实现 weak label v2.1、warm-up、平滑系统影响和 metadata；
 4. 增加阈值敏感性与正样本分布报告。
 
 退出条件：pilot 标签可解释，且没有未来泄漏或强制 argmax 假正样本。
@@ -555,7 +558,7 @@ tools/bstan_baseline/trainer.py
 ```text
 output/bottleneck_dataset/<run_id>/
   episode_*/env_*/
-  derived_phase_b_v2/
+  derived_phase_b_v2_1/
 
 output/bottleneck_dataset/experiments/<experiment_id>/
   data_quality_report.json
@@ -571,6 +574,6 @@ output/bottleneck_dataset/experiments/<experiment_id>/
 3. material shortage 改为可恢复事件，永久缺料只做压力测试。
 4. 正式矩阵采用 13 scenario cells、3 seeds、每格 3 episode，共 117 attempted episodes。
 5. train/validation/test 按 seed 和 run 固定拆分，不再随机拆同一 run 的 episode。
-6. 新标签使用 `bstan_weak_v2`，扰动只提供 cause 信息，不直接充当瓶颈标签。
+6. 正式新标签使用 `bstan_weak_v2_1`，扰动只提供 cause 信息，不直接充当瓶颈标签。
 7. 第一轮冻结 GAT-GRU 结构，先验证数据提升，再做 sampler/focal loss 消融。
 8. occurrence 以 PR-AUC 为主，同时报告验证集选阈值后的 F1 和 episode-level 置信区间。

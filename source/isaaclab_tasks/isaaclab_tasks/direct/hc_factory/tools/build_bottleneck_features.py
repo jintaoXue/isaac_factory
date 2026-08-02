@@ -55,9 +55,16 @@ DEFAULT_RELATIVE_MARGIN = 0.10
 SYSTEM_HISTORY_WINDOWS = 3
 MIN_WIP_GROWTH = 1.0
 MIN_THROUGHPUT_DROP_RATIO = 0.25
+SYSTEM_LOOKBACK_S = 120.0
+WARMUP_S = 120.0
+MIN_BASELINE_COMPLETIONS = 2
+MIN_CYCLE_COMPLETIONS = 3
+MIN_CYCLE_TIME_GROWTH_RATIO = 0.20
+BUFFER_HIGH_OCCUPANCY_RATIO = 0.90
 LABEL_VERSION_V1 = "bstan_weak_v1"
 LABEL_VERSION_V2 = "bstan_weak_v2"
-LABEL_VERSION = LABEL_VERSION_V2
+LABEL_VERSION_V2_1 = "bstan_weak_v2_1"
+LABEL_VERSION = LABEL_VERSION_V2_1
 
 SCORE_CONFIG = {
     "process": {
@@ -78,6 +85,12 @@ SCORE_CONFIG = {
         "system_history_windows": SYSTEM_HISTORY_WINDOWS,
         "min_wip_growth": MIN_WIP_GROWTH,
         "min_throughput_drop_ratio": MIN_THROUGHPUT_DROP_RATIO,
+        "system_lookback_s": SYSTEM_LOOKBACK_S,
+        "warmup_s": WARMUP_S,
+        "min_baseline_completions": MIN_BASELINE_COMPLETIONS,
+        "min_cycle_completions": MIN_CYCLE_COMPLETIONS,
+        "min_cycle_time_growth_ratio": MIN_CYCLE_TIME_GROWTH_RATIO,
+        "buffer_high_occupancy_ratio": BUFFER_HIGH_OCCUPANCY_RATIO,
         "min_event_windows": DEFAULT_MIN_EVENT_WINDOWS,
     },
 }
@@ -203,6 +216,22 @@ def _json_dict(value: Any) -> dict[str, Any]:
     except (TypeError, ValueError, json.JSONDecodeError):
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+
+def _json_float_list(value: Any) -> list[float]:
+    if isinstance(value, list):
+        raw_values = value
+    elif not value:
+        return []
+    else:
+        try:
+            raw_values = json.loads(value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return []
+    if not isinstance(raw_values, list):
+        return []
+    values = [_f(item, float("nan")) for item in raw_values]
+    return [item for item in values if math.isfinite(item)]
 
 
 def _paired_disturbance_events(
@@ -392,6 +421,12 @@ def compute_window_features(
     for key, (t0, st) in open_queue.items():
         wait_by_station[st].append((t0, episode_end))
 
+    completed_cycle_times = [
+        (life["end"], life["end"] - life["start"])
+        for life in job_lifetimes.values()
+        if "start" in life and "end" in life and life["end"] >= life["start"]
+    ]
+
     # Buffer occupancy time series (step events)
     buffer_occ: dict[str, list[tuple[float, float, float]]] = defaultdict(list)
     for row in sorted(buffer_rows, key=lambda r: _time_s(r, logic_dt)):
@@ -537,7 +572,17 @@ def compute_window_features(
             if life.get("start", float("inf")) < w1
             and life.get("end", float("inf")) >= w0
         )
-        throughput_rolling = sum(1 for t in completed_jobs if w0 <= t < w1) / wlen
+        wip_at_window_end = sum(
+            1
+            for life in job_lifetimes.values()
+            if life.get("start", float("inf")) < w1
+            and life.get("end", float("inf")) > w1
+        )
+        window_completed_jobs = sum(1 for t in completed_jobs if w0 <= t < w1)
+        throughput_rolling = window_completed_jobs / wlen
+        window_cycle_times = [
+            cycle for completed_at, cycle in completed_cycle_times if w0 <= completed_at < w1
+        ]
         states_at_end = [_state_at(tl.intervals, w1) for tl in timelines.values()]
         num_busy = sum(state in ACTIVE_STATES for state in states_at_end)
         num_blocked = sum(state in BLOCKED_STATES for state in states_at_end)
@@ -646,8 +691,21 @@ def compute_window_features(
                     "transport_waiting_time_s": round(transport_waiting, 6),
                     "route_delay_s": round(route_delay, 6),
                     "material_shortage_flag_s": round(material_shortage, 6),
-                    "total_WIP": total_wip,
+                    "total_WIP": (
+                        wip_at_window_end
+                        if label_version == LABEL_VERSION_V2_1
+                        else total_wip
+                    ),
+                    "wip_overlap_count": total_wip,
+                    "wip_at_window_end": wip_at_window_end,
                     "throughput_rolling": round(throughput_rolling, 6),
+                    "completed_jobs_in_window": window_completed_jobs,
+                    "completed_cycle_times_s": json.dumps(window_cycle_times),
+                    "cycle_time_median_s": (
+                        round(statistics.median(window_cycle_times), 6)
+                        if window_cycle_times
+                        else ""
+                    ),
                     "num_busy_resources": num_busy,
                     "num_blocked_resources": num_blocked,
                     "num_starved_resources": num_starved,
@@ -815,7 +873,7 @@ def build_labels_and_events(
             windows[r["window_index"]].append(r)
 
         window_meta: dict[int, dict] = {}
-        system_history: list[dict[str, float]] = []
+        system_history: list[dict[str, Any]] = []
         for wi, rs in sorted(windows.items()):
             best = max(rs, key=lambda x: x["bottleneck_score_s"])
             peers = sorted(
@@ -827,29 +885,156 @@ def build_labels_and_events(
                 reverse=True,
             )
             relative_margin = peers[0] - peers[1] if len(peers) > 1 else peers[0]
-            current_wip = _f(rs[0].get("total_WIP"))
+            legacy_wip = _f(rs[0].get("total_WIP"))
+            point_wip = _f(rs[0].get("wip_at_window_end"), legacy_wip)
             current_throughput = _f(rs[0].get("throughput_rolling"))
-            recent = system_history[-SYSTEM_HISTORY_WINDOWS:]
-            if recent:
-                baseline_wip = statistics.mean(item["wip"] for item in recent)
-                baseline_throughput = statistics.mean(
-                    item["throughput"] for item in recent
+            current_completed = _i(
+                rs[0].get("completed_jobs_in_window"),
+                int(round(current_throughput * window_size)),
+            ) or 0
+            current_cycles = _json_float_list(
+                rs[0].get("completed_cycle_times_s")
+            )
+            current_system = {
+                "legacy_wip": legacy_wip,
+                "point_wip": point_wip,
+                "throughput": current_throughput,
+                "completed": current_completed,
+                "cycles": current_cycles,
+            }
+
+            recent_legacy = system_history[-SYSTEM_HISTORY_WINDOWS:]
+            if recent_legacy:
+                legacy_wip_baseline = statistics.mean(
+                    item["legacy_wip"] for item in recent_legacy
+                )
+                legacy_throughput_baseline = statistics.mean(
+                    item["throughput"] for item in recent_legacy
                 )
             else:
-                baseline_wip = current_wip
-                baseline_throughput = current_throughput
-            wip_growth = current_wip - baseline_wip
-            throughput_drop_ratio = (
-                max((baseline_throughput - current_throughput) / baseline_throughput, 0.0)
-                if baseline_throughput > 0
+                legacy_wip_baseline = legacy_wip
+                legacy_throughput_baseline = current_throughput
+            legacy_wip_growth = legacy_wip - legacy_wip_baseline
+            legacy_throughput_drop = (
+                max(
+                    (legacy_throughput_baseline - current_throughput)
+                    / legacy_throughput_baseline,
+                    0.0,
+                )
+                if legacy_throughput_baseline > 0
                 else 0.0
             )
-            system_impact = int(
-                wip_growth >= MIN_WIP_GROWTH
-                or throughput_drop_ratio >= MIN_THROUGHPUT_DROP_RATIO
+            legacy_system_impact = int(
+                legacy_wip_growth >= MIN_WIP_GROWTH
+                or legacy_throughput_drop >= MIN_THROUGHPUT_DROP_RATIO
             )
+            legacy_impact_reasons = []
+            if legacy_wip_growth >= MIN_WIP_GROWTH:
+                legacy_impact_reasons.append("wip_growth")
+            if legacy_throughput_drop >= MIN_THROUGHPUT_DROP_RATIO:
+                legacy_impact_reasons.append("throughput_drop")
+
+            point_history = system_history[-SYSTEM_HISTORY_WINDOWS:]
+            point_wip_baseline = (
+                statistics.mean(item["point_wip"] for item in point_history)
+                if len(point_history) == SYSTEM_HISTORY_WINDOWS
+                else point_wip
+            )
+            point_wip_growth = point_wip - point_wip_baseline
+
+            lookback_windows = max(int(math.ceil(SYSTEM_LOOKBACK_S / stride)), 1)
+            timeline = system_history + [current_system]
+            recent_period = timeline[-lookback_windows:]
+            baseline_period = timeline[-2 * lookback_windows : -lookback_windows]
+            complete_periods = (
+                len(recent_period) == lookback_windows
+                and len(baseline_period) == lookback_windows
+            )
+            recent_completed = sum(item["completed"] for item in recent_period)
+            baseline_completed = sum(item["completed"] for item in baseline_period)
+            smoothed_throughput_drop = (
+                max((baseline_completed - recent_completed) / baseline_completed, 0.0)
+                if complete_periods
+                and baseline_completed >= MIN_BASELINE_COMPLETIONS
+                else 0.0
+            )
+            recent_cycles = [
+                cycle for item in recent_period for cycle in item["cycles"]
+            ]
+            baseline_cycles = [
+                cycle for item in baseline_period for cycle in item["cycles"]
+            ]
+            if (
+                complete_periods
+                and len(recent_cycles) >= MIN_CYCLE_COMPLETIONS
+                and len(baseline_cycles) >= MIN_CYCLE_COMPLETIONS
+            ):
+                baseline_cycle_median = statistics.median(baseline_cycles)
+                cycle_time_growth_ratio = (
+                    max(
+                        (
+                            statistics.median(recent_cycles)
+                            - baseline_cycle_median
+                        )
+                        / baseline_cycle_median,
+                        0.0,
+                    )
+                    if baseline_cycle_median > 0
+                    else 0.0
+                )
+            else:
+                cycle_time_growth_ratio = 0.0
+
+            impact_reasons = []
+            if point_wip_growth >= MIN_WIP_GROWTH:
+                impact_reasons.append("wip_growth")
+            if smoothed_throughput_drop >= MIN_THROUGHPUT_DROP_RATIO:
+                impact_reasons.append("throughput_drop")
+            if cycle_time_growth_ratio >= MIN_CYCLE_TIME_GROWTH_RATIO:
+                impact_reasons.append("cycle_time_growth")
+            v2_1_system_impact = int(bool(impact_reasons))
+
             absolute_gate = best["bottleneck_score_s"] >= score_threshold
             relative_gate = relative_margin >= DEFAULT_RELATIVE_MARGIN
+            warmup_gate = int(_f(rs[0].get("window_start_s")) >= WARMUP_S)
+            is_buffer = _node_category(best) == "buffer"
+            propagation = (
+                _f(best.get("upstream_blocked_ratio_s")) > 0
+                or _f(best.get("downstream_starved_ratio_s")) > 0
+            )
+            buffer_pressure_gate = int(
+                not is_buffer
+                or _f(best.get("queue_growth_rate_s")) > 0
+                or (
+                    _f(best.get("occupancy_ratio_s"))
+                    >= BUFFER_HIGH_OCCUPANCY_RATIO
+                    and propagation
+                )
+            )
+            context_gate = int(warmup_gate and buffer_pressure_gate)
+            if label_version == LABEL_VERSION_V1:
+                is_hot = absolute_gate
+                selected_wip_growth = legacy_wip_growth
+                selected_throughput_drop = legacy_throughput_drop
+                selected_system_impact = legacy_system_impact
+                selected_impact_reasons = legacy_impact_reasons
+            elif label_version == LABEL_VERSION_V2:
+                is_hot = absolute_gate and relative_gate and legacy_system_impact
+                selected_wip_growth = legacy_wip_growth
+                selected_throughput_drop = legacy_throughput_drop
+                selected_system_impact = legacy_system_impact
+                selected_impact_reasons = legacy_impact_reasons
+            else:
+                is_hot = (
+                    absolute_gate
+                    and relative_gate
+                    and v2_1_system_impact
+                    and context_gate
+                )
+                selected_wip_growth = point_wip_growth
+                selected_throughput_drop = smoothed_throughput_drop
+                selected_system_impact = v2_1_system_impact
+                selected_impact_reasons = impact_reasons
             window_meta[wi] = {
                 "window_index": wi,
                 "window_start_s": rs[0]["window_start_s"],
@@ -865,19 +1050,20 @@ def build_labels_and_events(
                 "bottleneck_type_t": best["resource_type"],
                 "bottleneck_score_t": best["bottleneck_score_s"],
                 "relative_score_margin_t": round(relative_margin, 6),
-                "wip_growth_t": round(wip_growth, 6),
-                "throughput_drop_ratio_t": round(throughput_drop_ratio, 6),
-                "system_impact_flag_t": system_impact,
+                "wip_growth_t": round(selected_wip_growth, 6),
+                "throughput_drop_ratio_t": round(selected_throughput_drop, 6),
+                "cycle_time_growth_ratio_t": round(cycle_time_growth_ratio, 6),
+                "baseline_completed_jobs_t": baseline_completed,
+                "recent_completed_jobs_t": recent_completed,
+                "system_impact_flag_t": selected_system_impact,
+                "system_impact_reason_t": "+".join(selected_impact_reasons),
+                "warmup_gate_t": warmup_gate,
+                "buffer_pressure_gate_t": buffer_pressure_gate,
+                "label_context_gate_t": context_gate,
                 "bottleneck_symptom_type_t": _symptom_type(best),
-                "is_bottleneck_window": int(
-                    absolute_gate
-                    if label_version == LABEL_VERSION_V1
-                    else absolute_gate and relative_gate and system_impact
-                ),
+                "is_bottleneck_window": int(is_hot),
             }
-            system_history.append(
-                {"wip": current_wip, "throughput": current_throughput}
-            )
+            system_history.append(current_system)
 
         # Merge consecutive high-score windows into events
         events: list[dict] = []
@@ -1342,6 +1528,12 @@ def process_env_dir(
             "history_windows": SYSTEM_HISTORY_WINDOWS,
             "min_wip_growth": MIN_WIP_GROWTH,
             "min_throughput_drop_ratio": MIN_THROUGHPUT_DROP_RATIO,
+            "system_lookback_s": SYSTEM_LOOKBACK_S,
+            "warmup_s": WARMUP_S,
+            "min_baseline_completions": MIN_BASELINE_COMPLETIONS,
+            "min_cycle_completions": MIN_CYCLE_COMPLETIONS,
+            "min_cycle_time_growth_ratio": MIN_CYCLE_TIME_GROWTH_RATIO,
+            "buffer_high_occupancy_ratio": BUFFER_HIGH_OCCUPANCY_RATIO,
         },
         "min_event_windows": min_event_windows,
         "prediction_horizon": horizon,
@@ -1441,6 +1633,10 @@ def process_env_dir(
                     if label["bottleneck_score_t"] >= threshold
                     and label["relative_score_margin_t"] >= DEFAULT_RELATIVE_MARGIN
                     and label["system_impact_flag_t"] == 1
+                    and (
+                        label_version != LABEL_VERSION_V2_1
+                        or label["label_context_gate_t"] == 1
+                    )
                 )
                 / max(len(labels), 1)
             )
@@ -1500,16 +1696,16 @@ def main() -> None:
         "--score_threshold",
         type=float,
         default=None,
-        help="Override score threshold (defaults: v1=0.55, v2=0.65).",
+        help="Override score threshold (defaults: v1=0.55, v2/v2.1=0.65).",
     )
     parser.add_argument(
         "--min_event_windows", type=int, default=DEFAULT_MIN_EVENT_WINDOWS
     )
     parser.add_argument(
         "--label_version",
-        choices=[LABEL_VERSION_V1, LABEL_VERSION_V2],
+        choices=[LABEL_VERSION_V1, LABEL_VERSION_V2, LABEL_VERSION_V2_1],
         default=LABEL_VERSION,
-        help="Weak-label contract to generate (default: bstan_weak_v2).",
+        help="Weak-label contract to generate (default: bstan_weak_v2_1).",
     )
     parser.add_argument(
         "--out_dir",
