@@ -12,7 +12,8 @@ Writes::
     derived/window_feature_table.csv
     derived/bottleneck_label.csv
     derived/bottleneck_event.csv
-    derived/pipeline_summary.json
+    derived/job_kpi.csv              # per-job start / complete / cycle time
+    derived/pipeline_summary.json    # includes order makespan & mean cycle
 
 Usage::
 
@@ -576,6 +577,103 @@ def _write_csv(path: Path, rows: list[dict], fieldnames: list[str] | None = None
             w.writerow(r)
 
 
+def build_job_kpis(
+    job_rows: list[dict[str, str]],
+    run_id: str,
+    env_id: int,
+    episode_id: int | None = None,
+) -> tuple[list[dict], dict]:
+    """Per-job start/complete/cycle from job_trace + order-level throughput KPIs.
+
+    Definitions (logic seconds, logic_dt=1 → same as time_step):
+      - start: first ``job_selected`` for this job_id
+      - complete: ``stage_complete`` (product enters progress["finished"]);
+        fallback: last ``process_end`` on paint_rust_proof if stage_complete missing
+      - cycle_time_s: complete - start (flow / sojourn time of one pipe)
+      - order_makespan_s: max(complete) among completed jobs (from episode t=0)
+    """
+    by_job: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for r in job_rows:
+        jid = r.get("job_id", "")
+        if jid == "":
+            continue
+        by_job[jid].append(r)
+
+    kpi_rows: list[dict] = []
+    for jid in sorted(by_job.keys(), key=lambda x: int(float(x)) if str(x).replace(".", "", 1).isdigit() else str(x)):
+        evs = by_job[jid]
+        product_type = next((e.get("product_type") or "" for e in evs if e.get("product_type")), "")
+        starts = [
+            _f(e.get("logic_time_s"), _f(e.get("time_step")))
+            for e in evs
+            if e.get("event") == "job_selected"
+        ]
+        completes = [
+            _f(e.get("logic_time_s"), _f(e.get("time_step")))
+            for e in evs
+            if e.get("event") == "stage_complete"
+        ]
+        paint_ends = [
+            _f(e.get("logic_time_s"), _f(e.get("time_step")))
+            for e in evs
+            if e.get("event") == "process_end" and e.get("task") == "paint_rust_proof"
+        ]
+        start_s = min(starts) if starts else None
+        if completes:
+            complete_s = min(completes)
+            complete_source = "stage_complete"
+        elif paint_ends:
+            complete_s = min(paint_ends)
+            complete_source = "paint_process_end"
+        else:
+            complete_s = None
+            complete_source = ""
+
+        cycle = None
+        if start_s is not None and complete_s is not None:
+            cycle = complete_s - start_s
+
+        kpi_rows.append(
+            {
+                "run_id": run_id,
+                "env_id": env_id,
+                "episode_id": "" if episode_id is None else episode_id,
+                "job_id": jid,
+                "product_type": product_type,
+                "start_s": "" if start_s is None else round(start_s, 3),
+                "complete_s": "" if complete_s is None else round(complete_s, 3),
+                "cycle_time_s": "" if cycle is None else round(cycle, 3),
+                "completed": 1 if complete_s is not None else 0,
+                "complete_source": complete_source,
+            }
+        )
+
+    completed = [r for r in kpi_rows if r["completed"] == 1 and r["cycle_time_s"] != ""]
+    cycles = [float(r["cycle_time_s"]) for r in completed]
+    complete_times = [float(r["complete_s"]) for r in completed]
+    start_times = [float(r["start_s"]) for r in completed if r["start_s"] != ""]
+
+    order_summary = {
+        "n_jobs": len(kpi_rows),
+        "n_completed": len(completed),
+        "n_incomplete": len(kpi_rows) - len(completed),
+        "order_makespan_s": round(max(complete_times), 3) if complete_times else None,
+        "first_job_start_s": round(min(start_times), 3) if start_times else None,
+        "last_job_complete_s": round(max(complete_times), 3) if complete_times else None,
+        "mean_cycle_time_s": round(statistics.mean(cycles), 3) if cycles else None,
+        "median_cycle_time_s": round(statistics.median(cycles), 3) if cycles else None,
+        "std_cycle_time_s": round(statistics.pstdev(cycles), 3) if len(cycles) >= 2 else (0.0 if cycles else None),
+        "min_cycle_time_s": round(min(cycles), 3) if cycles else None,
+        "max_cycle_time_s": round(max(cycles), 3) if cycles else None,
+        "throughput_jobs_per_hour": (
+            round(len(completed) / (max(complete_times) / 3600.0), 4)
+            if complete_times and max(complete_times) > 0
+            else None
+        ),
+    }
+    return kpi_rows, order_summary
+
+
 def process_env_dir(
     env_dir: Path,
     out_dir: Path,
@@ -593,6 +691,16 @@ def process_env_dir(
 
     run_id = ep_rows[0]["run_id"] if ep_rows else env_dir.parent.name
     env_id = _i(ep_rows[0].get("env_id"), 0) if ep_rows else 0
+    episode_id = _i(ep_rows[0].get("episode_id"), None) if ep_rows else None
+    if episode_id is None:
+        # Infer from path episode_XX/env_YY
+        for part in env_dir.parts:
+            if part.startswith("episode_"):
+                try:
+                    episode_id = int(part.split("_", 1)[1])
+                except ValueError:
+                    pass
+                break
 
     times = []
     for e in events:
@@ -624,10 +732,32 @@ def process_env_dir(
     labels, event_rows = build_labels_and_events(
         all_features, horizon, score_threshold, min_event_windows
     )
+    job_kpi_rows, order_kpi = build_job_kpis(
+        job_rows,
+        run_id=run_id,
+        env_id=env_id if env_id is not None else 0,
+        episode_id=episode_id,
+    )
 
     _write_csv(out_dir / "window_feature_table.csv", all_features)
     _write_csv(out_dir / "bottleneck_label.csv", labels)
     _write_csv(out_dir / "bottleneck_event.csv", event_rows)
+    _write_csv(
+        out_dir / "job_kpi.csv",
+        job_kpi_rows,
+        fieldnames=[
+            "run_id",
+            "env_id",
+            "episode_id",
+            "job_id",
+            "product_type",
+            "start_s",
+            "complete_s",
+            "cycle_time_s",
+            "completed",
+            "complete_source",
+        ],
+    )
 
     # Summary stats
     top_nodes = []
@@ -643,11 +773,14 @@ def process_env_dir(
     summary = {
         "run_id": run_id,
         "env_id": env_id,
+        "episode_id": episode_id,
         "episode_end_s": episode_end,
         "n_resources": len(timelines),
         "n_feature_rows": len(all_features),
         "n_label_rows": len(labels),
         "n_events": len(event_rows),
+        "n_job_kpi_rows": len(job_kpi_rows),
+        "order_kpi": order_kpi,
         "window_sizes": window_sizes,
         "horizon_s": horizon,
         "score_threshold": score_threshold,
@@ -720,6 +853,14 @@ def main() -> None:
             f"labels={summary['n_label_rows']}  "
             f"events={summary['n_events']}"
         )
+        okpi = summary.get("order_kpi") or {}
+        if okpi.get("n_completed"):
+            print(
+                f"  jobs={okpi.get('n_completed')}/{okpi.get('n_jobs')}  "
+                f"makespan={okpi.get('order_makespan_s')}s  "
+                f"mean_cycle={okpi.get('mean_cycle_time_s')}s  "
+                f"throughput={okpi.get('throughput_jobs_per_hour')}/h"
+            )
         for ps in summary["per_window_size"]:
             print(f"  ws={ps['window_size_s']}: hot_windows={ps['hot_windows']} top={ps['top_nodes'][:3]}")
 

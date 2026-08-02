@@ -97,6 +97,7 @@ class GantryGroupAnimation(PoseAnimation):
         self.step_time = [0.0] * self.num_gantrys
         self.is_yield_move = [False] * self.num_gantrys
         self.animation_time_target = [float(self.base_animation_time)] * self.num_gantrys
+        self.blocked_steps = [0] * self.num_gantrys
         self.done = self.is_done()
 
     def _gantry_animation_time(self, gantry_index: int) -> float:
@@ -111,6 +112,20 @@ class GantryGroupAnimation(PoseAnimation):
         gantry_mask = self._gantry_mask(gantry_index)
         return self.start_pose[gantry_mask] + (self.end_pose[gantry_mask] - self.start_pose[gantry_mask]) * t
 
+    def _is_blocked_by_gap(
+        self,
+        proposed_x: float,
+        gantry_index: int,
+        committed_world_x: dict[int, float],
+        gap: float,
+    ) -> bool:
+        for other_index, other_x in committed_world_x.items():
+            if other_index == gantry_index:
+                continue
+            if abs(proposed_x - other_x) < gap:
+                return True
+        return False
+
     def step_next_pose(
         self,
         joint_position: torch.Tensor,
@@ -118,8 +133,15 @@ class GantryGroupAnimation(PoseAnimation):
         safe_x_gap: float,
         world_x_fn,
         priority_fn,
+        block_timeout: int = 400,
+        relaxed_gap_scale: float = 0.25,
     ):
-        """Advance active gantries; enforce safe_x_gap on x axis for all active gantries."""
+        """Advance active gantries; enforce safe_x_gap, with timeout unlock for mutual blocks.
+
+        If a gantry stays blocked by ``safe_x_gap`` for ``block_timeout`` steps, the gap is
+        relaxed to ``safe_x_gap * relaxed_gap_scale``. After ``2 * block_timeout`` steps the
+        move is forced through so dual-gantry deadlocks cannot freeze the episode forever.
+        """
         next_pose = joint_position.clone()
         move_order = sorted(
             active_indices,
@@ -139,22 +161,36 @@ class GantryGroupAnimation(PoseAnimation):
         for gantry_index in move_order:
             gantry_mask = self._gantry_mask(gantry_index)
             if self.done[gantry_index]:
+                self.blocked_steps[gantry_index] = 0
                 continue
 
             anim_time = self._gantry_animation_time(gantry_index)
+            if anim_time <= 0:
+                anim_time = 1.0
             t_next = min(self.step_time[gantry_index] + 1.0, anim_time) / anim_time
             proposed = self._lerp_gantry_pose(gantry_index, t_next)
             proposed_pose = next_pose.clone()
             proposed_pose[gantry_mask] = proposed
             proposed_x = world_x_fn(gantry_index, proposed_pose)
 
-            blocked = False
-            for other_index, other_x in committed_world_x.items():
-                if other_index == gantry_index:
-                    continue
-                if abs(proposed_x - other_x) < safe_x_gap:
-                    blocked = True
-                    break
+            gap = safe_x_gap
+            blocked = self._is_blocked_by_gap(proposed_x, gantry_index, committed_world_x, gap)
+            if blocked:
+                self.blocked_steps[gantry_index] += 1
+                if self.blocked_steps[gantry_index] >= block_timeout:
+                    gap = max(1e-3, safe_x_gap * relaxed_gap_scale)
+                    blocked = self._is_blocked_by_gap(
+                        proposed_x, gantry_index, committed_world_x, gap
+                    )
+                if blocked and self.blocked_steps[gantry_index] >= 2 * block_timeout:
+                    # Hard unlock: accept a temporary spacing violation rather than freeze.
+                    blocked = False
+                    print(
+                        f"[GantryUnlock] force advance gantry_{gantry_index} "
+                        f"after {self.blocked_steps[gantry_index]} blocked steps"
+                    )
+            else:
+                self.blocked_steps[gantry_index] = 0
 
             if blocked:
                 t_current = self.step_time[gantry_index] / anim_time
@@ -165,6 +201,7 @@ class GantryGroupAnimation(PoseAnimation):
                 next_pose[gantry_mask] = proposed
                 if self.step_time[gantry_index] >= anim_time:
                     self.done[gantry_index] = True
+                    self.blocked_steps[gantry_index] = 0
 
             committed_world_x[gantry_index] = world_x_fn(gantry_index, next_pose)
 
@@ -193,6 +230,7 @@ class GantryGroupAnimation(PoseAnimation):
         self.step_time[gantry_index] = 0.0
         self.is_yield_move[gantry_index] = is_yield
         self.done[gantry_index] = False
+        self.blocked_steps[gantry_index] = 0
         self.animation_time_target[gantry_index] = float(
             sample_noisy_steps(self.base_animation_time, self.animation_time_noise_std)
         )
@@ -217,6 +255,7 @@ class GantryGroupAnimation(PoseAnimation):
         self.end_pose[gantry_mask] = pose[gantry_mask]
         self.step_time[gantry_index] = self._gantry_animation_time(gantry_index)
         self.is_yield_move[gantry_index] = False
+        self.blocked_steps[gantry_index] = 0
         self.done[gantry_index] = True
 
 

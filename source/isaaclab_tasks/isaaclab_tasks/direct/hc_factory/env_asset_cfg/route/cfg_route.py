@@ -1,14 +1,21 @@
 import json
 import os
+from pathlib import Path
+
 import torch
 
+# Package-local assets (occupancy maps / map points) live next to this file.
+_ROUTE_DIR = Path(__file__).resolve().parent
+# Precomputed route graphs are external HC dataset files.
+_HC_MAP_DATA_DIR = Path.home() / "work" / "Dataset" / "HC_data" / "map_data"
+
 CfgRoute = {
-    "map_path_human": "~/work/isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/route/occupancy_map4human.png",
-    "points_path_human": "~/work/isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/route/map_points_human.json",
-    "routes_path_human": "~/work/Dataset/HC_data/map_data/map_routes_human.json",
-    "map_path_robot": "~/work/isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/route/occupancy_map4robot.png",
-    "points_path_robot": "~/work/isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/route/map_points_robot.json",
-    "routes_path_robot": "~/work/Dataset/HC_data/map_data/map_routes_robot.json",   
+    "map_path_human": str(_ROUTE_DIR / "occupancy_map4human.png"),
+    "points_path_human": str(_ROUTE_DIR / "map_points_human.json"),
+    "routes_path_human": str(_HC_MAP_DATA_DIR / "map_routes_human.json"),
+    "map_path_robot": str(_ROUTE_DIR / "occupancy_map4robot.png"),
+    "points_path_robot": str(_ROUTE_DIR / "map_points_robot.json"),
+    "routes_path_robot": str(_HC_MAP_DATA_DIR / "map_routes_robot.json"),
     "png_image_coordinates": {
         "top_left": [0, 0],
         "bottom_right": [2202, 1645],

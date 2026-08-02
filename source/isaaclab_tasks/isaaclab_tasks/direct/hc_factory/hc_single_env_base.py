@@ -39,6 +39,7 @@ from .env_asset_cfg.cfg_hc_env import SingleEnvStateActionDictTemplate, HcVector
 # from .env_asset_cfg.cfg_perception import CfgPerception
 from .env_asset_cfg.cfg_bottleneck_data import CfgBottleneckData
 from .src.bottleneck_data import BottleneckDataCollector # added: for bottleneck data collection
+from .src.disturbance import DisturbanceInjector
 from .env_asset_cfg.perception.cfg_perception import CfgPerception
 from .src.algo_multiagent_masker import AlgoMultiAgentMasker
 from .src.task_progress_manager import TaskManager
@@ -46,15 +47,26 @@ from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.src import algo_mult
 import time
 
 class HcSingleEnvBase():
-    def __init__(self, env_id: int, route_manager: RouteManagerVectorEnv, cuda_device: torch.device):
+    def __init__(
+        self,
+        env_id: int,
+        route_manager: RouteManagerVectorEnv,
+        cuda_device: torch.device,
+        max_episodes: int | None = None,
+    ):
         self.env_id : int = env_id
         self.env_id_str : str = f"env_{env_id}"
         self.cuda_device = cuda_device
+        self.max_episodes = max_episodes
         self.reward_buf = torch.zeros(1, dtype=torch.float32, device=self.cuda_device)
         # 每个 env 持有独立的 state dict，避免多 env 共享引用导致状态串扰
         self.env_state_action_dict = copy.deepcopy(SingleEnvStateActionDictTemplate)
         self.route_manager = route_manager
         self.episode_num = 0
+        # Episode-level stall watchdog (logic steps with no progress signature change).
+        self.stall_timeout_steps = 5000
+        self._stall_steps = 0
+        self._last_progress_sig = None
         self.register_env_assets()
     
     def register_env_assets(self):
@@ -69,6 +81,9 @@ class HcSingleEnvBase():
         )
         self.bottleneck_collector = BottleneckDataCollector(
             env_id=self.env_id, cfg=CfgBottleneckData # added: for bottleneck data collection
+        )
+        self.disturbance_injector = DisturbanceInjector(
+            env_id=self.env_id, collector=self.bottleneck_collector
         )
         self.algo_multiagent_masker = AlgoMultiAgentMasker(self.cuda_device)
         self.task_manager = TaskManager(self.cuda_device)
@@ -102,9 +117,13 @@ class HcSingleEnvBase():
             m.reset(self.env_state_action_dict)
         self.env_state_action_dict["time_step"] = 0
         self.env_state_action_dict["episode_num"] = self.episode_num
+        self.env_state_action_dict["run_done"] = False
         self.episode_num += 1
+        self._stall_steps = 0
+        self._last_progress_sig = None
         self.perception_manager.reset(self.env_state_action_dict)
         self.bottleneck_collector.reset(self.env_state_action_dict)
+        self.disturbance_injector.reset(self.env_state_action_dict)
         return self.env_state_action_dict
 
     def apply_data_to_sim(self) -> None:
@@ -123,18 +142,93 @@ class HcSingleEnvBase():
             rigid_prim.set_local_poses(translations=data["position"], orientations=data["orientation"])
             rigid_prim.set_velocities(torch.zeros((1,6), device=self.cuda_device))
 
+    def _progress_signature(self) -> tuple:
+        """Compact fingerprint of production progress for stall detection."""
+        progress = self.env_state_action_dict.get("progress", {})
+        finished = tuple(
+            (k, tuple(v)) for k, v in sorted((progress.get("finished") or {}).items())
+        )
+        ongoing = []
+        for jid, tr in sorted((progress.get("ongoing_task_records") or {}).items()):
+            sd = tr.get("subtasks_dict") or {}
+            finished_flags = sd.get("finished") or []
+            ongoing.append(
+                (
+                    jid,
+                    tr.get("task"),
+                    sd.get("ongoing_index"),
+                    tuple(bool(x) for x in finished_flags),
+                    tr.get("chosen_gantry_index"),
+                    tr.get("chosen_workstation_index"),
+                )
+            )
+        machines = []
+        for name, mstate in sorted((self.env_state_action_dict.get("machine") or {}).items()):
+            machines.append((name, tuple(mstate.get("state") or [])))
+        return (finished, tuple(ongoing), tuple(machines))
+
+    def _maybe_watchdog_reset(self) -> bool:
+        """Reset episode if logic state stops progressing for stall_timeout_steps."""
+        if self.env_state_action_dict.get("progress", {}).get("production_done"):
+            self._stall_steps = 0
+            return False
+        sig = self._progress_signature()
+        if sig == self._last_progress_sig:
+            self._stall_steps += 1
+        else:
+            self._last_progress_sig = sig
+            self._stall_steps = 0
+            return False
+        if self._stall_steps < self.stall_timeout_steps:
+            return False
+
+        t = self.env_state_action_dict.get("time_step", 0)
+        print(
+            f"[DeadlockWatchdog] env_{self.env_id} stall={self._stall_steps} "
+            f"at t={t}; forcing episode reset"
+        )
+        if self.bottleneck_collector is not None:
+            try:
+                self.bottleneck_collector.log_disturbance(
+                    {
+                        "disturbance_id": "deadlock_watchdog",
+                        "disturbance_type": "deadlock_reset",
+                        "target_resource_id": "episode",
+                        "target_resource_type": "system",
+                        "start_time_step": t,
+                        "end_time_step": t,
+                        "intensity": 1.0,
+                        "parameter_before": "stalled",
+                        "parameter_after": "reset",
+                        "notes": f"no progress for {self._stall_steps} steps",
+                    }
+                )
+            except Exception:
+                pass
+        self.reset_env()
+        return True
+
     def step_env_logic(self, action: dict | None = None, action_extra: list[dict] | None = None) -> None:
         # time_start = time.time()
         self.env_state_action_dict['action'] = action
-        for m in self.iter_managers():
+        # Apply action first (task assignment), then inject L2 disturbance on leftover
+        # free resources, then refresh masks so the next action sees DOWN / absent.
+        managers = self.iter_managers()
+        for m in managers[:-1]:
             m.step(self.env_state_action_dict)
+        self.disturbance_injector.step(self.env_state_action_dict)
+        managers[-1].step(self.env_state_action_dict)  # algo_multiagent_masker
         self.env_state_action_dict["time_step"] += 1
         self.perception_manager.step(self.env_state_action_dict)
         self.bottleneck_collector.step(self.env_state_action_dict)
-        
-        # time_end = time.time()
-        # print(f"step_env_logic time: {time_end - time_start}")
+
+        if self._maybe_watchdog_reset():
+            return
+
         if self.env_state_action_dict["progress"]["production_done"]:
-            self.reset_env()
+            if self.max_episodes is not None and self.episode_num >= self.max_episodes:
+                self.env_state_action_dict["run_done"] = True
+            else:
+                self.reset_env()
         return
 

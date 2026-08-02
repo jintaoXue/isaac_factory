@@ -1,0 +1,67 @@
+{
+  "geo": {
+    "including_types": [
+      "Point"
+    ],
+    "Point": {}
+  },
+  "rel": {
+    "including_types": [
+      "geo"
+    ],
+    "geo": {
+      "cost": "num"
+    }
+  },
+  "dyna": {
+    "including_types": [
+      "state"
+    ],
+    "state": {
+      "bottleneck_score_s": "num",
+      "queue_length_s": "num",
+      "avg_waiting_time_s": "num",
+      "occupancy_ratio_s": "num",
+      "queue_growth_rate_s": "num",
+      "active_pct_s": "num",
+      "current_active_duration_s": "num",
+      "blocked_time_s": "num",
+      "starved_time_s": "num",
+      "inter_departure_var_s": "num",
+      "upstream_blocked_ratio_s": "num",
+      "downstream_starved_ratio_s": "num",
+      "route_delay_s": "num",
+      "material_shortage_propagation_s": "num"
+    }
+  },
+  "info": {
+    "data_col": [
+      "bottleneck_score_s",
+      "queue_length_s",
+      "avg_waiting_time_s",
+      "occupancy_ratio_s",
+      "queue_growth_rate_s",
+      "active_pct_s",
+      "current_active_duration_s",
+      "blocked_time_s",
+      "starved_time_s",
+      "inter_departure_var_s",
+      "upstream_blocked_ratio_s",
+      "downstream_starved_ratio_s",
+      "route_delay_s",
+      "material_shortage_propagation_s"
+    ],
+    "weight_col": "cost",
+    "data_files": [
+      "FactoryBN"
+    ],
+    "geo_file": "FactoryBN",
+    "rel_file": "FactoryBN",
+    "output_dim": 1,
+    "time_intervals": 60,
+    "init_weight_inf_or_zero": "inf",
+    "set_weight_link_or_dist": "dist",
+    "calculate_weight_adj": false,
+    "weight_adj_epsilon": 0.1
+  }
+}

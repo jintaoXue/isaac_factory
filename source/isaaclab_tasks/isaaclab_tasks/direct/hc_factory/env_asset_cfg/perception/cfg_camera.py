@@ -67,7 +67,8 @@ CAMERA_POSES = {
     },
     "num01_weldingRobot": {
         "camera_num01_weldingRobot_part02_robot_arm_and_base": {
-            "eye": (24.75003, 20, 12),
+            "eye": (24.75003, 18, 9),
+            # "eye": (24.75003, 20, 12),
             "lookat": (24.75003, 14.5, 1.0),
             "ground_footprint_xy": [[16.0, 7.7], [34.0, 7.7], [30.88481, 19.2], [18.52796, 19.2]],
         },
@@ -81,14 +82,16 @@ CAMERA_POSES = {
     },
     "num04_groovingMachineLarge": {
         "camera_num04_groovingMachineLarge_part01_large_fixed_base": {
-            "eye": (-7.65483, 20, 12),
+            "eye": (-7.65483, 18, 9),
+            # "eye": (-7.65483, 20, 12),
             "lookat": (-7.65483, 14.5, 1.0),
             "ground_footprint_xy": [[-16.2, 7.7], [1.2, 7.7], [-1.59264, 19.2], [-13.38389, 19.2]],
         },
     },
     "num08_workbench": {
         "camera_num08_workbench": {
-            "eye": (26, -3, 12),
+            "eye": (26, -3, 15),
+            # "eye": (26, -3, 12),
             "lookat": (26, -1, 1.0),
             "ground_footprint_xy": [[19.59869, -3.7], [32.5, -3.7], [33.3215, 3.7], [18.75174, 3.7]],
         },
@@ -160,7 +163,7 @@ def _make_machine_camera(
         "camera_sensor": _CAMERA_SENSOR,
         "reset_state": _CAMERA_RESET_STATE,
         "debug_save_frames": True,
-        "debug_max_frames": 2500,
+        "debug_max_frames": 3000,
     }
 
 

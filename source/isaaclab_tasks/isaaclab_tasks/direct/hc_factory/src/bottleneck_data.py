@@ -19,6 +19,7 @@ from ..env_asset_cfg.cfg_process_task_gallery import (
     CfgProductProcessGallery,
 )
 from ..env_asset_cfg.cfg_robot import CfgRobotRegistrationInfos
+from ..env_asset_cfg.cfg_disturbance import RuntimeDisturbanceCfg
 
 AGENT_COL_HUMAN = 0
 AGENT_COL_GANTRY = 1
@@ -363,6 +364,39 @@ class BottleneckDataCollector:
 
         self._steps_logged += 1
 
+    def log_disturbance(self, row: dict) -> None:
+        """Append one disturbance_log row (called by DisturbanceInjector)."""
+        if not self.enabled or self._disturbance_writer is None:
+            return
+        t = row.get("start_time_step", 0)
+        try:
+            t_int = int(t) if t != "" and t is not None else 0
+        except (TypeError, ValueError):
+            t_int = 0
+        end = row.get("end_time_step", "")
+        try:
+            end_int = int(end) if end != "" and end is not None else None
+        except (TypeError, ValueError):
+            end_int = None
+        self._disturbance_writer.write_row(
+            {
+                "run_id": BottleneckRunContext.run_id,
+                "env_id": self.env_id,
+                "disturbance_id": row.get("disturbance_id", ""),
+                "disturbance_type": row.get("disturbance_type", ""),
+                "target_resource_id": row.get("target_resource_id", ""),
+                "target_resource_type": row.get("target_resource_type", ""),
+                "start_time_step": t_int,
+                "end_time_step": end if end_int is None else end_int,
+                "start_logic_time_s": _logic_time_s(t_int),
+                "end_logic_time_s": "" if end_int is None else _logic_time_s(end_int),
+                "intensity": row.get("intensity", ""),
+                "parameter_before": row.get("parameter_before", ""),
+                "parameter_after": row.get("parameter_after", ""),
+                "notes": row.get("notes", ""),
+            }
+        )
+
     # ------------------------------------------------------------------
     # Setup
     # ------------------------------------------------------------------
@@ -411,6 +445,7 @@ class BottleneckDataCollector:
                 "product_mix", "process_time_config", "subtask_time_config",
                 "buffer_capacity_config", "human_config", "robot_config", "gantry_config",
                 "parallel_producing_limit", "arrival_rate",
+                "disturbance_dim", "disturbance_intensity", "disturbance_applied",
                 "env_yaml_path", "agent_yaml_path", "collector_version",
             ],
         )
@@ -503,6 +538,9 @@ class BottleneckDataCollector:
             "gantry_config": json.dumps({"active_gantry_indices": gantry_cfg.get("active_gantry_indices", [])}),
             "parallel_producing_limit": HcVectorEnvCfg().single_env_parallel_producing_limit,
             "arrival_rate": "",
+            "disturbance_dim": RuntimeDisturbanceCfg.get("dim", "none"),
+            "disturbance_intensity": RuntimeDisturbanceCfg.get("intensity", 0.0),
+            "disturbance_applied": json.dumps(RuntimeDisturbanceCfg.get("applied") or {}),
             "env_yaml_path": BottleneckRunContext.env_yaml_path,
             "agent_yaml_path": BottleneckRunContext.agent_yaml_path,
             "collector_version": self.cfg.get("collector_version", "v0.2"),

@@ -29,6 +29,7 @@ from isaaclab.envs.common import ViewerCfg
 SingleEnvStateActionDictTemplate : dict = {
     "time_step": 0,
     "episode_num": 0,
+    "run_done": False,
     "machine": {},
     "material": {},
     "human": {},
@@ -178,6 +179,8 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     human_number_upper_bound = 10
     robot_upper_bound = 2
     material_batch_upper_bound = 15
+    # None = run until manually stopped; 1 = single episode then exit.
+    max_episodes: int | None = None
 
 
 

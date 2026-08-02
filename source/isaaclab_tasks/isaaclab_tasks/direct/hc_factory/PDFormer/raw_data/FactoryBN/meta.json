@@ -1,0 +1,50 @@
+{
+  "run_dir": "/home/sci/work/isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset/18_materials",
+  "window_size_s": 60.0,
+  "num_nodes": 34,
+  "feature_dim": 18,
+  "ops_feature_dim": 13,
+  "resource_types": [
+    "machine",
+    "gantry",
+    "human",
+    "transport_robot",
+    "buffer"
+  ],
+  "feature_cols": [
+    "queue_length_s",
+    "avg_waiting_time_s",
+    "occupancy_ratio_s",
+    "queue_growth_rate_s",
+    "active_pct_s",
+    "current_active_duration_s",
+    "blocked_time_s",
+    "starved_time_s",
+    "inter_departure_var_s",
+    "upstream_blocked_ratio_s",
+    "downstream_starved_ratio_s",
+    "route_delay_s",
+    "material_shortage_propagation_s"
+  ],
+  "target_col": "bottleneck_score_s",
+  "episodes": {
+    "episode_00": {
+      "T": 174,
+      "will_positive": 2,
+      "hot_windows": 14,
+      "n_events": 2
+    },
+    "episode_01": {
+      "T": 170,
+      "will_positive": 0,
+      "hot_windows": 19,
+      "n_events": 0
+    }
+  },
+  "notes": [
+    "Input X uses FEATURE_COLS + type one-hot; does NOT include bottleneck_score_s (label leak).",
+    "Score head (PDFormer): future bottleneck_score_s.",
+    "Event path (STGNPP): per-node sequences from bottleneck_event.csv + NLL intensity.",
+    "Window will/mark/tts kept as auxiliary when events are sparse."
+  ]
+}
