@@ -46,6 +46,12 @@ class TestBstanModel(unittest.TestCase):
         batch_size, time_steps, node_count = 4, 4, self.config.num_nodes
         node_mask = torch.ones(batch_size, node_count, dtype=torch.bool)
         node_mask[:, -1] = False
+        target_node_mask = node_mask.clone()
+        target_node_mask[:, -2] = False
+        target_type_mask = torch.ones(
+            batch_size, self.config.num_types, dtype=torch.bool
+        )
+        target_type_mask[:, -1] = False
         adjacency = torch.ones(batch_size, node_count, node_count, dtype=torch.bool)
         adjacency[:, -1, :] = False
         adjacency[:, :, -1] = False
@@ -54,6 +60,8 @@ class TestBstanModel(unittest.TestCase):
             "x": torch.randn(batch_size, time_steps, node_count, self.config.input_dim),
             "adjacency": adjacency,
             "node_mask": node_mask,
+            "target_node_mask": target_node_mask,
+            "target_type_mask": target_type_mask,
             "global_features": torch.randn(
                 batch_size, time_steps, self.config.global_dim
             ),
@@ -71,7 +79,14 @@ class TestBstanModel(unittest.TestCase):
     def _inputs(batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         return {
             name: batch[name]
-            for name in ("x", "adjacency", "node_mask", "global_features")
+            for name in (
+                "x",
+                "adjacency",
+                "node_mask",
+                "target_node_mask",
+                "target_type_mask",
+                "global_features",
+            )
         }
 
     def test_forward_shapes_and_masked_node_logits(self) -> None:
@@ -83,8 +98,12 @@ class TestBstanModel(unittest.TestCase):
         self.assertEqual(outputs["type_logits"].shape, (4, 3))
         self.assertEqual(outputs["node_hidden"].shape, (4, 5, 8))
         self.assertTrue((outputs["node_logits"][:, -1] < -1.0e8).all())
+        self.assertTrue((outputs["node_logits"][:, -2] < -1.0e8).all())
         probabilities = torch.softmax(outputs["node_logits"], dim=-1)
         self.assertTrue(torch.equal(probabilities[:, -1], torch.zeros(4)))
+        self.assertTrue(torch.equal(probabilities[:, -2], torch.zeros(4)))
+        type_probabilities = torch.softmax(outputs["type_logits"], dim=-1)
+        self.assertTrue(torch.equal(type_probabilities[:, -1], torch.zeros(4)))
 
     def test_loss_without_positive_samples_is_finite(self) -> None:
         model = BstanGatGru(self.config)

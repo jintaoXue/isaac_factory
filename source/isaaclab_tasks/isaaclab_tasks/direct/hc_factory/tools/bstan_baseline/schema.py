@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 
-DATASET_VERSION = "bstan_dataset_v2"
-LABEL_VERSION = "bstan_weak_v2_2"
+DATASET_VERSION = "bstan_dataset_v3"
+LABEL_VERSION = "bstan_weak_v2_3"
 COLLECTOR_VERSION = "v0.6"
+TARGET_NODE_CATEGORY = "process"
 
 CONTINUOUS_FEATURES = (
     "queue_length_s",

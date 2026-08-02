@@ -37,7 +37,7 @@ class TestBstanDataset(unittest.TestCase):
             raw_dir = run_dir / f"episode_{episode_id:02d}" / "env_00"
             derived_dir = (
                 run_dir
-                / "derived_phase_b_v2_2"
+                / "derived_phase_b_v2_3"
                 / f"episode_{episode_id:02d}"
                 / "env_00"
             )
@@ -122,7 +122,7 @@ class TestBstanDataset(unittest.TestCase):
                         "duration": 60 if positive else "",
                         "severity_weak": 0.8 if positive else "",
                         "duration_observed": int(positive),
-                        "label_version": "bstan_weak_v2_2",
+                        "label_version": "bstan_weak_v2_3",
                         "prediction_horizon": 120,
                     }
                 )
@@ -159,7 +159,20 @@ class TestBstanDataset(unittest.TestCase):
             self.assertEqual(payload["x"].shape[-1], len(CONTINUOUS_FEATURES) + 2)
             self.assertEqual(payload["global_features"].shape, (30, 4, 6))
             self.assertEqual(payload["adjacency"].shape, (30, 2, 2))
+            self.assertEqual(payload["target_node_mask"].shape, (30, 2))
+            machine_index = manifest["node_ids"].index("machine_a_ws0")
+            buffer_index = manifest["node_ids"].index("storage_BlackStorage_00")
+            self.assertTrue(payload["target_node_mask"][:, machine_index].all())
+            self.assertFalse(payload["target_node_mask"][:, buffer_index].any())
+            self.assertEqual(payload["target_type_mask"].shape, (30, 2))
+            machine_type_index = manifest["resource_types"].index("machine")
+            buffer_type_index = manifest["resource_types"].index("buffer")
+            self.assertTrue(payload["target_type_mask"][:, machine_type_index].all())
+            self.assertFalse(payload["target_type_mask"][:, buffer_type_index].any())
             self.assertTrue(torch.isfinite(payload["x"]).all())
+            self.assertEqual(manifest["dataset_version"], "bstan_dataset_v3")
+            self.assertEqual(manifest["label_version"], "bstan_weak_v2_3")
+            self.assertEqual(manifest["target_node_category"], "process")
             self.assertEqual(manifest["positive_samples"], 5)
             self.assertEqual(
                 manifest["episode_counts"], {"train": 4, "validation": 1, "test": 1}

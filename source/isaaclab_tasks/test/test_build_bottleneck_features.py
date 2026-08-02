@@ -37,7 +37,6 @@ class TestPhaseBFeatures(unittest.TestCase):
         resource_type="machine",
         point_wip=0,
         completed_operations=0,
-        cycles=None,
         queue_growth=0.0,
         occupancy=0.0,
         propagation=0.0,
@@ -69,7 +68,6 @@ class TestPhaseBFeatures(unittest.TestCase):
             "wip_at_window_end": point_wip,
             "operation_throughput_rolling": completed_operations / 30.0,
             "completed_operations_in_window": completed_operations,
-            "completed_operation_cycle_times_s": json.dumps(cycles or []),
         }
 
     def test_complete_strided_windows_and_local_features(self):
@@ -211,7 +209,6 @@ class TestPhaseBFeatures(unittest.TestCase):
         self.assertEqual(first["wip_overlap_count"], 1)
         self.assertEqual(first["wip_at_window_end"], 0)
         self.assertEqual(first["completed_operations_in_window"], 1)
-        self.assertEqual(json.loads(first["completed_operation_cycle_times_s"]), [20.0])
         self.assertEqual(first["runtime_disturbance_active"], 1)
         self.assertEqual(first["disturbance_flag"], 0)
 
@@ -340,8 +337,8 @@ class TestPhaseBFeatures(unittest.TestCase):
                     "window_end_s": (window_index + 1) * 30.0,
                     "window_size_s": 30.0,
                     "stride_s": 30.0,
-                    "resource_id": "storage_buffer_a",
-                    "resource_type": "buffer",
+                    "resource_id": "machine_a_ws0",
+                    "resource_type": "machine",
                     "bottleneck_score_s": 0.9,
                     "blocked_time_s": 0.0,
                     "starved_time_s": 0.0,
@@ -351,7 +348,6 @@ class TestPhaseBFeatures(unittest.TestCase):
                     "total_WIP": 5,
                     "operation_throughput_rolling": 0.0,
                     "completed_operations_in_window": 0,
-                    "completed_operation_cycle_times_s": "[]",
                 }
             )
 
@@ -360,14 +356,14 @@ class TestPhaseBFeatures(unittest.TestCase):
         self.assertEqual(events, [])
         self.assertTrue(all(label["is_bottleneck_window"] == 0 for label in labels))
 
-    def test_v2_2_uses_point_wip_after_warmup(self):
+    def test_v2_3_uses_point_wip_after_warmup(self):
         point_wip = [0, 0, 0, 0, 0, 1, 2, 3, 4, 5]
         rows = [
             self._system_row(index, point_wip=value)
             for index, value in enumerate(point_wip)
         ]
 
-        labels, events = MODULE.build_labels_and_events(rows, 60.0, 0.65, 2, 300.0)
+        labels, events = MODULE.build_labels_and_events(rows, 60.0, 0.50, 2, 300.0)
 
         self.assertEqual(labels[3]["warmup_gate_t"], 0)
         self.assertEqual(labels[5]["warmup_gate_t"], 1)
@@ -375,30 +371,34 @@ class TestPhaseBFeatures(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertGreaterEqual(events[0]["start_s"], MODULE.WARMUP_S)
 
-    def test_v2_2_rejects_static_full_buffer(self):
-        rows = [
-            self._system_row(
+    def test_v2_3_keeps_static_full_buffer_out_of_target_labels(self):
+        rows = []
+        for index in range(10):
+            buffer_row = self._system_row(
                 index,
                 resource_id="storage_buffer_a",
                 resource_type="buffer",
                 point_wip=index,
                 occupancy=1.0,
             )
-            for index in range(10)
-        ]
+            process_row = self._system_row(index, point_wip=index)
+            process_row["bottleneck_score_s"] = 0.1
+            rows.extend((buffer_row, process_row))
 
-        labels, events = MODULE.build_labels_and_events(rows, 60.0, 0.65, 2, 300.0)
+        labels, events = MODULE.build_labels_and_events(rows, 60.0, 0.50, 2, 300.0)
 
         self.assertEqual(events, [])
-        self.assertTrue(all(label["buffer_pressure_gate_t"] == 0 for label in labels))
+        self.assertTrue(
+            all(label["bottleneck_node_t"] == "machine_a_ws0" for label in labels)
+        )
 
-    def test_v2_2_uses_operation_throughput_and_cycle_growth(self):
+    def test_v2_3_uses_operation_throughput_drop(self):
         throughput_rows = [
             self._system_row(index, completed_operations=1 if index < 4 else 0)
             for index in range(10)
         ]
         throughput_labels, throughput_events = MODULE.build_labels_and_events(
-            throughput_rows, 60.0, 0.65, 2, 300.0
+            throughput_rows, 60.0, 0.50, 2, 300.0
         )
 
         self.assertEqual(len(throughput_events), 1)
@@ -410,25 +410,6 @@ class TestPhaseBFeatures(unittest.TestCase):
         self.assertGreaterEqual(
             throughput_labels[7]["baseline_completed_operations_t"], 2
         )
-
-        cycle_rows = [
-            self._system_row(
-                index,
-                completed_operations=1,
-                cycles=[10.0 if index < 4 else 13.0],
-            )
-            for index in range(10)
-        ]
-        cycle_labels, cycle_events = MODULE.build_labels_and_events(
-            cycle_rows, 60.0, 0.65, 2, 300.0
-        )
-
-        self.assertEqual(len(cycle_events), 1)
-        self.assertIn(
-            "operation_cycle_time_growth",
-            cycle_labels[7]["system_impact_reason_t"],
-        )
-        self.assertGreaterEqual(cycle_labels[7]["cycle_time_growth_ratio_t"], 0.2)
 
     def test_process_prefers_lifecycle_end_and_writes_metadata(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -512,7 +493,7 @@ class TestPhaseBFeatures(unittest.TestCase):
             metadata = json.loads(
                 (out_dir / "label_metadata.json").read_text(encoding="utf-8")
             )
-            self.assertEqual(metadata["label_version"], "bstan_weak_v2_2")
+            self.assertEqual(metadata["label_version"], "bstan_weak_v2_3")
             self.assertEqual(metadata["system_impact_config"]["impact_hold_windows"], 2)
             self.assertEqual(metadata["relative_score_margin"], 0.1)
             self.assertEqual(metadata["strides_s"], {"30.0": 30.0})

@@ -22,6 +22,7 @@ from .dataset import BstanTensorDataset
 from .losses import BstanLossConfig, compute_multitask_loss
 from .metrics import compute_metrics
 from .model import BstanGatGru, BstanModelConfig
+from .schema import DATASET_VERSION, LABEL_VERSION, TARGET_NODE_CATEGORY
 
 
 @dataclass
@@ -127,6 +128,8 @@ def _model_inputs(batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         "x": batch["x"],
         "adjacency": batch["adjacency"],
         "node_mask": batch["node_mask"],
+        "target_node_mask": batch["target_node_mask"],
+        "target_type_mask": batch["target_type_mask"],
         "global_features": batch["global_features"],
     }
 
@@ -140,10 +143,21 @@ def _load_dataset(dataset_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         dataset_dir / "dataset.pt", map_location="cpu", weights_only=True
     )
     manifest = _read_json(manifest_path)
+    expected_manifest = {
+        "dataset_version": DATASET_VERSION,
+        "label_version": LABEL_VERSION,
+        "target_node_category": TARGET_NODE_CATEGORY,
+    }
+    for key, expected in expected_manifest.items():
+        actual = manifest.get(key)
+        if actual != expected:
+            raise ValueError(f"Unexpected {key}: expected {expected!r}, got {actual!r}")
     required = {
         "x",
         "adjacency",
         "node_mask",
+        "target_node_mask",
+        "target_type_mask",
         "global_features",
         "y_occurrence",
         "split_indices",

@@ -7,12 +7,12 @@
 
 Writes::
 
-    derived_phase_b_v2_2/window_feature_table.csv
-    derived_phase_b_v2_2/bottleneck_label.csv
-    derived_phase_b_v2_2/bottleneck_event.csv
-    derived_phase_b_v2_2/label_metadata.json
-    derived_phase_b_v2_2/job_kpi.csv              # per-job start / complete / cycle time
-    derived_phase_b_v2_2/pipeline_summary.json    # includes order makespan & mean cycle
+    derived_phase_b_v2_3/window_feature_table.csv
+    derived_phase_b_v2_3/bottleneck_label.csv
+    derived_phase_b_v2_3/bottleneck_event.csv
+    derived_phase_b_v2_3/label_metadata.json
+    derived_phase_b_v2_3/job_kpi.csv              # per-job start / complete / cycle time
+    derived_phase_b_v2_3/pipeline_summary.json    # includes order makespan & mean cycle
 
 Usage::
 
@@ -46,7 +46,7 @@ W_ACTIVE_DUR = 0.10
 W_UPSTREAM = 0.10
 W_DOWNSTREAM = 0.10
 
-DEFAULT_SCORE_THRESHOLD = 0.65
+DEFAULT_SCORE_THRESHOLD = 0.50
 DEFAULT_MIN_EVENT_WINDOWS = 2
 DEFAULT_RELATIVE_MARGIN = 0.10
 SYSTEM_HISTORY_WINDOWS = 3
@@ -55,12 +55,9 @@ MIN_THROUGHPUT_DROP_RATIO = 0.25
 SYSTEM_LOOKBACK_S = 120.0
 WARMUP_S = 120.0
 MIN_BASELINE_OPERATIONS = 2
-MIN_CYCLE_OPERATIONS = 3
-MIN_CYCLE_TIME_GROWTH_RATIO = 0.20
-BUFFER_HIGH_OCCUPANCY_RATIO = 0.90
-LABEL_VERSION = "bstan_weak_v2_2"
+LABEL_VERSION = "bstan_weak_v2_3"
 COLLECTOR_VERSION = "v0.6"
-DERIVED_DIR_NAME = "derived_phase_b_v2_2"
+DERIVED_DIR_NAME = "derived_phase_b_v2_3"
 
 SCORE_CONFIG = {
     "process": {
@@ -84,9 +81,6 @@ SCORE_CONFIG = {
         "system_lookback_s": SYSTEM_LOOKBACK_S,
         "warmup_s": WARMUP_S,
         "min_baseline_operations": MIN_BASELINE_OPERATIONS,
-        "min_cycle_operations": MIN_CYCLE_OPERATIONS,
-        "min_cycle_time_growth_ratio": MIN_CYCLE_TIME_GROWTH_RATIO,
-        "buffer_high_occupancy_ratio": BUFFER_HIGH_OCCUPANCY_RATIO,
         "min_event_windows": DEFAULT_MIN_EVENT_WINDOWS,
     },
 }
@@ -204,22 +198,6 @@ def _json_dict(value: Any) -> dict[str, Any]:
     except (TypeError, ValueError, json.JSONDecodeError):
         return {}
     return parsed if isinstance(parsed, dict) else {}
-
-
-def _json_float_list(value: Any) -> list[float]:
-    if isinstance(value, list):
-        raw_values = value
-    elif not value:
-        return []
-    else:
-        try:
-            raw_values = json.loads(value)
-        except (TypeError, ValueError, json.JSONDecodeError):
-            return []
-    if not isinstance(raw_values, list):
-        return []
-    values = [_f(item, float("nan")) for item in raw_values]
-    return [item for item in values if math.isfinite(item)]
 
 
 def _paired_disturbance_events(
@@ -369,8 +347,7 @@ def compute_window_features(
     departures_by_station: dict[str, list[float]] = defaultdict(list)
     open_queue: dict[tuple[int, str], tuple[float, str]] = {}
     job_lifetimes: dict[int, dict[str, float]] = defaultdict(dict)
-    operation_starts: dict[tuple[int, str], float] = {}
-    completed_operations: list[tuple[float, float]] = []
+    completed_operations: list[float] = []
 
     for row in sorted(job_rows, key=lambda r: _time_s(r, logic_dt)):
         event = row.get("event")
@@ -382,8 +359,6 @@ def compute_window_features(
         key = (job_id if job_id is not None else -1, task)
         if job_id is not None and job_id >= 0 and event == "job_selected":
             job_lifetimes[job_id].setdefault("start", t)
-            if task_type == "processing":
-                operation_starts[key] = t
         elif job_id is not None and job_id >= 0 and event == "stage_complete":
             job_lifetimes[job_id]["end"] = t
         if event == "queue_enter":
@@ -398,13 +373,7 @@ def compute_window_features(
         elif event == "departure":
             departures_by_station[station].append(t)
             if task_type == "processing":
-                operation_start = operation_starts.pop(key, None)
-                if operation_start is None:
-                    raise ValueError(
-                        "processing departure has no matching job_selected: "
-                        f"job_id={job_id}, task={task!r}, time={t}"
-                    )
-                completed_operations.append((t, t - operation_start))
+                completed_operations.append(t)
 
     # Close open queues at episode end
     for key, (t0, st) in open_queue.items():
@@ -562,14 +531,9 @@ def compute_window_features(
             and life.get("end", float("inf")) > w1
         )
         window_completed_operations = sum(
-            1 for completed_at, _ in completed_operations if w0 <= completed_at < w1
+            1 for completed_at in completed_operations if w0 <= completed_at < w1
         )
         operation_throughput_rolling = window_completed_operations / wlen
-        window_operation_cycle_times = [
-            cycle
-            for completed_at, cycle in completed_operations
-            if w0 <= completed_at < w1
-        ]
         states_at_end = [_state_at(tl.intervals, w1) for tl in timelines.values()]
         num_busy = sum(state in ACTIVE_STATES for state in states_at_end)
         num_blocked = sum(state in BLOCKED_STATES for state in states_at_end)
@@ -685,14 +649,6 @@ def compute_window_features(
                         operation_throughput_rolling, 6
                     ),
                     "completed_operations_in_window": window_completed_operations,
-                    "completed_operation_cycle_times_s": json.dumps(
-                        window_operation_cycle_times
-                    ),
-                    "operation_cycle_time_median_s": (
-                        round(statistics.median(window_operation_cycle_times), 6)
-                        if window_operation_cycle_times
-                        else ""
-                    ),
                     "num_busy_resources": num_busy,
                     "num_blocked_resources": num_blocked,
                     "num_starved_resources": num_starved,
@@ -779,8 +735,6 @@ def _node_category(row: dict[str, Any]) -> str:
 
 
 def _symptom_type(row: dict[str, Any]) -> str:
-    if _f(row.get("material_shortage_flag_s")) > 0:
-        return "material_shortage"
     if _f(row.get("blocked_time_s")) > _f(row.get("starved_time_s")):
         return "blocked_downstream"
     if _f(row.get("starved_time_s")) > 0:
@@ -859,13 +813,12 @@ def build_labels_and_events(
         system_history: list[dict[str, Any]] = []
         impact_history: list[list[str]] = []
         for wi, rs in sorted(windows.items()):
-            best = max(rs, key=lambda x: x["bottleneck_score_s"])
+            target_rows = [row for row in rs if _node_category(row) == "process"]
+            if not target_rows:
+                raise ValueError(f"No productive resource candidates in window {wi}")
+            best = max(target_rows, key=lambda x: x["bottleneck_score_s"])
             peers = sorted(
-                (
-                    row["bottleneck_score_s"]
-                    for row in rs
-                    if _node_category(row) == _node_category(best)
-                ),
+                (row["bottleneck_score_s"] for row in target_rows),
                 reverse=True,
             )
             relative_margin = peers[0] - peers[1] if len(peers) > 1 else peers[0]
@@ -875,13 +828,9 @@ def build_labels_and_events(
             )
             if current_completed_operations is None:
                 raise ValueError("completed_operations_in_window is required")
-            current_operation_cycles = _json_float_list(
-                rs[0].get("completed_operation_cycle_times_s")
-            )
             current_system = {
                 "point_wip": point_wip,
                 "completed_operations": current_completed_operations,
-                "operation_cycles": current_operation_cycles,
             }
 
             point_history = system_history[-SYSTEM_HISTORY_WINDOWS:]
@@ -914,38 +863,11 @@ def build_labels_and_events(
                 if throughput_support_available
                 else 0.0
             )
-            recent_cycles = [
-                cycle for item in recent_period for cycle in item["operation_cycles"]
-            ]
-            baseline_cycles = [
-                cycle for item in baseline_period for cycle in item["operation_cycles"]
-            ]
-            cycle_support_available = int(
-                complete_periods
-                and len(recent_cycles) >= MIN_CYCLE_OPERATIONS
-                and len(baseline_cycles) >= MIN_CYCLE_OPERATIONS
-            )
-            if cycle_support_available:
-                baseline_cycle_median = statistics.median(baseline_cycles)
-                cycle_time_growth_ratio = (
-                    max(
-                        (statistics.median(recent_cycles) - baseline_cycle_median)
-                        / baseline_cycle_median,
-                        0.0,
-                    )
-                    if baseline_cycle_median > 0
-                    else 0.0
-                )
-            else:
-                cycle_time_growth_ratio = 0.0
-
             raw_impact_reasons = []
             if point_wip_growth >= MIN_WIP_GROWTH:
                 raw_impact_reasons.append("wip_growth")
             if smoothed_throughput_drop >= MIN_THROUGHPUT_DROP_RATIO:
                 raw_impact_reasons.append("operation_throughput_drop")
-            if cycle_time_growth_ratio >= MIN_CYCLE_TIME_GROWTH_RATIO:
-                raw_impact_reasons.append("operation_cycle_time_growth")
             impact_history.append(raw_impact_reasons)
             held_impact_period = impact_history[-impact_hold_windows:]
             impact_reasons = list(
@@ -966,20 +888,7 @@ def build_labels_and_events(
             absolute_gate = best["bottleneck_score_s"] >= score_threshold
             relative_gate = relative_margin >= DEFAULT_RELATIVE_MARGIN
             warmup_gate = int(_f(rs[0].get("window_start_s")) >= WARMUP_S)
-            is_buffer = _node_category(best) == "buffer"
-            propagation = (
-                _f(best.get("upstream_blocked_ratio_s")) > 0
-                or _f(best.get("downstream_starved_ratio_s")) > 0
-            )
-            buffer_pressure_gate = int(
-                not is_buffer
-                or _f(best.get("queue_growth_rate_s")) > 0
-                or (
-                    _f(best.get("occupancy_ratio_s")) >= BUFFER_HIGH_OCCUPANCY_RATIO
-                    and propagation
-                )
-            )
-            context_gate = int(warmup_gate and buffer_pressure_gate)
+            context_gate = warmup_gate
             is_hot = absolute_gate and relative_gate and system_impact and context_gate
             window_meta[wi] = {
                 "window_index": wi,
@@ -998,18 +907,15 @@ def build_labels_and_events(
                 "relative_score_margin_t": round(relative_margin, 6),
                 "wip_growth_t": round(point_wip_growth, 6),
                 "throughput_drop_ratio_t": round(smoothed_throughput_drop, 6),
-                "cycle_time_growth_ratio_t": round(cycle_time_growth_ratio, 6),
                 "baseline_completed_operations_t": baseline_completed,
                 "recent_completed_operations_t": recent_completed,
                 "throughput_support_available_t": throughput_support_available,
-                "cycle_support_available_t": cycle_support_available,
                 "system_impact_raw_flag_t": int(bool(raw_impact_reasons)),
                 "system_impact_raw_reason_t": "+".join(raw_impact_reasons),
                 "system_impact_flag_t": system_impact,
                 "system_impact_reason_t": "+".join(impact_reasons),
                 "system_impact_age_windows_t": impact_age_windows,
                 "warmup_gate_t": warmup_gate,
-                "buffer_pressure_gate_t": buffer_pressure_gate,
                 "label_context_gate_t": context_gate,
                 "bottleneck_symptom_type_t": _symptom_type(best),
                 "is_bottleneck_window": int(is_hot),
@@ -1473,10 +1379,8 @@ def process_env_dir(
             "system_lookback_s": SYSTEM_LOOKBACK_S,
             "warmup_s": WARMUP_S,
             "min_baseline_operations": MIN_BASELINE_OPERATIONS,
-            "min_cycle_operations": MIN_CYCLE_OPERATIONS,
-            "min_cycle_time_growth_ratio": MIN_CYCLE_TIME_GROWTH_RATIO,
-            "buffer_high_occupancy_ratio": BUFFER_HIGH_OCCUPANCY_RATIO,
             "impact_hold_windows": min_event_windows,
+            "target_node_category": "process",
         },
         "min_event_windows": min_event_windows,
         "prediction_horizon": horizon,
@@ -1636,7 +1540,7 @@ def main() -> None:
         "--score_threshold",
         type=float,
         default=None,
-        help="Override score threshold (default: 0.65).",
+        help="Override process-resource score threshold (default: 0.50).",
     )
     parser.add_argument(
         "--min_event_windows", type=int, default=DEFAULT_MIN_EVENT_WINDOWS

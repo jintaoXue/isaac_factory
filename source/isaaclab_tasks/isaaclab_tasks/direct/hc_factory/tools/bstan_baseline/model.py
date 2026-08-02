@@ -152,6 +152,8 @@ class BstanGatGru(nn.Module):
         x: torch.Tensor,
         adjacency: torch.Tensor,
         node_mask: torch.Tensor,
+        target_node_mask: torch.Tensor,
+        target_type_mask: torch.Tensor,
         global_features: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
         batch_size, time_steps, node_count, _ = x.shape
@@ -185,17 +187,19 @@ class BstanGatGru(nn.Module):
         node_hidden = node_hidden * node_mask[:, :, None].to(node_hidden.dtype)
 
         node_logits = self.node_head(node_hidden).squeeze(-1)
-        node_logits = node_logits.masked_fill(~node_mask.bool(), -1.0e9)
+        node_logits = node_logits.masked_fill(~target_node_mask.bool(), -1.0e9)
         mask_float = node_mask[:, :, None].to(node_hidden.dtype)
         graph_embedding = (node_hidden * mask_float).sum(dim=1) / mask_float.sum(
             dim=1
         ).clamp_min(1.0)
         graph_context = torch.cat((graph_embedding, global_features[:, -1]), dim=-1)
+        type_logits = self.type_head(graph_context)
+        type_logits = type_logits.masked_fill(~target_type_mask.bool(), -1.0e9)
 
         return {
             "occurrence_logit": self.occurrence_head(graph_context).squeeze(-1),
             "node_logits": node_logits,
-            "type_logits": self.type_head(graph_context),
+            "type_logits": type_logits,
             "time_to_start": torch.sigmoid(
                 self.time_to_start_head(graph_context).squeeze(-1)
             )

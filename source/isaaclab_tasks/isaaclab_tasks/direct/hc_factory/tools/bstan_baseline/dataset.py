@@ -22,7 +22,9 @@ from .schema import (
     DATASET_VERSION,
     GLOBAL_FEATURES,
     LABEL_VERSION,
+    TARGET_NODE_CATEGORY,
     feature_is_applicable,
+    is_buffer,
 )
 
 
@@ -312,6 +314,19 @@ def _validate_dataset(
         raise ValueError("Adjacency shape does not match x")
     if payload["node_mask"].shape != (sample_count, node_count):
         raise ValueError("Node mask shape does not match x")
+    if payload["target_node_mask"].shape != (sample_count, node_count):
+        raise ValueError("Target node mask shape does not match x")
+    if (
+        payload["target_type_mask"].ndim != 2
+        or payload["target_type_mask"].shape[0] != sample_count
+    ):
+        raise ValueError("Target type mask shape does not match dataset")
+    if bool((payload["target_node_mask"] & ~payload["node_mask"]).any()):
+        raise ValueError("Target node mask contains inactive graph nodes")
+    if not bool(payload["target_node_mask"].any(dim=1).all()):
+        raise ValueError("Every sample must have at least one process target node")
+    if not bool(payload["target_type_mask"].any(dim=1).all()):
+        raise ValueError("Every sample must have at least one process target type")
     if (
         not torch.isfinite(x).all()
         or not torch.isfinite(payload["global_features"]).all()
@@ -325,6 +340,13 @@ def _validate_dataset(
             raise ValueError("Positive sample target node is outside node catalog")
         if not bool(payload["node_mask"][sample_index, node_index]):
             raise ValueError("Positive sample target node is masked")
+        if not bool(payload["target_node_mask"][sample_index, node_index]):
+            raise ValueError("Positive sample target node is not a process target")
+        type_index = int(payload["y_type"][sample_index])
+        if type_index < 0 or type_index >= payload["target_type_mask"].shape[1]:
+            raise ValueError("Positive sample target type is outside type catalog")
+        if not bool(payload["target_type_mask"][sample_index, type_index]):
+            raise ValueError("Positive sample target type is not a process type")
 
     all_indices: list[int] = []
     split_group_sets: dict[str, set[str]] = {}
@@ -356,6 +378,8 @@ class BstanTensorDataset(Dataset):
         "x",
         "adjacency",
         "node_mask",
+        "target_node_mask",
+        "target_type_mask",
         "global_features",
         "y_occurrence",
         "y_node",
@@ -387,7 +411,7 @@ class BstanTensorDataset(Dataset):
 def build_bstan_dataset(
     run_dirs: Iterable[Path],
     out_dir: Path,
-    derived_dir_name: str = "derived_phase_b_v2_2",
+    derived_dir_name: str = "derived_phase_b_v2_3",
     window_size: float = 30.0,
     stride: float = 30.0,
     input_windows: int = 4,
@@ -432,6 +456,8 @@ def build_bstan_dataset(
     global_samples: list[torch.Tensor] = []
     adjacency_samples: list[torch.Tensor] = []
     node_masks: list[torch.Tensor] = []
+    target_node_masks: list[torch.Tensor] = []
+    target_type_masks: list[torch.Tensor] = []
     targets: list[dict[str, Any]] = []
     sample_rows: list[dict[str, Any]] = []
     edge_rows: list[dict[str, Any]] = []
@@ -447,6 +473,22 @@ def build_bstan_dataset(
         active_nodes = set(group["included_node_ids"])
         node_mask = torch.tensor(
             [node_id in active_nodes for node_id in node_ids], dtype=torch.bool
+        )
+        target_node_mask = torch.tensor(
+            [
+                node_id in active_nodes and not is_buffer(node_id, node_types[node_id])
+                for node_id in node_ids
+            ],
+            dtype=torch.bool,
+        )
+        active_target_types = {
+            node_types[node_id]
+            for node_id in active_nodes
+            if not is_buffer(node_id, node_types[node_id])
+        }
+        target_type_mask = torch.tensor(
+            [resource_type in active_target_types for resource_type in resource_types],
+            dtype=torch.bool,
         )
         adjacency, group_edges = build_static_graph(
             node_ids, node_types, active_nodes, group["config"]
@@ -525,6 +567,15 @@ def build_bstan_dataset(
             occurrence = _i(label.get("will_bottleneck"))
             target_node_id = label.get("future_bottleneck_object_id") or ""
             target_type = label.get("future_bottleneck_type") or ""
+            if occurrence == 1:
+                if target_node_id not in node_index:
+                    raise ValueError(
+                        f"Positive target {target_node_id!r} is absent from node catalog"
+                    )
+                if is_buffer(target_node_id, node_types[target_node_id]):
+                    raise ValueError(
+                        f"Positive target {target_node_id!r} is not a process node"
+                    )
             sample_index = len(continuous_samples)
             continuous_samples.append(x_continuous)
             applicability_samples.append(applicability)
@@ -532,6 +583,8 @@ def build_bstan_dataset(
             global_samples.append(x_global)
             adjacency_samples.append(adjacency)
             node_masks.append(node_mask)
+            target_node_masks.append(target_node_mask)
+            target_type_masks.append(target_type_mask)
             targets.append(
                 {
                     "occurrence": occurrence,
@@ -571,6 +624,8 @@ def build_bstan_dataset(
     global_features = torch.stack(global_samples)
     adjacency = torch.stack(adjacency_samples)
     node_mask = torch.stack(node_masks)
+    target_node_mask = torch.stack(target_node_masks)
+    target_type_mask = torch.stack(target_type_masks)
     y_occurrence = torch.tensor(
         [target["occurrence"] for target in targets], dtype=torch.float32
     )
@@ -609,6 +664,8 @@ def build_bstan_dataset(
         "x": torch.cat((normalized_continuous, x_type), dim=-1),
         "adjacency": adjacency,
         "node_mask": node_mask,
+        "target_node_mask": target_node_mask,
+        "target_type_mask": target_type_mask,
         "global_features": normalized_global,
         "y_occurrence": y_occurrence,
         "y_node": torch.tensor(
@@ -735,6 +792,7 @@ def build_bstan_dataset(
     manifest = {
         "dataset_version": DATASET_VERSION,
         "label_version": LABEL_VERSION,
+        "target_node_category": TARGET_NODE_CATEGORY,
         "source_run_directories": sorted({str(group["run_dir"]) for group in groups}),
         "derived_dir_name": derived_dir_name,
         "collector_versions": collector_versions,
