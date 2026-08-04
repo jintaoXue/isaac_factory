@@ -55,6 +55,13 @@ SingleEnvStateActionDictTemplate : dict = {
         "production_done": False,
         "ongoing_task_records": {},
     },
+    # RL signals written by TaskManager.update_rl_signals each step
+    "rl": {
+        "reward": 0.0,
+        "done": False,
+        "truncated": False,
+        "success": False,
+    },
     "agent_action_mask": {
         "agent_A_product_sequencer": torch.Tensor([]),
         "agent_B_product_selector": torch.Tensor([]),
@@ -178,6 +185,8 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     human_number_upper_bound = 6
     robot_upper_bound = 2
     material_batch_upper_bound = 5
+    # RL episode horizon (paper Nh5 success makespan ~2k–3.4k; leave headroom)
+    max_episode_steps = 4000
 
 
 

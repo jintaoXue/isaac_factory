@@ -14,6 +14,11 @@ params:
     device_name: 'cuda:0'
     time_str: "None"
 
+    # Must match HcVectorEnvCfg.scene.num_envs
+    num_actors: 3
+    max_episode_steps: 4000
+    state_dim: 256
+
     gamma: 0.99
     learning_rate: 1.0e-4
     max_epochs: 1.0e+11
@@ -21,6 +26,9 @@ params:
     replay_buffer_size: 50000
     hidden_dim: 128
     target_update_interval: 500
+    # required by rl_games Runner.load (unused by MultiAgentTPA)
+    reward_shaper:
+      scale_value: 1.0
 
     # epsilon-greedy exploration
     epsilon_start: 1.0
@@ -34,6 +42,7 @@ params:
     parallel_producing_limit: 5
 
     test: False
+    env_rule_based_exploration: False
     wandb_activate: False
     wandb_project: 'HcFactory_MARL'
 

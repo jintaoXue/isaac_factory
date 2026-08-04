@@ -65,7 +65,10 @@ class HcSingleEnvBase():
             env_id=self.env_id, cuda_device=self.cuda_device, cfg=CfgPerception
         )
         self.algo_multiagent_masker = AlgoMultiAgentMasker(self.cuda_device)
-        self.task_manager = TaskManager(self.cuda_device)
+        self.task_manager = TaskManager(
+            self.cuda_device,
+            max_episode_steps=int(HcVectorEnvCfg().max_episode_steps),
+        )
         # self.route_manager = RouteManagerVectorEnv(cuda_device=self.cuda_device)
 
     def iter_managers(self):
@@ -123,10 +126,13 @@ class HcSingleEnvBase():
             m.step(self.env_state_action_dict)
         self.env_state_action_dict["time_step"] += 1
         self.perception_manager.step(self.env_state_action_dict)
-        
-        # time_end = time.time()
-        # print(f"step_env_logic time: {time_end - time_start}")
-        if self.env_state_action_dict["progress"]["production_done"]:
+
+        # Episode end: ENV resets here. Snapshot ``rl`` so callers can still read
+        # this step's reward/done after reset (DQN bootstrap uses done flag).
+        rl = self.env_state_action_dict.get("rl") or {}
+        if bool(rl.get("done")):
+            rl_snapshot = copy.deepcopy(rl)
             self.reset_env()
+            self.env_state_action_dict["rl"] = rl_snapshot
         return
 

@@ -611,6 +611,16 @@ def _encode_progress(
 # =============================================================================
 
 
+def _encode_rl(rl: dict, device: torch.device | None) -> dict[str, torch.Tensor]:
+    """``env['rl']`` → 定长标量（reward/done/truncated/success）。"""
+    return {
+        "reward": _f(float(rl.get("reward", 0.0) or 0.0), device),
+        "done": _f(float(bool(rl.get("done"))), device),
+        "truncated": _f(float(bool(rl.get("truncated"))), device),
+        "success": _f(float(bool(rl.get("success"))), device),
+    }
+
+
 def preprocess_for_buffer(
     env: dict,
     device: torch.device | None = None,
@@ -628,6 +638,7 @@ def preprocess_for_buffer(
         "machine": _encode_machines(env.get("machine") or {}, cfg, device),
         "material": _encode_materials(env.get("material") or {}, cfg, device),
         "storage": _encode_storage(env.get("storage") or {}, cfg, device),
+        "rl": _encode_rl(env.get("rl") or {}, device),
     }
     if "agent_action_mask" in env:
         out["agent_action_mask"] = _clone_tensors(env["agent_action_mask"], device)

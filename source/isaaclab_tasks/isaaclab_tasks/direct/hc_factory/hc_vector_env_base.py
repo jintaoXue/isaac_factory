@@ -114,7 +114,9 @@ class HcVectorEnvBase(DirectRLEnv):
 
     def step_env_logic(self, action: list[dict] | None = None, action_extra: list[dict] | None = None) -> None:
         for env_id, single_env in enumerate(self.env_list):
-            single_env.step_env_logic(action[env_id], action_extra[env_id])
+            act_i = action[env_id] if action is not None else None
+            extra_i = action_extra[env_id] if action_extra is not None else None
+            single_env.step_env_logic(act_i, extra_i)
 
     def step_env_physics(self) -> None:
         self.apply_data_to_sim()
@@ -138,6 +140,7 @@ class HcVectorEnvBase(DirectRLEnv):
     
 
     def get_env_info(self):
-        env_info = {}
-        env_info["cuda_device"] = self.cuda_device
-        return env_info
+        return {
+            "cuda_device": self.cuda_device,
+            "num_envs": int(self.num_envs),
+        }

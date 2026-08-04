@@ -42,13 +42,16 @@ class MaskedDQNAgent:
         self.optimizer = optim.Adam(self.q_net.parameters(), lr=lr)
         self.buffer = ReplayBuffer(buffer_capacity)
 
-    def select_action(self, obs: torch.Tensor, mask: torch.Tensor, epsilon: float) -> int:
+    def select_action(self, obs: torch.Tensor, mask: torch.Tensor, epsilon: float) -> int | None:
         with torch.no_grad():
             q_values = self.q_net(obs.unsqueeze(0)).squeeze(0)
         return masked_select_action(q_values, mask, epsilon)
 
     def act_tensor(self, obs: torch.Tensor, mask: torch.Tensor, epsilon: float) -> torch.Tensor:
         action_idx = self.select_action(obs, mask, epsilon)
+        if action_idx is None:
+            # no valid action → all-zero one-hot (env decode treats sum==0 as skip)
+            return torch.zeros(self.action_dim, dtype=torch.int32, device=self.device)
         return index_to_one_hot(action_idx, self.action_dim, self.device)
 
     def store(self, obs, action_idx, reward, next_obs, mask, next_mask, done) -> None:
@@ -123,6 +126,8 @@ class RLProductSequencingAgent:
         return self.dqn.act_tensor(obs, mask, epsilon)
 
     def observe_step(self, env_state_action_dict, action, reward, next_env_state_action_dict, done, epsilon):
+        if action.sum() == 0:
+            return None
         self._ensure_dqn(env_state_action_dict)
         obs = self.obs_encoder.encode_A(env_state_action_dict)
         next_obs = self.obs_encoder.encode_A(next_env_state_action_dict)
@@ -158,6 +163,8 @@ class RLProductSelectionAgent:
         return self.dqn.act_tensor(obs, mask, epsilon)
 
     def observe_step(self, env_state_action_dict, product_sequencing_action, action, reward, next_env_state_action_dict, done, epsilon):
+        if action.sum() == 0:
+            return None
         self._ensure_dqn(env_state_action_dict, product_sequencing_action)
         obs = self.obs_encoder.encode_B(env_state_action_dict, product_sequencing_action)
         next_obs = self.obs_encoder.encode_B(next_env_state_action_dict, product_sequencing_action)
@@ -203,6 +210,8 @@ class RLProcessTaskPlanningAgent:
         return self.dqn.act_tensor(obs, mask, epsilon)
 
     def observe_step(self, env_state_action_dict, product_selection_action, action, reward, next_env_state_action_dict, done, epsilon):
+        if action.sum() == 0:
+            return None
         self._ensure_dqn(env_state_action_dict, product_selection_action)
         obs = self.obs_encoder.encode_C(env_state_action_dict, product_selection_action)
         next_obs = self.obs_encoder.encode_C(next_env_state_action_dict, product_selection_action)
