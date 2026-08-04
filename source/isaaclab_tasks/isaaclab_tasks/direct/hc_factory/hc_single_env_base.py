@@ -68,6 +68,10 @@ class HcSingleEnvBase():
         self.task_manager = TaskManager(
             self.cuda_device,
             max_episode_steps=int(HcVectorEnvCfg().max_episode_steps),
+            step_penalty=float(HcVectorEnvCfg().rl_step_penalty),
+            finish_bonus=float(HcVectorEnvCfg().rl_finish_bonus),
+            task_bonus=float(HcVectorEnvCfg().rl_task_bonus),
+            success_bonus=float(HcVectorEnvCfg().rl_success_bonus),
         )
         # self.route_manager = RouteManagerVectorEnv(cuda_device=self.cuda_device)
 

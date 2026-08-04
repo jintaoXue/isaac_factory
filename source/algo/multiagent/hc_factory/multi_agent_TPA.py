@@ -8,6 +8,7 @@ Learning: preprocess once per step (no full-env deepcopy), then MARL agents.
 from __future__ import division
 
 import os
+from collections import deque
 
 import wandb
 from rl_games.common import vecenv
@@ -29,6 +30,12 @@ def _clear_rl(env_dict: dict) -> None:
         "done": False,
         "truncated": False,
         "success": False,
+        "reward_parts": {
+            "step": 0.0,
+            "finish": 0.0,
+            "task": 0.0,
+            "success": 0.0,
+        },
     }
 
 
@@ -124,6 +131,16 @@ class MultiAgentTPA:
         print("MARL experiment dir:", self.experiment_dir, "num_actors:", self.num_actors)
 
         self.use_wandb = config.get("wandb_activate", False)
+        # DQN has no actor loss; rolling TD (critic) losses + makespan windows
+        self._loss_window = {
+            "A": deque(maxlen=200),
+            "B": deque(maxlen=200),
+            "C": deque(maxlen=200),
+            "D_human": deque(maxlen=200),
+            "D_robot": deque(maxlen=200),
+        }
+        self.makespan_success = deque(maxlen=int(config.get("makespan_window", 50)))
+        self.makespan_all = deque(maxlen=int(config.get("makespan_window", 50)))
         if self.use_wandb:
             self.init_wandb_logger()
 
@@ -136,15 +153,26 @@ class MultiAgentTPA:
         wandb.define_metric("Train/episode0", step_metric="Train/step")
         wandb.define_metric("Train/ep_t0", step_metric="Train/step")
         wandb.define_metric("Train/step_reward0", step_metric="Train/step")
+        wandb.define_metric("Train/r_step0", step_metric="Train/step")
+        wandb.define_metric("Train/r_finish0", step_metric="Train/step")
+        wandb.define_metric("Train/r_task0", step_metric="Train/step")
+        wandb.define_metric("Train/r_success0", step_metric="Train/step")
         wandb.define_metric("Train/buffer_A", step_metric="Train/step")
         wandb.define_metric("Train/buffer_B", step_metric="Train/step")
         wandb.define_metric("Train/buffer_C", step_metric="Train/step")
         wandb.define_metric("Train/buffer_D_human", step_metric="Train/step")
         wandb.define_metric("Train/buffer_D_robot", step_metric="Train/step")
+        # DQN TD loss ≈ critic loss (no separate actor head in current MARL)
+        for name in ("A", "B", "C", "D_human", "D_robot"):
+            wandb.define_metric(f"Loss/critic_{name}", step_metric="Train/step")
+        wandb.define_metric("Loss/critic_mean", step_metric="Train/step")
+        wandb.define_metric("Metrics/MeanMakespan", step_metric="Train/step")
+        wandb.define_metric("Metrics/MeanMakespan_success", step_metric="Train/step")
 
         wandb.define_metric("Metrics/step_episode", step_metric="Train/step")
         wandb.define_metric("Metrics/EpRet", step_metric="Metrics/step_episode")
         wandb.define_metric("Metrics/EpLen", step_metric="Metrics/step_episode")
+        wandb.define_metric("Metrics/EpMakespan", step_metric="Metrics/step_episode")
         wandb.define_metric("Metrics/EpSuccess", step_metric="Metrics/step_episode")
         wandb.define_metric("Metrics/EpTruncated", step_metric="Metrics/step_episode")
 
@@ -186,15 +214,19 @@ class MultiAgentTPA:
         next_obs: dict,
         done: bool,
         epsilon: float,
-    ) -> None:
-        """Store transitions and learn. ``prev_obs`` / ``next_obs`` may be preprocessed dicts."""
+    ) -> dict[str, float]:
+        """Store transitions and learn. Returns per-agent DQN (critic) losses."""
+        losses: dict[str, float] = {}
         if self.global_step % self.learn_interval != 0:
-            return
+            return losses
 
-        self.agent_A.observe_step(
+        loss_a = self.agent_A.observe_step(
             prev_obs, action["product_sequencing"], reward, next_obs, done, epsilon
         )
-        self.agent_B.observe_step(
+        if loss_a is not None:
+            losses["A"] = float(loss_a)
+
+        loss_b = self.agent_B.observe_step(
             prev_obs,
             action["product_sequencing"],
             action["product_selection"],
@@ -203,7 +235,10 @@ class MultiAgentTPA:
             done,
             epsilon,
         )
-        self.agent_C.observe_step(
+        if loss_b is not None:
+            losses["B"] = float(loss_b)
+
+        loss_c = self.agent_C.observe_step(
             prev_obs,
             action["product_selection"],
             action["process_task_planning"],
@@ -212,7 +247,10 @@ class MultiAgentTPA:
             done,
             epsilon,
         )
-        self.agent_D.observe_step(
+        if loss_c is not None:
+            losses["C"] = float(loss_c)
+
+        loss_d_h, loss_d_r = self.agent_D.observe_step(
             prev_obs,
             action["process_task_planning"],
             action["human_robot_allocation"],
@@ -221,6 +259,14 @@ class MultiAgentTPA:
             done,
             epsilon,
         )
+        if loss_d_h is not None:
+            losses["D_human"] = float(loss_d_h)
+        if loss_d_r is not None:
+            losses["D_robot"] = float(loss_d_r)
+
+        for k, v in losses.items():
+            self._loss_window[k].append(v)
+        return losses
 
     def save_checkpoint(self, step: int) -> None:
         enc_path = os.path.join(self.nn_dir, f"state_encoder_step_{step}.pth")
@@ -275,17 +321,36 @@ class MultiAgentTPA:
                 if done:
                     # env already reset: episode_num in next_obs is the *new* episode index
                     completed_ep = int(next_obs[env_id].get("episode_num", 0) or 0)
+                    ep_len = episode_len[env_id]
+                    # makespan: success → actual length; truncated → count as horizon
+                    if success:
+                        self.makespan_success.append(ep_len)
+                        self.makespan_all.append(ep_len)
+                    elif truncated:
+                        self.makespan_all.append(ep_len)
+                    mean_ms = (
+                        sum(self.makespan_all) / len(self.makespan_all) if self.makespan_all else None
+                    )
+                    mean_ms_ok = (
+                        sum(self.makespan_success) / len(self.makespan_success)
+                        if self.makespan_success
+                        else None
+                    )
                     if self.use_wandb:
-                        wandb.log(
-                            {
-                                "Train/step": self.global_step,
-                                "Metrics/step_episode": completed_ep,
-                                "Metrics/EpRet": episode_reward[env_id],
-                                "Metrics/EpLen": episode_len[env_id],
-                                "Metrics/EpSuccess": float(success),
-                                "Metrics/EpTruncated": float(truncated),
-                            }
-                        )
+                        payload = {
+                            "Train/step": self.global_step,
+                            "Metrics/step_episode": completed_ep,
+                            "Metrics/EpRet": episode_reward[env_id],
+                            "Metrics/EpLen": ep_len,
+                            "Metrics/EpMakespan": ep_len,
+                            "Metrics/EpSuccess": float(success),
+                            "Metrics/EpTruncated": float(truncated),
+                        }
+                        if mean_ms is not None:
+                            payload["Metrics/MeanMakespan"] = mean_ms
+                        if mean_ms_ok is not None:
+                            payload["Metrics/MeanMakespan_success"] = mean_ms_ok
+                        wandb.log(payload)
                     episode_reward[env_id] = 0.0
                     episode_len[env_id] = 0
                     _clear_rl(next_obs[env_id])
@@ -299,10 +364,15 @@ class MultiAgentTPA:
                 ep0 = int(next_obs[0].get("episode_num", 0) or 0)
                 t0 = int(next_obs[0].get("time_step", 0) or 0)
                 step_r0 = float((rl0 or {}).get("reward", 0.0) or 0.0)
+                mean_ms_str = (
+                    f"{sum(self.makespan_all)/len(self.makespan_all):.1f}"
+                    if self.makespan_all
+                    else "n/a"
+                )
                 print(
                     f"[MARL] step={self.global_step} episode={ep0} ep_t={t0} eps={epsilon:.3f} "
                     f"ep_reward0={episode_reward[0]:.2f} finished={finished} "
-                    f"rl={rl0} n_envs={len(obs)}"
+                    f"mean_ms={mean_ms_str} rl={rl0} n_envs={len(obs)}"
                 )
                 if self.use_wandb:
                     buf_d_h = (
@@ -315,22 +385,48 @@ class MultiAgentTPA:
                         if self.agent_D.robot_dqn is not None
                         else 0
                     )
-                    wandb.log(
-                        {
-                            "Train/step": self.global_step,
-                            "Train/epsilon": epsilon,
-                            "Train/ep_reward0": episode_reward[0],
-                            "Train/finished0": finished,
-                            "Train/episode0": ep0,
-                            "Train/ep_t0": t0,
-                            "Train/step_reward0": step_r0,
-                            "Train/buffer_A": _buffer_len(self.agent_A),
-                            "Train/buffer_B": _buffer_len(self.agent_B),
-                            "Train/buffer_C": _buffer_len(self.agent_C),
-                            "Train/buffer_D_human": buf_d_h,
-                            "Train/buffer_D_robot": buf_d_r,
-                        }
+                    parts = (rl0 or {}).get("reward_parts") or {}
+                    loss_payload = {}
+                    critic_vals = []
+                    for name, window in self._loss_window.items():
+                        if window:
+                            m = sum(window) / len(window)
+                            loss_payload[f"Loss/critic_{name}"] = m
+                            critic_vals.append(m)
+                    if critic_vals:
+                        loss_payload["Loss/critic_mean"] = sum(critic_vals) / len(critic_vals)
+                    mean_ms = (
+                        sum(self.makespan_all) / len(self.makespan_all) if self.makespan_all else None
                     )
+                    mean_ms_ok = (
+                        sum(self.makespan_success) / len(self.makespan_success)
+                        if self.makespan_success
+                        else None
+                    )
+                    payload = {
+                        "Train/step": self.global_step,
+                        "Train/epsilon": epsilon,
+                        "Train/ep_reward0": episode_reward[0],
+                        "Train/finished0": finished,
+                        "Train/episode0": ep0,
+                        "Train/ep_t0": t0,
+                        "Train/step_reward0": step_r0,
+                        "Train/r_step0": float(parts.get("step", 0.0) or 0.0),
+                        "Train/r_finish0": float(parts.get("finish", 0.0) or 0.0),
+                        "Train/r_task0": float(parts.get("task", 0.0) or 0.0),
+                        "Train/r_success0": float(parts.get("success", 0.0) or 0.0),
+                        "Train/buffer_A": _buffer_len(self.agent_A),
+                        "Train/buffer_B": _buffer_len(self.agent_B),
+                        "Train/buffer_C": _buffer_len(self.agent_C),
+                        "Train/buffer_D_human": buf_d_h,
+                        "Train/buffer_D_robot": buf_d_r,
+                    }
+                    payload.update(loss_payload)
+                    if mean_ms is not None:
+                        payload["Metrics/MeanMakespan"] = mean_ms
+                    if mean_ms_ok is not None:
+                        payload["Metrics/MeanMakespan_success"] = mean_ms_ok
+                    wandb.log(payload)
 
             if self.global_step % self.save_interval == 0:
                 self.save_checkpoint(self.global_step)

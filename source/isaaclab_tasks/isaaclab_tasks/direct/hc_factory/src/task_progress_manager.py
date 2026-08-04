@@ -7,12 +7,23 @@ import torch
 import copy
 
 class TaskManager:
-    def __init__(self, cuda_device: torch.device, max_episode_steps: int = 4000, step_penalty: float = 0.01):
+    def __init__(
+        self,
+        cuda_device: torch.device,
+        max_episode_steps: int = 4000,
+        step_penalty: float = 0.01,
+        finish_bonus: float = 2.0,
+        task_bonus: float = 0.1,
+        success_bonus: float = 20.0,
+    ):
         self.cuda_device = cuda_device
         self.cfg_storage = CfgStorage
         self.inverse_index_to_task_name = {v: k for k, v in CfgProcessTaskGalleryInAll.items()}
         self.max_episode_steps = int(max_episode_steps)
         self.step_penalty = float(step_penalty)
+        self.finish_bonus = float(finish_bonus)
+        self.task_bonus = float(task_bonus)
+        self.success_bonus = float(success_bonus)
 
     def reset(self, env_state_action_dict) -> dict:
         #production progress reset
@@ -30,6 +41,12 @@ class TaskManager:
             "done": False,
             "truncated": False,
             "success": False,
+            "reward_parts": {
+                "step": 0.0,
+                "finish": 0.0,
+                "task": 0.0,
+                "success": 0.0,
+            },
         }
 
     def step(self, env_state_action_dict: dict) -> dict:
@@ -43,16 +60,20 @@ class TaskManager:
                 self.decode_action_human_robot_allocation(env_state_action_dict, new_task_record)
                 self.update_new_task_record(env_state_action_dict, new_task_record)
         
-        self.step_task_records(env_state_action_dict)
+        step_stats = self.step_task_records(env_state_action_dict)
         self.check_done_production(env_state_action_dict)
         # time_step 在 HcSingleEnvBase 里于 managers 之后 +1；此处用 +1 判断超时
-        self.update_rl_signals(env_state_action_dict)
+        self.update_rl_signals(env_state_action_dict, step_stats)
         return env_state_action_dict
 
-    def update_rl_signals(self, env_state_action_dict: dict) -> dict:
+    def update_rl_signals(self, env_state_action_dict: dict, step_stats: dict | None = None) -> dict:
         """Write per-step reward / done into ``env_state_action_dict["rl"]``.
 
-        v1 reward: constant step penalty ``-step_penalty``.
+        v2 reward:
+            ``-step_penalty``
+            ``+ finish_bonus * Δfinished_products``
+            ``+ task_bonus * Δcompleted_process_tasks``
+            ``+ success_bonus * (1 - t/T_max)`` on success
         Terminal: ``production_done`` → success; ``time_step+1 >= max_episode_steps`` → truncated.
         """
         if "rl" not in env_state_action_dict or not isinstance(env_state_action_dict["rl"], dict):
@@ -61,13 +82,21 @@ class TaskManager:
                 "done": False,
                 "truncated": False,
                 "success": False,
+                "reward_parts": {},
             }
         rl = env_state_action_dict["rl"]
         progress = env_state_action_dict.get("progress") or {}
+        step_stats = step_stats or {}
+        n_finished = int(step_stats.get("n_product_finished", 0) or 0)
+        n_task_done = int(step_stats.get("n_task_done", 0) or 0)
         # managers 步进时 time_step 尚未 +1，本步结束后的步号为 time_step+1
         t_after = int(env_state_action_dict.get("time_step", 0) or 0) + 1
 
-        reward = -self.step_penalty
+        part_step = -self.step_penalty
+        part_finish = self.finish_bonus * n_finished
+        part_task = self.task_bonus * n_task_done
+        part_success = 0.0
+
         done = False
         truncated = False
         success = False
@@ -75,14 +104,24 @@ class TaskManager:
         if bool(progress.get("production_done")):
             done = True
             success = True
+            # earlier finish → larger bonus (makespan-aligned)
+            remain = max(0.0, 1.0 - float(t_after) / float(max(1, self.max_episode_steps)))
+            part_success = self.success_bonus * remain
         elif t_after >= self.max_episode_steps:
             done = True
             truncated = True
 
+        reward = part_step + part_finish + part_task + part_success
         rl["reward"] = float(reward)
         rl["done"] = bool(done)
         rl["truncated"] = bool(truncated)
         rl["success"] = bool(success)
+        rl["reward_parts"] = {
+            "step": float(part_step),
+            "finish": float(part_finish),
+            "task": float(part_task),
+            "success": float(part_success),
+        }
         return env_state_action_dict
 
     def check_done_production(self, env_state_action_dict: dict) -> bool:
@@ -324,10 +363,13 @@ class TaskManager:
 
         ongoing_task_records: dict = env_state_action_dict["progress"]["ongoing_task_records"]
         completed_task_records_indexs: list = []
+        n_task_done = 0
+        n_product_finished = 0
 
         for product_index, task_record in ongoing_task_records.items():
             product_type = task_record["product"]
             if self._check_subtask_and_task_done(env_state_action_dict, task_record):
+                n_task_done += 1
                 if task_record["is_final_task"] == True:
                     # Remove only one occurrence of product_type from the producing list, even if there are duplicates
                     producing_list = env_state_action_dict["progress"]["producing"]
@@ -345,6 +387,7 @@ class TaskManager:
                     if product_type not in finished:
                         finished[product_type] = []
                     finished[product_type].append(product_index)
+                    n_product_finished += 1
                 completed_task_records_indexs.append(product_index)
             elif task_record["new_product_selected"] == True:
                 task_record['new_product_selected'] = False
@@ -357,7 +400,10 @@ class TaskManager:
         for task_record_index in completed_task_records_indexs:
             del ongoing_task_records[task_record_index]
 
-        return env_state_action_dict
+        return {
+            "n_task_done": n_task_done,
+            "n_product_finished": n_product_finished,
+        }
 
     def _check_subtask_and_task_done(self, env_state_action_dict, task_record):
         self._update_task_record_when_doing_subtask(env_state_action_dict, task_record)

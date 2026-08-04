@@ -43,6 +43,7 @@ params:
 
     test: False
     env_rule_based_exploration: False
+    makespan_window: 50
     wandb_activate: False
     wandb_project: 'HcFactory_MARL'
 
