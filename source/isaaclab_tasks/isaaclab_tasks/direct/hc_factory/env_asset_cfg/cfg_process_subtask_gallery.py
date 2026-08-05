@@ -85,7 +85,43 @@ CfgSubtaskGallery = {
         },
         #task id 2
         "pipe_cutting":{
-                # human: 0, gantry: 1, machine: 2
+            "have_AGV":{
+                # human: 0, gantry: 1, machine: 2, robot: 3
+                "ongoing": ["go_to_processing_machine", "none", "wait", "none"],
+                "ongoing_index": 0,
+                "required_processing_material": "product_00_pipe",
+                "processed_material": "product_00_pipe",
+                "material_start_area" : "num02_rollerbedCNCPipeIntersectionCuttingMachine",
+                # material_goal_area need to be set in task_progress_manager.py after processing and needed to be carryed to a storage or machine
+                "material_goal_area" : None,
+                ### if goal_area is a machine, then goal_area_workstation_key is the workstation key of the machine
+                "goal_area_workstation_key" : None,
+                "start_area_ids": CfgMachine["num02_rollerbedCNCPipeIntersectionCuttingMachine"]["working_area_ids"],
+                "goal_area_ids": None,
+                "index_to_decide_goal_area": 4,
+                "num_subtasks": 8,
+                "finished": [False, True, True, True],
+                "subtasks": [
+                    #human: 0, gantry: 1, machine: 2, robot: 3
+                    ["go_to_processing_machine", "none", "wait", "none"],
+                    ["control_machine", "none", "process", "none"],
+                    ["wait", "finding_free_gantry", "wait", "finding_free_robot"],
+                    ["control_gantry", "go_to_processing_machine", "wait", "go_to_processing_machine"],
+                    ["material_on_gantry", "wait", "wait", "wait"],
+                    ["control_gantry", "carry_to_robot", "done", "wait"],
+                    ["done", "done", "done", "carry_to_goal_area"],
+                    ["done", "done", "done", "done"],
+                ],
+                "material_states_in_subtasks": {
+                    "product_00_pipe": ["on_machine", "on_machine", "on_machine", "on_machine", "on_machine", "on_gantry", "on_gantry", "on_goal_area"],
+                    "product_00_flange": ["on_start_area"]*8,
+                    "product_00_elbow": ["on_start_area"]*8,
+                    "product_00_semi": ["disappear"]*8,
+                    "product_00_maded": ["disappear"]*8,
+                }  
+            },
+            "only_have_gantry":{
+                                # human: 0, gantry: 1, machine: 2
                 "ongoing": ["go_to_processing_machine", "none", "wait"],
                 "ongoing_index": 0,
                 "required_processing_material": "product_00_pipe",
