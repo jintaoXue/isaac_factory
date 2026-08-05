@@ -1,0 +1,171 @@
+{
+  "time_step": 1051,
+  "chosen_gantry_index": 0,
+  "task_records": {
+    "0": {
+      "task": "logistic_for_pipe_cutting",
+      "chosen_gantry_index": 0,
+      "ongoing": [
+        "go_to_material",
+        "go_to_material",
+        "wait",
+        "go_to_material"
+      ],
+      "ongoing_index": 0,
+      "finished": [
+        true,
+        false,
+        true,
+        true
+      ],
+      "start_gantry_parking": [
+        39
+      ]
+    }
+  },
+  "gantry_state": {
+    "state": [
+      "working_logistic_for_pipe_cutting",
+      "free",
+      "invalid",
+      "invalid"
+    ],
+    "ongoing_task_record_index": [
+      0,
+      null,
+      null,
+      null
+    ],
+    "target_area_id": [
+      39,
+      null,
+      null,
+      null
+    ],
+    "target_area_xy": [
+      [
+        30.115497589111328,
+        3.419907569885254
+      ],
+      null,
+      null,
+      null
+    ],
+    "target_joints_position_is_none": [
+      false,
+      true,
+      true,
+      true
+    ],
+    "target_joints_position": [
+      [
+        -6.626762390136719,
+        -1.0,
+        -34.641170501708984,
+        -11.641170501708984,
+        -6.766842842102051,
+        0.0,
+        0.0,
+        0.0
+      ],
+      null,
+      null,
+      null
+    ],
+    "yielding": [
+      false,
+      true,
+      false,
+      false
+    ],
+    "yield_target_x": [
+      null,
+      -12.758533477783203,
+      null,
+      null
+    ]
+  },
+  "animation": {
+    "path_length": [
+      15.63121509552002,
+      29.50079345703125,
+      0.0,
+      0.0
+    ],
+    "distance_traveled": [
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ],
+    "speed": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "done_attr": [
+      false,
+      false,
+      true,
+      true
+    ],
+    "is_done_method": [
+      false,
+      false,
+      true,
+      true
+    ],
+    "is_yield_move": [
+      false,
+      true,
+      false,
+      false
+    ],
+    "move_loaded": [
+      false,
+      false,
+      false,
+      false
+    ],
+    "base_speed": 1.0,
+    "move_dt": 1.0
+  },
+  "world_xy": {
+    "0": {
+      "x": 17.241466522216797,
+      "y": 12.285245895385742
+    },
+    "1": {
+      "x": 15.742259979248047,
+      "y": 10.186750411987305
+    }
+  },
+  "safe_x_gap": 4.0,
+  "joint_position": [
+    -19.50079345703125,
+    -1.0,
+    -34.641170501708984,
+    -11.641170501708984,
+    2.0984954833984375,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "start_pose_g": [
+    -19.50079345703125,
+    2.0984954833984375
+  ],
+  "end_pose_g": [
+    -6.626762390136719,
+    -6.766842842102051
+  ],
+  "diagnosis": {
+    "xy_missing": false,
+    "joints_missing": false,
+    "is_yielding": false,
+    "anim_done": false,
+    "progress_ratio": 0.0,
+    "likely": "move_in_progress_or_blocked"
+  }
+}

@@ -16,7 +16,7 @@ params:
 
     # Must match HcVectorEnvCfg.scene.num_envs
     num_actors: 3
-    max_episode_steps: 4000
+    max_episode_steps: 10000
     state_dim: 256
 
     gamma: 0.99

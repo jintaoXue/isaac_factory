@@ -191,8 +191,9 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     human_number_upper_bound = 6
     robot_upper_bound = 2
     material_batch_upper_bound = 5
-    # RL episode horizon (paper Nh5 success makespan ~2k–3.4k; leave headroom)
-    max_episode_steps = 4000
+    # RL episode horizon. Scale with CfgSubtaskPredefinedTimeGallery
+    # (control_machine=200, material ops=50; ~5 products × multi-stage process).
+    max_episode_steps = 10000
     # Reward v2 (written by TaskManager.update_rl_signals)
     rl_step_penalty = 0.01
     rl_finish_bonus = 2.0

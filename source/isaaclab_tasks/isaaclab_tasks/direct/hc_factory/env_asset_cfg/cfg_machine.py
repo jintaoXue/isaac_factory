@@ -412,8 +412,11 @@ CfgMachine = {
                 ### to simplify the problem, we set the z of hook to be fixed, and only control the x and y movement of the gantry, so the joint position of z axis is not used for calculating the reward and is not included in the observation, but it is still needed for animation and calculating the offset between the hook and the material when gripping.
                 "fixed_hook_height": 8.90808,
                 "safe_x_gap": 4.0,
-                "animation_time": 20,
-                "animation_time_noise_std": 2.0,
+                # Discrete factory step: each env step advances dt * speed (world/joint xy units).
+                "move_speed": 0.5,
+                "move_dt": 1.0,
+                "loaded_speed_scale": 0.5,
+                "move_speed_noise_std": 0.0,
             },
         },
     },

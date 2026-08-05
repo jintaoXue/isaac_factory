@@ -2,14 +2,14 @@ import copy
 from .cfg_machine import CfgMachine
 
 CfgSubtaskPredefinedTimeGallery = {
-   "go_to_material": 10,
-   "material_on_gantry": 10,
-   "control_gantry": 10,
-   "material_on_robot": 10,
-   "go_to_goal_area": 10,
-   "material_on_goal_area": 10,
-   "go_to_processing_machine": 10,
-   "control_machine": 10,
+   "go_to_material": None,
+   "material_on_gantry": 50,
+   "control_gantry": 50,
+   "material_on_robot": 50,
+   "go_to_goal_area": None,
+   "material_on_goal_area": 50,
+   "go_to_processing_machine": None,
+   "control_machine": 200,
    "wait": None,
    "done": None,
 }
@@ -87,7 +87,7 @@ CfgSubtaskGallery = {
         "pipe_cutting":{
             "have_AGV":{
                 # human: 0, gantry: 1, machine: 2, robot: 3
-                "ongoing": ["go_to_processing_machine", "none", "wait", "none"],
+                "ongoing": ["go_to_processing_machine", "none", "wait", "wait"],
                 "ongoing_index": 0,
                 "required_processing_material": "product_00_pipe",
                 "processed_material": "product_00_pipe",
@@ -100,12 +100,13 @@ CfgSubtaskGallery = {
                 "goal_area_ids": None,
                 "index_to_decide_goal_area": 4,
                 "num_subtasks": 12,
-                "finished": [False, True, True, True],
+                "finished": [False, True, True, False],
                 "subtasks": [
                     #human: 0, gantry: 1, machine: 2, robot: 3
-                    ["go_to_processing_machine", "none", "wait", "none"],
-                    ["control_machine", "none", "process", "none"],
-                    ["wait", "finding_free_gantry", "wait", "finding_free_robot"],
+                    # robot is fixed by Agent-D action at task start (no mid-task finding_free_robot)
+                    ["go_to_processing_machine", "none", "wait", "wait"],
+                    ["control_machine", "none", "process", "wait"],
+                    ["wait", "finding_free_gantry", "wait", "wait"],
                     ["control_gantry", "go_to_processing_machine", "wait", "go_to_processing_machine"],
                     ["material_on_gantry", "wait", "wait", "wait"],
                     ["control_gantry", "carry_to_robot", "done", "wait"],

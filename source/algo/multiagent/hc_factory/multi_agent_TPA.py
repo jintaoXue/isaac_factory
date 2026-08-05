@@ -101,7 +101,7 @@ class MultiAgentTPA:
         self.save_interval = config.get("save_interval", 1000)
         self.log_interval = config.get("log_interval", 100)
         self.global_step = 0
-        self.max_episode_steps = int(config.get("max_episode_steps", 4000))
+        self.max_episode_steps = int(config.get("max_episode_steps", 10000))
 
         dqn_kwargs = {
             "hidden_dim": config.get("hidden_dim", 128),

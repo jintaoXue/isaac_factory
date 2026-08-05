@@ -144,9 +144,6 @@ class Robot:
             subtasks["finished"][3] = True
         elif robot_subtask == "none":
             subtasks["finished"][3] = True
-        elif robot_subtask == "finding_free_robot":
-            # reservation is done in TaskManager._update_task_record_when_doing_subtask
-            pass
         elif robot_subtask == "carry_to_goal_area":
             self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type="goal")
         elif robot_subtask == "done":

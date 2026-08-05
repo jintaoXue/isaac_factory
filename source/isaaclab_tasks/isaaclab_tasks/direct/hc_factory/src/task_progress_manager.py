@@ -10,7 +10,7 @@ class TaskManager:
     def __init__(
         self,
         cuda_device: torch.device,
-        max_episode_steps: int = 4000,
+        max_episode_steps: int = 10000,
         step_penalty: float = 0.01,
         finish_bonus: float = 2.0,
         task_bonus: float = 0.1,
@@ -338,10 +338,11 @@ class TaskManager:
             env_state_action_dict["human"][human]["route_index"] = 0
             env_state_action_dict["human"][human]["route_length"] = 0
             env_state_action_dict["human"][human]["target_area_id"] = None
-        #robot: logistic 开工即占用；processing 在 finding_free_robot 子任务中再占用（同 gantry）
+        #robot: logistic / processing 均在开工时按 action 定死并占用
         robot = task_record["robot"]
-        if robot != None and task_record["task_type"] == "logistic":
+        if robot != None:
             assert env_state_action_dict["robot"][robot]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
+            assert env_state_action_dict["robot"][robot]["state"] == "free", "Allocated robot must be free at task start"
             env_state_action_dict["robot"][robot]["ongoing_task_record_index"] = task_record["product_index"]
             env_state_action_dict["robot"][robot]["state"] = "working_" + task_record["task"]
         logistic_machine_type = task_record["logistic_machine"]
@@ -426,13 +427,6 @@ class TaskManager:
                         finished[index] = False
                 return False
 
-    def _find_free_robot(self, env_state_action_dict, task_record):
-        """Return (robot_name, robot_index) for a free AGV, or (None, None)."""
-        for robot_index, (robot_name, robot_state) in enumerate(env_state_action_dict["robot"].items()):
-            if robot_state["state"] == "free" and robot_state["ongoing_task_record_index"] is None:
-                return robot_name, robot_index
-        return None, None
-
     def _update_task_record_when_doing_subtask(self, env_state_action_dict, task_record):
         if task_record["task_type"] != "processing":
             return
@@ -441,8 +435,8 @@ class TaskManager:
         ongoing = subtasks["ongoing"]
         finished = subtasks["finished"]
 
-        # gantry: mid-task reservation (same as before)
-        if ongoing[1] == "finding_free_gantry" and finished[1] is False:
+        # gantry: mid-task reservation (Agent D does not allocate gantry)
+        if ongoing[1] == "finding_free_gantry" and not finished[1]:
             if task_record["chosen_gantry_index"] is None:
                 task_record["chosen_gantry_index"] = self._find_free_gantry(env_state_action_dict, task_record)
             chosen_gantry_index = task_record["chosen_gantry_index"]
@@ -453,20 +447,7 @@ class TaskManager:
                 env_state_action_dict["machine"]["num07_gantry_group"]["state"][chosen_gantry_index] = "working_" + task_record["task"]
                 finished[1] = True
 
-        # robot: mid-task reservation for have_AGV processing (4-agent rows)
-        if len(ongoing) > 3 and ongoing[3] == "finding_free_robot" and finished[3] is False:
-            if task_record["robot"] is None:
-                robot_name, robot_index = self._find_free_robot(env_state_action_dict, task_record)
-                if robot_name is not None:
-                    task_record["robot"] = robot_name
-                    task_record["robot_index"] = robot_index
-            if task_record["robot"] is not None:
-                robot_name = task_record["robot"]
-                robot_state = env_state_action_dict["robot"][robot_name]
-                if robot_state["ongoing_task_record_index"] is None:
-                    robot_state["ongoing_task_record_index"] = task_record["product_index"]
-                    robot_state["state"] = "working_" + task_record["task"]
-                finished[3] = True
+        # robot is fixed by action at task start — no mid-task finding_free_robot
 
         # where the processed material will be put on
         if (
