@@ -128,25 +128,36 @@ class Robot:
     
         assert self.state["state"] != "free", "The robot should be working on the task, and be defined in task_progress_manager.py"
         
-        #now robot is only for logistic
-        self.step_logistic(env_state_action_dict, task_record)
+        self.step_subtasks(env_state_action_dict, task_record)
         return env_state_action_dict
 
-    def step_logistic(self, env_state_action_dict: dict, task_record: dict) -> dict:
+    def step_subtasks(self, env_state_action_dict: dict, task_record: dict) -> dict:
+        """Advance robot column of ongoing subtasks (logistic or processing have_AGV)."""
         subtasks = task_record["subtasks_dict"]
-        subtask = subtasks["ongoing"]
-        robot_subtask = subtask[3]
-        if robot_subtask == "go_to_material":
-            self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "start")
+        # robot column only exists for have_AGV templates
+        if len(subtasks["ongoing"]) < 4:
+            return env_state_action_dict
+        robot_subtask = subtasks["ongoing"][3]
+        if robot_subtask in ("go_to_material", "go_to_processing_machine"):
+            self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type="start")
         elif robot_subtask == "wait":
             subtasks["finished"][3] = True
+        elif robot_subtask == "none":
+            subtasks["finished"][3] = True
+        elif robot_subtask == "finding_free_robot":
+            # reservation is done in TaskManager._update_task_record_when_doing_subtask
+            pass
         elif robot_subtask == "carry_to_goal_area":
             self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type="goal")
         elif robot_subtask == "done":
             self._task_done(env_state_action_dict, task_record, subtasks)
         else:
-            raise ValueError(f"Invalid robot subtask for logistic: {robot_subtask}")
+            raise ValueError(f"Invalid robot subtask: {robot_subtask}")
         return env_state_action_dict
+
+    # backward-compatible alias
+    def step_logistic(self, env_state_action_dict: dict, task_record: dict) -> dict:
+        return self.step_subtasks(env_state_action_dict, task_record)
             
     def _subtask_go_to_target(self, env_state_action_dict: dict, task_record: dict, subtasks: dict, target_area_type: str) -> None:
         if subtasks["finished"][3] == True:

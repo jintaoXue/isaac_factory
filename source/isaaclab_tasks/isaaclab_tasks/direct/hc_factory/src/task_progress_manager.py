@@ -218,7 +218,8 @@ class TaskManager:
             if _index < len(human_keys):
                 new_task_record["human"] = human_keys[_index]
                 new_task_record["human_index"] = _index
-        if action_robot.sum() != 0 and new_task_record["task_type"] == "logistic":
+        # logistic / processing 均可分配 AGV（决定 have_AGV vs only_have_gantry 模板）
+        if action_robot.sum() != 0 and new_task_record["task_type"] in ("logistic", "processing"):
             _index = action_robot.nonzero()[0][0].item()
             if _index < len(robot_keys):
                 new_task_record["robot"] = robot_keys[_index]
@@ -301,8 +302,10 @@ class TaskManager:
             subtasks["goal_area_ids"] = subtasks["goal_area_ids"][machine_workstation_key]
             subtasks["goal_area_workstation_key"] = machine_workstation_key
         elif task_record["task_type"] == "processing":
-            #1. set the goal area for subtasks dict
-            subtasks = copy.deepcopy(CfgSubtaskGallery[task_record["product"]][task_record["task"]])
+            if task_record["robot"] != None:
+                subtasks = copy.deepcopy(CfgSubtaskGallery[task_record["product"]][task_record["task"]]["have_AGV"])
+            else:
+                subtasks = copy.deepcopy(CfgSubtaskGallery[task_record["product"]][task_record["task"]]["only_have_gantry"])
             # only update the start area ids, the goal area ids is updated during the processing task
             assert subtasks["material_start_area"] in env_state_action_dict["machine"]
             machine_workstation_key = task_record["chosen_machine_workstation"]
@@ -335,9 +338,9 @@ class TaskManager:
             env_state_action_dict["human"][human]["route_index"] = 0
             env_state_action_dict["human"][human]["route_length"] = 0
             env_state_action_dict["human"][human]["target_area_id"] = None
-        #robot
+        #robot: logistic 开工即占用；processing 在 finding_free_robot 子任务中再占用（同 gantry）
         robot = task_record["robot"]
-        if robot != None:
+        if robot != None and task_record["task_type"] == "logistic":
             assert env_state_action_dict["robot"][robot]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
             env_state_action_dict["robot"][robot]["ongoing_task_record_index"] = task_record["product_index"]
             env_state_action_dict["robot"][robot]["state"] = "working_" + task_record["task"]
@@ -423,48 +426,76 @@ class TaskManager:
                         finished[index] = False
                 return False
 
+    def _find_free_robot(self, env_state_action_dict, task_record):
+        """Return (robot_name, robot_index) for a free AGV, or (None, None)."""
+        for robot_index, (robot_name, robot_state) in enumerate(env_state_action_dict["robot"].items()):
+            if robot_state["state"] == "free" and robot_state["ongoing_task_record_index"] is None:
+                return robot_name, robot_index
+        return None, None
+
     def _update_task_record_when_doing_subtask(self, env_state_action_dict, task_record):
-        if task_record["task_type"] == "processing":
-            ## processing task, 1 is gantry, if gantry is none, means gantry is not needed
-            if task_record["subtasks_dict"]["ongoing"][1] == "none":
-                return
-            ### update the logistic machine and gantry index
-            elif task_record["subtasks_dict"]["ongoing"][1] == "finding_free_gantry" and task_record["subtasks_dict"]["finished"][1] == False:
-                if task_record["chosen_gantry_index"] is None:
-                    task_record["chosen_gantry_index"] = self._find_free_gantry(env_state_action_dict, task_record)
-                chosen_gantry_index = task_record["chosen_gantry_index"]
-                if chosen_gantry_index is not None:
-                    if task_record.get("task_start_time_step") is None:
-                        task_record["task_start_time_step"] = int(env_state_action_dict["time_step"])
-                    env_state_action_dict["machine"]["num07_gantry_group"]["ongoing_task_record_index"][chosen_gantry_index] = task_record["product_index"]
-                    env_state_action_dict["machine"]["num07_gantry_group"]["state"][chosen_gantry_index] = "working_" + task_record["task"]
-                    task_record["subtasks_dict"]["finished"][1] = True
-            ### where the processed material will be put on
-            elif task_record["subtasks_dict"]["ongoing_index"] >= task_record["subtasks_dict"]["index_to_decide_goal_area"] and \
-                  task_record["subtasks_dict"]["goal_area_ids"] is None:
-                if task_record["is_final_task"] == True:
-                    #no processing task after this task, so the processed material will be put on a storage
-                    goal_storage_name = self._find_free_storage(env_state_action_dict, task_record)
-                    task_record["subtasks_dict"]["goal_area_ids"] = env_state_action_dict["storage"][goal_storage_name]["key_variables"]["working_area_ids"]
-                    task_record["subtasks_dict"]["material_goal_area"] = goal_storage_name
+        if task_record["task_type"] != "processing":
+            return
+
+        subtasks = task_record["subtasks_dict"]
+        ongoing = subtasks["ongoing"]
+        finished = subtasks["finished"]
+
+        # gantry: mid-task reservation (same as before)
+        if ongoing[1] == "finding_free_gantry" and finished[1] is False:
+            if task_record["chosen_gantry_index"] is None:
+                task_record["chosen_gantry_index"] = self._find_free_gantry(env_state_action_dict, task_record)
+            chosen_gantry_index = task_record["chosen_gantry_index"]
+            if chosen_gantry_index is not None:
+                if task_record.get("task_start_time_step") is None:
+                    task_record["task_start_time_step"] = int(env_state_action_dict["time_step"])
+                env_state_action_dict["machine"]["num07_gantry_group"]["ongoing_task_record_index"][chosen_gantry_index] = task_record["product_index"]
+                env_state_action_dict["machine"]["num07_gantry_group"]["state"][chosen_gantry_index] = "working_" + task_record["task"]
+                finished[1] = True
+
+        # robot: mid-task reservation for have_AGV processing (4-agent rows)
+        if len(ongoing) > 3 and ongoing[3] == "finding_free_robot" and finished[3] is False:
+            if task_record["robot"] is None:
+                robot_name, robot_index = self._find_free_robot(env_state_action_dict, task_record)
+                if robot_name is not None:
+                    task_record["robot"] = robot_name
+                    task_record["robot_index"] = robot_index
+            if task_record["robot"] is not None:
+                robot_name = task_record["robot"]
+                robot_state = env_state_action_dict["robot"][robot_name]
+                if robot_state["ongoing_task_record_index"] is None:
+                    robot_state["ongoing_task_record_index"] = task_record["product_index"]
+                    robot_state["state"] = "working_" + task_record["task"]
+                finished[3] = True
+
+        # where the processed material will be put on
+        if (
+            subtasks["ongoing_index"] >= subtasks["index_to_decide_goal_area"]
+            and subtasks["goal_area_ids"] is None
+        ):
+            if task_record["is_final_task"] == True:
+                #no processing task after this task, so the processed material will be put on a storage
+                goal_storage_name = self._find_free_storage(env_state_action_dict, task_record)
+                subtasks["goal_area_ids"] = env_state_action_dict["storage"][goal_storage_name]["key_variables"]["working_area_ids"]
+                subtasks["material_goal_area"] = goal_storage_name
+            else:
+                next_target_machine = task_record["next_target_machine"]
+                machine_state = env_state_action_dict["machine"][next_target_machine]["state"]
+                if "free" in machine_state:
+                    # the processed material will be put on the free workstation of the next target machine, no need to do logistic task for next processing task
+                    task_record["already_done_next_logistic_task"] = True
+                    task_record["next_chosen_workstation_index"] = machine_state.index("free")
+                    machine_state[task_record["next_chosen_workstation_index"]] = "waiting_" + task_record["task"]
+                    workstation_key = list(env_state_action_dict["machine"][next_target_machine]["key_variables"]["working_area_ids"].keys())[task_record["next_chosen_workstation_index"]]
+                    task_record["next_chosen_machine_workstation"] = workstation_key
+                    subtasks["goal_area_ids"] = env_state_action_dict["machine"][next_target_machine]["key_variables"]["working_area_ids"][workstation_key]
+                    subtasks["material_goal_area"] = next_target_machine
+                    subtasks["goal_area_workstation_key"] = workstation_key
                 else:
-                    next_target_machine = task_record["next_target_machine"]
-                    machine_state = env_state_action_dict["machine"][next_target_machine]["state"]
-                    if "free" in machine_state:
-                        # the processed material will be put on the free workstation of the next target machine, no need to do logistic task for next processing task
-                        task_record["already_done_next_logistic_task"] = True
-                        task_record["next_chosen_workstation_index"] = machine_state.index("free")
-                        machine_state[task_record["next_chosen_workstation_index"]] = "waiting_" + task_record["task"]
-                        workstation_key = list(env_state_action_dict["machine"][next_target_machine]["key_variables"]["working_area_ids"].keys())[task_record["next_chosen_workstation_index"]]
-                        task_record["next_chosen_machine_workstation"] = workstation_key
-                        task_record["subtasks_dict"]["goal_area_ids"] = env_state_action_dict["machine"][next_target_machine]["key_variables"]["working_area_ids"][workstation_key]
-                        task_record["subtasks_dict"]["material_goal_area"] = next_target_machine
-                        task_record["subtasks_dict"]["goal_area_workstation_key"] = workstation_key
-                    else:
-                        task_record["already_done_next_logistic_task"] = False
-                        goal_storage_name = self._find_free_storage(env_state_action_dict, task_record)
-                        task_record["subtasks_dict"]["goal_area_ids"] = env_state_action_dict["storage"][goal_storage_name]["key_variables"]["working_area_ids"]
-                        task_record["subtasks_dict"]["material_goal_area"] = goal_storage_name
+                    task_record["already_done_next_logistic_task"] = False
+                    goal_storage_name = self._find_free_storage(env_state_action_dict, task_record)
+                    subtasks["goal_area_ids"] = env_state_action_dict["storage"][goal_storage_name]["key_variables"]["working_area_ids"]
+                    subtasks["material_goal_area"] = goal_storage_name
     
     def _find_free_storage(self, env_state_action_dict, task_record):
         storages = env_state_action_dict["storage"]

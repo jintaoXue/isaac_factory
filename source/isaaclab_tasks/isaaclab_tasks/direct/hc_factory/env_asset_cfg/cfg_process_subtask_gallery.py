@@ -99,7 +99,7 @@ CfgSubtaskGallery = {
                 "start_area_ids": CfgMachine["num02_rollerbedCNCPipeIntersectionCuttingMachine"]["working_area_ids"],
                 "goal_area_ids": None,
                 "index_to_decide_goal_area": 4,
-                "num_subtasks": 8,
+                "num_subtasks": 12,
                 "finished": [False, True, True, True],
                 "subtasks": [
                     #human: 0, gantry: 1, machine: 2, robot: 3
@@ -109,19 +109,24 @@ CfgSubtaskGallery = {
                     ["control_gantry", "go_to_processing_machine", "wait", "go_to_processing_machine"],
                     ["material_on_gantry", "wait", "wait", "wait"],
                     ["control_gantry", "carry_to_robot", "done", "wait"],
-                    ["done", "done", "done", "carry_to_goal_area"],
+                    ["material_on_robot", "wait", "done", "wait"],
+                    ["go_to_goal_area", "move_to_goal_area", "done", "carry_to_goal_area"],
+                    ["material_on_gantry", "wait", "done", "wait"],
+                    ["control_gantry", "carry_to_goal_area", "done", "done"],
+                    ["material_on_goal_area", "wait", "done", "done"],
                     ["done", "done", "done", "done"],
                 ],
                 "material_states_in_subtasks": {
-                    "product_00_pipe": ["on_machine", "on_machine", "on_machine", "on_machine", "on_machine", "on_gantry", "on_gantry", "on_goal_area"],
-                    "product_00_flange": ["on_start_area"]*8,
-                    "product_00_elbow": ["on_start_area"]*8,
-                    "product_00_semi": ["disappear"]*8,
-                    "product_00_maded": ["disappear"]*8,
-                }  
+                    "product_00_pipe": ["on_machine", "on_machine", "on_machine", "on_machine", "on_machine",
+                        "on_gantry", "on_gantry", "on_robot", "on_robot", "on_gantry", "on_gantry", "on_goal_area"],
+                    "product_00_flange": ["on_start_area"]*12,
+                    "product_00_elbow": ["on_start_area"]*12,
+                    "product_00_semi": ["disappear"]*12,
+                    "product_00_maded": ["disappear"]*12,
+                }
             },
             "only_have_gantry":{
-                                # human: 0, gantry: 1, machine: 2
+                # human: 0, gantry: 1, machine: 2
                 "ongoing": ["go_to_processing_machine", "none", "wait"],
                 "ongoing_index": 0,
                 "required_processing_material": "product_00_pipe",
@@ -148,12 +153,14 @@ CfgSubtaskGallery = {
                     ["done", "done", "done"],
                 ],
                 "material_states_in_subtasks": {
-                    "product_00_pipe": ["on_machine", "on_machine", "on_machine", "on_machine", "on_machine", "on_gantry", "on_gantry", "on_goal_area"],
+                    "product_00_pipe": ["on_machine", "on_machine", "on_machine", "on_machine",
+                        "on_machine", "on_gantry", "on_gantry", "on_goal_area"],
                     "product_00_flange": ["on_start_area"]*8,
                     "product_00_elbow": ["on_start_area"]*8,
                     "product_00_semi": ["disappear"]*8,
                     "product_00_maded": ["disappear"]*8,
-                }  
+                }
+            },
         },
     }
 }
@@ -168,8 +175,10 @@ CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_pipe_grooving"]["only_have_g
 # task id 4
 # pipe_grooving
 CfgSubtaskGallery["ProductWaterPipe"]["pipe_grooving"] = copy.deepcopy(CfgSubtaskGallery["ProductWaterPipe"]["pipe_cutting"])
-CfgSubtaskGallery["ProductWaterPipe"]["pipe_grooving"]["material_start_area"] = "num04_groovingMachineLarge"
-CfgSubtaskGallery["ProductWaterPipe"]["pipe_grooving"]["start_area_ids"] = CfgMachine["num04_groovingMachineLarge"]["working_area_ids"]
+for _mode in ("have_AGV", "only_have_gantry"):
+    _proc = CfgSubtaskGallery["ProductWaterPipe"]["pipe_grooving"][_mode]
+    _proc["material_start_area"] = "num04_groovingMachineLarge"
+    _proc["start_area_ids"] = CfgMachine["num04_groovingMachineLarge"]["working_area_ids"]
 # task id 5
 # logistic_for_batch_spot_welding
 CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_batch_spot_welding"] = copy.deepcopy(
@@ -182,17 +191,37 @@ CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_batch_spot_welding"]["only_h
 # task id 6
 # batch_spot_welding
 CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"] = copy.deepcopy(CfgSubtaskGallery["ProductWaterPipe"]["pipe_cutting"])
-CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"]["material_start_area"] = "num08_workbench"
-CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"]["required_processing_material"] = ["product_00_pipe", "product_00_flange", "product_00_elbow"]
-CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"]["processed_material"] = "product_00_semi"
-CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"]["material_states_in_subtasks"] = {
-        "product_00_pipe": ["on_machine"]*2 + ["disappear"]*6,
-        "product_00_flange": ["on_start_area"]*2 + ["disappear"]*6,
-        "product_00_elbow": ["on_start_area"]*2 + ["disappear"]*6,
-        "product_00_semi": ["disappear", "disappear", "on_machine", "on_machine", "on_machine", "on_gantry", "on_gantry", "on_goal_area"],
-        "product_00_maded": ["disappear"]*8,
-    }
-CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"]["start_area_ids"] = CfgMachine["num08_workbench"]["working_area_ids"]
+for _mode in ("have_AGV", "only_have_gantry"):
+    _proc = CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"][_mode]
+    _proc["material_start_area"] = "num08_workbench"
+    _proc["required_processing_material"] = ["product_00_pipe", "product_00_flange", "product_00_elbow"]
+    _proc["processed_material"] = "product_00_semi"
+    _proc["start_area_ids"] = CfgMachine["num08_workbench"]["working_area_ids"]
+    n = _proc["num_subtasks"]
+    if _mode == "have_AGV":
+        # 12 steps: process on machine → gantry → robot → gantry → goal
+        _proc["material_states_in_subtasks"] = {
+            "product_00_pipe": ["on_machine"] * 2 + ["disappear"] * 10,
+            "product_00_flange": ["on_start_area"] * 2 + ["disappear"] * 10,
+            "product_00_elbow": ["on_start_area"] * 2 + ["disappear"] * 10,
+            "product_00_semi": (
+                ["disappear", "disappear"]
+                + ["on_machine"] * 3
+                + ["on_gantry", "on_gantry", "on_robot", "on_robot", "on_gantry", "on_gantry", "on_goal_area"]
+            ),
+            "product_00_maded": ["disappear"] * n,
+        }
+    else:
+        # 8 steps: process on machine → gantry → goal
+        _proc["material_states_in_subtasks"] = {
+            "product_00_pipe": ["on_machine"] * 2 + ["disappear"] * 6,
+            "product_00_flange": ["on_start_area"] * 2 + ["disappear"] * 6,
+            "product_00_elbow": ["on_start_area"] * 2 + ["disappear"] * 6,
+            "product_00_semi": [
+                "disappear", "disappear", "on_machine", "on_machine", "on_machine", "on_gantry", "on_gantry", "on_goal_area"
+            ],
+            "product_00_maded": ["disappear"] * n,
+        }
 # task id 7
 # logistic_for_arc_welding_root
 CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_arc_welding_root"] = copy.deepcopy(
@@ -222,16 +251,33 @@ for _mode in ("have_AGV", "only_have_gantry"):
 # task id 8
 # arc_welding_root
 CfgSubtaskGallery["ProductWaterPipe"]["arc_welding_root"] = copy.deepcopy(CfgSubtaskGallery["ProductWaterPipe"]["batch_spot_welding"])
-CfgSubtaskGallery["ProductWaterPipe"]["arc_welding_root"]["material_start_area"] = "num01_weldingRobot"
-CfgSubtaskGallery["ProductWaterPipe"]["arc_welding_root"]["required_processing_material"] = "product_00_semi"
-CfgSubtaskGallery["ProductWaterPipe"]["arc_welding_root"]["material_states_in_subtasks"] = {
-        "product_00_pipe": ["disappear"]*8,
-        "product_00_flange": ["disappear"]*8,
-        "product_00_elbow": ["disappear"]*8,
-        "product_00_semi": ["on_machine", "on_machine", "on_machine", "on_machine", "on_machine", "on_gantry", "on_gantry", "on_goal_area"],
-        "product_00_maded": ["disappear"]*8,
-    }
-CfgSubtaskGallery["ProductWaterPipe"]["arc_welding_root"]["start_area_ids"] = CfgMachine["num01_weldingRobot"]["working_area_ids"]
+for _mode in ("have_AGV", "only_have_gantry"):
+    _proc = CfgSubtaskGallery["ProductWaterPipe"]["arc_welding_root"][_mode]
+    _proc["material_start_area"] = "num01_weldingRobot"
+    _proc["required_processing_material"] = "product_00_semi"
+    _proc["start_area_ids"] = CfgMachine["num01_weldingRobot"]["working_area_ids"]
+    n = _proc["num_subtasks"]
+    if _mode == "have_AGV":
+        _proc["material_states_in_subtasks"] = {
+            "product_00_pipe": ["disappear"] * n,
+            "product_00_flange": ["disappear"] * n,
+            "product_00_elbow": ["disappear"] * n,
+            "product_00_semi": (
+                ["on_machine"] * 5
+                + ["on_gantry", "on_gantry", "on_robot", "on_robot", "on_gantry", "on_gantry", "on_goal_area"]
+            ),
+            "product_00_maded": ["disappear"] * n,
+        }
+    else:
+        _proc["material_states_in_subtasks"] = {
+            "product_00_pipe": ["disappear"] * n,
+            "product_00_flange": ["disappear"] * n,
+            "product_00_elbow": ["disappear"] * n,
+            "product_00_semi": [
+                "on_machine", "on_machine", "on_machine", "on_machine", "on_machine", "on_gantry", "on_gantry", "on_goal_area"
+            ],
+            "product_00_maded": ["disappear"] * n,
+        }
 
 # task id 9
 # logistic_for_MIG_welding_surface
@@ -245,8 +291,10 @@ for _mode in ("have_AGV", "only_have_gantry"):
 # task id 10
 # MIG_welding_surface
 CfgSubtaskGallery["ProductWaterPipe"]["MIG_welding_surface"] = copy.deepcopy(CfgSubtaskGallery["ProductWaterPipe"]["arc_welding_root"])
-CfgSubtaskGallery["ProductWaterPipe"]["MIG_welding_surface"]["material_start_area"] = "num00_rotaryPipeAutomaticWeldingMachine"
-CfgSubtaskGallery["ProductWaterPipe"]["MIG_welding_surface"]["start_area_ids"] = CfgMachine["num00_rotaryPipeAutomaticWeldingMachine"]["working_area_ids"]
+for _mode in ("have_AGV", "only_have_gantry"):
+    _proc = CfgSubtaskGallery["ProductWaterPipe"]["MIG_welding_surface"][_mode]
+    _proc["material_start_area"] = "num00_rotaryPipeAutomaticWeldingMachine"
+    _proc["start_area_ids"] = CfgMachine["num00_rotaryPipeAutomaticWeldingMachine"]["working_area_ids"]
 
 # task id 11
 # logistic_for_paint_rust_proof
@@ -261,13 +309,31 @@ for _mode in ("have_AGV", "only_have_gantry"):
 # task id 12
 # paint_rust_proof
 CfgSubtaskGallery["ProductWaterPipe"]["paint_rust_proof"] = copy.deepcopy(CfgSubtaskGallery["ProductWaterPipe"]["arc_welding_root"])
-CfgSubtaskGallery["ProductWaterPipe"]["paint_rust_proof"]["material_start_area"] = "num08_workbench"
-CfgSubtaskGallery["ProductWaterPipe"]["paint_rust_proof"]["processed_material"] = "product_00_maded"
-CfgSubtaskGallery["ProductWaterPipe"]["paint_rust_proof"]["material_states_in_subtasks"] = {
-        "product_00_pipe": ["disappear"]*8,
-        "product_00_flange": ["disappear"]*8,
-        "product_00_elbow": ["disappear"]*8,
-        "product_00_semi": ["on_machine"]*2 + ["disappear"]*6,
-        "product_00_maded": ["disappear", "disappear", "on_machine", "on_machine", "on_machine", "on_gantry", "on_gantry", "on_goal_area"],
-    }
-CfgSubtaskGallery["ProductWaterPipe"]["paint_rust_proof"]["start_area_ids"] = CfgMachine["num08_workbench"]["working_area_ids"]
+for _mode in ("have_AGV", "only_have_gantry"):
+    _proc = CfgSubtaskGallery["ProductWaterPipe"]["paint_rust_proof"][_mode]
+    _proc["material_start_area"] = "num08_workbench"
+    _proc["processed_material"] = "product_00_maded"
+    _proc["start_area_ids"] = CfgMachine["num08_workbench"]["working_area_ids"]
+    n = _proc["num_subtasks"]
+    if _mode == "have_AGV":
+        _proc["material_states_in_subtasks"] = {
+            "product_00_pipe": ["disappear"] * n,
+            "product_00_flange": ["disappear"] * n,
+            "product_00_elbow": ["disappear"] * n,
+            "product_00_semi": ["on_machine"] * 2 + ["disappear"] * 10,
+            "product_00_maded": (
+                ["disappear", "disappear"]
+                + ["on_machine"] * 3
+                + ["on_gantry", "on_gantry", "on_robot", "on_robot", "on_gantry", "on_gantry", "on_goal_area"]
+            ),
+        }
+    else:
+        _proc["material_states_in_subtasks"] = {
+            "product_00_pipe": ["disappear"] * n,
+            "product_00_flange": ["disappear"] * n,
+            "product_00_elbow": ["disappear"] * n,
+            "product_00_semi": ["on_machine"] * 2 + ["disappear"] * 6,
+            "product_00_maded": [
+                "disappear", "disappear", "on_machine", "on_machine", "on_machine", "on_gantry", "on_gantry", "on_goal_area"
+            ],
+        }

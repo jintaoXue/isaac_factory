@@ -98,6 +98,7 @@ SUBTASK = Vocab(
         "carry_to_goal_area",
         "move_to_goal_area",
         "finding_free_gantry",
+        "finding_free_robot",
         "process",
     ]
 )
