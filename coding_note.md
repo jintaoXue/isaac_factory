@@ -200,3 +200,7 @@ human id和robot id 的状态
 要求每个subtask的完成时间每一次都加上高斯噪声
 要求training validate 和测试集的随机数要不同
 增加在batch_train里面 把运行代码写进去 方便跑训练
+
+#8.5
+agv也加入 processing task里面
+发挥agv长距离速度的优势
