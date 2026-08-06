@@ -1,6 +1,6 @@
 {
-  "data_dir": "raw_data/FactoryBN_all6",
-  "save_dir": "libcity/cache/model_cache/FactoryBN_all6",
+  "data_dir": "raw_data/FactoryBN_18_human_machine2.0",
+  "save_dir": "libcity/cache/model_cache/FactoryBN_18_human_machine2.0",
   "input_window": 12,
   "output_window": 1,
   "horizon_s": 60,

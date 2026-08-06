@@ -1,12 +1,28 @@
+# IDE
 /.vscode
-/visualized_data/*
-/libcity/tmp/*
-/libcity/__pycache__
-/libcity/*/__pycache__
-/libcity/data/dataset/__pycache__
 /.idea
-/libcity/log/*
-/libcity/model/*/__pycache__
-/libcity/data/dataset/*/__pycache__
-/libcity/cache/model_cache/*
-/libcity/cache/evaluate_cache/*
+
+# Python
+**/__pycache__/
+*.pyc
+*.pyo
+
+# ---------------------------------------------------------------------------
+# Factory BN — regenerate locally; do not commit
+#   python -m factory_bn.export_dataset --run_dir ... --out_dir raw_data/...
+# ---------------------------------------------------------------------------
+/raw_data/
+
+# LibCity atomic / tensor blobs (if ever written outside raw_data/)
+*.dyna
+*.npz
+
+# Trained checkpoints & metrics (regenerate via factory_bn.train)
+/libcity/cache/model_cache/
+/libcity/cache/evaluate_cache/
+*.pt
+
+# LibCity runtime / upstream leftovers
+/libcity/tmp/
+/libcity/log/
+/visualized_data/
