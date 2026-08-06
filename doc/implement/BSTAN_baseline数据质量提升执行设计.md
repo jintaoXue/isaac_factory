@@ -2,7 +2,7 @@
 
 ## 1. 文档状态
 
-- 状态：Phase E0-E1 两轮服务器 Pilot 已通过；v2.1 零事件、v2.2 buffer 支配问题已定位，正式规则修订为 v2.3，待同一批 raw 数据最终复验
+- 状态：Phase E0-E2 已通过；v2.3 已在 10 个 Pilot episode 上重建验收，dataset v3 smoke 数据集已通过张量、target mask 和 split 门禁
 - 基线：现有 `BSTAN-style GAT-GRU baseline`
 - 前置版本：Phase A-D 已跑通，`dev_tyx` 的 18 单、扰动与龙门架修复已合入
 - 本轮目标：提高训练数据的正确性、覆盖度和评估可信度，再重新训练 baseline
@@ -208,6 +208,8 @@ target sampled from active and process-relevant resources
 实际激活可能因目标忙碌而延后，日志必须记录 `planned_start` 与 `actual_start`。采样结果可复现，但不同 episode 不应完全相同。
 
 ## 5. 标签质量提升
+
+标签规则、版本演进、字段语义和 Pilot 实测结果详见 `doc/implement/BSTAN瓶颈标签v2.3实现说明.md`。
 
 ### 5.1 标签版本约束
 
