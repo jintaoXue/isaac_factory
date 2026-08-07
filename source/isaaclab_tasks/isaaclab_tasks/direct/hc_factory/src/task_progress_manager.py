@@ -10,7 +10,7 @@ class TaskManager:
     def __init__(
         self,
         cuda_device: torch.device,
-        max_episode_steps: int = 10000,
+        max_episode_steps: int = 15000,
         step_penalty: float = 0.01,
         finish_bonus: float = 2.0,
         task_bonus: float = 0.1,

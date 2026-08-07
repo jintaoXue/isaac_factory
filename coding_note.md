@@ -204,3 +204,16 @@ human id和robot id 的状态
 #8.5
 agv也加入 processing task里面
 发挥agv长距离速度的优势
+
+#8.6
+1. 思考实验的设计
+多加一个产线
+多加一个产品工艺流程么
+2. 遇到了长时间序列的训练问题
+      buffer的优先级
+3. 算法上用CTDE
+4. 神经网络上的设计
+5. 优化的还是makespan
+6. 需要加human fatigue么
+7. 实验要证明multi-agent的优势
+      强调维度爆炸

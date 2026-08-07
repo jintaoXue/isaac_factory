@@ -193,7 +193,7 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     material_batch_upper_bound = 5
     # RL episode horizon. Scale with CfgSubtaskPredefinedTimeGallery
     # (control_machine=200, material ops=50; ~5 products × multi-stage process).
-    max_episode_steps = 10000
+    max_episode_steps = 15000
     # Reward v2 (written by TaskManager.update_rl_signals)
     rl_step_penalty = 0.01
     rl_finish_bonus = 2.0
