@@ -217,3 +217,74 @@ agv也加入 processing task里面
 6. 需要加human fatigue么
 7. 实验要证明multi-agent的优势
       强调维度爆炸
+
+---
+
+## Multi-agent 实验设计（A→B→C→D）
+
+### 核心主张
+- multi-agent 在这里的意义是 **hierarchical action factorization（分层动作因式分解）**，不是多个独立理性体各自优化。
+- 工厂调度若做成 flat 单智能体，一步要同时选：产品/焦点 × 工艺或物流任务 × human × AGV → 合法动作近似 **积式爆炸**。
+- A→B→C→D 后每层只面对小动作空间 + mask，探索与样本效率才现实；CTDE + 共享 StateEncoder + 共享 makespan 奖励：**分解动作，不拆开目标**。
+
+### 统一评价口径
+所有方法同一环境、同一随机种子协议、同一 `max_episode_steps`：
+- 主指标：Makespan（成功 episode 完成步数）、Success rate（时限内 production_done）
+- 辅指标：Truncation rate、累计 reward、达到某 success 所需环境步数（样本效率）
+- 报告均值 ± 标准差（≥3–5 seeds）
+
+### 对比方法（按动作是否分层排，算法族先对齐）
+1. **Rule-based**（已有）：启发式参考上/下界
+2. **Flat single-agent DQN**：联合离散动作 + **同一套 mask 哲学**；网络容量/训练步与分层对齐（避免「flat 被故意饿死」）
+3. **Partial hierarchy（消融）**：如 A+B 规则只学 C+D；或 C 规则只学 D
+4. **Full A→B→C→D Masked DQN**（主方法）：CTDE + 共享 encoder
+5. 可选：**Independent DQN**（分层但不共享 encoder）→ 说明共享表征/CTDE 收益
+
+主线先 **四层都用同一基线算法（Masked DQN）**，证明优势来自分层，而不是某层换了 PPO。
+
+### 规模扫描（把「维度爆炸」画出来）
+固定算法，放大问题：产品件数、并行 producing、human 数、AGV 数、工艺段数（小/中/大）。
+看曲线：
+- Makespan / Success vs 规模
+- 有效动作空间大小 vs 规模（flat 积式 vs 分层局部加维）
+- 样本效率 vs 规模  
+叙事：规模小时 flat 还能凑合；一大则 flat success/样本效率崩，分层 gap 拉大。
+
+### 消融（中等规模即可）
+- 有无 action mask
+- 有无共享 StateEncoder
+- 有无 AGV 参与 processing
+- reward：仅 step penalty vs + finish/task/success
+- 可选：D 的 human/robot **两头独立 Q** vs **一个联合分配头**
+
+每项只改一个因素。fatigue 先不要进主对比（confound makespan）。
+
+### 异构算法（辅线，主线之后）
+每层可以用不同算法（A/B 低频离散、C 强约束、D 资源匹配），但实验要 **先证分层，再证异构**：
+- Homogeneous：四层全 Masked DQN（主方法）
+- Hetero 小改：只换 C，或 A/B 用规则、C/D 学习（往往性价比高）
+- 不要四层四种算法乱炖当主方法；不要 Flat 弱算法 + 分层强算法
+
+### 最小可发表集合
+1. Rule vs Flat vs Full MARL（主表，中等+大规模）
+2. 规模扫描（产品数或 human 数一条轴即可）
+3. 一层消融（去掉 A/B 学习或去掉共享 encoder）
+
+---
+
+## LLM warm-start / 蒸馏（值得试的 Idea）
+
+### 定位
+- LLM **不当**每步调度主求解器（尤其不当 Agent D：高频、实时、组合多、贵、难保证合法动作）。
+- 最值得试：**生成示范轨迹 → 灌进 buffer / 行为克隆预热 → 再训分层 DQN**（冷启动与样本效率）。
+- 可选更轻：LLM 只建议 A（或 A+B）→ mask 过滤 → 其余仍 DQN。
+
+### 流程草案
+1. 把结构化状态摘要成短文本（库存/在制/空闲人车/可行动作 mask 列表），约束 LLM **只从合法动作里选**。
+2. 用 rule_based 或 LLM+mask 滚若干 episode，得到 `(obs, action_A/B/C/D, …)` 示范。
+3. Warm-start：示范进 replay 优先采样，或对各头做短 BC/模仿，再切回 makespan RL（ε 可从较小值起）。
+4. 对比：Hier DQN from scratch vs Hier DQN + LLM/Rule demo warm-start（看收敛步数与最终 makespan）。
+
+### 实验叙事注意
+- 主文仍证明分层 MARL；LLM 写成 **sample efficiency / cold start** 辅实验，不写成「替代 multi-agent」。
+- 报告 LLM 调用次数/费用；若只提升早期收敛、最终 makespan 接近，也是有效结论。
