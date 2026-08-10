@@ -1,4 +1,4 @@
-"""Neural nets for hierarchical MARL: structured StateEncoder + Q MLP."""
+"""Neural nets for hierarchical RL: structured StateEncoder + Q MLP."""
 
 from __future__ import annotations
 

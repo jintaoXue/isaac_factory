@@ -1,4 +1,4 @@
-"""MARL observation encoder: preprocess → StateEncoder → agent-specific obs."""
+"""Hierarchical observation encoder: preprocess → StateEncoder → agent-specific obs."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 
-from .marl_networks import StateEncoder
+from .hier_networks import StateEncoder
 
 
 def _load_preprocess():
@@ -43,7 +43,7 @@ def _load_preprocess():
 PRE_CFG, preprocess_for_buffer = _load_preprocess()
 
 
-class MARLObsEncoder(nn.Module):
+class HierObsEncoder(nn.Module):
     """Full preprocess features → shared ``StateEncoder`` → per-agent flat obs."""
 
     def __init__(

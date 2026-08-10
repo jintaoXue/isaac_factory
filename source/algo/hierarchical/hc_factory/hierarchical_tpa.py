@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""MultiAgentTPA: env orchestration for hierarchical A→B→C→D agents.
+"""HierarchicalTPA: env orchestration for hierarchical A→B→C→D agents.
 
 Online: raw ``env_state_action_dict`` ↔ env.
-Learning: preprocess once per step (no full-env deepcopy), then MARL agents.
+Learning: preprocess once per step (no full-env deepcopy), then Hierarchical agents.
 ``rl.reward/done`` are written by env ``TaskManager.update_rl_signals``.
 """
 from __future__ import division
@@ -13,14 +13,14 @@ from collections import deque
 import wandb
 from rl_games.common import vecenv
 
-from .marl_obs import MARLObsEncoder
-from .marl_rl_agents import (
+from .hier_obs import HierObsEncoder
+from .hier_rl_agents import (
     RLHumanRobotAllocatorAgent,
     RLProcessTaskPlanningAgent,
     RLProductSelectionAgent,
     RLProductSequencingAgent,
 )
-from .marl_utils import compute_team_reward, read_rl_done
+from .hier_utils import compute_team_reward, read_rl_done
 
 
 def _clear_rl(env_dict: dict) -> None:
@@ -56,8 +56,8 @@ def _buffer_len(agent) -> int:
     return len(dqn.buffer)
 
 
-class MultiAgentTPA:
-    """Four-layer hierarchical decision stack (MARL backend first; swappable later).
+class HierarchicalTPA:
+    """Four-layer hierarchical decision stack (Masked DQN backend first; swappable later).
 
     Decision order (same as rule_based):
         A product sequencing → B product selection → C task planning → D allocation
@@ -88,7 +88,7 @@ class MultiAgentTPA:
                 n = self.env_info.get("num_envs")
             if n is not None and int(n) != self.num_actors:
                 print(
-                    f"[MARL] warn: num_actors={self.num_actors} != env.num_envs={n}; "
+                    f"[Hier] warn: num_actors={self.num_actors} != env.num_envs={n}; "
                     f"using env.num_envs"
                 )
                 self.num_actors = int(n)
@@ -113,7 +113,7 @@ class MultiAgentTPA:
         }
 
         parallel_limit = config.get("parallel_producing_limit", 5)
-        self.obs_encoder = MARLObsEncoder(
+        self.obs_encoder = HierObsEncoder(
             self.cuda_device,
             parallel_producing_limit=parallel_limit,
             state_dim=int(config.get("state_dim", 256)),
@@ -128,7 +128,7 @@ class MultiAgentTPA:
         self.experiment_dir = os.path.join(self.train_dir, config["full_experiment_name"])
         self.nn_dir = os.path.join(self.experiment_dir, "nn")
         os.makedirs(self.nn_dir, exist_ok=True)
-        print("MARL experiment dir:", self.experiment_dir, "num_actors:", self.num_actors)
+        print("Hierarchical experiment dir:", self.experiment_dir, "num_actors:", self.num_actors)
 
         self.use_wandb = config.get("wandb_activate", False)
         # DQN has no actor loss; rolling TD (critic) losses + makespan windows
@@ -162,7 +162,7 @@ class MultiAgentTPA:
         wandb.define_metric("Train/buffer_C", step_metric="Train/step")
         wandb.define_metric("Train/buffer_D_human", step_metric="Train/step")
         wandb.define_metric("Train/buffer_D_robot", step_metric="Train/step")
-        # DQN TD loss ≈ critic loss (no separate actor head in current MARL)
+        # DQN TD loss ≈ critic loss (no separate actor head in current Hierarchical)
         for name in ("A", "B", "C", "D_human", "D_robot"):
             wandb.define_metric(f"Loss/critic_{name}", step_metric="Train/step")
         wandb.define_metric("Loss/critic_mean", step_metric="Train/step")
@@ -370,7 +370,7 @@ class MultiAgentTPA:
                     else "n/a"
                 )
                 print(
-                    f"[MARL] step={self.global_step} episode={ep0} ep_t={t0} eps={epsilon:.3f} "
+                    f"[Hier] step={self.global_step} episode={ep0} ep_t={t0} eps={epsilon:.3f} "
                     f"ep_reward0={episode_reward[0]:.2f} finished={finished} "
                     f"mean_ms={mean_ms_str} rl={rl0} n_envs={len(obs)}"
                 )
@@ -430,4 +430,4 @@ class MultiAgentTPA:
 
             if self.global_step % self.save_interval == 0:
                 self.save_checkpoint(self.global_step)
-                print(f"[MARL] checkpoint saved at step {self.global_step}")
+                print(f"[Hier] checkpoint saved at step {self.global_step}")

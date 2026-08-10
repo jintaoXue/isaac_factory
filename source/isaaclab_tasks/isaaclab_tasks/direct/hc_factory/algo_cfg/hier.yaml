@@ -1,7 +1,7 @@
 params:
   seed: 42
   algo:
-    name: marl
+    name: hier
 
   env:
     clip_observations: 5.0
@@ -26,7 +26,7 @@ params:
     replay_buffer_size: 50000
     hidden_dim: 128
     target_update_interval: 500
-    # required by rl_games Runner.load (unused by MultiAgentTPA)
+    # required by rl_games Runner.load (unused by HierarchicalTPA)
     reward_shaper:
       scale_value: 1.0
 
@@ -45,7 +45,7 @@ params:
     env_rule_based_exploration: False
     makespan_window: 50
     wandb_activate: False
-    wandb_project: 'HcFactory_MARL'
+    wandb_project: 'HcFactory_Hier'
 
     load_dir: ''
     load_name: ''

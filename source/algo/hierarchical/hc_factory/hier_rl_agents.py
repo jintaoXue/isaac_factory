@@ -6,9 +6,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from .marl_buffer import ReplayBuffer, Transition
-from .marl_networks import QNetwork
-from .marl_utils import index_to_one_hot, masked_select_action, one_hot_to_index
+from .hier_buffer import ReplayBuffer, Transition
+from .hier_networks import QNetwork
+from .hier_utils import index_to_one_hot, masked_select_action, one_hot_to_index
 
 
 class MaskedDQNAgent:

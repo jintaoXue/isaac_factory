@@ -37,9 +37,8 @@ from .src.storage import StorageManager
 from .src.route import RouteManagerVectorEnv
 from .env_asset_cfg.cfg_hc_env import SingleEnvStateActionDictTemplate, HcVectorEnvCfg
 from .env_asset_cfg.perception.cfg_perception import CfgPerception
-from .src.algo_multiagent_masker import AlgoMultiAgentMasker
+from .src.algo_hierarchical_masker import AlgoHierarchicalMasker
 from .src.task_progress_manager import TaskManager
-from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.src import algo_multiagent_masker
 import time
 
 class HcSingleEnvBase():
@@ -64,7 +63,7 @@ class HcSingleEnvBase():
         self.perception_manager = PerceptionManager(
             env_id=self.env_id, cuda_device=self.cuda_device, cfg=CfgPerception
         )
-        self.algo_multiagent_masker = AlgoMultiAgentMasker(self.cuda_device)
+        self.algo_hierarchical_masker = AlgoHierarchicalMasker(self.cuda_device)
         self.task_manager = TaskManager(
             self.cuda_device,
             max_episode_steps=int(HcVectorEnvCfg().max_episode_steps),
@@ -85,7 +84,7 @@ class HcSingleEnvBase():
             self.route_manager,
             self.machine_manager,
             self.task_manager,
-            self.algo_multiagent_masker,
+            self.algo_hierarchical_masker,
         )
     
     # def update_task_availability_mask(self):

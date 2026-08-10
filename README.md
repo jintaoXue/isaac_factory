@@ -264,7 +264,7 @@ The `hc_factory` module implements a **vectorized multi-environment factory simu
 │  │   ├── RobotManager           Robot resources & routing │
 │  │   ├── StorageManager         Storage area management   │
 │  │   ├── TaskManager            Task progress & decoding  │
-│  │   └── AlgoMultiAgentMasker   Action validity masks     │
+│  │   └── AlgoHierarchicalMasker   Action validity masks     │
 │  └── RouteManagerVectorEnv      Shared cross-env routing  │
 └─────────────────────────────────────────────────────────┘
          ↓ apply_data_to_sim()
@@ -294,11 +294,11 @@ Each environment instance maintains an `env_state_action_dict` containing:
 
 | File | Description |
 |------|-------------|
-| `source/algo/multiagent/hc_factory/rule_based.py` | Rule-based baseline chaining Agents A→B→C→D |
-| `source/algo/multiagent/hc_factory/agent_A_product_sequencer.py` | Product sequencing agent |
-| `source/algo/multiagent/hc_factory/agent_B_product_selector.py` | Product selection agent |
-| `source/algo/multiagent/hc_factory/agent_C_process_task_planner.py` | Process task planning agent |
-| `source/algo/multiagent/hc_factory/agent_D_human_robot_allocator.py` | Human-robot allocation agent |
+| `source/algo/hierarchical/hc_factory/rule_based.py` | Rule-based baseline chaining Agents A→B→C→D |
+| `source/algo/hierarchical/hc_factory/agent_A_product_sequencer.py` | Product sequencing agent |
+| `source/algo/hierarchical/hc_factory/agent_B_product_selector.py` | Product selection agent |
+| `source/algo/hierarchical/hc_factory/agent_C_process_task_planner.py` | Process task planning agent |
+| `source/algo/hierarchical/hc_factory/agent_D_human_robot_allocator.py` | Human-robot allocation agent |
 | `source/isaaclab_tasks/.../algo_cfg/rule_based.yaml` | Rule-based Hydra config |
 | `source/isaaclab_tasks/.../algo_cfg/rl_filter.yaml` | RL filter config (reserved) |
 
@@ -312,7 +312,7 @@ isaac_factory/
 ├── isaaclab.sh                       # Isaac Lab environment management script
 ├── map_data/                         # Map data and generation tools
 ├── source/
-│   ├── algo/multiagent/hc_factory/   # Multi-agent decision algorithms
+│   ├── algo/hierarchical/hc_factory/  # Hierarchical TPA decision algorithms
 │   ├── isaaclab/                     # Isaac Lab core library
 │   ├── isaaclab_assets/              # Asset definitions
 │   ├── isaaclab_rl/                  # RL framework integration (RL-Games wrapper)
@@ -341,7 +341,7 @@ isaac_factory/
 │           │   ├── storage.py
 │           │   ├── route.py
 │           │   ├── task_progress_manager.py
-│           │   └── algo_multiagent_masker.py
+│           │   └── algo_hierarchical_masker.py
 │           └── algo_cfg/             # Algorithm Hydra configs
 └── logs/                             # Run logs and config snapshots
 ```

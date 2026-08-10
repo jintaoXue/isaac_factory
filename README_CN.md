@@ -264,7 +264,7 @@ python train.py \
 │  │   ├── RobotManager        机器人资源与路径            │
 │  │   ├── StorageManager      仓储区域管理                │
 │  │   ├── TaskManager         任务进度与工序解码          │
-│  │   └── AlgoMultiAgentMasker  动作合法性掩码            │
+│  │   └── AlgoHierarchicalMasker  动作合法性掩码            │
 │  └── RouteManagerVectorEnv   跨环境共享路径规划           │
 └─────────────────────────────────────────────────────────┘
          ↓ apply_data_to_sim()
@@ -294,11 +294,11 @@ python train.py \
 
 | 文件 | 说明 |
 |------|------|
-| `source/algo/multiagent/hc_factory/rule_based.py` | 规则基线，串联 A→B→C→D 四层 Agent |
-| `source/algo/multiagent/hc_factory/agent_A_product_sequencer.py` | 产品排序 Agent |
-| `source/algo/multiagent/hc_factory/agent_B_product_selector.py` | 产品选择 Agent |
-| `source/algo/multiagent/hc_factory/agent_C_process_task_planner.py` | 工序任务规划 Agent |
-| `source/algo/multiagent/hc_factory/agent_D_human_robot_allocator.py` | 人机资源分配 Agent |
+| `source/algo/hierarchical/hc_factory/rule_based.py` | 规则基线，串联 A→B→C→D 四层 Agent |
+| `source/algo/hierarchical/hc_factory/agent_A_product_sequencer.py` | 产品排序 Agent |
+| `source/algo/hierarchical/hc_factory/agent_B_product_selector.py` | 产品选择 Agent |
+| `source/algo/hierarchical/hc_factory/agent_C_process_task_planner.py` | 工序任务规划 Agent |
+| `source/algo/hierarchical/hc_factory/agent_D_human_robot_allocator.py` | 人机资源分配 Agent |
 | `source/isaaclab_tasks/.../algo_cfg/rule_based.yaml` | 规则基线 Hydra 配置 |
 | `source/isaaclab_tasks/.../algo_cfg/rl_filter.yaml` | RL 过滤器配置（预留） |
 
@@ -312,7 +312,7 @@ isaac_factory/
 ├── isaaclab.sh                       # Isaac Lab 环境管理脚本
 ├── map_data/                         # 地图数据与生成工具
 ├── source/
-│   ├── algo/multiagent/hc_factory/   # 多智能体决策算法
+│   ├── algo/hierarchical/hc_factory/  # 分层 TPA 决策算法
 │   ├── isaaclab/                     # Isaac Lab 核心库
 │   ├── isaaclab_assets/              # 资产定义
 │   ├── isaaclab_rl/                  # RL 框架集成（RL-Games 封装）
@@ -341,7 +341,7 @@ isaac_factory/
 │           │   ├── storage.py
 │           │   ├── route.py
 │           │   ├── task_progress_manager.py
-│           │   └── algo_multiagent_masker.py
+│           │   └── algo_hierarchical_masker.py
 │           └── algo_cfg/             # 算法 Hydra 配置
 └── logs/                             # 运行日志与参数快照
 ```

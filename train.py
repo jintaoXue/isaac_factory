@@ -127,8 +127,8 @@ from source.isaaclab_rl.isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnv
 from rl_games.common import env_configurations, vecenv
 from rl_games.common.algo_observer import IsaacAlgoObserver
 from rl_games.torch_runner import Runner
-from source.algo.multiagent.hc_factory import rule_based
-from source.algo.multiagent.hc_factory import multi_agent_TPA
+from source.algo.hierarchical.hc_factory import rule_based
+from source.algo.hierarchical.hc_factory import hierarchical_tpa
 
 from isaaclab.envs import (
     DirectMARLEnv,
@@ -290,8 +290,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     # create runner from rl-games
     runner = Runner(IsaacAlgoObserver())
     # runner.algo_factory.register_builder('rl_filter', lambda **kwargs: rl_filter.SafeRlFilterAgent(**kwargs))
-    runner.algo_factory.register_builder('rule_based', lambda **kwargs: rule_based.RuleBasedMultiAgent(**kwargs))
-    runner.algo_factory.register_builder('marl', lambda **kwargs: multi_agent_TPA.MultiAgentTPA(**kwargs))
+    runner.algo_factory.register_builder('rule_based', lambda **kwargs: rule_based.RuleBasedHierarchical(**kwargs))
+    runner.algo_factory.register_builder('hier', lambda **kwargs: hierarchical_tpa.HierarchicalTPA(**kwargs))
 
     runner.load(algo_cfg)
     # reset the agent and env

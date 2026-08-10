@@ -16,7 +16,7 @@ from .agent_C_process_task_planner import ProcessTaskPlanningAgent
 from .agent_D_human_robot_allocator import HumanRobotMachineAllocationAgent
 
 
-class RuleBasedMultiAgent():
+class RuleBasedHierarchical():
     def __init__(self, base_name, params):
         config = params['config']
         self.env_config = config.get('env_config', {})
