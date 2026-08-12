@@ -48,7 +48,7 @@ CfgProductProcessGallery = {
         "process_steps": {
             "pipe_cutting": {
                 "machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine",
-                "required_materials": {"pipe": 1},
+                "required_materials": {"pipe_raw": 1},
             },
             "pipe_grooving": {
                 "machine": "num04_groovingMachineLarge",
@@ -121,7 +121,7 @@ CfgProcessTaskGalleryDetailedClassified = {
             "target_machine": "num02_rollerbedCNCPipeIntersectionCuttingMachine",
             "logistic_machine": "num07_gantry_group",
             "is_final_task": False,
-            "logistic_submaterial": "product_00_pipe",
+            "logistic_submaterial": "product_00_pipe_raw",
             "processing_submaterials": None,
             "processed_material": None,
             "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["logistic_for_pipe_cutting"],
@@ -138,7 +138,7 @@ CfgProcessTaskGalleryDetailedClassified = {
             "logistic_machine": "num07_gantry_group",
             "is_final_task": False,
             "logistic_submaterial": None,
-            "processing_submaterials": ["product_00_pipe"],
+            "processing_submaterials": ["product_00_pipe_raw"],
             "processed_material": "product_00_pipe",
             "subtasks_dict": CfgSubtaskGallery["ProductWaterPipe"]["pipe_cutting"],
             "next_logistic_task": "logistic_for_pipe_grooving",

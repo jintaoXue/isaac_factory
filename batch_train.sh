@@ -1,16 +1,20 @@
 #!/bin/bash
 
 # 用法:
-#   ./batch_train.sh 19 cuda:0
-#   ./batch_train.sh 19 20 cuda:0          # 依次跑多个序号
+#   ./batch_train.sh 22 cuda:0
+#   ./batch_train.sh 22 23 24 cuda:0     # 依次跑多个序号
+#   ./batch_train.sh C cuda:0            # HcFactory TPA 三连：rule K=1 / rule K=5 / hier
 #   ./batch_train.sh A cuda:0
 #   ./batch_train.sh B
 if [ $# -eq 0 ]; then
-    echo "用法: $0 <A|B|序号...> [cuda:N]"
+    echo "用法: $0 <A|B|C|序号...> [cuda:N]"
     echo "  A: 运行A组训练 (1-5)"
     echo "  B: 运行B组训练 (6-10)"
-    echo "  1-17: RL / HcFactory 训练序号（可多个，如 19 20）"
-    echo "  18-21: Perception 采集 / 训练 / 评估"
+    echo "  C: HcFactory TPA (22 rule单产品 / 23 rule多产品 / 24 hier训练)"
+    echo "  1-21: 旧 RL / Perception 序号"
+    echo "  22: rule_based + 单产品决策 (K=1, 10 episodes, wandb)"
+    echo "  23: rule_based + 多产品决策 (K=5, 10 episodes, wandb)"
+    echo "  24: hier 开始训练 (K=1, wandb)"
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
     exit 1
 fi
@@ -20,23 +24,30 @@ JOBS=()
 for arg in "$@"; do
     if [[ "$arg" =~ ^cuda:[0-9]+$ ]]; then
         DEVICE="$arg"
-    elif [[ "$arg" =~ ^([1-9]|1[0-9]|2[01])$ ]] || [ "$arg" = "A" ] || [ "$arg" = "B" ]; then
+    elif [[ "$arg" =~ ^([1-9]|1[0-9]|2[0-4])$ ]] || [ "$arg" = "A" ] || [ "$arg" = "B" ] || [ "$arg" = "C" ]; then
         JOBS+=("$arg")
     else
         echo "错误: 无法识别参数 '$arg'"
-        echo "用法: $0 <A|B|序号...> [cuda:N]"
+        echo "用法: $0 <A|B|C|序号...> [cuda:N]"
         exit 1
     fi
 done
 
 if [ ${#JOBS[@]} -eq 0 ]; then
-    echo "错误: 请指定至少一个任务序号或 A/B"
+    echo "错误: 请指定至少一个任务序号或 A/B/C"
     exit 1
 fi
 
 DEVICE_ARG="--device ${DEVICE}"
 echo "使用设备: ${DEVICE}"
 echo "任务列表: ${JOBS[*]}"
+
+# HcFactory TPA 公共参数
+HC_TASK="HRTPaHC-v1"
+HC_WANDB_PROJECT="HcFactory_TPA"
+HC_NUM_ENVS=1
+HC_RULE_EPISODES=10
+HC_MULTI_K=10
 
 # 定义训练函数（run_one_job 在文件末尾调用）
 
@@ -191,7 +202,55 @@ run_test_21() {
         ${DEVICE_ARG}
 }
 
-# 调度：按序号 / A / B 调用上面的 run_test_*
+##### HcFactory Hierarchical TPA #####
+run_test_22() {
+    # rule_based + 单产品决策（max_parallel_cd_dispatch=1），跑 10 个 episode
+    echo "运行 22: rule_based single-product (K=1, ${HC_RULE_EPISODES} episodes, wandb)"
+    python train.py \
+        --task "${HC_TASK}" \
+        --algo rule_based \
+        --num_envs "${HC_NUM_ENVS}" \
+        --headless \
+        --wandb_activate \
+        --wandb_project "${HC_WANDB_PROJECT}" \
+        --wandb_name "rule_K1_single_${HC_RULE_EPISODES}ep" \
+        --max_parallel_cd_dispatch 1 \
+        --max_sim_episodes "${HC_RULE_EPISODES}" \
+        ${DEVICE_ARG}
+}
+
+run_test_23() {
+    # rule_based + 多产品并行决策（K=5），跑 10 个 episode
+    echo "运行 23: rule_based multi-product (K=${HC_MULTI_K}, ${HC_RULE_EPISODES} episodes, wandb)"
+    python train.py \
+        --task "${HC_TASK}" \
+        --algo rule_based \
+        --num_envs "${HC_NUM_ENVS}" \
+        --headless \
+        --wandb_activate \
+        --wandb_project "${HC_WANDB_PROJECT}" \
+        --wandb_name "rule_K${HC_MULTI_K}_multi_${HC_RULE_EPISODES}ep" \
+        --max_parallel_cd_dispatch "${HC_MULTI_K}" \
+        --max_sim_episodes "${HC_RULE_EPISODES}" \
+        ${DEVICE_ARG}
+}
+
+run_test_24() {
+    # hier 开始训练（默认 K=1，不限 episode）
+    echo "运行 24: hier train start (K=1, wandb)"
+    python train.py \
+        --task "${HC_TASK}" \
+        --algo hier \
+        --num_envs "${HC_NUM_ENVS}" \
+        --headless \
+        --wandb_activate \
+        --wandb_project "${HC_WANDB_PROJECT}" \
+        --wandb_name "hier_K1_train" \
+        --max_parallel_cd_dispatch 1 \
+        ${DEVICE_ARG}
+}
+
+# 调度：按序号 / A / B / C 调用上面的 run_test_*
 run_one_job() {
     local id=$1
     case $id in
@@ -216,6 +275,9 @@ run_one_job() {
         19) run_test_19 ;;
         20) run_test_20 ;;
         21) run_test_21 ;;
+        22) run_test_22 ;;
+        23) run_test_23 ;;
+        24) run_test_24 ;;
         A)
             echo "=== 运行A组训练 (1-5) ==="
             run_test_1; run_test_2; run_test_3; run_test_4; run_test_5; run_test_6
@@ -225,6 +287,13 @@ run_one_job() {
             echo "=== 运行B组训练 (6-10) ==="
             run_test_7; run_test_8; run_test_9; run_test_10
             echo "B组训练完成！"
+            ;;
+        C)
+            echo "=== 运行C组: HcFactory TPA (22→23→24) ==="
+            run_test_22
+            run_test_23
+            run_test_24
+            echo "C组训练完成！"
             ;;
         *) echo "错误: 无效的训练序号 $id"; return 1 ;;
     esac

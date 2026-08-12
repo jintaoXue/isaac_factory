@@ -180,7 +180,13 @@ python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 4 --device cuda:1
 python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0 --headless --enable_cameras
 ```
 
-The registered Gym environment ID is **`HRTPaHC-v1`** (Human-Robot Task Planning and Allocation for HC Factory). The default algorithm is **`rule_based`** (a four-layer rule-based multi-agent policy).
+The registered Gym environment ID is **`HRTPaHC-v1`** (Human-Robot Task Planning and Allocation for HC Factory). Common algorithms:
+
+| `--algo` | Description |
+|----------|-------------|
+| `rule_based` | Rule baseline (default): A admission → B FIFO priority → C/D parallel dispatch |
+| `hier` | Hierarchical Masked DQN (A→B→C→D) |
+| `flat` | Flat joint action (code kept; **not a main baseline**) |
 
 Run logs are saved under `logs/rl_games/HcFactory/`.
 
@@ -193,13 +199,15 @@ Run logs are saved under `logs/rl_games/HcFactory/`.
 | Argument | Description | Default |
 |----------|-------------|---------|
 | `--task` | Gym environment ID | `HRTPaHC-v1` |
-| `--algo` | Algorithm config name | `rule_based` |
+| `--algo` | Algorithm config (`rule_based` / `hier` / `flat`) | `rule_based` |
 | `--num_envs` | Number of parallel simulation environments | 3 |
 | `--device` | CUDA device | `cuda:0` |
 | `--headless` | Run without GUI | off |
 | `--enable_cameras` | Enable cameras and offscreen RTX rendering (required for headless image capture) | off |
 | `--seed` | Random seed | 42 |
-| `--test` | Test mode (load checkpoint) | off |
+| `--test` | Evaluation mode (Makespan / Success / Truncation, multi-seed) | off |
+| `--test_times` | Episodes per seed | see yaml |
+| `--test_seeds` | Comma-separated seeds, e.g. `42,43,44` | see yaml |
 | `--wandb_activate` | Enable Weights & Biases logging | off |
 | `--video` | Record simulation video | off |
 | `--active_livestream` | Enable Livestream | off |
@@ -238,46 +246,39 @@ Install and run the Livestream Client following the [Isaac Sim Livestream docume
 
 ### Overview
 
-The `hc_factory` module implements a **vectorized multi-environment factory simulator** aligned with a four-layer real-time manufacturing operations stack:
+The `hc_factory` module implements a **vectorized multi-environment factory simulator** aligned with a four-layer real-time manufacturing stack (**Hierarchical TPA**). On the algorithm side, an **info pool** runs A→B→C/D×K within one step, then writes actions to the env:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Agent A — Product Sequencing                           │
-│  Determine which product type to prioritize next        │
+│  Agent A — Product Sequencing (admission)                │
+│  Admit at most one new product type per decision step     │
 ├─────────────────────────────────────────────────────────┤
-│  Agent B — Product Selection                            │
-│  Select the next product instance from pending batches    │
+│  Agent B — Product Priority                             │
+│  Rank eligible WIP / staging slots (rule: FIFO WIP first) │
 ├─────────────────────────────────────────────────────────┤
-│  Agent C — Process Task Planning                        │
-│  Plan the next key process task (processing / logistics)  │
-├─────────────────────────────────────────────────────────┤
-│  Agent D — Human-Robot Allocation                       │
-│  Assign the planned task to human, robot, or machine      │
+│  Agent C/D × K — Process + Allocation (parallel)        │
+│  Loop by priority: plan task → assign human/AGV; K tunable│
+│  (info pool updates human/robot/gantry/workstation masks) │
 └─────────────────────────────────────────────────────────┘
-         ↓ action dict
+         ↓ action: sequencing + dispatch_list (+ compat fields)
 ┌─────────────────────────────────────────────────────────┐
 │  HcVectorEnv (vectorized environment)                   │
 │  ├── HcSingleEnv × N (per-env logic instances)          │
-│  │   ├── MachineManager         Machine & workstation state │
-│  │   ├── ProductMaterialManager Material / WIP management │
-│  │   ├── HumanManager           Human resources & routing │
-│  │   ├── RobotManager           Robot resources & routing │
-│  │   ├── StorageManager         Storage area management   │
-│  │   ├── TaskManager            Task progress & decoding  │
-│  │   └── AlgoHierarchicalMasker   Action validity masks     │
+│  │   ├── MachineManager / ProductMaterialManager / …   │
+│  │   ├── TaskManager            decode dispatch_list;   │
+│  │   │                         5.2b: enter WIP on dispatch │
+│  │   └── AlgoHierarchicalMasker   Action validity masks │
 │  └── RouteManagerVectorEnv      Shared cross-env routing  │
 └─────────────────────────────────────────────────────────┘
-         ↓ apply_data_to_sim()
-┌─────────────────────────────────────────────────────────┐
-│  Isaac Sim physics (USD scene + Articulation / RigidBody)│
-└─────────────────────────────────────────────────────────┘
 ```
+
+Parallelism is controlled by **`max_parallel_cd_dispatch`** (`rule_based.yaml` / `hier.yaml`, default `1`).
 
 ### Simulation Step Flow
 
 Each simulation step (`step`) has two phases:
 
-1. **Logic step (`step_env_logic`)**: Each SingleEnv receives the four-layer agent action dict, updates task records, material state, human-robot assignments, and computes action masks.
+1. **Logic step (`step_env_logic`)**: Each SingleEnv receives the action dict (`product_sequencing` and optional `dispatch_list`), updates task records, material state, human-robot assignments, and computes action masks.
 2. **Physics step (`step_env_physics`)**: Writes joint positions and rigid-body poses for all environments into the simulator and advances time via `sim.step()`.
 
 ### State / Action Interface
@@ -287,20 +288,26 @@ Each environment instance maintains an `env_state_action_dict` containing:
 - `machine` / `material` / `human` / `robot` / `storage`: State from each resource manager
 - `progress`: Production progress (order, in-progress, finished, ongoing task records)
 - `agent_action_mask`: Validity masks for the four agents and all resources
-- `action`: Actions received at the current step
+- `action`: Current-step actions; main fields:
+  - `product_sequencing`: A admission
+  - `dispatch_list`: 0…K items `{slot_index, process_task_planning, human_robot_allocation}`
+  - Compat fields: `product_selection` / `process_task_planning` / `human_robot_allocation` (= first dispatch)
 - `articulations` / `rigid_prims`: Physical object data to write into simulation
 
 ### Algorithm Modules
 
 | File | Description |
 |------|-------------|
-| `source/algo/hierarchical/hc_factory/rule_based.py` | Rule-based baseline chaining Agents A→B→C→D |
-| `source/algo/hierarchical/hc_factory/agent_A_product_sequencer.py` | Product sequencing agent |
-| `source/algo/hierarchical/hc_factory/agent_B_product_selector.py` | Product selection agent |
+| `source/algo/hierarchical/hc_factory/rule_based.py` | Rule baseline (info pool + parallel CD) |
+| `source/algo/hierarchical/hc_factory/hierarchical_tpa.py` | Hier Masked DQN train / eval |
+| `source/algo/hierarchical/hc_factory/hierarchical_dispatch.py` | A→B→C/D×K action builder |
+| `source/algo/hierarchical/hc_factory/tpa_info_pool.py` | Within-step info pool / resource ledger |
+| `source/algo/hierarchical/hc_factory/agent_A_product_sequencer.py` | Product admission agent |
+| `source/algo/hierarchical/hc_factory/agent_B_product_priority.py` | WIP priority agent |
 | `source/algo/hierarchical/hc_factory/agent_C_process_task_planner.py` | Process task planning agent |
 | `source/algo/hierarchical/hc_factory/agent_D_human_robot_allocator.py` | Human-robot allocation agent |
-| `source/isaaclab_tasks/.../algo_cfg/rule_based.yaml` | Rule-based Hydra config |
-| `source/isaaclab_tasks/.../algo_cfg/rl_filter.yaml` | RL filter config (reserved) |
+| `source/isaaclab_tasks/.../algo_cfg/rule_based.yaml` | Rule config (`max_parallel_cd_dispatch`) |
+| `source/isaaclab_tasks/.../algo_cfg/hier.yaml` | Hierarchical RL config |
 
 ---
 
@@ -356,7 +363,7 @@ The simulation models the **HC (Haichuang) factory**, including CNC machines, we
 
 ### Current Product: Water Pipe (ProductWaterPipe)
 
-The default production order is 5 water pipes. Each unit goes through 6 processing steps plus corresponding logistics tasks:
+The default production order is **16** water pipes (idx `00`–`15`), with a WIP cap of **`single_env_parallel_producing_limit=10`**. Each unit goes through 6 processing steps plus corresponding logistics tasks:
 
 | Step | Process | Equipment |
 |------|---------|-----------|
@@ -485,3 +492,4 @@ python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/perception.py 
 - [Isaac Sim 4.5.0 documentation](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/index.html)
 - [Isaac Sim Livestream client](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/manual_livestream_clients.html)
 - Development notes: `coding_note.md`
+- Paper / experiment notes: `2026_Journal_Paper.md`

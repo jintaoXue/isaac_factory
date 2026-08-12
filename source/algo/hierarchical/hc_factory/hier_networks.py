@@ -56,6 +56,7 @@ class StateEncoder(nn.Module):
         num_entity_state: int = 2048,
         max_ongoing: int = 5,
         max_subtasks: int = 16,
+        max_material: int = 16,
         num_agents: int = 4,
         transformer_layers: int = 2,
         transformer_heads: int = 4,
@@ -65,6 +66,7 @@ class StateEncoder(nn.Module):
         self.emb_dim = emb_dim
         self.max_ongoing = max_ongoing
         self.max_subtasks = max_subtasks
+        self.max_material = max_material
         self.num_agents = num_agents
 
         self.task_emb = nn.Embedding(num_task, emb_dim, padding_idx=0)
@@ -110,7 +112,10 @@ class StateEncoder(nn.Module):
         self.machine_mlp = nn.Sequential(nn.Linear(emb_dim + 32, 64), nn.ReLU())
 
         self.material_mlp = nn.Sequential(nn.Linear(emb_dim * 2 + 1, 32), nn.ReLU())
-        self.storage_mlp = nn.Sequential(nn.Linear(emb_dim * 2 + 1 + 5, 32), nn.ReLU())
+        self.storage_mlp = nn.Sequential(
+            nn.Linear(emb_dim * 2 + 1 + max_material, 32),
+            nn.ReLU(),
+        )
 
         # trunk: 64+128+64+64+64+32+32 = 448
         trunk_in = 64 + 128 + 64 + 64 + 64 + 32 + 32

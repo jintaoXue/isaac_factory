@@ -228,7 +228,7 @@ agv也加入 processing task里面
 - A→B→C→D 后每层只面对小动作空间 + mask，探索与样本效率才现实；**CTCE（Centralized Training, Centralized Execution）** + 共享 StateEncoder + 共享 makespan 奖励：**分解动作，不拆开目标**。执行时四层串行、共用全局 obs（不是各 agent 仅靠局部观测独立执行的 CTDE）。
 
 ### 统一评价口径
-所有方法同一环境、同一随机种子协议、同一 `max_episode_steps`：
+所有方法同一环境、同一随机种子协议、同一 `max_episodic_steps`：
 - 主指标：Makespan（成功 episode 完成步数）、Success rate（时限内 production_done）
 - 辅指标：Truncation rate、累计 reward、达到某 success 所需环境步数（样本效率）
 - 报告均值 ± 标准差（≥3–5 seeds）
@@ -353,7 +353,7 @@ flowchart LR
 
 #### （3）加工相关时长按工业场景加长
 - 上调 human 侧操作/加工计时（如 `control_machine`、上下料类 subtask 时间），使单段加工更接近真实节拍。
-- 副作用：整条工艺链 **总完工时间（makespan）明显变长**，已相应提高 episode horizon（如 `max_episode_steps=15000`），否则易大量 truncation，训练信号失真。
+- 副作用：整条工艺链 **总完工时间（makespan）明显变长**，已相应提高 episode horizon（如 `max_episodic_steps=45000`），否则易大量 truncation，训练信号失真。
 
 #### （4）其他支撑（可略讲）
 - 修复龙门架间距约束下的移动死锁，保证长 episode 可跑通。

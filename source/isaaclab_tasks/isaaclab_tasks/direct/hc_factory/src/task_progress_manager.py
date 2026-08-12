@@ -3,14 +3,49 @@ from ..env_asset_cfg.cfg_storage import CfgStorage
 from ..env_asset_cfg.cfg_material_product import CfgProductOrder, CfgProductProcess
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskGalleryDetailedClassified, CfgSubtaskGallery, TaskRecordTemplate
 from ..env_asset_cfg.cfg_machine import CfgMachine
+from ..env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
+from .material import find_free_storage, reserve_storage_slot
 import torch
 import copy
+
+
+def staging_slot_index(parallel_producing_limit: int | None = None) -> int:
+    """Last B/C slot index reserved for ``next_product`` staging."""
+    if parallel_producing_limit is None:
+        parallel_producing_limit = HcVectorEnvCfg().single_env_parallel_producing_limit
+    return int(parallel_producing_limit)
+
+
+def find_free_gantry_index(gantry_states: list, logistic_machine: str = "num07_gantry_group") -> int | None:
+    active_indices = CfgMachine[logistic_machine]["active_gantry_indices"]
+    for gantry_index in active_indices:
+        if gantry_states[gantry_index] == "free":
+            return gantry_index
+    return None
+
+
+def find_workstation_index_for_task(states: list, task_type: str, task_name: str) -> int | None:
+    if task_type == "logistic":
+        try:
+            return states.index("free")
+        except ValueError:
+            return None
+    if task_type == "processing":
+        for i, state in enumerate(states):
+            if state == "free":
+                continue
+            pre_name = state.split("_")[0]
+            state_task = state.split("_", 1)[1]
+            if pre_name == "materialReadyFor" and state_task == task_name:
+                return i
+    return None
+
 
 class TaskManager:
     def __init__(
         self,
         cuda_device: torch.device,
-        max_episode_steps: int = 15000,
+        max_episodic_steps: int = 45000,
         step_penalty: float = 0.01,
         finish_bonus: float = 2.0,
         task_bonus: float = 0.1,
@@ -19,7 +54,7 @@ class TaskManager:
         self.cuda_device = cuda_device
         self.cfg_storage = CfgStorage
         self.inverse_index_to_task_name = {v: k for k, v in CfgProcessTaskGalleryInAll.items()}
-        self.max_episode_steps = int(max_episode_steps)
+        self.max_episodic_steps = int(max_episodic_steps)
         self.step_penalty = float(step_penalty)
         self.finish_bonus = float(finish_bonus)
         self.task_bonus = float(task_bonus)
@@ -50,16 +85,31 @@ class TaskManager:
         }
 
     def step(self, env_state_action_dict: dict) -> dict:
-        
+
         self.decode_action_product_sequencing(env_state_action_dict)
 
-        new_task_record = copy.deepcopy(TaskRecordTemplate)
-        if self.decode_action_product_selection(env_state_action_dict, new_task_record):
-            have_new_task = self.decode_action_process_task_planning(env_state_action_dict, new_task_record)
-            if have_new_task:
-                self.decode_action_human_robot_allocation(env_state_action_dict, new_task_record)
-                self.update_new_task_record(env_state_action_dict, new_task_record)
-        
+        action = env_state_action_dict.get("action") or {}
+        dispatch_list = action.get("dispatch_list")
+        if dispatch_list:
+            for item in dispatch_list:
+                new_task_record = copy.deepcopy(TaskRecordTemplate)
+                if not self.decode_dispatch_item(env_state_action_dict, item, new_task_record):
+                    continue
+                if self.decode_process_task_planning_tensor(
+                    item["process_task_planning"], new_task_record
+                ):
+                    self.decode_human_robot_allocation_dict(
+                        item["human_robot_allocation"], env_state_action_dict, new_task_record
+                    )
+                    self.update_new_task_record(env_state_action_dict, new_task_record)
+        else:
+            new_task_record = copy.deepcopy(TaskRecordTemplate)
+            if self.decode_action_product_selection(env_state_action_dict, new_task_record):
+                have_new_task = self.decode_action_process_task_planning(env_state_action_dict, new_task_record)
+                if have_new_task:
+                    self.decode_action_human_robot_allocation(env_state_action_dict, new_task_record)
+                    self.update_new_task_record(env_state_action_dict, new_task_record)
+
         step_stats = self.step_task_records(env_state_action_dict)
         self.check_done_production(env_state_action_dict)
         # time_step 在 HcSingleEnvBase 里于 managers 之后 +1；此处用 +1 判断超时
@@ -74,7 +124,7 @@ class TaskManager:
             ``+ finish_bonus * Δfinished_products``
             ``+ task_bonus * Δcompleted_process_tasks``
             ``+ success_bonus * (1 - t/T_max)`` on success
-        Terminal: ``production_done`` → success; ``time_step+1 >= max_episode_steps`` → truncated.
+        Terminal: ``production_done`` → success; ``time_step+1 >= max_episodic_steps`` → truncated.
         """
         if "rl" not in env_state_action_dict or not isinstance(env_state_action_dict["rl"], dict):
             env_state_action_dict["rl"] = {
@@ -105,9 +155,9 @@ class TaskManager:
             done = True
             success = True
             # earlier finish → larger bonus (makespan-aligned)
-            remain = max(0.0, 1.0 - float(t_after) / float(max(1, self.max_episode_steps)))
+            remain = max(0.0, 1.0 - float(t_after) / float(max(1, self.max_episodic_steps)))
             part_success = self.success_bonus * remain
-        elif t_after >= self.max_episode_steps:
+        elif t_after >= self.max_episodic_steps:
             done = True
             truncated = True
 
@@ -165,52 +215,62 @@ class TaskManager:
                     env_state_action_dict["progress"]["next_product_index"] = key_variables["idx"]
                     break
 
-    def decode_action_product_selection(self, env_state_action_dict, new_task_record):
-        # action shape is (1 + self.parallel_producing_limit,)
-        action_product_selection = env_state_action_dict["action"]["product_selection"]
-        
-        if action_product_selection.sum() == 0:
-            return False
-        else:
-            _index = action_product_selection.nonzero()[0][0]
-            _index = _index.item()
-            producing = env_state_action_dict["progress"]["producing"]
-            producing_indexs = env_state_action_dict["progress"]["producing_indexs"]
-            if _index == action_product_selection.shape[0] - 1:
-                new_task_record["product"] = env_state_action_dict["progress"]["next_product"]
-                new_task_record["product_index"] = env_state_action_dict["progress"]["next_product_index"]
-                new_task_record["new_product_selected"] = True
-            elif _index < len(producing):
-                new_task_record["product"] = producing[_index]
-                new_task_record["product_index"] = producing_indexs[_index]
-            else:
+    def decode_dispatch_item(self, env_state_action_dict: dict, item: dict, new_task_record: dict) -> bool:
+        slot_index = int(item["slot_index"])
+        return self.resolve_slot_to_product(env_state_action_dict, slot_index, new_task_record)
+
+    def resolve_slot_to_product(self, env_state_action_dict: dict, slot_index: int, new_task_record: dict) -> bool:
+        staging = staging_slot_index()
+        progress = env_state_action_dict["progress"]
+        producing = progress["producing"]
+        producing_indexs = progress["producing_indexs"]
+        if slot_index == staging:
+            if progress["next_product"] is None or progress["next_product_index"] is None:
                 return False
-            material_name = f"num_{new_task_record['product_index']:02d}_{new_task_record['product']}"
-            new_task_record["submaterials"] = env_state_action_dict["material"][material_name]["submaterials"]
+            new_task_record["product"] = progress["next_product"]
+            new_task_record["product_index"] = progress["next_product_index"]
+            new_task_record["from_staging_slot"] = True
+        elif slot_index < len(producing):
+            new_task_record["product"] = producing[slot_index]
+            new_task_record["product_index"] = producing_indexs[slot_index]
+            new_task_record["from_staging_slot"] = False
+        else:
+            return False
+        material_name = f"num_{new_task_record['product_index']:02d}_{new_task_record['product']}"
+        new_task_record["submaterials"] = env_state_action_dict["material"][material_name]["submaterials"]
         return True
 
-    def decode_action_process_task_planning(self, env_state_action_dict, new_task_record):
-        action_process_task_planning = env_state_action_dict["action"]["process_task_planning"]
+    def decode_action_product_selection(self, env_state_action_dict, new_task_record):
+        action_product_selection = env_state_action_dict["action"]["product_selection"]
+        if action_product_selection.sum() == 0:
+            return False
+        _index = int(action_product_selection.nonzero()[0][0].item())
+        return self.resolve_slot_to_product(env_state_action_dict, _index, new_task_record)
+
+    def decode_process_task_planning_tensor(self, action_process_task_planning, new_task_record: dict) -> bool:
         if action_process_task_planning.sum() == 0:
+            action_process_task_planning = action_process_task_planning.clone()
             action_process_task_planning[0] = 1
-        _index = action_process_task_planning.nonzero()[0][0]
-        _index = _index.item()
+        _index = int(action_process_task_planning.nonzero()[0][0].item())
         new_task_record["task"] = self.inverse_index_to_task_name[_index]
         new_task_record["task_index"] = _index
-        new_task_record["task_type"] = CfgProcessTaskGalleryDetailedClassified[new_task_record["product"]][new_task_record["task"]]["task_type"]
-        if new_task_record["task"] == "none":
-            return False
-        return True
-    
-    def decode_action_human_robot_allocation(self, env_state_action_dict, new_task_record):
+        new_task_record["task_type"] = CfgProcessTaskGalleryDetailedClassified[new_task_record["product"]][
+            new_task_record["task"]
+        ]["task_type"]
+        return new_task_record["task"] != "none"
+
+    def decode_action_process_task_planning(self, env_state_action_dict, new_task_record):
+        return self.decode_process_task_planning_tensor(
+            env_state_action_dict["action"]["process_task_planning"], new_task_record
+        )
+
+    def decode_human_robot_allocation_dict(
+        self, action_human_robot_allocation: dict, env_state_action_dict: dict, new_task_record: dict
+    ) -> dict:
         if new_task_record["task"] is None or new_task_record["task"] == "none":
-            #no task is selected, means no human or robot allocation is needed
-            return
-        action_human_robot_allocation = env_state_action_dict["action"]["human_robot_allocation"]
-        #shape is (upper_bound_num_human,)
+            return new_task_record
         action_human = action_human_robot_allocation["human"]
-        #shape is (upper_bound_num_robot,)
-        action_robot = action_human_robot_allocation["robot"]   
+        action_robot = action_human_robot_allocation["robot"]
         human_keys = list(env_state_action_dict["human"].keys())
         robot_keys = list(env_state_action_dict["robot"].keys())
         if action_human.sum() == 1:
@@ -218,13 +278,21 @@ class TaskManager:
             if _index < len(human_keys):
                 new_task_record["human"] = human_keys[_index]
                 new_task_record["human_index"] = _index
-        # logistic / processing 均可分配 AGV（决定 have_AGV vs only_have_gantry 模板）
         if action_robot.sum() != 0 and new_task_record["task_type"] in ("logistic", "processing"):
             _index = action_robot.nonzero()[0][0].item()
             if _index < len(robot_keys):
                 new_task_record["robot"] = robot_keys[_index]
                 new_task_record["robot_index"] = _index
         return new_task_record
+
+    def decode_action_human_robot_allocation(self, env_state_action_dict, new_task_record):
+        if new_task_record["task"] is None or new_task_record["task"] == "none":
+            return
+        return self.decode_human_robot_allocation_dict(
+            env_state_action_dict["action"]["human_robot_allocation"],
+            env_state_action_dict,
+            new_task_record,
+        )
 
     def update_new_task_record(self, env_state_action_dict, new_task_record: dict):
         assert new_task_record["human"] != None, "Human availablity should be check by mask before the task can be selected"
@@ -234,23 +302,13 @@ class TaskManager:
         new_task_record.update(copy.deepcopy(CfgProcessTaskGalleryDetailedClassified[product_type][new_task_record["task"]]))
         ##machine information
         states = env_state_action_dict["machine"][new_task_record["target_machine"]]["state"]
-        workstation_index = None
-        if new_task_record["task_type"] == "logistic":
-            ## find the free workstation index for logistic task
-            workstation_index = states.index('free')
-        elif new_task_record["task_type"] == "processing":
-            ## find the ready workstation index for logistic task
-            for i, state in enumerate(states):
-                if state == "free":
-                    continue
-                pre_name = state.split('_')[0]
-                task_name = state.split('_', 1)[1]
-                if pre_name == "materialReadyFor":
-                    if task_name == new_task_record["task"]:
-                        workstation_index = i
-                        break
-        else:
-            raise ValueError(f"Invalid task type: {new_task_record['task_type']}")
+        workstation_index = find_workstation_index_for_task(
+            states, new_task_record["task_type"], new_task_record["task"]
+        )
+        if workstation_index is None:
+            raise ValueError(
+                f"No workstation for task {new_task_record['task']} on {new_task_record['target_machine']}"
+            )
         new_task_record["chosen_machine_workstation"] = \
             list(env_state_action_dict["machine"][new_task_record["target_machine"]]["key_variables"]["working_area_ids"].keys())[workstation_index]
         new_task_record["chosen_workstation_index"] = workstation_index
@@ -264,14 +322,24 @@ class TaskManager:
         
         env_state_action_dict["progress"]["ongoing_task_records"][new_task_record["product_index"]] = new_task_record
         self.apply_new_task_record_to_human_robot_machine_material(env_state_action_dict, new_task_record)
+        if new_task_record.get("from_staging_slot"):
+            self._commit_new_product_to_producing(env_state_action_dict, new_task_record)
+
+    def _commit_new_product_to_producing(self, env_state_action_dict: dict, task_record: dict) -> None:
+        """5.2b: dispatch from staging slot immediately enters WIP."""
+        product_type = task_record["product"]
+        product_index = task_record["product_index"]
+        progress = env_state_action_dict["progress"]
+        progress["producing"].append(product_type)
+        progress["producing_indexs"].append(product_index)
+        progress["next_product"] = None
+        progress["next_product_index"] = None
+        progress["not_started"][product_type] -= 1
+        task_record["new_product_selected"] = False
 
     def _find_free_gantry(self, env_state_action_dict, task_record):
         gantry_states: list[str] = env_state_action_dict["machine"][task_record["logistic_machine"]]["state"]
-        active_indices = CfgMachine["num07_gantry_group"]["active_gantry_indices"]
-        for gantry_index in active_indices:
-            if gantry_states[gantry_index] == "free":
-                return gantry_index
-        return None
+        return find_free_gantry_index(gantry_states, task_record["logistic_machine"])
 
     def initialze_subtasks(self, env_state_action_dict, task_record):
         if task_record["task_type"] == "logistic":
@@ -393,14 +461,7 @@ class TaskManager:
                     finished[product_type].append(product_index)
                     n_product_finished += 1
                 completed_task_records_indexs.append(product_index)
-            elif task_record["new_product_selected"] == True:
-                task_record['new_product_selected'] = False
-                env_state_action_dict["progress"]["producing"].append(product_type)
-                env_state_action_dict["progress"]["producing_indexs"].append(product_index)
-                env_state_action_dict["progress"]["next_product"] = None
-                env_state_action_dict["progress"]["next_product_index"] = None
-                env_state_action_dict["progress"]["not_started"][product_type] -= 1
-        
+
         for task_record_index in completed_task_records_indexs:
             del ongoing_task_records[task_record_index]
 
@@ -456,7 +517,15 @@ class TaskManager:
         ):
             if task_record["is_final_task"] == True:
                 #no processing task after this task, so the processed material will be put on a storage
-                goal_storage_name = self._find_free_storage(env_state_action_dict, task_record)
+                goal_storage_name = find_free_storage(
+                    env_state_action_dict["storage"],
+                    task_record["processed_material"],
+                )
+                reserve_storage_slot(
+                    env_state_action_dict["storage"][goal_storage_name],
+                    task_record["processed_material"],
+                    task_record["product_index"],
+                )
                 subtasks["goal_area_ids"] = env_state_action_dict["storage"][goal_storage_name]["key_variables"]["working_area_ids"]
                 subtasks["material_goal_area"] = goal_storage_name
             else:
@@ -474,21 +543,14 @@ class TaskManager:
                     subtasks["goal_area_workstation_key"] = workstation_key
                 else:
                     task_record["already_done_next_logistic_task"] = False
-                    goal_storage_name = self._find_free_storage(env_state_action_dict, task_record)
+                    goal_storage_name = find_free_storage(
+                        env_state_action_dict["storage"],
+                        task_record["processed_material"],
+                    )
+                    reserve_storage_slot(
+                        env_state_action_dict["storage"][goal_storage_name],
+                        task_record["processed_material"],
+                        task_record["product_index"],
+                    )
                     subtasks["goal_area_ids"] = env_state_action_dict["storage"][goal_storage_name]["key_variables"]["working_area_ids"]
                     subtasks["material_goal_area"] = goal_storage_name
-    
-    def _find_free_storage(self, env_state_action_dict, task_record):
-        storages = env_state_action_dict["storage"]
-        processed_material = task_record["processed_material"]
-
-        for storage_name, value in storages.items():
-            supporting_materials = value["key_variables"]["supporting_materials"]
-            # If this material isn't supported, or storage is already full, skip
-            if processed_material not in supporting_materials or value["state"] == "full":
-                continue
-            # If storage is partially filled with a different material type, skip
-            if value["state"] == "partial" and processed_material != value["material_type"]:
-                continue
-            return storage_name
-        raise ValueError(f"No free storage found for {processed_material}")

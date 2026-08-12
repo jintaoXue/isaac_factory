@@ -180,7 +180,13 @@ python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 4 --device cuda:1
 python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0 --headless --enable_cameras
 ```
 
-当前注册的 Gym 环境 ID 为 **`HRTPaHC-v1`**（Human-Robot Task Planning and Allocation for HC Factory），默认算法为 **`rule_based`**（基于规则的四层多智能体决策）。
+当前注册的 Gym 环境 ID 为 **`HRTPaHC-v1`**（Human-Robot Task Planning and Allocation for HC Factory）。常用算法：
+
+| `--algo` | 说明 |
+|----------|------|
+| `rule_based` | 规则基线（默认）：A 准入 → B FIFO 优先级 → C/D 并行派工 |
+| `hier` | Hierarchical Masked DQN（A→B→C→D） |
+| `flat` | Flat 联合动作（代码保留，**非主对比**） |
 
 运行日志保存在 `logs/rl_games/HcFactory/` 目录下。
 
@@ -193,13 +199,15 @@ python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
 | `--task` | Gym 环境 ID | `HRTPaHC-v1` |
-| `--algo` | 算法配置名 | `rule_based` |
+| `--algo` | 算法配置名（`rule_based` / `hier` / `flat`） | `rule_based` |
 | `--num_envs` | 并行仿真环境数量 | 3 |
 | `--device` | CUDA 设备 | `cuda:0` |
 | `--headless` | 无 GUI 模式 | 关闭 |
 | `--enable_cameras` | 启用相机与离屏 RTX 渲染（headless 下采集图像必需） | 关闭 |
 | `--seed` | 随机种子 | 42 |
-| `--test` | 测试模式（加载 checkpoint） | 关闭 |
+| `--test` | 评测模式（Makespan / Success / Truncation，多 seed） | 关闭 |
+| `--test_times` | 每个 seed 的 episode 数 | 见 yaml |
+| `--test_seeds` | 逗号分隔 seeds，如 `42,43,44` | 见 yaml |
 | `--wandb_activate` | 启用 Weights & Biases 日志 | 关闭 |
 | `--video` | 录制仿真视频 | 关闭 |
 | `--active_livestream` | 启用 Livestream 推流 | 关闭 |
@@ -238,46 +246,39 @@ python train.py \
 
 ### 总体设计
 
-`hc_factory` 模块实现了一个**向量化多环境工厂仿真器**，对齐工业实时制造运营的四层决策栈：
+`hc_factory` 模块实现了一个**向量化多环境工厂仿真器**，对齐工业实时制造运营的四层决策栈（**Hierarchical TPA**）。算法侧经 **信息池** 在同一步内完成 A→B→C/D×K，再写入 env：
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Agent A — Product Sequencing（产品排序）               │
-│  根据当前生产订单，决定优先生产哪种产品                    │
+│  Agent A — Product Sequencing（产品准入）                 │
+│  每决策步最多准入 1 个新产品类型到候选槽                     │
 ├─────────────────────────────────────────────────────────┤
-│  Agent B — Product Selection（产品选择）                │
-│  从待产批次中选择下一个待加工的产品实例                    │
+│  Agent B — Product Priority（在制优先级）                 │
+│  对 eligible 槽排序（规则：在制 FIFO，staging 靠后）        │
 ├─────────────────────────────────────────────────────────┤
-│  Agent C — Process Task Planning（工序任务规划）         │
-│  为选中产品规划下一个关键工序任务（加工 / 物流）           │
-├─────────────────────────────────────────────────────────┤
-│  Agent D — Human-Robot Allocation（人机资源分配）       │
-│  将规划任务分配给最合适的人工、机器人或机器资源             │
+│  Agent C/D × K — Process + Allocation（并行派工）         │
+│  按优先级循环：规划工序任务 → 分配 human/AGV；K 可调         │
+│  （信息池更新 human/robot/gantry/机位 capacity mask）      │
 └─────────────────────────────────────────────────────────┘
-         ↓ action dict
+         ↓ action: sequencing + dispatch_list（+ 兼容字段）
 ┌─────────────────────────────────────────────────────────┐
 │  HcVectorEnv（向量化环境）                               │
 │  ├── HcSingleEnv × N（单环境逻辑实例）                   │
-│  │   ├── MachineManager      机器状态与工位管理           │
-│  │   ├── ProductMaterialManager  物料 / 在制品管理        │
-│  │   ├── HumanManager        人工资源与路径              │
-│  │   ├── RobotManager        机器人资源与路径            │
-│  │   ├── StorageManager      仓储区域管理                │
-│  │   ├── TaskManager         任务进度与工序解码          │
-│  │   └── AlgoHierarchicalMasker  动作合法性掩码            │
+│  │   ├── MachineManager / ProductMaterialManager / …   │
+│  │   ├── TaskManager         批量解码 dispatch_list；   │
+│  │   │                      5.2b 派工成功即入 producing │
+│  │   └── AlgoHierarchicalMasker  动作合法性掩码          │
 │  └── RouteManagerVectorEnv   跨环境共享路径规划           │
 └─────────────────────────────────────────────────────────┘
-         ↓ apply_data_to_sim()
-┌─────────────────────────────────────────────────────────┐
-│  Isaac Sim 物理引擎（USD 场景 + Articulation / RigidBody）│
-└─────────────────────────────────────────────────────────┘
 ```
+
+并行度由配置项 **`max_parallel_cd_dispatch`** 控制（`rule_based.yaml` / `hier.yaml`，默认 `1`）。
 
 ### 单步仿真流程
 
 每个仿真步（`step`）分为两阶段：
 
-1. **逻辑步（`step_env_logic`）**：各 SingleEnv 接收四层 Agent 的动作字典，更新任务记录、物料状态、人机分配，并计算动作掩码（mask）。
+1. **逻辑步（`step_env_logic`）**：各 SingleEnv 接收动作字典（含 `product_sequencing` 与可选 `dispatch_list`），更新任务记录、物料状态、人机分配，并计算动作掩码（mask）。
 2. **物理步（`step_env_physics`）**：将所有环境的关节位置、刚体位姿写入仿真器，执行 `sim.step()` 推进物理时间。
 
 ### 状态 / 动作接口
@@ -287,20 +288,26 @@ python train.py \
 - `machine` / `material` / `human` / `robot` / `storage`：各资源管理器的状态
 - `progress`：生产进度（订单、在产、已完成、进行中任务记录）
 - `agent_action_mask`：四层 Agent 及各资源的动作合法性掩码
-- `action`：当前步接收的动作
+- `action`：当前步动作，主要字段：
+  - `product_sequencing`：A 准入
+  - `dispatch_list`：0…K 条 `{slot_index, process_task_planning, human_robot_allocation}`
+  - 兼容字段：`product_selection` / `process_task_planning` / `human_robot_allocation`（= 首条 dispatch）
 - `articulations` / `rigid_prims`：待写入仿真的物理对象数据
 
 ### 算法模块
 
 | 文件 | 说明 |
 |------|------|
-| `source/algo/hierarchical/hc_factory/rule_based.py` | 规则基线，串联 A→B→C→D 四层 Agent |
-| `source/algo/hierarchical/hc_factory/agent_A_product_sequencer.py` | 产品排序 Agent |
-| `source/algo/hierarchical/hc_factory/agent_B_product_selector.py` | 产品选择 Agent |
+| `source/algo/hierarchical/hc_factory/rule_based.py` | 规则基线（信息池 + 并行 CD） |
+| `source/algo/hierarchical/hc_factory/hierarchical_tpa.py` | Hier Masked DQN 训练 / 评测 |
+| `source/algo/hierarchical/hc_factory/hierarchical_dispatch.py` | A→B→C/D×K 动作构建 |
+| `source/algo/hierarchical/hc_factory/tpa_info_pool.py` | 步内信息池 / 资源 ledger |
+| `source/algo/hierarchical/hc_factory/agent_A_product_sequencer.py` | 产品准入 Agent |
+| `source/algo/hierarchical/hc_factory/agent_B_product_priority.py` | 在制优先级 Agent |
 | `source/algo/hierarchical/hc_factory/agent_C_process_task_planner.py` | 工序任务规划 Agent |
 | `source/algo/hierarchical/hc_factory/agent_D_human_robot_allocator.py` | 人机资源分配 Agent |
-| `source/isaaclab_tasks/.../algo_cfg/rule_based.yaml` | 规则基线 Hydra 配置 |
-| `source/isaaclab_tasks/.../algo_cfg/rl_filter.yaml` | RL 过滤器配置（预留） |
+| `source/isaaclab_tasks/.../algo_cfg/rule_based.yaml` | 规则基线配置（含 `max_parallel_cd_dispatch`） |
+| `source/isaaclab_tasks/.../algo_cfg/hier.yaml` | Hierarchical RL 配置 |
 
 ---
 
@@ -356,7 +363,7 @@ isaac_factory/
 
 ### 当前产品：水喉（ProductWaterPipe）
 
-默认生产订单为 5 件水喉，每件经历 6 道加工工序及对应的物流任务：
+默认生产订单为 **16** 件水喉（idx `00`–`15`），同时在制上限（WIP）为 **`single_env_parallel_producing_limit=10`**。每件经历 6 道加工工序及对应的物流任务：
 
 | 序号 | 工序 | 执行设备 |
 |------|------|----------|
@@ -464,3 +471,4 @@ python .../perception.py eval --task subtask \
 - [Isaac Sim 4.5.0 文档](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/index.html)
 - [Isaac Sim Livestream 客户端](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/manual_livestream_clients.html)
 - 开发笔记：`coding_note.md`
+- 论文 / 实验笔记：`2026_Journal_Paper.md`

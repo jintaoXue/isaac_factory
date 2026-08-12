@@ -138,7 +138,7 @@ class RLProductSequencingAgent:
 
 
 class RLProductSelectionAgent:
-    """Agent B: select focal product from producing list — action dim = parallel_producing_limit + 1."""
+    """Agent B: priority over eligible slots (Phase 1: FIFO rank + masked DQN on first pick when K=1)."""
 
     AGENT_KEY = "agent_B_product_selector"
     ACTION_KEY = "product_selection"
@@ -148,6 +148,22 @@ class RLProductSelectionAgent:
         self.device = device
         self.dqn: MaskedDQNAgent | None = None
         self.dqn_kwargs = dqn_kwargs
+        from .agent_B_product_priority import ProductPriorityAgent
+
+        self._priority = ProductPriorityAgent(device)
+
+    def rank_slots(self, env_state_action_dict: dict, eligible_mask: torch.Tensor, epsilon: float) -> list[int]:
+        del env_state_action_dict, epsilon
+        return self._priority.rank_slots(eligible_mask)
+
+    def scores_from_order(
+        self,
+        eligible_mask: torch.Tensor,
+        slot_order: list[int],
+        dim: int,
+        device: torch.device,
+    ) -> torch.Tensor:
+        return self._priority.scores_from_order(eligible_mask, slot_order, dim, device)
 
     def _ensure_dqn(self, env_state_action_dict: dict, product_sequencing_action: torch.Tensor) -> None:
         if self.dqn is not None:
@@ -209,6 +225,17 @@ class RLProcessTaskPlanningAgent:
         obs = self.obs_encoder.encode_C(env_state_action_dict, product_selection_action)
         return self.dqn.act_tensor(obs, mask, epsilon)
 
+    def act_with_mask(
+        self,
+        env_state_action_dict: dict,
+        product_selection_action: torch.Tensor,
+        task_mask: torch.Tensor,
+        epsilon: float,
+    ) -> torch.Tensor:
+        self._ensure_dqn(env_state_action_dict, product_selection_action)
+        obs = self.obs_encoder.encode_C(env_state_action_dict, product_selection_action)
+        return self.dqn.act_tensor(obs, task_mask, epsilon)
+
     def observe_step(self, env_state_action_dict, product_selection_action, action, reward, next_env_state_action_dict, done, epsilon):
         if action.sum() == 0:
             return None
@@ -252,7 +279,32 @@ class RLHumanRobotAllocatorAgent:
         self._ensure_dqn(env_state_action_dict, process_task_planning_action)
         human_mask = env_state_action_dict["agent_action_mask"]["human"]["self_availability_mask"]
         robot_mask = env_state_action_dict["agent_action_mask"]["robot"]["self_availability_mask"]
+        return self._act_with_masks_impl(env_state_action_dict, process_task_planning_action, human_mask, robot_mask, epsilon)
 
+    def act_with_masks(
+        self,
+        env_state_action_dict: dict,
+        process_task_planning_action: torch.Tensor,
+        d_masks: dict,
+        epsilon: float,
+    ) -> dict:
+        self._ensure_dqn(env_state_action_dict, process_task_planning_action)
+        return self._act_with_masks_impl(
+            env_state_action_dict,
+            process_task_planning_action,
+            d_masks["human"],
+            d_masks["robot"],
+            epsilon,
+        )
+
+    def _act_with_masks_impl(
+        self,
+        env_state_action_dict: dict,
+        process_task_planning_action: torch.Tensor,
+        human_mask: torch.Tensor,
+        robot_mask: torch.Tensor,
+        epsilon: float,
+    ) -> dict:
         if process_task_planning_action[0] == 1:
             return {
                 "human": torch.zeros(human_mask.shape[0], dtype=torch.int32, device=self.device),

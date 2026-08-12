@@ -1,7 +1,7 @@
 params:
   seed: 42
   algo:
-    name: hier
+    name: flat
 
   env:
     clip_observations: 5.0
@@ -25,7 +25,7 @@ params:
     replay_buffer_size: 50000
     hidden_dim: 128
     target_update_interval: 500
-    # required by rl_games Runner.load (unused by HierarchicalTPA)
+    # required by rl_games Runner.load (unused by FlatTPA)
     reward_shaper:
       scale_value: 1.0
 
@@ -39,7 +39,6 @@ params:
     save_interval: 5000
     log_interval: 100
     parallel_producing_limit: 10
-    max_parallel_cd_dispatch: 1
 
     test: False
     test_times: 1
@@ -48,7 +47,7 @@ params:
     env_rule_based_exploration: False
     makespan_window: 50
     wandb_activate: False
-    wandb_project: 'HcFactory_Hier'
+    wandb_project: 'HcFactory_Flat'
 
     load_dir: ''
     load_name: ''

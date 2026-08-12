@@ -25,6 +25,7 @@ gym.register(
         "rule_based": f"{algo_cfg.__name__}:rule_based.yaml",
         "rl_filter": f"{algo_cfg.__name__}:rl_filter.yaml",
         "hier": f"{algo_cfg.__name__}:hier.yaml",
+        "flat": f"{algo_cfg.__name__}:flat.yaml",
     },
 )
 

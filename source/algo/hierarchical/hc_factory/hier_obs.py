@@ -60,6 +60,7 @@ class HierObsEncoder(nn.Module):
             out_dim=state_dim,
             max_ongoing=PRE_CFG.max_ongoing,
             max_subtasks=PRE_CFG.max_subtasks,
+            max_material=PRE_CFG.max_material,
             num_agents=PRE_CFG.num_agents,
             transformer_layers=2,
             transformer_heads=4,

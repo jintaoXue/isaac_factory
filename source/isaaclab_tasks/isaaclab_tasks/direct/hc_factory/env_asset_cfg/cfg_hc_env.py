@@ -91,6 +91,8 @@ SingleEnvStateActionDictTemplate : dict = {
     },
     "action": {
         "product_sequencing": torch.Tensor([]),
+        "product_priority": torch.Tensor([]),
+        "dispatch_list": [],
         "product_selection": torch.Tensor([]),
         "process_task_planning": torch.Tensor([]),
         "human_robot_allocation": torch.Tensor([]),
@@ -187,13 +189,13 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     # rendering_resolution = (3840, 2160)
     rendering_resolution = (1920, 1080)
 
-    single_env_parallel_producing_limit = 5
+    single_env_parallel_producing_limit = 10
     human_number_upper_bound = 6
     robot_upper_bound = 2
-    material_batch_upper_bound = 5
+    material_batch_upper_bound = 16
     # RL episode horizon. Scale with CfgSubtaskPredefinedTimeGallery
-    # (control_machine=200, material ops=50; ~5 products × multi-stage process).
-    max_episode_steps = 15000
+    # (control_machine=200, material ops=50; up to 16 products, WIP ≤ parallel limit).
+    max_episodic_steps = 45000
     # Reward v2 (written by TaskManager.update_rl_signals)
     rl_step_penalty = 0.01
     rl_finish_bonus = 2.0

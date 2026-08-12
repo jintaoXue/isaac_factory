@@ -30,10 +30,10 @@ _SAMPLE_PY = (
 
 @dataclass(frozen=True)
 class BufferPreprocessCfg:
-    max_ongoing: int = 5
+    max_ongoing: int = 10  # = HcVectorEnvCfg.single_env_parallel_producing_limit
     max_human: int = 6  # HcVectorEnvCfg.human_number_upper_bound
     max_robot: int = 2
-    max_material: int = 5
+    max_material: int = 16  # = HcVectorEnvCfg.material_batch_upper_bound
     max_machine: int = 16
     max_storage: int = 32
     max_workstations: int = 4  # gantry 最多 4 工位
@@ -110,6 +110,7 @@ PRODUCT = Vocab(["ProductWaterPipe"])
 ENTITY_STATE = Vocab(["free", "partial", "full", "empty", "waiting_processing_task"])
 SUBMAT = Vocab(
     [
+        "product_00_pipe_raw",
         "product_00_pipe",
         "product_00_flange",
         "product_00_elbow",
