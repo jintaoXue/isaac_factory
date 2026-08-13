@@ -14,8 +14,8 @@ params:
     device_name: 'cuda:0'
     time_str: "None"
 
-    # Must match HcVectorEnvCfg.scene.num_envs
-    num_actors: 3
+    # Overridden by train.py from --num_envs / env.num_envs
+    num_actors: 4
     max_episodic_steps: 45000
     state_dim: 256
 

@@ -240,7 +240,7 @@ class RuleBasedHierarchical():
                         f"ep_max_prod={ep_max_prod} ep_max_ong={ep_max_ong} "
                         f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing} "
                         f"finished={_count_finished(next_obs[env_id])} "
-                        f"wall={wall:.1f}s mean_ms={mean_ms_str} mean_ms_ok={mean_ok_str}"
+                        f"wall={wall/60.0:.2f}min mean_ms={mean_ms_str} mean_ms_ok={mean_ok_str}"
                     )
                     if self.use_wandb:
                         payload = {
@@ -310,7 +310,7 @@ class RuleBasedHierarchical():
                     f"finish={float(parts.get('finish', 0.0) or 0.0):.3f} "
                     f"task={float(parts.get('task', 0.0) or 0.0):.3f} "
                     f"success={float(parts.get('success', 0.0) or 0.0):.3f}) "
-                    f"wall={wall:.1f}s mean_ms={mean_ms_str} n_envs={n_envs}"
+                    f"wall={wall/60.0:.2f}min mean_ms={mean_ms_str} n_envs={n_envs}"
                 )
                 if self.use_wandb:
                     payload = {
@@ -336,7 +336,7 @@ class RuleBasedHierarchical():
         wall = self._wall_time_sec()
         print(
             f"[Rule] train finished episodes_done={self.episodes_done} "
-            f"steps={self.global_step} wall={wall:.1f}s ({wall/60.0:.2f} min) "
+            f"steps={self.global_step} wall={wall/60.0:.2f}min "
             f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing}"
         )
         if self.use_wandb:

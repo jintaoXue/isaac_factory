@@ -523,6 +523,7 @@ class HierarchicalTPA:
                 ep0 = int(next_obs[0].get("episode_num", 0) or 0)
                 t0 = int(next_obs[0].get("time_step", 0) or 0)
                 step_r0 = float((rl0 or {}).get("reward", 0.0) or 0.0)
+                wall = self._wall_time_sec()
                 mean_ms_str = (
                     f"{sum(self.makespan_all)/len(self.makespan_all):.1f}"
                     if self.makespan_all
@@ -533,10 +534,9 @@ class HierarchicalTPA:
                     f"ep_reward0={episode_reward[0]:.2f} finished={finished} "
                     f"producing={producing0} ongoing={ongoing0} "
                     f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing} "
-                    f"mean_ms={mean_ms_str} rl={rl0} n_envs={len(obs)}"
+                    f"mean_ms={mean_ms_str} wall={wall/60.0:.2f}min n_envs={len(obs)}"
                 )
                 if self.use_wandb:
-                    wall = self._wall_time_sec()
                     buf_d_h = (
                         len(self.agent_D.human_dqn.buffer)
                         if self.agent_D.human_dqn is not None
@@ -603,7 +603,7 @@ class HierarchicalTPA:
         wall = self._wall_time_sec()
         print(
             f"[Hier] train finished episodes_done={self.episodes_done} "
-            f"steps={self.global_step} wall={wall:.1f}s ({wall/60.0:.2f} min) "
+            f"steps={self.global_step} wall={wall/60.0:.2f}min "
             f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing}"
         )
         if self.use_wandb:

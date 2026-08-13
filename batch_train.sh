@@ -45,7 +45,7 @@ echo "任务列表: ${JOBS[*]}"
 # HcFactory TPA 公共参数
 HC_TASK="HRTPaHC-v1"
 HC_WANDB_PROJECT="HcFactory_TPA"
-HC_NUM_ENVS=1
+HC_NUM_ENVS=4
 HC_RULE_EPISODES=10
 HC_MULTI_K=10
 
