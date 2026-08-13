@@ -30,7 +30,7 @@ _SAMPLE_PY = (
 
 @dataclass(frozen=True)
 class BufferPreprocessCfg:
-    max_ongoing: int = 10  # = HcVectorEnvCfg.single_env_parallel_producing_limit
+    max_ongoing: int = 5  # = HcVectorEnvCfg.single_env_parallel_producing_limit
     max_human: int = 6  # HcVectorEnvCfg.human_number_upper_bound
     max_robot: int = 2
     max_material: int = 16  # = HcVectorEnvCfg.material_batch_upper_bound

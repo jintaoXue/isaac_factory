@@ -190,7 +190,7 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     # rendering_resolution = (3840, 2160)
     rendering_resolution = (1920, 1080)
 
-    single_env_parallel_producing_limit = 10
+    single_env_parallel_producing_limit = 5
     human_number_upper_bound = 6
     robot_upper_bound = 2
     material_batch_upper_bound = 18

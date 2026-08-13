@@ -38,7 +38,7 @@ params:
     learn_interval: 1
     save_interval: 5000
     log_interval: 100
-    parallel_producing_limit: 10
+    parallel_producing_limit: 5
 
     test: False
     test_times: 1

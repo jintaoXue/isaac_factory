@@ -30,7 +30,7 @@ def _empty_allocation(human_dim: int, robot_dim: int, device: torch.device) -> d
 def build_rule_based_action(
     env_state_action_dict: dict,
     cuda_device: torch.device,
-    max_parallel_cd_dispatch: int = 1,
+    max_parallel_cd_dispatch: int = 5,
     agent_a: ProductSequencingAgent | None = None,
     agent_b: ProductPriorityAgent | None = None,
     agent_c: ProcessTaskPlanningAgent | None = None,
@@ -117,9 +117,9 @@ def build_hier_rl_action(
     cuda_device: torch.device,
     agents,
     epsilon: float,
-    max_parallel_cd_dispatch: int = 1,
+    max_parallel_cd_dispatch: int = 5,
 ) -> dict:
-    """RL variant: A/B/C/D agents with same info-pool CD loop (Phase 1: K=1 typical)."""
+    """RL variant: A/B/C/D agents with same info-pool CD loop."""
     pool = TpaInfoPool(env_state_action_dict, cuda_device)
     product_sequencing = agents.agent_A.act(env_state_action_dict, epsilon)
     pool.apply_product_sequencing(product_sequencing)

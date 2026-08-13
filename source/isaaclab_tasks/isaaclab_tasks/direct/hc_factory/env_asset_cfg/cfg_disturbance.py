@@ -119,12 +119,14 @@ def _ensure_default_snapshot() -> None:
         "human": deepcopy(CfgHumanRegistrationInfos),
         "robot": deepcopy(CfgRobotRegistrationInfos),
         "active_gantry_indices": list(CfgMachine["num07_gantry_group"]["active_gantry_indices"]),
-        "gantry_animation_time": CfgMachine["num07_gantry_group"]["registration_infos"][
-            "num07_gantry_group"
-        ]["animation_time"],
-        "gantry_animation_time_noise_std": CfgMachine["num07_gantry_group"]["registration_infos"][
-            "num07_gantry_group"
-        ].get("animation_time_noise_std", 2.0),
+        "gantry_move_speed": float(
+            CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]["move_speed"]
+        ),
+        "gantry_move_speed_noise_std": float(
+            CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"].get(
+                "move_speed_noise_std", 0.0
+            )
+        ),
         "subtask_noise_std": float(subtask_mod.SubtaskTimeNoiseStdSteps),
         "machine_animation_times": {
             mtype: {
@@ -165,8 +167,8 @@ def apply_disturbance_to_cfgs() -> dict[str, Any]:
         _DEFAULT_SNAPSHOT["active_gantry_indices"]
     )
     gantry_info = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]
-    gantry_info["animation_time"] = _DEFAULT_SNAPSHOT["gantry_animation_time"]
-    gantry_info["animation_time_noise_std"] = _DEFAULT_SNAPSHOT["gantry_animation_time_noise_std"]
+    gantry_info["move_speed"] = _DEFAULT_SNAPSHOT["gantry_move_speed"]
+    gantry_info["move_speed_noise_std"] = _DEFAULT_SNAPSHOT["gantry_move_speed_noise_std"]
     subtask_mod.SubtaskTimeNoiseStdSteps = _DEFAULT_SNAPSHOT["subtask_noise_std"]
     for mtype, parts in _DEFAULT_SNAPSHOT["machine_animation_times"].items():
         for part, t in parts.items():
@@ -222,14 +224,14 @@ def apply_disturbance_to_cfgs() -> dict[str, Any]:
         applied["active_gantry_indices"] = list(gantry_indices)
 
         scale = float(RuntimeDisturbanceCfg["gantry_time_scale"])
-        gantry_info["animation_time"] = max(
-            1, int(round(_DEFAULT_SNAPSHOT["gantry_animation_time"] * scale))
-        )
-        gantry_info["animation_time_noise_std"] = float(
-            RuntimeDisturbanceCfg["gantry_animation_noise_std"]
-        )
-        applied["gantry_animation_time"] = gantry_info["animation_time"]
-        applied["gantry_animation_noise_std"] = gantry_info["animation_time_noise_std"]
+        # Old API stretched animation_time; new API slows move_speed by the same factor.
+        base_speed = float(_DEFAULT_SNAPSHOT["gantry_move_speed"])
+        gantry_info["move_speed"] = max(1e-4, base_speed / max(scale, 1e-6))
+        # Old noise was in animation steps (~20). Map relative noise onto speed units.
+        rel_noise = float(RuntimeDisturbanceCfg["gantry_animation_noise_std"]) / 20.0
+        gantry_info["move_speed_noise_std"] = max(0.0, gantry_info["move_speed"] * rel_noise)
+        applied["gantry_move_speed"] = gantry_info["move_speed"]
+        applied["gantry_move_speed_noise_std"] = gantry_info["move_speed_noise_std"]
 
     elif dim == "machine":
         std = float(RuntimeDisturbanceCfg["machine_process_noise_std"])

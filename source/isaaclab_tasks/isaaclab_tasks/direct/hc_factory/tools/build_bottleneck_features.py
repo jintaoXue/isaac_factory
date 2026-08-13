@@ -215,6 +215,26 @@ def _station_id_to_resource_candidates(station_id: str) -> list[str]:
     return [station_id]
 
 
+def resolve_feature_resource_id(rid: str, known_ids) -> str:
+    """Map machine-group disturbance ids onto window_feature_table resource_id.
+
+    Feature rows use workstation ids (``...CuttingMachine_ws0``). Disturbance
+    logs may still write the machine group name without ``_wsN``.
+    """
+    rid = (rid or "").strip()
+    if not rid:
+        return rid
+    known = list(known_ids)
+    known_set = set(known)
+    if rid in known_set:
+        return rid
+    workstations = [k for k in known if k.startswith(rid + "_ws")]
+    if workstations:
+        preferred = f"{rid}_ws0"
+        return preferred if preferred in known_set else sorted(workstations)[0]
+    return rid
+
+
 def compute_window_features(
     timelines: dict[str, ResourceTimeline],
     job_rows: list[dict],
@@ -518,7 +538,9 @@ def _disturbance_to_window_event(
         return None
     start_s = float(interval["start_s"])
     end_s = float(interval["end_s"])
-    rid = interval["resource_id"]
+    known_ids = {r["resource_id"] for rs in windows.values() for r in rs}
+    rid = resolve_feature_resource_id(interval["resource_id"], known_ids)
+    rtype = _map_disturbance_resource_type(rid, interval.get("resource_type") or "")
 
     covering = [
         wi
@@ -549,7 +571,7 @@ def _disturbance_to_window_event(
         "env_id": interval.get("env_id", meta0["env_id"]),
         "window_size_s": window_size,
         "resource_id": rid,
-        "resource_type": interval["resource_type"],
+        "resource_type": rtype,
         "start_window_index": start_wi,
         "end_window_index": end_wi,
         "start_s": start_s,

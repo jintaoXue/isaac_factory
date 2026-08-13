@@ -25,6 +25,7 @@ class DisturbanceInjector:
         self._event_id = 0
         self._activated_at = -1
         self._duration = 0
+        self._logged_resource_id = ""
 
     def reset(self, env: dict) -> None:
         self._restore_if_needed(env)
@@ -35,6 +36,7 @@ class DisturbanceInjector:
         self._event_id = 0
         self._activated_at = -1
         self._duration = 0
+        self._logged_resource_id = ""
 
         dim = RuntimeDisturbanceCfg.get("dim", "none")
         if dim == "none":
@@ -81,22 +83,39 @@ class DisturbanceInjector:
                 self._activated_at = t
                 self._event_id += 1
                 end = t + self._duration
-                self._log_event(env, dim, target, t, end, starting=True)
+                self._logged_resource_id = self._feature_resource_id(target)
+                self._log_event(env, dim, self._logged_resource_id, t, end, starting=True)
 
         if self._active and self._activated_at >= 0 and t >= self._activated_at + self._duration:
             end = self._activated_at + self._duration
+            rid = self._logged_resource_id or self._feature_resource_id(target)
             self._restore_if_needed(env)
-            self._log_event(env, dim, target, self._activated_at, end, starting=False)
+            self._log_event(env, dim, rid, self._activated_at, end, starting=False)
             self._active = False
             self._saved_state = None
             self._activated_at = -1
+            self._logged_resource_id = ""
             self._event_done = True  # one L2 event per episode
+
+    def _feature_resource_id(self, fallback: str | None) -> str:
+        """IDs used by resource_event_log / window_feature_table (workstation-level)."""
+        s = self._saved_state or {}
+        kind = s.get("kind")
+        if kind == "machine":
+            return f"{s['machine']}_ws{s['ws']}"
+        if kind == "gantry":
+            return f"gantry_{s['idx']}"
+        if kind == "human":
+            idx = s.get("idx")
+            if idx is not None:
+                return f"human_{idx}"
+        return fallback or ""
 
     def _log_event(
         self,
         env: dict,
         dim: str,
-        target: str | None,
+        resource_id: str,
         start: int,
         end: int,
         *,
@@ -113,7 +132,7 @@ class DisturbanceInjector:
                     "logistics": "transport_delay",
                     "material": "material_shortage",
                 }.get(dim, dim),
-                "target_resource_id": target or "",
+                "target_resource_id": resource_id,
                 "target_resource_type": dim,
                 "start_time_step": start,
                 "end_time_step": "" if starting else end,
@@ -177,6 +196,7 @@ class DisturbanceInjector:
             self._saved_state = {
                 "kind": "human",
                 "key": key,
+                "idx": h.get("key_variables", {}).get("idx", idx),
                 "prev_state": h.get("state"),
             }
             # Non-free + no task → idle animation, excluded from allocator mask.

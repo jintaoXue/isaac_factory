@@ -41,6 +41,27 @@ BUFFER_MACHINE_AFFINITY: dict[str, list[str]] = {
 RESOURCE_TYPES = ("machine", "gantry", "human", "transport_robot", "buffer")
 
 
+def resolve_to_node_id(rid: str, node_ids: Iterable[str]) -> str | None:
+    """Map disturbance / machine-group ids onto feature-table node ids.
+
+    Feature tables use workstation ids such as ``...CuttingMachine_ws0``.
+    L2 disturbance logs may still write the machine group name without ``_wsN``.
+    Exact matches pass through; otherwise prefer ``{group}_ws0``.
+    """
+    rid = (rid or "").strip()
+    if not rid:
+        return None
+    known = list(node_ids)
+    known_set = set(known)
+    if rid in known_set:
+        return rid
+    workstations = [k for k in known if k.startswith(rid + "_ws")]
+    if workstations:
+        preferred = f"{rid}_ws0"
+        return preferred if preferred in known_set else sorted(workstations)[0]
+    return None
+
+
 def type_onehot(resource_type: str) -> list[float]:
     vec = [0.0] * len(RESOURCE_TYPES)
     if resource_type in RESOURCE_TYPES:

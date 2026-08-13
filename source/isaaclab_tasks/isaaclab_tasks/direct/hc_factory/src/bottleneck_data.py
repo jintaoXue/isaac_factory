@@ -508,15 +508,27 @@ class BottleneckDataCollector:
 
         process_times = {}
         for product, gallery in CfgProductProcessGallery.items():
-            process_times[product] = {
-                step: {
-                    "process_time": info["process_time"],
-                    "gaussian_random_time": info.get("gaussian_random_time", 0),
+            steps_out = {}
+            for step, info in gallery.get("process_steps", {}).items():
+                machine = info.get("machine")
+                anim = None
+                noise = 0.0
+                if machine and machine in CfgMachine:
+                    for part_info in CfgMachine[machine].get("registration_infos", {}).values():
+                        if "animation_time" in part_info:
+                            anim = part_info["animation_time"]
+                            noise = part_info.get("animation_time_noise_std", 0.0)
+                            break
+                steps_out[step] = {
+                    "machine": machine,
+                    "required_materials": info.get("required_materials", {}),
+                    "process_time": anim,
+                    "gaussian_random_time": info.get("gaussian_random_time", noise),
                 }
-                for step, info in gallery.get("process_steps", {}).items()
-            }
+            process_times[product] = steps_out
 
         gantry_cfg = CfgMachine.get("num07_gantry_group", {})
+        gantry_info = gantry_cfg.get("registration_infos", {}).get("num07_gantry_group", {})
         row = {
             "run_id": BottleneckRunContext.run_id,
             "episode_id": self.episode_id,
@@ -535,7 +547,11 @@ class BottleneckDataCollector:
             "buffer_capacity_config": json.dumps(buffer_cap),
             "human_config": json.dumps(CfgHumanRegistrationInfos),
             "robot_config": json.dumps(CfgRobotRegistrationInfos),
-            "gantry_config": json.dumps({"active_gantry_indices": gantry_cfg.get("active_gantry_indices", [])}),
+            "gantry_config": json.dumps({
+                "active_gantry_indices": gantry_cfg.get("active_gantry_indices", []),
+                "move_speed": gantry_info.get("move_speed"),
+                "move_speed_noise_std": gantry_info.get("move_speed_noise_std"),
+            }),
             "parallel_producing_limit": HcVectorEnvCfg().single_env_parallel_producing_limit,
             "arrival_rate": "",
             "disturbance_dim": RuntimeDisturbanceCfg.get("dim", "none"),

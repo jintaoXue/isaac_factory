@@ -51,8 +51,8 @@ params:
     test_times: 1
     test_seeds: [42, 43, 44, 45, 46]
     max_episodic_steps: 45000
-    parallel_producing_limit: 10
-    max_parallel_cd_dispatch: 1
+    parallel_producing_limit: 5
+    max_parallel_cd_dispatch: 5
     log_interval: 100
     makespan_window: 50
     env_rule_based_exploration: False

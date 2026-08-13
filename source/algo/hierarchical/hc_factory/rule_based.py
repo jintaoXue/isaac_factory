@@ -39,7 +39,7 @@ class RuleBasedHierarchical():
             self.env_info : dict = self.vec_env.get_env_info()
 
         self.cuda_device = self.env_info["cuda_device"]
-        self.max_parallel_cd_dispatch = int(config.get("max_parallel_cd_dispatch", 1))
+        self.max_parallel_cd_dispatch = int(config.get("max_parallel_cd_dispatch", 5))
         self.agent_A = ProductSequencingAgent(self.cuda_device)
         self.agent_B = ProductPriorityAgent(self.cuda_device)
         self.agent_C = ProcessTaskPlanningAgent(self.cuda_device)

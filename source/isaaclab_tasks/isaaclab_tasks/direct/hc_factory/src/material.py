@@ -12,6 +12,7 @@ import omni.usd
 
 # (subfolder, name_prefix) under product_water_pipe_group/
 _PRODUCT_PRIM_SPECS: tuple[tuple[str, str], ...] = (
+    ("cubes", "cube_raw"),
     ("cubes", "cube"),
     ("hoops", "hoop"),
     ("bending_tubes", "bending_tube"),

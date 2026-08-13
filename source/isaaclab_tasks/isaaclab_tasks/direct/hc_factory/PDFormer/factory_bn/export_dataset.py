@@ -36,6 +36,7 @@ from factory_bn.graph import (
     RESOURCE_TYPES,
     build_factory_adjacency,
     hop_distance_matrix,
+    resolve_to_node_id,
     semantic_distance_matrix,
     type_onehot,
 )
@@ -179,8 +180,9 @@ def _pivot_episode(
             will[ti] = float(lab.get("will_bottleneck") or 0)
             is_hot[ti] = float(lab.get("is_bottleneck_window") or 0)
             fut = (lab.get("future_bottleneck_object_id") or "").strip()
-            if fut and fut in node_index:
-                mark[ti] = node_index[fut]
+            mapped = resolve_to_node_id(fut, node_index) if fut else None
+            if mapped is not None:
+                mark[ti] = node_index[mapped]
             tts_v = lab.get("time_to_start") or ""
             dur_v = lab.get("duration") or ""
             if tts_v not in ("", "None", "nan"):
@@ -191,15 +193,15 @@ def _pivot_episode(
     ev_rows = events or []
     ev_node, ev_start_s, ev_dur, ev_start_ti = [], [], [], []
     for e in ev_rows:
-        rid = e["resource_id"]
-        if rid not in node_index:
+        mapped = resolve_to_node_id(e["resource_id"], node_index)
+        if mapped is None:
             continue
         sw = e["start_window_index"]
         if sw not in win_to_ti:
             ti = int(np.argmin(np.abs(window_start - e["start_s"])))
         else:
             ti = win_to_ti[sw]
-        ev_node.append(node_index[rid])
+        ev_node.append(node_index[mapped])
         ev_start_s.append(e["start_s"])
         ev_dur.append(e["duration_s"])
         ev_start_ti.append(ti)

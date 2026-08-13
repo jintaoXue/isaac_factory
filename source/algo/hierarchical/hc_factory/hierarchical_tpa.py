@@ -113,8 +113,8 @@ class HierarchicalTPA:
             "target_update_interval": config.get("target_update_interval", 500),
         }
 
-        parallel_limit = config.get("parallel_producing_limit", 10)
-        self.max_parallel_cd_dispatch = int(config.get("max_parallel_cd_dispatch", 1))
+        parallel_limit = config.get("parallel_producing_limit", 5)
+        self.max_parallel_cd_dispatch = int(config.get("max_parallel_cd_dispatch", 5))
         self.max_sim_episodes = config.get("max_sim_episodes")
         if self.max_sim_episodes is not None:
             self.max_sim_episodes = int(self.max_sim_episodes)

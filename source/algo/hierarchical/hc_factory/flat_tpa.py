@@ -94,7 +94,7 @@ class FlatTPA:
             "target_update_interval": config.get("target_update_interval", 500),
         }
 
-        parallel_limit = config.get("parallel_producing_limit", 10)
+        parallel_limit = config.get("parallel_producing_limit", 5)
         self.obs_encoder = FlatObsEncoder(
             self.cuda_device,
             parallel_producing_limit=parallel_limit,
