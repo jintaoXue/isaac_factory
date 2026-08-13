@@ -14,7 +14,7 @@ if [ $# -eq 0 ]; then
     echo "  1-21: 旧 RL / Perception 序号"
     echo "  22: rule_based + 单产品决策 (K=1, 10 episodes, wandb)"
     echo "  23: rule_based + 多产品决策 (K=5, 10 episodes, wandb)"
-    echo "  24: hier 开始训练 (K=1, wandb)"
+    echo "  24: hier 开始训练 (K=${HC_MULTI_K}, wandb)"
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
     exit 1
 fi
@@ -236,8 +236,8 @@ run_test_23() {
 }
 
 run_test_24() {
-    # hier 开始训练（默认 K=1，不限 episode）
-    echo "运行 24: hier train start (K=1, wandb)"
+    # hier 训练（与 rule K=10 公平对照）
+    echo "运行 24: hier train start (K=${HC_MULTI_K}, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -245,8 +245,8 @@ run_test_24() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "hier_K1_train" \
-        --max_parallel_cd_dispatch 1 \
+        --wandb_name "hier_K${HC_MULTI_K}_train" \
+        --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         ${DEVICE_ARG}
 }
 

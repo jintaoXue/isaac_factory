@@ -23,7 +23,8 @@ class FlatObsEncoder(HierObsEncoder):
                 aam["human"]["self_availability_mask"].float().flatten(),
                 aam["robot"]["self_availability_mask"].float().flatten(),
             ]
-        ).detach()
+        )
 
     def get_obs_dim_flat(self, env_state_action_dict: dict) -> int:
-        return int(self.encode_flat(env_state_action_dict).shape[0])
+        with torch.no_grad():
+            return int(self.encode_flat(env_state_action_dict).shape[0])

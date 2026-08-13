@@ -3,13 +3,13 @@ from .cfg_machine import CfgMachine
 
 CfgSubtaskPredefinedTimeGallery = {
    "go_to_material": None,
-   "material_on_gantry": 10,
-   "control_gantry": 10,
-   "material_on_robot": 10,
+   "material_on_gantry": 25,
+   "control_gantry": 25,
+   "material_on_robot": 25,
    "go_to_goal_area": None,
-   "material_on_goal_area": 10,
+   "material_on_goal_area": 25,
    "go_to_processing_machine": None,
-   "control_machine": 10,
+   "control_machine": 100,
    "wait": None,
    "done": None,
 }

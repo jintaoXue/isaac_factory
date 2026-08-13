@@ -125,7 +125,7 @@ def build_hier_rl_action(
     pool.apply_product_sequencing(product_sequencing)
 
     eligible = pool.compute_b_eligible_mask()
-    slot_order = agents.agent_B.rank_slots(env_state_action_dict, eligible, epsilon)
+    slot_order = agents.agent_B.rank_slots(env_state_action_dict, eligible, epsilon, product_sequencing)
     b_dim = eligible.shape[0]
     human_dim = env_state_action_dict["agent_action_mask"]["human"]["self_availability_mask"].shape[0]
     robot_dim = env_state_action_dict["agent_action_mask"]["robot"]["self_availability_mask"].shape[0]

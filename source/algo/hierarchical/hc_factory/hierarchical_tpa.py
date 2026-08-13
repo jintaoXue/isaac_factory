@@ -11,6 +11,8 @@ import os
 import time
 from collections import deque
 
+import torch
+import torch.optim as optim
 import wandb
 from rl_games.common import vecenv
 
@@ -129,6 +131,8 @@ class HierarchicalTPA:
             parallel_producing_limit=parallel_limit,
             state_dim=int(config.get("state_dim", 256)),
         )
+        encoder_lr = float(config.get("encoder_learning_rate", config.get("learning_rate", 1e-4)))
+        self.encoder_optimizer = optim.Adam(self.obs_encoder.parameters(), lr=encoder_lr)
 
         self.agent_A = RLProductSequencingAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
         self.agent_B = RLProductSelectionAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
@@ -294,6 +298,38 @@ class HierarchicalTPA:
             actions_extra.append(action_extra)
         return actions, actions_extra
 
+    def _had_meaningful_decision(self, action: dict) -> bool:
+        if action.get("dispatch_list"):
+            return True
+        product_sequencing = action.get("product_sequencing")
+        return isinstance(product_sequencing, torch.Tensor) and product_sequencing.sum() > 0
+
+    def _joint_learn(self, entries: list[tuple[str, torch.Tensor, object | None]]) -> dict[str, float]:
+        """Sum TD losses, backprop through shared encoder + per-agent Q heads."""
+        if not entries:
+            return {}
+
+        q_optimizers = []
+        dqns = []
+        for _name, _loss, dqn in entries:
+            if dqn is None:
+                continue
+            dqn.optimizer.zero_grad()
+            q_optimizers.append(dqn.optimizer)
+            dqns.append(dqn)
+
+        self.encoder_optimizer.zero_grad()
+        total_loss = sum(loss for _name, loss, _dqn in entries)
+        total_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.obs_encoder.parameters(), 1.0)
+        self.encoder_optimizer.step()
+        for optimizer in q_optimizers:
+            optimizer.step()
+        for dqn in dqns:
+            dqn.register_train_step()
+
+        return {name: float(loss.detach().item()) for name, loss, _dqn in entries}
+
     def observe_one_env(
         self,
         prev_obs: dict,
@@ -307,12 +343,16 @@ class HierarchicalTPA:
         losses: dict[str, float] = {}
         if self.global_step % self.learn_interval != 0:
             return losses
+        if not self._had_meaningful_decision(action):
+            return losses
+
+        pending: list[tuple[str, torch.Tensor, object | None]] = []
 
         loss_a = self.agent_A.observe_step(
             prev_obs, action["product_sequencing"], reward, next_obs, done, epsilon
         )
         if loss_a is not None:
-            losses["A"] = float(loss_a)
+            pending.append(("A", loss_a, self.agent_A.dqn))
 
         loss_b = self.agent_B.observe_step(
             prev_obs,
@@ -324,7 +364,7 @@ class HierarchicalTPA:
             epsilon,
         )
         if loss_b is not None:
-            losses["B"] = float(loss_b)
+            pending.append(("B", loss_b, self.agent_B.dqn))
 
         loss_c = self.agent_C.observe_step(
             prev_obs,
@@ -336,7 +376,7 @@ class HierarchicalTPA:
             epsilon,
         )
         if loss_c is not None:
-            losses["C"] = float(loss_c)
+            pending.append(("C", loss_c, self.agent_C.dqn))
 
         loss_d_h, loss_d_r = self.agent_D.observe_step(
             prev_obs,
@@ -348,12 +388,13 @@ class HierarchicalTPA:
             epsilon,
         )
         if loss_d_h is not None:
-            losses["D_human"] = float(loss_d_h)
+            pending.append(("D_human", loss_d_h, self.agent_D.human_dqn))
         if loss_d_r is not None:
-            losses["D_robot"] = float(loss_d_r)
+            pending.append(("D_robot", loss_d_r, self.agent_D.robot_dqn))
 
-        for k, v in losses.items():
-            self._loss_window[k].append(v)
+        losses = self._joint_learn(pending)
+        for key, value in losses.items():
+            self._loss_window[key].append(value)
         return losses
 
     def save_checkpoint(self, step: int) -> None:

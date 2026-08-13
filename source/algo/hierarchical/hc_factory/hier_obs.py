@@ -92,7 +92,7 @@ class HierObsEncoder(nn.Module):
         z = self.encode_state(env_state_action_dict)
         pre = self.preprocess(env_state_action_dict)
         mask = pre["agent_action_mask"]["agent_A_product_sequencer"].float().flatten()
-        return torch.cat([z, mask]).detach()
+        return torch.cat([z, mask])
 
     def encode_B(self, env_state_action_dict: dict, product_sequencing_action: torch.Tensor | None) -> torch.Tensor:
         z = self.encode_state(env_state_action_dict)
@@ -103,7 +103,7 @@ class HierObsEncoder(nn.Module):
         else:
             a_action = torch.zeros(a_dim, dtype=torch.float32, device=self.cuda_device)
         mask = pre["agent_action_mask"]["agent_B_product_selector"].float().flatten()
-        return torch.cat([z, a_action, mask]).detach()
+        return torch.cat([z, a_action, mask])
 
     def encode_C(
         self,
@@ -122,7 +122,7 @@ class HierObsEncoder(nn.Module):
                 aam["human"]["task_availability_mask"].float().flatten(),
                 aam["machine"]["task_availability_mask"].float().flatten(),
             ]
-        ).detach()
+        )
 
     def encode_D(
         self,
@@ -140,16 +140,20 @@ class HierObsEncoder(nn.Module):
                 aam["human"]["self_availability_mask"].float().flatten(),
                 aam["robot"]["self_availability_mask"].float().flatten(),
             ]
-        ).detach()
+        )
 
     def get_obs_dim_A(self, env_state_action_dict: dict) -> int:
-        return int(self.encode_A(env_state_action_dict).shape[0])
+        with torch.no_grad():
+            return int(self.encode_A(env_state_action_dict).shape[0])
 
     def get_obs_dim_B(self, env_state_action_dict: dict) -> int:
-        return int(self.encode_B(env_state_action_dict, None).shape[0])
+        with torch.no_grad():
+            return int(self.encode_B(env_state_action_dict, None).shape[0])
 
     def get_obs_dim_C(self, env_state_action_dict: dict, product_selection_action: torch.Tensor) -> int:
-        return int(self.encode_C(env_state_action_dict, product_selection_action).shape[0])
+        with torch.no_grad():
+            return int(self.encode_C(env_state_action_dict, product_selection_action).shape[0])
 
     def get_obs_dim_D(self, env_state_action_dict: dict, process_task_planning_action: torch.Tensor) -> int:
-        return int(self.encode_D(env_state_action_dict, process_task_planning_action).shape[0])
+        with torch.no_grad():
+            return int(self.encode_D(env_state_action_dict, process_task_planning_action).shape[0])

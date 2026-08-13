@@ -72,3 +72,29 @@ def read_rl_done(env_dict: dict) -> tuple[bool, bool, bool]:
     """Return ``(done, truncated, success)`` from ``env_dict['rl']``."""
     rl = env_dict.get("rl") or {}
     return bool(rl.get("done")), bool(rl.get("truncated")), bool(rl.get("success"))
+
+
+def detach_pre_to_cpu(pre: dict) -> dict:
+    """Deep-copy preprocessed dict tensors to CPU without grad."""
+    out: dict = {}
+    for key, value in pre.items():
+        if isinstance(value, torch.Tensor):
+            out[key] = value.detach().cpu()
+        elif isinstance(value, dict):
+            out[key] = detach_pre_to_cpu(value)
+        else:
+            out[key] = value
+    return out
+
+
+def pre_to_device(pre: dict, device: torch.device) -> dict:
+    """Move nested tensor fields in a preprocessed dict to ``device``."""
+    out: dict = {}
+    for key, value in pre.items():
+        if isinstance(value, torch.Tensor):
+            out[key] = value.to(device)
+        elif isinstance(value, dict):
+            out[key] = pre_to_device(value, device)
+        else:
+            out[key] = value
+    return out

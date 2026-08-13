@@ -85,6 +85,16 @@ AppLauncher.add_app_launcher_args(parser)
 args_cli, hydra_args = parser.parse_known_args()
 
 
+def _set_hc_process_title(algo: str | None = None, device: str | None = None) -> None:
+    """nvidia-smi / ps display: HcFactory-<algo>-xjt cuda:N"""
+    algo_tag = algo or args_cli.algo or "unknown"
+    device_tag = device or args_cli.device or "cuda:0"
+    setproctitle.setproctitle(f"HcFactory-{algo_tag}-xjt {device_tag}")
+
+
+_set_hc_process_title()
+
+
 def _has_registered_cameras() -> bool:
     """Load cfg_camera without importing isaaclab_tasks (isaacsim not ready yet)."""
     import importlib.util
@@ -175,8 +185,8 @@ from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.hc_render import HcV
 @hydra_task_config(args_cli.task, args_cli.algo)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo_cfg: dict):
 
-    '''process name'''
-    setproctitle.setproctitle("HcFactory")
+    '''process name: HcFactory-<algo>-xjt cuda:N (visible in nvidia-smi)'''
+    _set_hc_process_title(args_cli.algo, args_cli.device)
     '''update args'''
     if args_cli.wandb_activate:
         algo_cfg["params"]["config"]['wandb_activate'] = args_cli.wandb_activate
@@ -238,6 +248,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         algo_cfg["params"]["config"]["multi_gpu"] = True
         # update env config device
         env_cfg.sim.device = f"cuda:{app_launcher.local_rank}"
+        _set_hc_process_title(args_cli.algo, f"cuda:{app_launcher.local_rank}")
+    else:
+        _set_hc_process_title(
+            args_cli.algo,
+            algo_cfg["params"]["config"].get("device") or args_cli.device,
+        )
 
     # set the environment seed (after multi-gpu config for updated rank from agent seed)
     # note: certain randomizations occur in the environment initialization so we set the seed here

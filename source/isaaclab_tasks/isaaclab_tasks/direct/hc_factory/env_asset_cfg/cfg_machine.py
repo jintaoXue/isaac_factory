@@ -413,7 +413,7 @@ CfgMachine = {
                 "fixed_hook_height": 8.90808,
                 "safe_x_gap": 4.0,
                 # Discrete factory step: each env step advances dt * speed (world/joint xy units).
-                "move_speed": 0.5,
+                "move_speed": 1.0,
                 "move_dt": 1.0,
                 "loaded_speed_scale": 0.5,
                 "move_speed_noise_std": 0.0,
