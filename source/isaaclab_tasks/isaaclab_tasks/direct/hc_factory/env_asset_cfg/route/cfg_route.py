@@ -4,6 +4,8 @@ from pathlib import Path
 
 import torch
 
+from ..cfg_robot import CfgRobot
+
 # Package-local assets (occupancy maps / map points) live next to this file.
 _ROUTE_DIR = Path(__file__).resolve().parent
 # Precomputed route graphs are external HC dataset files.
@@ -36,13 +38,8 @@ CfgRoute = {
         },
         # Human collision footprint diameter (m); circle centered at current pose
         "human_safety_diameter": 0.3,
-        # Robot footprint local bounds (m); origin at one end, rotated by yaw
-        "robot_footprint_local_bounds": {
-            "min_x": 0.0,
-            "max_x": 1.8,
-            "min_y": 0.0,
-            "max_y": 0.8,
-        },
+        # Robot footprint in pose-local frame (m); pose origin = AGV centroid
+        "robot_footprint_local_bounds": dict(CfgRobot["AGV"]["robot_footprint_local_bounds"]),
         # Occupancy map: pixel grayscale >= threshold is walkable (yield/detour static checks)
         "occupancy_free_threshold": 250,
         # Predictive yield trigger: free agent within this distance of a working route (m)

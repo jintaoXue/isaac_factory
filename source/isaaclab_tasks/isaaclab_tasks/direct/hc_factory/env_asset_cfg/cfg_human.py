@@ -179,6 +179,8 @@ CfgHuman = {
         "human_route_orientation_offset": {
             "orientation": torch.tensor([0.7071, 0, 0, 0.7071]),
         },
+        # Route waypoints advanced per env step (4x baseline map sampling).
+        "waypoints_per_step": 4,
         "animation_cfg": {
             "joints": _HUMAN_JOINTS,
             "animations": _HUMAN_ANIMATIONS,

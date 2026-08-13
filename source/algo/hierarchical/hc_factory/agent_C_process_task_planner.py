@@ -20,24 +20,25 @@ class ProcessTaskPlanningAgent(AgentBase):
         self.cuda_device = cuda_device
         
     def act(self, env_state_action_dict: dict, product_selection_action: torch.Tensor | None) -> dict:
-        ## env start, generate first process task planning
-        ##shape (self.parallel_producing_limit + 1, len(CfgProcessTaskGalleryInAll)) mask for process task planning agent.
         task_mask_for_products = env_state_action_dict["agent_action_mask"]["agent_C_process_task_planner"]
-        
         count = (product_selection_action == 1).sum().item()
         if count == 0:
-            action = torch.zeros((task_mask_for_products.shape[1]), dtype=torch.int32, device=self.cuda_device)
-            action[0] = 1 # only "none" task is available when there is no product selected for process task planning
-        else:
-            assert count == 1, "There should be only one product selected for process task planning, but got multiple."
-            mask = task_mask_for_products[product_selection_action.nonzero()[0][0]] # get the task mask for the selected product
-            if mask.sum() == 1:
-                #only "none" task is available for the selected product
-                action = torch.zeros((task_mask_for_products.shape[1]), dtype=torch.int32, device=self.cuda_device)
-                action[0] = 1
-            else:
-                #select the second available task for the selected product according to the task mask
-                mask[0] = 0 #set "none" task is not available
-                action = self.keep_last_one(mask)
+            return self._none_task_action(task_mask_for_products.shape[1])
+        mask = task_mask_for_products[product_selection_action.nonzero()[0][0]]
+        return self._select_from_mask(mask, task_mask_for_products.shape[1])
+
+    def act_for_slot(self, cuda_device: torch.device, task_mask: torch.Tensor) -> torch.Tensor:
+        return self._select_from_mask(task_mask, task_mask.shape[0])
+
+    def _none_task_action(self, c_dim: int) -> torch.Tensor:
+        action = torch.zeros(c_dim, dtype=torch.int32, device=self.cuda_device)
+        action[0] = 1
         return action
+
+    def _select_from_mask(self, mask: torch.Tensor, c_dim: int) -> torch.Tensor:
+        if mask.sum() == 1:
+            return self._none_task_action(c_dim)
+        mask = mask.clone()
+        mask[0] = 0
+        return self.keep_last_one(mask)
 

@@ -56,6 +56,9 @@ class Storage:
         #We need to copy the original data to avoid modifying the original data
         self.placement_cfg = copy.deepcopy(self.cfg["placement_cfg"])
         self.initialize_placement_cfg()
+        pose_list = self.placement_cfg.get("pose_list") or []
+        if pose_list:
+            self.capacity = min(int(self.cfg["capacity"]), len(pose_list))
         self.reset_state["key_variables"] = self.iter_key_variables()
         ### dynmaic variables
         self.state : dict = None        

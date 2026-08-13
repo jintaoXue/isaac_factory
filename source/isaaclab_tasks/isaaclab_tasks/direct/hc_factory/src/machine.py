@@ -433,10 +433,12 @@ class num07_gantry_group(Machine):
                 GantryGroupAnimation(
                     start_pose=info["joint_positions_reset"],
                     end_pose=info["joint_positions_reset"],
-                    animation_time=info["animation_time"],
                     device=self.cuda_device,
                     num_gantrys=self.num_workstations,
-                    animation_time_noise_std=info.get("animation_time_noise_std", 0.0),
+                    move_speed=info["move_speed"],
+                    move_dt=info.get("move_dt", 1.0),
+                    loaded_speed_scale=info.get("loaded_speed_scale", 0.5),
+                    move_speed_noise_std=info.get("move_speed_noise_std", 0.0),
                 ),
             )
 
@@ -507,7 +509,12 @@ class num07_gantry_group(Machine):
         animation.is_yield_move[gantry_index] = False
         task_target = self.state["target_joints_position"][gantry_index]
         if task_target is not None:
-            animation.set_target_pose(task_target, gantry_index=gantry_index, current_joint_position=joint_position)
+            animation.set_target_pose(
+                task_target,
+                gantry_index=gantry_index,
+                current_joint_position=joint_position,
+                loaded=animation.move_loaded[gantry_index],
+            )
 
     def _force_clear_yield(self, gantry_index: int, joint_position: torch.Tensor, reason: str) -> None:
         """Timeout unlock: stop endless yield so the gantry can resume its task target."""
@@ -713,6 +720,7 @@ class num07_gantry_group(Machine):
                 self.state["target_joints_position"][gantry_index],
                 gantry_index=gantry_index,
                 current_joint_position=joint_position,
+                loaded=self._gantry_subtask_loaded(subtasks["ongoing"][1]),
             )
             return
 
@@ -724,6 +732,10 @@ class num07_gantry_group(Machine):
             self.state["target_area_id"][gantry_index] = None
             self.state["target_area_xy"][gantry_index] = None
             self.state["target_joints_position"][gantry_index] = None
+
+    @staticmethod
+    def _gantry_subtask_loaded(gantry_subtask: str) -> bool:
+        return gantry_subtask in ("carry_to_robot", "carry_to_goal_area")
 
     def _get_joint_pose_from_xy_target(
         self, joint_position: torch.Tensor, xy_target: torch.Tensor, gantry_index: int
@@ -762,5 +774,8 @@ class num07_gantry_group(Machine):
             joint_position.clone(), home_xy, gantry_index=chosen_gantry_index
         )
         self.animation_num07_gantry_group.set_target_pose(
-            home_pose, gantry_index=chosen_gantry_index, current_joint_position=joint_position
+            home_pose,
+            gantry_index=chosen_gantry_index,
+            current_joint_position=joint_position,
+            loaded=False,
         )

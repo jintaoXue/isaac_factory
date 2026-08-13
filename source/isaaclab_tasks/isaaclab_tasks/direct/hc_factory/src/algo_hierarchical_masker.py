@@ -1,4 +1,4 @@
-from ..algo_cfg.cfg_multiagent import CfgProductSequencerAgent
+from ..algo_cfg.cfg_hierarchical import CfgProductSequencerAgent
 from ..env_asset_cfg.cfg_process_task_gallery import (
     CfgProcessTaskGalleryDetailedClassified,
     CfgProcessTaskGalleryInAll,
@@ -10,7 +10,7 @@ from ..env_asset_cfg.cfg_machine import CfgMachine
 import torch
 
 
-class AlgoMultiAgentMasker:
+class AlgoHierarchicalMasker:
     def __init__(self, cuda_device: torch.device) -> None:
         self.cuda_device = cuda_device
         self.parallel_producing_limit = HcVectorEnvCfg().single_env_parallel_producing_limit

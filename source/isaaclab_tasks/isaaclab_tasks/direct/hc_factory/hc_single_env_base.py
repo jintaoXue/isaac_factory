@@ -41,9 +41,8 @@ from .env_asset_cfg.cfg_bottleneck_data import CfgBottleneckData
 from .src.bottleneck_data import BottleneckDataCollector # added: for bottleneck data collection
 from .src.disturbance import DisturbanceInjector
 from .env_asset_cfg.perception.cfg_perception import CfgPerception
-from .src.algo_multiagent_masker import AlgoMultiAgentMasker
+from .src.algo_hierarchical_masker import AlgoHierarchicalMasker
 from .src.task_progress_manager import TaskManager
-from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.src import algo_multiagent_masker
 import time
 
 class HcSingleEnvBase():
@@ -85,8 +84,15 @@ class HcSingleEnvBase():
         self.disturbance_injector = DisturbanceInjector(
             env_id=self.env_id, collector=self.bottleneck_collector
         )
-        self.algo_multiagent_masker = AlgoMultiAgentMasker(self.cuda_device)
-        self.task_manager = TaskManager(self.cuda_device)
+        self.algo_hierarchical_masker = AlgoHierarchicalMasker(self.cuda_device)
+        self.task_manager = TaskManager(
+            self.cuda_device,
+            max_episodic_steps=int(HcVectorEnvCfg().max_episodic_steps),
+            step_penalty=float(HcVectorEnvCfg().rl_step_penalty),
+            finish_bonus=float(HcVectorEnvCfg().rl_finish_bonus),
+            task_bonus=float(HcVectorEnvCfg().rl_task_bonus),
+            success_bonus=float(HcVectorEnvCfg().rl_success_bonus),
+        )
         # self.route_manager = RouteManagerVectorEnv(cuda_device=self.cuda_device)
 
     def iter_managers(self):
@@ -99,7 +105,7 @@ class HcSingleEnvBase():
             self.route_manager,
             self.machine_manager,
             self.task_manager,
-            self.algo_multiagent_masker,
+            self.algo_hierarchical_masker,
         )
     
     # def update_task_availability_mask(self):
@@ -217,7 +223,7 @@ class HcSingleEnvBase():
         for m in managers[:-1]:
             m.step(self.env_state_action_dict)
         self.disturbance_injector.step(self.env_state_action_dict)
-        managers[-1].step(self.env_state_action_dict)  # algo_multiagent_masker
+        managers[-1].step(self.env_state_action_dict)  # algo_hierarchical_masker
         self.env_state_action_dict["time_step"] += 1
         self.perception_manager.step(self.env_state_action_dict)
         self.bottleneck_collector.step(self.env_state_action_dict)
@@ -225,10 +231,15 @@ class HcSingleEnvBase():
         if self._maybe_watchdog_reset():
             return
 
-        if self.env_state_action_dict["progress"]["production_done"]:
+        # Episode end: ENV resets here. Snapshot ``rl`` so callers can still read
+        # this step's reward/done after reset (DQN bootstrap uses done flag).
+        rl = self.env_state_action_dict.get("rl") or {}
+        if bool(rl.get("done")):
+            rl_snapshot = copy.deepcopy(rl)
             if self.max_episodes is not None and self.episode_num >= self.max_episodes:
                 self.env_state_action_dict["run_done"] = True
             else:
                 self.reset_env()
+                self.env_state_action_dict["rl"] = rl_snapshot
         return
 

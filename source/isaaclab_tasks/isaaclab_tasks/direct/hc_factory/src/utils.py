@@ -72,36 +72,45 @@ class PoseAnimation:
 
 
 class GantryGroupAnimation(PoseAnimation):
+    """Gantry motion: each env step advances ``dt * speed`` along the joint-xy path.
+
+    Loaded moves use ``loaded_speed_scale`` (default 0.5). Yield moves always use unloaded speed.
+    """
+
     def __init__(
         self,
         start_pose: torch.Tensor,
         end_pose: torch.Tensor,
-        animation_time: int,
         device: torch.device,
         num_gantrys: int,
+        move_speed: float = 1.0,
+        move_dt: float = 1.0,
+        loaded_speed_scale: float = 0.5,
+        move_speed_noise_std: float = 0.0,
+        # backward-compatible unused kwargs from old animation_time API
+        animation_time: int | None = None,
         animation_time_noise_std: float = 0.0,
     ):
-        self.base_animation_time = animation_time
-        self.animation_time = animation_time
-        self.animation_time_noise_std = animation_time_noise_std
+        del animation_time, animation_time_noise_std
+        self.base_speed = float(move_speed)
+        self.move_dt = float(move_dt)
+        self.loaded_speed_scale = float(loaded_speed_scale)
+        self.move_speed_noise_std = float(move_speed_noise_std)
         self.device = device
         self.num_gantrys = num_gantrys
         gantry_cfg = CfgMachine["num07_gantry_group"]["registration_infos"]["num07_gantry_group"]
         self.gantry_indexs = gantry_cfg["gantry_indexs"].to(device)
-        self.animation_time_target = [float(animation_time)] * num_gantrys
         self.initialize(start_pose.to(device), end_pose.to(device))
 
     def initialize(self, start_pose: torch.Tensor, end_pose: torch.Tensor):
         self.start_pose = start_pose
         self.end_pose = end_pose
-        self.step_time = [0.0] * self.num_gantrys
+        self.distance_traveled = [0.0] * self.num_gantrys
+        self.path_length = [0.0] * self.num_gantrys
+        self.speed = [self.base_speed] * self.num_gantrys
+        self.move_loaded = [False] * self.num_gantrys
         self.is_yield_move = [False] * self.num_gantrys
-        self.animation_time_target = [float(self.base_animation_time)] * self.num_gantrys
-        self.blocked_steps = [0] * self.num_gantrys
         self.done = self.is_done()
-
-    def _gantry_animation_time(self, gantry_index: int) -> float:
-        return self.animation_time_target[gantry_index]
 
     def _gantry_mask(self, gantry_index: int) -> torch.Tensor:
         if gantry_index < 0 or gantry_index >= self.num_gantrys:
@@ -112,19 +121,17 @@ class GantryGroupAnimation(PoseAnimation):
         gantry_mask = self._gantry_mask(gantry_index)
         return self.start_pose[gantry_mask] + (self.end_pose[gantry_mask] - self.start_pose[gantry_mask]) * t
 
-    def _is_blocked_by_gap(
-        self,
-        proposed_x: float,
-        gantry_index: int,
-        committed_world_x: dict[int, float],
-        gap: float,
-    ) -> bool:
-        for other_index, other_x in committed_world_x.items():
-            if other_index == gantry_index:
-                continue
-            if abs(proposed_x - other_x) < gap:
-                return True
-        return False
+    def _progress_t(self, gantry_index: int) -> float:
+        length = self.path_length[gantry_index]
+        if length <= 1e-8:
+            return 1.0
+        return min(self.distance_traveled[gantry_index] / length, 1.0)
+
+    def _sample_speed(self, loaded: bool) -> float:
+        speed = self.base_speed * (self.loaded_speed_scale if loaded else 1.0)
+        if self.move_speed_noise_std > 0.0:
+            speed = max(1e-6, speed + random.gauss(0.0, self.move_speed_noise_std))
+        return speed
 
     def step_next_pose(
         self,
@@ -136,12 +143,7 @@ class GantryGroupAnimation(PoseAnimation):
         block_timeout: int = 400,
         relaxed_gap_scale: float = 0.25,
     ):
-        """Advance active gantries; enforce safe_x_gap, with timeout unlock for mutual blocks.
-
-        If a gantry stays blocked by ``safe_x_gap`` for ``block_timeout`` steps, the gap is
-        relaxed to ``safe_x_gap * relaxed_gap_scale``. After ``2 * block_timeout`` steps the
-        move is forced through so dual-gantry deadlocks cannot freeze the episode forever.
-        """
+        """Advance active gantries by ``dt * speed``; enforce safe_x_gap on x axis."""
         next_pose = joint_position.clone()
         move_order = sorted(
             active_indices,
@@ -161,47 +163,39 @@ class GantryGroupAnimation(PoseAnimation):
         for gantry_index in move_order:
             gantry_mask = self._gantry_mask(gantry_index)
             if self.done[gantry_index]:
-                self.blocked_steps[gantry_index] = 0
                 continue
 
-            anim_time = self._gantry_animation_time(gantry_index)
-            if anim_time <= 0:
-                anim_time = 1.0
-            t_next = min(self.step_time[gantry_index] + 1.0, anim_time) / anim_time
+            step_dist = self.move_dt * self.speed[gantry_index]
+            dist_next = min(self.distance_traveled[gantry_index] + step_dist, self.path_length[gantry_index])
+            length = self.path_length[gantry_index]
+            t_next = 1.0 if length <= 1e-8 else dist_next / length
             proposed = self._lerp_gantry_pose(gantry_index, t_next)
             proposed_pose = next_pose.clone()
             proposed_pose[gantry_mask] = proposed
             proposed_x = world_x_fn(gantry_index, proposed_pose)
+            current_x = committed_world_x[gantry_index]
 
-            gap = safe_x_gap
-            blocked = self._is_blocked_by_gap(proposed_x, gantry_index, committed_world_x, gap)
-            if blocked:
-                self.blocked_steps[gantry_index] += 1
-                if self.blocked_steps[gantry_index] >= block_timeout:
-                    gap = max(1e-3, safe_x_gap * relaxed_gap_scale)
-                    blocked = self._is_blocked_by_gap(
-                        proposed_x, gantry_index, committed_world_x, gap
-                    )
-                if blocked and self.blocked_steps[gantry_index] >= 2 * block_timeout:
-                    # Hard unlock: accept a temporary spacing violation rather than freeze.
-                    blocked = False
-                    print(
-                        f"[GantryUnlock] force advance gantry_{gantry_index} "
-                        f"after {self.blocked_steps[gantry_index]} blocked steps"
-                    )
-            else:
-                self.blocked_steps[gantry_index] = 0
+            # Only block moves that get closer while inside the gap.
+            # If already closer than safe_x_gap, allow stepping away (otherwise deadlock).
+            blocked = False
+            for other_index, other_x in committed_world_x.items():
+                if other_index == gantry_index:
+                    continue
+                prop_sep = abs(proposed_x - other_x)
+                if prop_sep >= safe_x_gap:
+                    continue
+                curr_sep = abs(current_x - other_x)
+                if prop_sep < curr_sep - 1e-9:
+                    blocked = True
+                    break
 
             if blocked:
-                t_current = self.step_time[gantry_index] / anim_time
-                next_pose[gantry_mask] = self._lerp_gantry_pose(gantry_index, t_current)
+                next_pose[gantry_mask] = self._lerp_gantry_pose(gantry_index, self._progress_t(gantry_index))
             else:
-                self.step_time[gantry_index] += 1.0
-                self.step_time[gantry_index] = min(self.step_time[gantry_index], anim_time)
+                self.distance_traveled[gantry_index] = dist_next
                 next_pose[gantry_mask] = proposed
-                if self.step_time[gantry_index] >= anim_time:
+                if self.distance_traveled[gantry_index] >= self.path_length[gantry_index] - 1e-8:
                     self.done[gantry_index] = True
-                    self.blocked_steps[gantry_index] = 0
 
             committed_world_x[gantry_index] = world_x_fn(gantry_index, next_pose)
 
@@ -209,7 +203,7 @@ class GantryGroupAnimation(PoseAnimation):
 
     def is_done(self, gantry_index: int | None = None):
         done_list = [
-            step_time >= self._gantry_animation_time(i) for i, step_time in enumerate(self.step_time)
+            self.distance_traveled[i] >= self.path_length[i] - 1e-8 for i in range(self.num_gantrys)
         ]
         if gantry_index is None:
             return done_list
@@ -221,31 +215,43 @@ class GantryGroupAnimation(PoseAnimation):
         gantry_index: int,
         current_joint_position: torch.Tensor,
         is_yield: bool,
+        loaded: bool = False,
     ) -> None:
         target_pose = target_pose.to(self.device)
         current_joint_position = current_joint_position.to(self.device)
         gantry_mask = self._gantry_mask(gantry_index)
         self.start_pose[gantry_mask] = current_joint_position[gantry_mask]
         self.end_pose[gantry_mask] = target_pose[gantry_mask]
-        self.step_time[gantry_index] = 0.0
+        delta = self.end_pose[gantry_mask] - self.start_pose[gantry_mask]
+        self.path_length[gantry_index] = float(torch.linalg.norm(delta).item())
+        self.distance_traveled[gantry_index] = 0.0
         self.is_yield_move[gantry_index] = is_yield
-        self.done[gantry_index] = False
-        self.blocked_steps[gantry_index] = 0
-        self.animation_time_target[gantry_index] = float(
-            sample_noisy_steps(self.base_animation_time, self.animation_time_noise_std)
-        )
+        if not is_yield:
+            self.move_loaded[gantry_index] = bool(loaded)
+        # yield always uses unloaded speed; task moves honor loaded flag
+        effective_loaded = False if is_yield else bool(loaded)
+        self.speed[gantry_index] = self._sample_speed(effective_loaded)
+        self.done[gantry_index] = self.path_length[gantry_index] <= 1e-8
 
     def set_target_pose(
-        self, target_pose: torch.Tensor, gantry_index: int, current_joint_position: torch.Tensor
+        self,
+        target_pose: torch.Tensor,
+        gantry_index: int,
+        current_joint_position: torch.Tensor,
+        loaded: bool = False,
     ) -> None:
         """Start animation for one gantry from its current articulation pose."""
-        self._begin_gantry_move(target_pose, gantry_index, current_joint_position, is_yield=False)
+        self._begin_gantry_move(
+            target_pose, gantry_index, current_joint_position, is_yield=False, loaded=loaded
+        )
 
     def set_yield_target_pose(
         self, target_pose: torch.Tensor, gantry_index: int, current_joint_position: torch.Tensor
     ) -> None:
         """Sidestep move for a lower-priority gantry; does not change the stored task target."""
-        self._begin_gantry_move(target_pose, gantry_index, current_joint_position, is_yield=True)
+        self._begin_gantry_move(
+            target_pose, gantry_index, current_joint_position, is_yield=True, loaded=False
+        )
 
     def sync_gantry_pose(self, pose: torch.Tensor, gantry_index: int) -> None:
         """Snap one gantry to pose immediately (no animation)."""
@@ -253,9 +259,9 @@ class GantryGroupAnimation(PoseAnimation):
         gantry_mask = self._gantry_mask(gantry_index)
         self.start_pose[gantry_mask] = pose[gantry_mask]
         self.end_pose[gantry_mask] = pose[gantry_mask]
-        self.step_time[gantry_index] = self._gantry_animation_time(gantry_index)
+        self.path_length[gantry_index] = 0.0
+        self.distance_traveled[gantry_index] = 0.0
         self.is_yield_move[gantry_index] = False
-        self.blocked_steps[gantry_index] = 0
         self.done[gantry_index] = True
 
 

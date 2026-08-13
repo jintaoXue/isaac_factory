@@ -1,7 +1,7 @@
 params:
   seed: 42
   algo:
-    name: marl
+    name: hier
 
   env:
     clip_observations: 5.0
@@ -14,13 +14,20 @@ params:
     device_name: 'cuda:0'
     time_str: "None"
 
+    # Must match HcVectorEnvCfg.scene.num_envs
+    num_actors: 3
+    max_episodic_steps: 45000
+    state_dim: 256
+
     gamma: 0.99
     learning_rate: 1.0e-4
-    max_epochs: 1.0e+11
     batch_size: 64
     replay_buffer_size: 50000
     hidden_dim: 128
     target_update_interval: 500
+    # required by rl_games Runner.load (unused by HierarchicalTPA)
+    reward_shaper:
+      scale_value: 1.0
 
     # epsilon-greedy exploration
     epsilon_start: 1.0
@@ -31,11 +38,17 @@ params:
     learn_interval: 1
     save_interval: 5000
     log_interval: 100
-    parallel_producing_limit: 5
+    parallel_producing_limit: 10
+    max_parallel_cd_dispatch: 1
 
     test: False
+    test_times: 1
+    test_seeds: [42, 43, 44, 45, 46]
+    test_epsilon: 0.0
+    env_rule_based_exploration: False
+    makespan_window: 50
     wandb_activate: False
-    wandb_project: 'HcFactory_MARL'
+    wandb_project: 'HcFactory_Hier'
 
     load_dir: ''
     load_name: ''
