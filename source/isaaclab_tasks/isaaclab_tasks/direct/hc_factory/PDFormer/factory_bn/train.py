@@ -99,7 +99,7 @@ def train(cfg: dict[str, Any]) -> Path:
         data_dir=data_dir,
         input_window=int(cfg.get("input_window", 12)),
         output_window=int(cfg.get("output_window", 1)),
-        horizon_s=float(cfg.get("horizon_s", 60)),
+        horizon_s=float(cfg.get("horizon_s", 180)),
         batch_size=int(cfg.get("batch_size", 16)),
         train_ratio=float(cfg.get("train_rate", 0.7)),
         val_ratio=float(cfg.get("eval_rate", 0.15)),

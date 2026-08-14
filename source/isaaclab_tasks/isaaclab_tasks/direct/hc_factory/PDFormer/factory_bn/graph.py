@@ -55,6 +55,14 @@ def resolve_to_node_id(rid: str, node_ids: Iterable[str]) -> str | None:
     known_set = set(known)
     if rid in known_set:
         return rid
+    sku = rid[len("material_") :] if rid.startswith("material_") else rid
+    material_node = {
+        "product_00_pipe_raw": "num02_rollerbedCNCPipeIntersectionCuttingMachine_ws0",
+        "product_00_flange": "num08_workbench_ws0",
+        "product_00_elbow": "num08_workbench_ws0",
+    }.get(sku)
+    if material_node and material_node in known_set:
+        return material_node
     workstations = [k for k in known if k.startswith(rid + "_ws")]
     if workstations:
         preferred = f"{rid}_ws0"

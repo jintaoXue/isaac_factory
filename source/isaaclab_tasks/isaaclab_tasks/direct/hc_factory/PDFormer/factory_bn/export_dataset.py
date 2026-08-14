@@ -51,11 +51,19 @@ FEATURE_COLS = [
     "current_active_duration_s",
     "blocked_time_s",
     "starved_time_s",
+    "stop_time_s",
+    "unavailable_pct_s",
     "inter_departure_var_s",
     "upstream_blocked_ratio_s",
     "downstream_starved_ratio_s",
     "route_delay_s",
+    "inbound_wait_s",
     "material_shortage_propagation_s",
+    "affiliated_buffer_occ_s",
+    "tb_minus_ts_s",
+    "disturbance_active_s",
+    "is_turning_point",
+    "is_momentary_bn",
 ]
 
 TARGET_COL = "bottleneck_score_s"
@@ -252,7 +260,7 @@ def _write_libcity_atomic(
                     w.writerow([rid_i, "geo", i, j, float(1.0 / adj[i, j])])
                     rid_i += 1
 
-    # Concatenate episodes with a small gap; dynamic columns = score + 13 ops features
+    # Concatenate episodes with a small gap; dynamic columns = score + ops features
     # LibCity expects: dyna_id, type, time, entity_id, <data_col...>
     data_cols = [TARGET_COL] + FEATURE_COLS
     with (out_dir / f"{name}.dyna").open("w", newline="") as f:
@@ -450,9 +458,10 @@ def export_runs(
         },
         "notes": [
             "Input X uses FEATURE_COLS + type one-hot; does NOT include bottleneck_score_s (label leak).",
-            "Score head (PDFormer): future bottleneck_score_s.",
-            "Event path (STGNPP): per-node sequences from bottleneck_event.csv + NLL intensity.",
+            "Score head (PDFormer): future bottleneck_score_s (dense per-node).",
+            "Event path (STGNPP): per-node sequences from bottleneck_event.csv; score and L2 onsets are not merged.",
             "Window will/mark/tts kept as auxiliary when events are sparse.",
+            "Coupling features are node-local (PROCESS_CHAIN, carrier delay, shortage at consumer).",
             "Multi-run merge uses episode keys {run_id}__episode_XX.",
         ],
     }

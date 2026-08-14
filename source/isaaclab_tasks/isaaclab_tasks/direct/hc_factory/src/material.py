@@ -59,6 +59,33 @@ def _is_storage_location(storage_name: str | None) -> bool:
     return bool(storage_name and "Storage_" in storage_name)
 
 
+def task_required_materials_ready(
+    env_state_action_dict: dict,
+    product_type: str,
+    product_index: int,
+    task_name: str,
+) -> bool:
+    """False if a required part for this task is still hidden (shortage)."""
+    if not task_name or task_name == "none":
+        return True
+    task_meta = CfgProcessTaskGalleryDetailedClassified[product_type][task_name]
+    product_name = f"num_{product_index:02d}_{product_type}"
+    mat = (env_state_action_dict.get("material") or {}).get(product_name)
+    if mat is None:
+        return False
+    subs = mat.get("submaterials") or {}
+    needed: list[str] = []
+    log_m = task_meta.get("logistic_submaterial")
+    if log_m:
+        needed.append(log_m)
+    needed.extend(task_meta.get("processing_submaterials") or [])
+    for m in needed:
+        loc = (subs.get(m) or {}).get("storage_name")
+        if loc in (None, "disappear"):
+            return False
+    return True
+
+
 def _effective_storage_capacity(storage: dict) -> int:
     """Logical capacity may exceed authored placement poses; clamp to pose count."""
     cap = int(storage["key_variables"]["capacity"])

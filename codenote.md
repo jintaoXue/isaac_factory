@@ -12,7 +12,7 @@
         │  bottleneck_data.py :: map_*_state
         ▼
 resource_event_log.to_state = IDLE/PROCESSING/BLOCKED/...
-        │  build_bottleneck_features.py :: build_timelines + 窗口求交
+        │  bn_agg :: build_timelines + 窗口求交
         ▼
 window_feature_table 一行 = 13 维运营连续特征
         │  export_dataset.py :: FEATURE_COLS + type_onehot
@@ -56,7 +56,7 @@ working + walk/操作 → PROCESSING
 
 ### Step B：离散状态 → 连续时间轴 → 窗口统计（不是 one-hot）
 
-文件：`tools/build_bottleneck_features.py`
+文件：`tools/bn_agg/`
 
 1. `build_timelines`：事件 `to_state` 展开成区间 `[t_i, t_{i+1}) → state`
 2. 窗口内与状态集合求交时长：

@@ -11,6 +11,7 @@ Usage (train.py)::
 
 from __future__ import annotations
 
+import random
 from copy import deepcopy
 from typing import Any
 
@@ -33,6 +34,8 @@ RuntimeDisturbanceCfg: dict[str, Any] = {
     "machine_success_rate": 1.0,
     "human_subtask_noise_std": 2.0,  # matches current SubtaskTimeNoiseStdSteps default
     "human_time_scale": 1.0,
+    # Per-human skill multipliers (idx 0 = fastest). Empty → all 1.0.
+    "human_skill_scales": [],
     "gantry_animation_noise_std": 2.0,
     "gantry_time_scale": 1.0,
     # Material: fraction of raw submaterials skipped at reset (shortage).
@@ -41,7 +44,245 @@ RuntimeDisturbanceCfg: dict[str, Any] = {
     "event_start_step": -1,
     "event_duration_steps": 0,
     "event_target": None,  # e.g. machine type name or human idx
+    # If non-empty and event_schedule_mode == "fixed", injector uses this list.
+    # Default mode resamples a new list every episode (see sample_l2_schedule).
+    "event_schedule": [],
+    "event_schedule_mode": "resample_per_episode",
+    "tool_wear_per_1k_steps": 0.0,
+    "disabled_workstations": [],
+    "qc_holds": [],
 }
+
+L2_MACHINE_TARGETS = (
+    "num02_rollerbedCNCPipeIntersectionCuttingMachine",
+    "num04_groovingMachineLarge",
+    "num01_weldingRobot",
+    "num00_rotaryPipeAutomaticWeldingMachine",
+    "num08_workbench",
+)
+
+L2_MATERIAL_TARGETS = (
+    "product_00_flange",
+    "product_00_elbow",
+    "product_00_pipe_raw",
+)
+
+# Dual-station machines: close ws1 so jobs queue on ws0.
+HALF_WS_TARGETS = (
+    ("num08_workbench", 1),
+    ("num00_rotaryPipeAutomaticWeldingMachine", 1),
+)
+
+QC_HOLD_TARGETS = (
+    "num01_weldingRobot",
+    "num00_rotaryPipeAutomaticWeldingMachine",
+    "num08_workbench",
+)
+QC_HOLD_TASKS = frozenset(
+    {"arc_welding_root", "MIG_welding_surface", "batch_spot_welding"}
+)
+
+_L2_BASE_DURATION = {"machine": 120.0, "human": 150.0, "logistics": 100.0, "material": 150.0}
+_L2_HORIZON_LO = 600
+_L2_HORIZON_HI = 14500
+_L2_MIN_GAP = 450
+_L2_COUNT_CAP = 12
+
+
+def _l2_count_range(intensity: float) -> tuple[int, int]:
+    """Event-count band vs intensity.
+
+    1.0 → 2–4,  2.0 → 4–8,  3.0 → 7–12
+    """
+    if intensity < 1.5:
+        lo, hi = 2, 4
+    elif intensity < 2.5:
+        lo, hi = 4, 8
+    else:
+        lo, hi = 7, 12
+    hi = min(_L2_COUNT_CAP, max(lo, hi))
+    return lo, hi
+
+
+def _l2_duration_cap(intensity: float) -> int:
+    """Longer failures at higher intensity; 1.0≈300, 2.0≈520, 3.0≈720."""
+    return int(min(720, 80 + 220 * max(intensity, 0.5)))
+
+
+def l2_schedule_rng(seed: int, env_id: int, episode_id: int) -> random.Random:
+    """Private RNG so L2 sampling does not consume the simulation RNG."""
+    mixed = (int(seed) ^ 0x9E3779B9) + 0x85EBCA6B * int(episode_id) + 0xC2B2AE35 * int(env_id)
+    return random.Random(mixed & 0xFFFFFFFFFFFFFFFF)
+
+
+def _sample_starts(
+    rng: random.Random,
+    n: int,
+    durs: list[int],
+    lo: int,
+    hi: int,
+    min_gap: int,
+) -> list[int]:
+    for _ in range(80):
+        starts = sorted(rng.randint(lo, hi) for _ in range(n))
+        ok = True
+        for i in range(n - 1):
+            if starts[i + 1] < starts[i] + durs[i] + min_gap:
+                ok = False
+                break
+        if ok and starts[-1] + durs[-1] <= hi + 800:
+            return starts
+    t = lo
+    starts = []
+    slack = max(0, (hi - lo - sum(durs) - min_gap * max(n - 1, 0)) // max(n, 1))
+    for i in range(n):
+        starts.append(t + rng.randint(0, max(0, slack)))
+        t = starts[-1] + durs[i] + min_gap
+    return starts
+
+
+def human_skill_range(intensity: float) -> tuple[float, float]:
+    """Skill multiplier band. I=1.0 → (0.8, 1.4); I=2.0 → (0.7, 1.6); I=3.0 → (0.6, 1.8)."""
+    lo = max(0.5, 0.9 - 0.1 * float(intensity))
+    hi = min(2.0, 1.2 + 0.2 * float(intensity))
+    return lo, hi
+
+
+def sample_human_skill_scales(n: int, intensity: float) -> list[float]:
+    """Even ladder by human idx: human_0 fastest, human_{n-1} slowest."""
+    n = max(0, int(n))
+    if n <= 0:
+        return []
+    if n == 1:
+        return [1.0]
+    lo, hi = human_skill_range(intensity)
+    return [round(lo + (hi - lo) * i / (n - 1), 4) for i in range(n)]
+
+
+def disabled_workstations_for_intensity(intensity: float) -> list[tuple[str, int]]:
+    """L0: I<1.5 close workbench ws1; otherwise also rotary-weld ws1."""
+    if intensity < 1.5:
+        return [HALF_WS_TARGETS[0]]
+    return list(HALF_WS_TARGETS)
+
+
+def sample_qc_holds(intensity: float, rng: random.Random) -> list[dict[str, Any]]:
+    """Time windows when finishing a weld/kitting job is held for extra QC steps.
+
+    Independent of the exclusive L2 DOWN queue (can overlap a machine failure).
+    """
+    intensity = max(0.0, float(intensity))
+    if intensity <= 0.0:
+        return []
+    if intensity < 1.5:
+        n = rng.randint(1, 2)
+    elif intensity < 2.5:
+        n = rng.randint(2, 3)
+    else:
+        n = rng.randint(3, 4)
+    window_durs = [int(rng.uniform(400, 900)) for _ in range(n)]
+    hold_cap = int(min(240, 40 + 50 * intensity))
+    hold_steps = [
+        int(max(40, min(hold_cap, rng.uniform(0.7, 1.2) * 50.0 * intensity)))
+        for _ in range(n)
+    ]
+    starts = _sample_starts(rng, n, window_durs, 800, 14000, 500)
+    out: list[dict[str, Any]] = []
+    last = None
+    for i in range(n):
+        pool = list(QC_HOLD_TARGETS)
+        if last and len(pool) > 1:
+            pool = [t for t in pool if t != last]
+        target = rng.choice(pool)
+        last = target
+        out.append(
+            {
+                "start": int(starts[i]),
+                "duration": int(window_durs[i]),
+                "hold_steps": int(hold_steps[i]),
+                "target": target,
+                "kind": "qc_hold",
+                "dim": "machine",
+            }
+        )
+    out.sort(key=lambda e: e["start"])
+    return out
+
+
+def episode_qc_holds(intensity: float, seed: int, env_id: int, episode_id: int) -> list[dict[str, Any]]:
+    rng = l2_schedule_rng(int(seed) ^ 0xA5A5A5A5, env_id, episode_id)
+    return sample_qc_holds(intensity, rng)
+
+
+def sample_l2_schedule(
+    dim: str,
+    intensity: float,
+    rng: random.Random,
+    *,
+    human_count: int = 5,
+    gantry_indices: list[int] | None = None,
+) -> list[dict[str, Any]]:
+    """Draw a non-overlapping L2 queue for one episode.
+
+    Count, start, duration and target are random. Intensity (intended 1.0–3.0)
+    scales both how many events fire and how long each lasts.
+    """
+    dim = (dim or "none").lower().strip()
+    intensity = max(0.0, float(intensity))
+    if dim == "none" or intensity <= 0.0:
+        return []
+
+    if dim == "machine":
+        targets = list(L2_MACHINE_TARGETS)
+    elif dim == "human":
+        targets = [f"human_{i}" for i in range(max(1, int(human_count)))]
+    elif dim == "logistics":
+        idxs = list(gantry_indices or [0, 1])
+        targets = [f"gantry_{i}" for i in idxs] or ["gantry_0"]
+    elif dim == "material":
+        targets = list(L2_MATERIAL_TARGETS)
+    else:
+        return []
+
+    n_lo, n_hi = _l2_count_range(intensity)
+    n = rng.randint(n_lo, n_hi)
+    base_dur = _L2_BASE_DURATION.get(dim, 120.0)
+    dur_cap = _l2_duration_cap(intensity)
+    durs = [
+        int(max(80, min(dur_cap, rng.uniform(0.5, 1.5) * base_dur * max(intensity, 0.5))))
+        for _ in range(n)
+    ]
+    min_gap = max(350, _L2_MIN_GAP - 10 * n)
+    starts = _sample_starts(rng, n, durs, _L2_HORIZON_LO, _L2_HORIZON_HI, min_gap)
+
+    chosen: list[str] = []
+    for _ in range(n):
+        pool = targets
+        if chosen and len(targets) > 1:
+            alt = [t for t in targets if t != chosen[-1]]
+            if alt:
+                pool = alt
+        chosen.append(rng.choice(pool))
+
+    events = [
+        {"start": int(starts[i]), "duration": int(durs[i]), "target": chosen[i], "dim": dim}
+        for i in range(n)
+    ]
+    events.sort(key=lambda e: e["start"])
+    return events
+
+
+def episode_l2_schedule(dim: str, intensity: float, seed: int, env_id: int, episode_id: int) -> list[dict[str, Any]]:
+    """Deterministic per-(seed, env, episode) sample used by injector and episode_config."""
+    applied = RuntimeDisturbanceCfg.get("applied") or {}
+    rng = l2_schedule_rng(seed, env_id, episode_id)
+    return sample_l2_schedule(
+        dim,
+        intensity,
+        rng,
+        human_count=int(applied.get("human_count") or 5),
+        gantry_indices=applied.get("active_gantry_indices"),
+    )
 
 
 def configure_disturbance_from_cli(
@@ -69,39 +310,47 @@ def configure_disturbance_from_cli(
     RuntimeDisturbanceCfg["machine_success_rate"] = 1.0
     RuntimeDisturbanceCfg["human_subtask_noise_std"] = 2.0
     RuntimeDisturbanceCfg["human_time_scale"] = 1.0
+    RuntimeDisturbanceCfg["human_skill_scales"] = []
     RuntimeDisturbanceCfg["gantry_animation_noise_std"] = 2.0
     RuntimeDisturbanceCfg["gantry_time_scale"] = 1.0
     RuntimeDisturbanceCfg["material_shortage_frac"] = 0.0
     RuntimeDisturbanceCfg["event_start_step"] = -1
     RuntimeDisturbanceCfg["event_duration_steps"] = 0
     RuntimeDisturbanceCfg["event_target"] = None
+    RuntimeDisturbanceCfg["event_schedule"] = []
+    RuntimeDisturbanceCfg["event_schedule_mode"] = "resample_per_episode"
+    RuntimeDisturbanceCfg["tool_wear_per_1k_steps"] = 0.0
+    RuntimeDisturbanceCfg["disabled_workstations"] = []
+    RuntimeDisturbanceCfg["qc_holds"] = []
 
     if dim == "none" or intensity <= 0.0:
+        RuntimeDisturbanceCfg["event_schedule_mode"] = "none"
         return RuntimeDisturbanceCfg
 
     if dim == "machine":
         # Process-time noise around nominal; occasional failure / rework.
         RuntimeDisturbanceCfg["machine_process_noise_std"] = 5.0 * intensity
-        RuntimeDisturbanceCfg["machine_success_rate"] = max(0.7, 1.0 - 0.08 * intensity)
-        RuntimeDisturbanceCfg["event_start_step"] = 800
-        RuntimeDisturbanceCfg["event_duration_steps"] = int(120 * intensity)
-        RuntimeDisturbanceCfg["event_target"] = "num02_rollerbedCNCPipeIntersectionCuttingMachine"
+        RuntimeDisturbanceCfg["machine_success_rate"] = max(0.55, 1.0 - 0.12 * intensity)
+        RuntimeDisturbanceCfg["tool_wear_per_1k_steps"] = 15.0 * intensity
+        RuntimeDisturbanceCfg["disabled_workstations"] = [
+            {"machine": m, "ws": w} for m, w in disabled_workstations_for_intensity(intensity)
+        ]
     elif dim == "human":
         RuntimeDisturbanceCfg["human_subtask_noise_std"] = 2.0 + 8.0 * intensity
-        RuntimeDisturbanceCfg["human_time_scale"] = 1.0 + 0.35 * intensity
-        RuntimeDisturbanceCfg["event_start_step"] = 600
-        RuntimeDisturbanceCfg["event_duration_steps"] = int(150 * intensity)
-        RuntimeDisturbanceCfg["event_target"] = "human_0"
+        RuntimeDisturbanceCfg["human_time_scale"] = 1.0 + 0.25 * intensity
+        # Weaker background process noise / yield than primary `machine` dim.
+        RuntimeDisturbanceCfg["machine_process_noise_std"] = 2.0 * intensity
+        RuntimeDisturbanceCfg["machine_success_rate"] = max(0.82, 1.0 - 0.05 * intensity)
+        RuntimeDisturbanceCfg["tool_wear_per_1k_steps"] = 6.0 * intensity
     elif dim == "logistics":
         RuntimeDisturbanceCfg["gantry_animation_noise_std"] = 2.0 + 6.0 * intensity
-        RuntimeDisturbanceCfg["gantry_time_scale"] = 1.0 + 0.4 * intensity
-        RuntimeDisturbanceCfg["event_start_step"] = 700
-        RuntimeDisturbanceCfg["event_duration_steps"] = int(100 * intensity)
-        RuntimeDisturbanceCfg["event_target"] = "gantry_0"
+        RuntimeDisturbanceCfg["gantry_time_scale"] = 1.0 + 0.3 * intensity
+        RuntimeDisturbanceCfg["machine_process_noise_std"] = 2.0 * intensity
+        RuntimeDisturbanceCfg["machine_success_rate"] = max(0.82, 1.0 - 0.05 * intensity)
+        RuntimeDisturbanceCfg["tool_wear_per_1k_steps"] = 6.0 * intensity
     elif dim == "material":
-        RuntimeDisturbanceCfg["material_shortage_frac"] = min(0.6, 0.25 * intensity)
-        RuntimeDisturbanceCfg["machine_success_rate"] = max(0.75, 1.0 - 0.1 * intensity)
-        RuntimeDisturbanceCfg["event_start_step"] = -1
+        RuntimeDisturbanceCfg["material_shortage_frac"] = min(0.65, 0.18 * intensity)
+        RuntimeDisturbanceCfg["machine_success_rate"] = max(0.6, 1.0 - 0.1 * intensity)
 
     return RuntimeDisturbanceCfg
 
@@ -144,6 +393,10 @@ def _ensure_default_snapshot() -> None:
             for mtype, cfg in CfgMachine.items()
             if mtype != "num07_gantry_group"
         },
+        "machine_reset_states": {
+            mtype: list(cfg.get("reset_state", {}).get("state") or [])
+            for mtype, cfg in CfgMachine.items()
+        },
     }
 
 
@@ -177,6 +430,9 @@ def apply_disturbance_to_cfgs() -> dict[str, Any]:
                 CfgMachine[mtype]["registration_infos"][part]["animation_time_noise_std"] = (
                     _DEFAULT_SNAPSHOT["machine_animation_noise"][mtype].get(part, 0.0)
                 )
+    for mtype, states in (_DEFAULT_SNAPSHOT.get("machine_reset_states") or {}).items():
+        if mtype in CfgMachine and "reset_state" in CfgMachine[mtype]:
+            CfgMachine[mtype]["reset_state"]["state"] = list(states)
 
     dim = RuntimeDisturbanceCfg["dim"]
     intensity = float(RuntimeDisturbanceCfg["intensity"])
@@ -190,18 +446,34 @@ def apply_disturbance_to_cfgs() -> dict[str, Any]:
     subtask_mod.SubtaskTimeNoiseStdSteps = float(RuntimeDisturbanceCfg["human_subtask_noise_std"])
     applied["human_subtask_noise_std"] = subtask_mod.SubtaskTimeNoiseStdSteps
     applied["human_time_scale"] = RuntimeDisturbanceCfg["human_time_scale"]
+    applied["human_skill_scales"] = list(RuntimeDisturbanceCfg.get("human_skill_scales") or [])
     applied["machine_process_noise_std"] = RuntimeDisturbanceCfg["machine_process_noise_std"]
     applied["machine_success_rate"] = RuntimeDisturbanceCfg["machine_success_rate"]
     applied["material_shortage_frac"] = RuntimeDisturbanceCfg["material_shortage_frac"]
+    applied["tool_wear_per_1k_steps"] = float(RuntimeDisturbanceCfg.get("tool_wear_per_1k_steps", 0.0) or 0.0)
+    applied["disabled_workstations"] = list(RuntimeDisturbanceCfg.get("disabled_workstations") or [])
+
+    if dim == "machine":
+        for item in applied["disabled_workstations"]:
+            mtype = item["machine"]
+            ws = int(item["ws"])
+            states = CfgMachine[mtype]["reset_state"]["state"]
+            if 0 <= ws < len(states):
+                states[ws] = "invalid"
 
     if dim == "human":
         default_n = int(_DEFAULT_SNAPSHOT["human"].get("NormalHuman", 5))
         n = RuntimeDisturbanceCfg["human_count"]
         if n is None:
-            n = max(1, int(round(default_n - 2 * intensity)))
+            n = max(1, int(round(default_n - intensity)))
         n = max(1, min(int(n), default_n))
         CfgHumanRegistrationInfos["NormalHuman"] = n
         applied["human_count"] = n
+        skills = sample_human_skill_scales(n, intensity)
+        RuntimeDisturbanceCfg["human_skill_scales"] = skills
+        applied["human_skill_scales"] = skills
+        base = float(RuntimeDisturbanceCfg["human_time_scale"])
+        applied["human_time_scales"] = [round(base * s, 4) for s in skills]
 
     elif dim == "logistics":
         default_agv = int(_DEFAULT_SNAPSHOT["robot"].get("AGV", 2))
@@ -215,7 +487,8 @@ def apply_disturbance_to_cfgs() -> dict[str, Any]:
         default_gantry = list(_DEFAULT_SNAPSHOT["active_gantry_indices"])
         n_g = RuntimeDisturbanceCfg["gantry_count"]
         if n_g is None:
-            n_g = 1 if intensity >= 0.75 else len(default_gantry)
+            # 1.0 → 2 gantries, 2.0 → 1, 3.0 → 1 (L2 + slower speed still scale 2→3)
+            n_g = 2 if intensity < 1.75 else 1
         n_g = max(1, min(int(n_g), 4))
         gantry_indices = CfgMachine["num07_gantry_group"]["active_gantry_indices"]
         gantry_indices.clear()
@@ -233,8 +506,12 @@ def apply_disturbance_to_cfgs() -> dict[str, Any]:
         applied["gantry_move_speed"] = gantry_info["move_speed"]
         applied["gantry_move_speed_noise_std"] = gantry_info["move_speed_noise_std"]
 
-    elif dim == "machine":
-        std = float(RuntimeDisturbanceCfg["machine_process_noise_std"])
+    elif dim == "material":
+        applied["material_shortage_frac"] = RuntimeDisturbanceCfg["material_shortage_frac"]
+        applied["machine_success_rate"] = RuntimeDisturbanceCfg["machine_success_rate"]
+
+    std = float(RuntimeDisturbanceCfg["machine_process_noise_std"])
+    if std > 0.0:
         for mtype, cfg in CfgMachine.items():
             if mtype == "num07_gantry_group":
                 continue
@@ -243,13 +520,12 @@ def apply_disturbance_to_cfgs() -> dict[str, Any]:
                     info["animation_time_noise_std"] = std
         applied["machine_animation_time_noise_std"] = std
 
-    elif dim == "material":
-        applied["material_shortage_frac"] = RuntimeDisturbanceCfg["material_shortage_frac"]
-        applied["machine_success_rate"] = RuntimeDisturbanceCfg["machine_success_rate"]
-
     applied["event_start_step"] = RuntimeDisturbanceCfg["event_start_step"]
     applied["event_duration_steps"] = RuntimeDisturbanceCfg["event_duration_steps"]
     applied["event_target"] = RuntimeDisturbanceCfg["event_target"]
+    applied["event_schedule_mode"] = RuntimeDisturbanceCfg.get("event_schedule_mode", "resample_per_episode")
+    # Per-episode queues are sampled at reset; do not freeze a clock here.
+    applied["event_schedule"] = list(RuntimeDisturbanceCfg.get("event_schedule") or [])
     RuntimeDisturbanceCfg["applied"] = applied
 
     print(f"[Disturbance] dim={dim} intensity={intensity} applied={applied}")

@@ -19,7 +19,7 @@ from ..env_asset_cfg.cfg_process_task_gallery import (
     CfgProductProcessGallery,
 )
 from ..env_asset_cfg.cfg_robot import CfgRobotRegistrationInfos
-from ..env_asset_cfg.cfg_disturbance import RuntimeDisturbanceCfg
+from ..env_asset_cfg.cfg_disturbance import RuntimeDisturbanceCfg, episode_l2_schedule, episode_qc_holds
 
 AGENT_COL_HUMAN = 0
 AGENT_COL_GANTRY = 1
@@ -498,6 +498,31 @@ class BottleneckDataCollector:
             ],
         )
 
+    def _episode_disturbance_applied(self) -> dict[str, Any]:
+        """L0/L1 knobs plus this episode's sampled L2 queue (same RNG as injector)."""
+        applied = dict(RuntimeDisturbanceCfg.get("applied") or {})
+        mode = str(RuntimeDisturbanceCfg.get("event_schedule_mode") or "resample_per_episode")
+        applied["event_schedule_mode"] = mode
+        applied["episode_id"] = self.episode_id
+        dim = str(RuntimeDisturbanceCfg.get("dim", "none"))
+        intensity = float(RuntimeDisturbanceCfg.get("intensity", 0.0) or 0.0)
+        seed = int(BottleneckRunContext.seed or 0)
+        if mode == "fixed":
+            applied["event_schedule"] = list(RuntimeDisturbanceCfg.get("event_schedule") or [])
+        elif mode == "none":
+            applied["event_schedule"] = []
+        else:
+            applied["event_schedule"] = episode_l2_schedule(
+                dim, intensity, seed, int(self.env_id), int(self.episode_id)
+            )
+        if dim == "machine" and mode != "none":
+            applied["qc_holds"] = episode_qc_holds(
+                intensity, seed, int(self.env_id), int(self.episode_id)
+            )
+        else:
+            applied["qc_holds"] = []
+        return applied
+
     def _write_episode_config(self, env: dict) -> None:
         if not self._episode_config_writer:
             return
@@ -556,7 +581,7 @@ class BottleneckDataCollector:
             "arrival_rate": "",
             "disturbance_dim": RuntimeDisturbanceCfg.get("dim", "none"),
             "disturbance_intensity": RuntimeDisturbanceCfg.get("intensity", 0.0),
-            "disturbance_applied": json.dumps(RuntimeDisturbanceCfg.get("applied") or {}),
+            "disturbance_applied": json.dumps(self._episode_disturbance_applied()),
             "env_yaml_path": BottleneckRunContext.env_yaml_path,
             "agent_yaml_path": BottleneckRunContext.agent_yaml_path,
             "collector_version": self.cfg.get("collector_version", "v0.2"),

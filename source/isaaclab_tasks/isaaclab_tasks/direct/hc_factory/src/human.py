@@ -252,7 +252,7 @@ class Human:
             self.state["subtask_time_counter"] = 0
             base = CfgSubtaskPredefinedTimeGallery[human_subtask]
             self.state["subtask_time_target"] = sample_human_subtask_time(
-                base, SubtaskTimeNoiseStdSteps
+                base, SubtaskTimeNoiseStdSteps, human_idx=self.idx
             )
         target = self.state["subtask_time_target"]
         if self.state["subtask_time_counter"] < target:

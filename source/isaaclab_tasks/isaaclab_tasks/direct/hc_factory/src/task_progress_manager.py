@@ -4,7 +4,7 @@ from ..env_asset_cfg.cfg_material_product import CfgProductOrder, CfgProductProc
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskGalleryDetailedClassified, CfgSubtaskGallery, TaskRecordTemplate
 from ..env_asset_cfg.cfg_machine import CfgMachine
 from ..env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
-from .material import find_free_storage, reserve_storage_slot
+from .material import find_free_storage, reserve_storage_slot, task_required_materials_ready
 import torch
 import copy
 
@@ -181,6 +181,13 @@ class TaskManager:
         if new_task_record.get("human") is None:
             return False
         product_type = new_task_record["product"]
+        if not task_required_materials_ready(
+            env_state_action_dict,
+            product_type,
+            new_task_record["product_index"],
+            new_task_record["task"],
+        ):
+            return False
         task_meta = CfgProcessTaskGalleryDetailedClassified[product_type][new_task_record["task"]]
         target_machine = task_meta["target_machine"]
         states = env_state_action_dict["machine"][target_machine]["state"]
@@ -380,7 +387,6 @@ class TaskManager:
             required_logistic_material = task_record["logistic_submaterial"]
             state_material = env_state_action_dict["material"][product_name]["submaterials"][required_logistic_material]
             assert state_material["storage_name"] is not None, "The storage name should be initialized in material.py"
-            assert state_material["storage_name"] != "disappear", "The material still not appeared"
             assert subtasks["material_start_area"] != subtasks["material_goal_area"], "The material start area and goal area should be different, \
                 otherwise dont need to logistic this material"
             subtasks["material_start_area"] = state_material["storage_name"]

@@ -245,7 +245,7 @@ def build_dataloaders(
     data_dir: Path,
     input_window: int = 12,
     output_window: int = 1,
-    horizon_s: float = 60.0,
+    horizon_s: float = 180.0,
     batch_size: int = 16,
     train_ratio: float = 0.7,
     val_ratio: float = 0.15,

@@ -3,7 +3,7 @@ from abc import abstractmethod
 from ..env_asset_cfg.cfg_machine import CfgMachine
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
 from .utils import GantryGroupAnimation, PoseAnimation
-from .disturbance import machine_process_succeeded, sample_machine_process_time
+from .disturbance import machine_process_succeeded, sample_machine_process_time, qc_hold_extra_steps
 import copy
 import torch
 
@@ -215,10 +215,23 @@ class Machine:
                 info = self.registration_infos["num08_workbench"]
             base = float(info["animation_time"])
             per_std = float(info.get("animation_time_noise_std", 0.0) or 0.0)
-            targets[chosen_workstation_index] = sample_machine_process_time(base, per_std)
+            t = int(env_state_action_dict.get("time_step", 0) or 0)
+            targets[chosen_workstation_index] = sample_machine_process_time(
+                base, per_std, time_step=t
+            )
         self.state["processing_time_step"][chosen_workstation_index] += 1
         animation_time = targets[chosen_workstation_index]
         if self.state["processing_time_step"][chosen_workstation_index] >= animation_time:
+            if not task_record.get("_qc_hold_applied"):
+                extra = qc_hold_extra_steps(
+                    self.type_name,
+                    task_record.get("task") or "",
+                    int(env_state_action_dict.get("time_step", 0) or 0),
+                )
+                if extra > 0:
+                    task_record["_qc_hold_applied"] = True
+                    targets[chosen_workstation_index] = int(animation_time) + extra
+                    return
             if machine_process_succeeded():
                 subtasks["finished"][2] = True
                 self.state["processing_time_step"][chosen_workstation_index] = 0
@@ -232,7 +245,10 @@ class Machine:
                     info = self.registration_infos["num08_workbench"]
                 base = float(info["animation_time"])
                 per_std = float(info.get("animation_time_noise_std", 0.0) or 0.0)
-                targets[chosen_workstation_index] = sample_machine_process_time(base, per_std)
+                t = int(env_state_action_dict.get("time_step", 0) or 0)
+                targets[chosen_workstation_index] = sample_machine_process_time(
+                    base, per_std, time_step=t
+                )
     
     def _task_done(self, env_state_action_dict: dict, task_record: dict) -> None:
         task_record["subtasks_dict"]["finished"][2] = True

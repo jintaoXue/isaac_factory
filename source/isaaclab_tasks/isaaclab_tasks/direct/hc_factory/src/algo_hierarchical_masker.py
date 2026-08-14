@@ -7,6 +7,7 @@ from ..env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
 from ..env_asset_cfg.cfg_human import CfgHuman
 from ..env_asset_cfg.cfg_robot import CfgRobot
 from ..env_asset_cfg.cfg_machine import CfgMachine
+from .material import task_required_materials_ready
 import torch
 
 
@@ -130,6 +131,19 @@ class AlgoHierarchicalMasker:
             next_allowing_task_index = self._find_product_next_allowing_task_index(
                 finished_task, one_process_task_gallery
             )
+            if next_allowing_task_index == CfgProcessTaskGalleryInAll["none"]:
+                continue
+            next_task = None
+            for name, idx in CfgProcessTaskGalleryInAll.items():
+                if idx == next_allowing_task_index:
+                    next_task = name
+                    break
+            if next_task is None:
+                continue
+            if not task_required_materials_ready(
+                env_state_action_dict, product_type, material_batch_index, next_task
+            ):
+                continue
             mask[material_batch_index][next_allowing_task_index] = 1
         env_state_action_dict["agent_action_mask"]["material"]["task_availability_mask"] = mask
         return env_state_action_dict
