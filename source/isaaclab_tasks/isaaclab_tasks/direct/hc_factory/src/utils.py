@@ -110,6 +110,7 @@ class GantryGroupAnimation(PoseAnimation):
         self.speed = [self.base_speed] * self.num_gantrys
         self.move_loaded = [False] * self.num_gantrys
         self.is_yield_move = [False] * self.num_gantrys
+        self.blocked_steps = [0] * self.num_gantrys
         self.done = self.is_done()
 
     def _gantry_mask(self, gantry_index: int) -> torch.Tensor:
@@ -177,21 +178,37 @@ class GantryGroupAnimation(PoseAnimation):
 
             # Only block moves that get closer while inside the gap.
             # If already closer than safe_x_gap, allow stepping away (otherwise deadlock).
-            blocked = False
-            for other_index, other_x in committed_world_x.items():
-                if other_index == gantry_index:
-                    continue
-                prop_sep = abs(proposed_x - other_x)
-                if prop_sep >= safe_x_gap:
-                    continue
-                curr_sep = abs(current_x - other_x)
-                if prop_sep < curr_sep - 1e-9:
-                    blocked = True
-                    break
+            def _blocked_at(gap: float) -> bool:
+                for other_index, other_x in committed_world_x.items():
+                    if other_index == gantry_index:
+                        continue
+                    prop_sep = abs(proposed_x - other_x)
+                    if prop_sep >= gap:
+                        continue
+                    curr_sep = abs(current_x - other_x)
+                    if prop_sep < curr_sep - 1e-9:
+                        return True
+                return False
+
+            timeout = max(1, int(block_timeout))
+            blocked = _blocked_at(safe_x_gap)
+            force = False
+            if blocked and self.blocked_steps[gantry_index] >= timeout:
+                blocked = _blocked_at(max(1e-6, safe_x_gap * relaxed_gap_scale))
+            if blocked and self.blocked_steps[gantry_index] >= 2 * timeout:
+                blocked = False
+                force = True
 
             if blocked:
+                self.blocked_steps[gantry_index] += 1
                 next_pose[gantry_mask] = self._lerp_gantry_pose(gantry_index, self._progress_t(gantry_index))
             else:
+                if force:
+                    print(
+                        f"[GantryUnlock] force advance gantry_{gantry_index} "
+                        f"after {self.blocked_steps[gantry_index]} blocked steps"
+                    )
+                self.blocked_steps[gantry_index] = 0
                 self.distance_traveled[gantry_index] = dist_next
                 next_pose[gantry_mask] = proposed
                 if self.distance_traveled[gantry_index] >= self.path_length[gantry_index] - 1e-8:

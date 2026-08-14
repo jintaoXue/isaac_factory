@@ -37,6 +37,7 @@ class DisturbanceInjector:
         self._pending_since = -1
         self._current_target: str | None = None
         self._current_dim: str | None = None
+        self._current_max_units: int | None = None
 
     def reset(self, env: dict) -> None:
         self._restore_if_needed(env)
@@ -52,6 +53,7 @@ class DisturbanceInjector:
         self._pending_since = -1
         self._current_target = None
         self._current_dim = None
+        self._current_max_units = None
         self._queue = self._load_schedule()
 
         dim = RuntimeDisturbanceCfg.get("dim", "none")
@@ -155,6 +157,8 @@ class DisturbanceInjector:
             self._duration = ev_dur
             self._current_target = ev_target
             self._current_dim = ev_dim
+            max_units = ev.get("max_units")
+            self._current_max_units = int(max_units) if max_units not in (None, "") else None
 
         wait_limit = max(ev_dur * 2, 500)
         if self._pending_since >= 0 and t - self._pending_since > wait_limit:
@@ -342,20 +346,23 @@ class DisturbanceInjector:
         return False
 
     def _activate_material_shortage(self, env: dict, target: str | None) -> bool:
-        """Hide idle warehouse stock of one raw SKU; do not yank parts already in process."""
+        """Hide idle warehouse stock of one raw SKU (or a kit mix); restore later.
+
+        Never yank parts already in process. ``max_units`` limits how many pieces
+        disappear so an 18-job order can still finish after the window ends.
+        """
         from .material import _release_storage_slot
 
         material_type = target or "product_00_flange"
         if material_type.startswith("material_"):
             material_type = material_type[len("material_") :]
-        hidden: list[dict[str, Any]] = []
+        if material_type == "kit":
+            types = ["product_00_pipe_raw", "product_00_flange", "product_00_elbow"]
+        else:
+            types = [material_type]
+
+        candidates: list[dict[str, Any]] = []
         for mat_key, ms in (env.get("material") or {}).items():
-            sub = (ms.get("submaterials") or {}).get(material_type)
-            if not sub:
-                continue
-            loc = sub.get("storage_name")
-            if not loc or "Storage_" not in str(loc):
-                continue
             kv = ms.get("key_variables") or {}
             idx = kv.get("idx")
             if idx is None:
@@ -363,20 +370,50 @@ class DisturbanceInjector:
                     idx = int(str(mat_key).split("_")[1])
                 except (IndexError, ValueError):
                     continue
-            storage = (env.get("storage") or {}).get(loc)
+            for sku in types:
+                sub = (ms.get("submaterials") or {}).get(sku)
+                if not sub:
+                    continue
+                loc = sub.get("storage_name")
+                if not loc or "Storage_" not in str(loc):
+                    continue
+                candidates.append(
+                    {
+                        "mat_key": mat_key,
+                        "idx": int(idx),
+                        "material_type": sku,
+                        "prim_key": f"num_{int(idx):02d}_{sku}",
+                        "loc": loc,
+                    }
+                )
+        if not candidates:
+            return False
+        random.shuffle(candidates)
+        limit = self._current_max_units
+        if limit is not None:
+            candidates = candidates[: max(0, int(limit))]
+        if not candidates:
+            return False
+
+        hidden: list[dict[str, Any]] = []
+        for item in candidates:
+            storage = (env.get("storage") or {}).get(item["loc"])
+            ms = (env.get("material") or {}).get(item["mat_key"])
+            sub = (ms.get("submaterials") or {}).get(item["material_type"]) if ms else None
+            if sub is None:
+                continue
             if storage is not None:
-                _release_storage_slot(storage, int(idx))
+                _release_storage_slot(storage, item["idx"])
             sub["storage_name"] = "disappear"
-            prim_key = f"num_{int(idx):02d}_{material_type}"
-            rp = (env.get("rigid_prims") or {}).get(prim_key)
+            rp = (env.get("rigid_prims") or {}).get(item["prim_key"])
             if rp is not None and rp.get("position") is not None:
                 rp["position"][0][2] = -100
             hidden.append(
                 {
-                    "mat_key": mat_key,
-                    "idx": int(idx),
-                    "material_type": material_type,
-                    "prim_key": prim_key,
+                    "mat_key": item["mat_key"],
+                    "idx": item["idx"],
+                    "material_type": item["material_type"],
+                    "prim_key": item["prim_key"],
                 }
             )
         if not hidden:
@@ -418,24 +455,26 @@ class DisturbanceInjector:
         """Put hidden SKU back into free warehouse slots. Skip pieces already reset."""
         from .material import find_free_storage, reserve_storage_slot, storage_slot_pose
 
-        material_type = self._saved_state.get("material_type")
         storages = env.get("storage") or {}
         materials = env.get("material") or {}
         for item in self._saved_state.get("hidden") or []:
+            sku = item.get("material_type") or self._saved_state.get("material_type")
+            if not sku or sku == "kit":
+                continue
             ms = materials.get(item["mat_key"])
             if not ms:
                 continue
-            sub = (ms.get("submaterials") or {}).get(material_type)
+            sub = (ms.get("submaterials") or {}).get(sku)
             if not sub or sub.get("storage_name") != "disappear":
                 continue
             try:
-                storage_name = find_free_storage(storages, material_type)
+                storage_name = find_free_storage(storages, sku)
             except ValueError:
                 continue
             storage = storages[storage_name]
-            slot_idx = reserve_storage_slot(storage, material_type, item["idx"])
+            slot_idx = reserve_storage_slot(storage, sku, item["idx"])
             sub["storage_name"] = storage_name
-            prim_key = item.get("prim_key") or f"num_{item['idx']:02d}_{material_type}"
+            prim_key = item.get("prim_key") or f"num_{item['idx']:02d}_{sku}"
             rp = (env.get("rigid_prims") or {}).get(prim_key)
             if rp is None:
                 continue
@@ -448,18 +487,9 @@ class DisturbanceInjector:
 
 
 def should_skip_material_placement(batch_idx: int, material_type: str) -> bool:
-    """Material shortage: skip placing some raw parts at reset."""
-    frac = float(RuntimeDisturbanceCfg.get("material_shortage_frac", 0.0) or 0.0)
-    if frac <= 0.0:
-        return False
-    # Starve kitting SKUs only. Never skip pipe_raw / cut pipe, or the first
-    # logistic task has nothing to haul and the job cannot even start.
-    if material_type in ("product_00_pipe", "product_00_pipe_raw"):
-        return False
-    if material_type not in ("product_00_flange", "product_00_elbow"):
-        return False
-    # Deterministic-ish per (batch, type) using RNG; caller should have seeded.
-    return random.random() < frac
+    """Kept for call sites. Shortage is timed hide+restore, never a permanent skip."""
+    del batch_idx, material_type
+    return False
 
 
 def sample_machine_process_time(

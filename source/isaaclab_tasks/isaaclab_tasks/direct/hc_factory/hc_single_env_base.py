@@ -148,8 +148,29 @@ class HcSingleEnvBase():
             rigid_prim.set_local_poses(translations=data["position"], orientations=data["orientation"])
             rigid_prim.set_velocities(torch.zeros((1,6), device=self.cuda_device))
 
+    def _round_xy(self, pos) -> tuple | None:
+        if pos is None:
+            return None
+        try:
+            if hasattr(pos, "detach"):
+                flat = pos.detach().reshape(-1)
+                if flat.numel() < 2:
+                    return (round(float(flat[0].item()), 2),)
+                return (round(float(flat[0].item()), 2), round(float(flat[1].item()), 2))
+            seq = list(pos)
+            if len(seq) >= 2:
+                return (round(float(seq[0]), 2), round(float(seq[1]), 2))
+        except Exception:
+            return None
+        return None
+
     def _progress_signature(self) -> tuple:
-        """Compact fingerprint of production progress for stall detection."""
+        """Compact fingerprint of production progress for stall detection.
+
+        Must include motion. After real-path ``go_to_*=None`` a gantry/human/AGV
+        can walk for well over 5000 steps without changing task/subtask flags;
+        omitting travel distance made the watchdog treat long hauls as deadlock.
+        """
         progress = self.env_state_action_dict.get("progress", {})
         finished = tuple(
             (k, tuple(v)) for k, v in sorted((progress.get("finished") or {}).items())
@@ -171,7 +192,29 @@ class HcSingleEnvBase():
         machines = []
         for name, mstate in sorted((self.env_state_action_dict.get("machine") or {}).items()):
             machines.append((name, tuple(mstate.get("state") or [])))
-        return (finished, tuple(ongoing), tuple(machines))
+
+        gantry_motion = ()
+        gantry = getattr(self.machine_manager, "num07_gantry_group", None)
+        anim = getattr(gantry, "animation_num07_gantry_group", None) if gantry is not None else None
+        if anim is not None:
+            gantry_motion = tuple(
+                round(float(d), 2) for d in (anim.distance_traveled or [])
+            )
+
+        movers = []
+        prims = self.env_state_action_dict.get("rigid_prims") or {}
+        for group in ("human", "robot"):
+            for name, state in sorted((self.env_state_action_dict.get(group) or {}).items()):
+                pos = (prims.get(name) or {}).get("position")
+                movers.append(
+                    (
+                        name,
+                        state.get("current_area_id"),
+                        state.get("target_area_id"),
+                        self._round_xy(pos),
+                    )
+                )
+        return (finished, tuple(ongoing), tuple(machines), gantry_motion, tuple(movers))
 
     def _maybe_watchdog_reset(self) -> bool:
         """Reset episode if logic state stops progressing for stall_timeout_steps."""

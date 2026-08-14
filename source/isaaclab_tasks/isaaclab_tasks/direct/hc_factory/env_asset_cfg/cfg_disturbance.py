@@ -38,8 +38,12 @@ RuntimeDisturbanceCfg: dict[str, Any] = {
     "human_skill_scales": [],
     "gantry_animation_noise_std": 2.0,
     "gantry_time_scale": 1.0,
-    # Material: fraction of raw submaterials skipped at reset (shortage).
+    # Material: L1 opening wave hides this many idle kit pieces, then restores.
     "material_shortage_frac": 0.0,
+    "material_l1_hide_count": 0,
+    "material_l1_duration": 0,
+    "material_l1_hide_count_range": [],
+    "material_l1_duration_range": [],
     # L2 event schedule (logic steps). end < 0 means disabled.
     "event_start_step": -1,
     "event_duration_steps": 0,
@@ -107,6 +111,39 @@ def _l2_count_range(intensity: float) -> tuple[int, int]:
 def _l2_duration_cap(intensity: float) -> int:
     """Longer failures at higher intensity; 1.0≈300, 2.0≈520, 3.0≈720."""
     return int(min(720, 80 + 220 * max(intensity, 0.5)))
+
+
+def material_l1_hide_count_range(intensity: float) -> tuple[int, int]:
+    """Opening-wave piece count band (pipe_raw + flange + elbow mixed).
+
+    I=1 → 2–5, I=2 → 4–10, I=3 → 6–12. Never all 18 of one SKU.
+    """
+    lo = max(1, int(round(2.0 * float(intensity))))
+    hi = min(12, int(round(5.0 * float(intensity))))
+    if hi < lo:
+        hi = lo
+    return lo, hi
+
+
+def material_l1_duration_range(intensity: float) -> tuple[int, int]:
+    """Opening-wave hide length band (logic steps). Always finite; < stall timeout."""
+    lo = int(max(200, round(300.0 * float(intensity))))
+    hi = int(min(2000, round(700.0 * float(intensity))))
+    if hi < lo:
+        hi = lo
+    return lo, hi
+
+
+def material_l1_hide_count(intensity: float) -> int:
+    """Midpoint of the hide-count band (for applied-cfg logging)."""
+    lo, hi = material_l1_hide_count_range(intensity)
+    return (lo + hi) // 2
+
+
+def material_l1_duration(intensity: float) -> int:
+    """Midpoint of the duration band (for applied-cfg logging)."""
+    lo, hi = material_l1_duration_range(intensity)
+    return (lo + hi) // 2
 
 
 def l2_schedule_rng(seed: int, env_id: int, episode_id: int) -> random.Random:
@@ -232,6 +269,27 @@ def sample_l2_schedule(
     if dim == "none" or intensity <= 0.0:
         return []
 
+    opening: list[dict[str, Any]] = []
+    horizon_lo = _L2_HORIZON_LO
+    if dim == "material":
+        n_lo, n_hi = material_l1_hide_count_range(intensity)
+        d_lo, d_hi = material_l1_duration_range(intensity)
+        n_hide = rng.randint(n_lo, n_hi)
+        dur_l1 = rng.randint(d_lo, d_hi)
+        if n_hide > 0 and dur_l1 > 0:
+            start0 = rng.randint(0, 80)
+            opening.append(
+                {
+                    "start": start0,
+                    "duration": dur_l1,
+                    "target": "kit",
+                    "max_units": n_hide,
+                    "dim": "material",
+                    "wave": "l1",
+                }
+            )
+            horizon_lo = max(_L2_HORIZON_LO, start0 + dur_l1 + _L2_MIN_GAP)
+
     if dim == "machine":
         targets = list(L2_MACHINE_TARGETS)
     elif dim == "human":
@@ -253,7 +311,7 @@ def sample_l2_schedule(
         for _ in range(n)
     ]
     min_gap = max(350, _L2_MIN_GAP - 10 * n)
-    starts = _sample_starts(rng, n, durs, _L2_HORIZON_LO, _L2_HORIZON_HI, min_gap)
+    starts = _sample_starts(rng, n, durs, horizon_lo, _L2_HORIZON_HI, min_gap)
 
     chosen: list[str] = []
     for _ in range(n):
@@ -269,7 +327,7 @@ def sample_l2_schedule(
         for i in range(n)
     ]
     events.sort(key=lambda e: e["start"])
-    return events
+    return opening + events
 
 
 def episode_l2_schedule(dim: str, intensity: float, seed: int, env_id: int, episode_id: int) -> list[dict[str, Any]]:
@@ -314,6 +372,10 @@ def configure_disturbance_from_cli(
     RuntimeDisturbanceCfg["gantry_animation_noise_std"] = 2.0
     RuntimeDisturbanceCfg["gantry_time_scale"] = 1.0
     RuntimeDisturbanceCfg["material_shortage_frac"] = 0.0
+    RuntimeDisturbanceCfg["material_l1_hide_count"] = 0
+    RuntimeDisturbanceCfg["material_l1_duration"] = 0
+    RuntimeDisturbanceCfg["material_l1_hide_count_range"] = []
+    RuntimeDisturbanceCfg["material_l1_duration_range"] = []
     RuntimeDisturbanceCfg["event_start_step"] = -1
     RuntimeDisturbanceCfg["event_duration_steps"] = 0
     RuntimeDisturbanceCfg["event_target"] = None
@@ -349,7 +411,13 @@ def configure_disturbance_from_cli(
         RuntimeDisturbanceCfg["machine_success_rate"] = max(0.82, 1.0 - 0.05 * intensity)
         RuntimeDisturbanceCfg["tool_wear_per_1k_steps"] = 6.0 * intensity
     elif dim == "material":
+        n_lo, n_hi = material_l1_hide_count_range(intensity)
+        d_lo, d_hi = material_l1_duration_range(intensity)
         RuntimeDisturbanceCfg["material_shortage_frac"] = min(0.65, 0.18 * intensity)
+        RuntimeDisturbanceCfg["material_l1_hide_count"] = material_l1_hide_count(intensity)
+        RuntimeDisturbanceCfg["material_l1_duration"] = material_l1_duration(intensity)
+        RuntimeDisturbanceCfg["material_l1_hide_count_range"] = [n_lo, n_hi]
+        RuntimeDisturbanceCfg["material_l1_duration_range"] = [d_lo, d_hi]
         RuntimeDisturbanceCfg["machine_success_rate"] = max(0.6, 1.0 - 0.1 * intensity)
 
     return RuntimeDisturbanceCfg
@@ -450,6 +518,14 @@ def apply_disturbance_to_cfgs() -> dict[str, Any]:
     applied["machine_process_noise_std"] = RuntimeDisturbanceCfg["machine_process_noise_std"]
     applied["machine_success_rate"] = RuntimeDisturbanceCfg["machine_success_rate"]
     applied["material_shortage_frac"] = RuntimeDisturbanceCfg["material_shortage_frac"]
+    applied["material_l1_hide_count"] = int(RuntimeDisturbanceCfg.get("material_l1_hide_count") or 0)
+    applied["material_l1_duration"] = int(RuntimeDisturbanceCfg.get("material_l1_duration") or 0)
+    applied["material_l1_hide_count_range"] = list(
+        RuntimeDisturbanceCfg.get("material_l1_hide_count_range") or []
+    )
+    applied["material_l1_duration_range"] = list(
+        RuntimeDisturbanceCfg.get("material_l1_duration_range") or []
+    )
     applied["tool_wear_per_1k_steps"] = float(RuntimeDisturbanceCfg.get("tool_wear_per_1k_steps", 0.0) or 0.0)
     applied["disabled_workstations"] = list(RuntimeDisturbanceCfg.get("disabled_workstations") or [])
 
@@ -507,7 +583,12 @@ def apply_disturbance_to_cfgs() -> dict[str, Any]:
         applied["gantry_move_speed_noise_std"] = gantry_info["move_speed_noise_std"]
 
     elif dim == "material":
-        applied["material_shortage_frac"] = RuntimeDisturbanceCfg["material_shortage_frac"]
+        applied["material_l1_hide_count_range"] = list(
+            RuntimeDisturbanceCfg.get("material_l1_hide_count_range") or []
+        )
+        applied["material_l1_duration_range"] = list(
+            RuntimeDisturbanceCfg.get("material_l1_duration_range") or []
+        )
         applied["machine_success_rate"] = RuntimeDisturbanceCfg["machine_success_rate"]
 
     std = float(RuntimeDisturbanceCfg["machine_process_noise_std"])
