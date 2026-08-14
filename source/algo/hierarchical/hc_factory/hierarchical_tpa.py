@@ -23,7 +23,7 @@ from .hier_rl_agents import (
     RLProductSelectionAgent,
     RLProductSequencingAgent,
 )
-from .hier_utils import compute_team_reward, read_rl_done
+from .hier_utils import compute_team_reward, read_rl_done, steps_per_min
 
 
 def _clear_rl(env_dict: dict) -> None:
@@ -164,6 +164,7 @@ class HierarchicalTPA:
         wandb.define_metric("Train/step")
         wandb.define_metric("Train/wall_time_sec", step_metric="Train/step")
         wandb.define_metric("Train/wall_time_min", step_metric="Train/step")
+        wandb.define_metric("Train/steps_per_min", step_metric="Train/step")
         wandb.define_metric("Train/epsilon", step_metric="Train/step")
         wandb.define_metric("Train/ep_reward0", step_metric="Train/step")
         wandb.define_metric("Train/finished0", step_metric="Train/step")
@@ -524,6 +525,8 @@ class HierarchicalTPA:
                 t0 = int(next_obs[0].get("time_step", 0) or 0)
                 step_r0 = float((rl0 or {}).get("reward", 0.0) or 0.0)
                 wall = self._wall_time_sec()
+                spm = steps_per_min(self.global_step, wall)
+                spm_str = f"{spm:.1f}" if spm is not None else "n/a"
                 mean_ms_str = (
                     f"{sum(self.makespan_all)/len(self.makespan_all):.1f}"
                     if self.makespan_all
@@ -534,7 +537,7 @@ class HierarchicalTPA:
                     f"ep_reward0={episode_reward[0]:.2f} finished={finished} "
                     f"producing={producing0} ongoing={ongoing0} "
                     f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing} "
-                    f"mean_ms={mean_ms_str} wall={wall/60.0:.2f}min n_envs={len(obs)}"
+                    f"mean_ms={mean_ms_str} steps/min={spm_str} n_envs={len(obs)}"
                 )
                 if self.use_wandb:
                     buf_d_h = (
@@ -594,6 +597,8 @@ class HierarchicalTPA:
                         payload["Metrics/MeanMakespan"] = mean_ms
                     if mean_ms_ok is not None:
                         payload["Metrics/MeanMakespan_success"] = mean_ms_ok
+                    if spm is not None:
+                        payload["Train/steps_per_min"] = spm
                     wandb.log(payload)
 
             if self.global_step % self.save_interval == 0:
@@ -601,19 +606,22 @@ class HierarchicalTPA:
                 print(f"[Hier] checkpoint saved at step {self.global_step}")
 
         wall = self._wall_time_sec()
+        spm = steps_per_min(self.global_step, wall)
+        spm_str = f"{spm:.1f}" if spm is not None else "n/a"
         print(
             f"[Hier] train finished episodes_done={self.episodes_done} "
-            f"steps={self.global_step} wall={wall/60.0:.2f}min "
+            f"steps={self.global_step} steps/min={spm_str} "
             f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing}"
         )
         if self.use_wandb:
-            wandb.log(
-                {
-                    "Train/step": self.global_step,
-                    "Train/wall_time_sec": wall,
-                    "Train/wall_time_min": wall / 60.0,
-                    "Train/peak_producing": self.peak_producing,
-                    "Train/peak_ongoing": self.peak_ongoing,
-                    "Metrics/wall_time_sec": wall,
-                }
-            )
+            finish_payload = {
+                "Train/step": self.global_step,
+                "Train/wall_time_sec": wall,
+                "Train/wall_time_min": wall / 60.0,
+                "Train/peak_producing": self.peak_producing,
+                "Train/peak_ongoing": self.peak_ongoing,
+                "Metrics/wall_time_sec": wall,
+            }
+            if spm is not None:
+                finish_payload["Train/steps_per_min"] = spm
+            wandb.log(finish_payload)

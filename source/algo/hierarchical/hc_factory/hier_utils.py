@@ -74,6 +74,13 @@ def read_rl_done(env_dict: dict) -> tuple[bool, bool, bool]:
     return bool(rl.get("done")), bool(rl.get("truncated")), bool(rl.get("success"))
 
 
+def steps_per_min(global_step: int, wall_sec: float) -> float | None:
+    """Training throughput: env steps per wall-clock minute."""
+    if wall_sec <= 0 or global_step <= 0:
+        return None
+    return float(global_step) / (wall_sec / 60.0)
+
+
 def detach_pre_to_cpu(pre: dict) -> dict:
     """Deep-copy preprocessed dict tensors to CPU without grad."""
     out: dict = {}

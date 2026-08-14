@@ -12,7 +12,7 @@ from .agent_B_product_priority import ProductPriorityAgent
 from .agent_C_process_task_planner import ProcessTaskPlanningAgent
 from .agent_D_human_robot_allocator import HumanRobotMachineAllocationAgent
 from .hierarchical_dispatch import build_rule_based_action
-from .hier_utils import compute_team_reward, read_rl_done
+from .hier_utils import compute_team_reward, read_rl_done, steps_per_min
 
 
 def _count_finished(env_dict: dict) -> int:
@@ -78,6 +78,7 @@ class RuleBasedHierarchical():
         wandb.define_metric("Train/step")
         wandb.define_metric("Train/wall_time_sec", step_metric="Train/step")
         wandb.define_metric("Train/wall_time_min", step_metric="Train/step")
+        wandb.define_metric("Train/steps_per_min", step_metric="Train/step")
         wandb.define_metric("Train/ep_reward0", step_metric="Train/step")
         wandb.define_metric("Train/finished0", step_metric="Train/step")
         wandb.define_metric("Train/episode0", step_metric="Train/step")
@@ -231,6 +232,8 @@ class RuleBasedHierarchical():
                     )
                     mean_ms_str = f"{mean_ms:.1f}" if mean_ms is not None else "n/a"
                     mean_ok_str = f"{mean_ms_ok:.1f}" if mean_ms_ok is not None else "n/a"
+                    spm = steps_per_min(self.global_step, wall)
+                    spm_str = f"{spm:.1f}" if spm is not None else "n/a"
                     print(
                         f"[Rule] EP_DONE env={env_id} episode={completed_ep} "
                         f"done_count={self.episodes_done} "
@@ -240,7 +243,7 @@ class RuleBasedHierarchical():
                         f"ep_max_prod={ep_max_prod} ep_max_ong={ep_max_ong} "
                         f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing} "
                         f"finished={_count_finished(next_obs[env_id])} "
-                        f"wall={wall/60.0:.2f}min mean_ms={mean_ms_str} mean_ms_ok={mean_ok_str}"
+                        f"steps/min={spm_str} mean_ms={mean_ms_str} mean_ms_ok={mean_ok_str}"
                     )
                     if self.use_wandb:
                         payload = {
@@ -299,6 +302,8 @@ class RuleBasedHierarchical():
                 )
                 mean_ms_str = f"{mean_ms:.1f}" if mean_ms is not None else "n/a"
                 wall = self._wall_time_sec()
+                spm = steps_per_min(self.global_step, wall)
+                spm_str = f"{spm:.1f}" if spm is not None else "n/a"
                 print(
                     f"[Rule] step={self.global_step} episode={ep0} ep_t={t0} "
                     f"ep_reward0={episode_reward[0]:.2f} finished={finished} "
@@ -310,7 +315,7 @@ class RuleBasedHierarchical():
                     f"finish={float(parts.get('finish', 0.0) or 0.0):.3f} "
                     f"task={float(parts.get('task', 0.0) or 0.0):.3f} "
                     f"success={float(parts.get('success', 0.0) or 0.0):.3f}) "
-                    f"wall={wall/60.0:.2f}min mean_ms={mean_ms_str} n_envs={n_envs}"
+                    f"steps/min={spm_str} mean_ms={mean_ms_str} n_envs={n_envs}"
                 )
                 if self.use_wandb:
                     payload = {
@@ -329,25 +334,30 @@ class RuleBasedHierarchical():
                     }
                     if mean_ms is not None:
                         payload["Metrics/MeanMakespan"] = mean_ms
+                    if spm is not None:
+                        payload["Train/steps_per_min"] = spm
                     wandb.log(payload)
 
             obs = next_obs
 
         wall = self._wall_time_sec()
+        spm = steps_per_min(self.global_step, wall)
+        spm_str = f"{spm:.1f}" if spm is not None else "n/a"
         print(
             f"[Rule] train finished episodes_done={self.episodes_done} "
-            f"steps={self.global_step} wall={wall/60.0:.2f}min "
+            f"steps={self.global_step} steps/min={spm_str} "
             f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing}"
         )
         if self.use_wandb:
-            wandb.log(
-                {
-                    "Train/step": self.global_step,
-                    "Train/wall_time_sec": wall,
-                    "Train/wall_time_min": wall / 60.0,
-                    "Train/peak_producing": self.peak_producing,
-                    "Train/peak_ongoing": self.peak_ongoing,
-                    "Metrics/wall_time_sec": wall,
-                }
-            )
+            finish_payload = {
+                "Train/step": self.global_step,
+                "Train/wall_time_sec": wall,
+                "Train/wall_time_min": wall / 60.0,
+                "Train/peak_producing": self.peak_producing,
+                "Train/peak_ongoing": self.peak_ongoing,
+                "Metrics/wall_time_sec": wall,
+            }
+            if spm is not None:
+                finish_payload["Train/steps_per_min"] = spm
+            wandb.log(finish_payload)
             wandb.finish()

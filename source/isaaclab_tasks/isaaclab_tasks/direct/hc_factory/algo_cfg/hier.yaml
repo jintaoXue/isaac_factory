@@ -15,7 +15,7 @@ params:
     time_str: "None"
 
     # Overridden by train.py from --num_envs / env.num_envs
-    num_actors: 4
+    num_actors: 1
     max_episodic_steps: 45000
     state_dim: 256
 

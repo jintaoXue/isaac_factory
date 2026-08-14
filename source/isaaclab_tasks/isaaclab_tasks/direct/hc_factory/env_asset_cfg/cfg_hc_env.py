@@ -181,7 +181,7 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     #asset path, include machine, human, robot
     asset_path = os.path.expanduser("~") + "/work/Dataset/HC_data/final_for_isaac/HC_import.usd"
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4, env_spacing=120.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=1, env_spacing=120.0, replicate_physics=True)
     # cuda decive
     cuda_device_str = "cuda:0"
     #train_cfg will be update when running train.py
