@@ -388,3 +388,9 @@ flowchart LR
 
 grantry只负责起落，AGV负责空间来往调度
 加入相似度，实现计算
+
+
+have_AGV 是跨区任务
+only_have_gantry是同区任务
+
+AGV数量我增加到4个

@@ -12,12 +12,17 @@ _ROUTE_DIR = Path(__file__).resolve().parent
 _HC_MAP_DATA_DIR = Path.home() / "work" / "Dataset" / "HC_data" / "map_data"
 
 CfgRoute = {
+    # Human navigation: occupancy + points + precomputed routes.
     "map_path_human": str(_ROUTE_DIR / "occupancy_map4human.png"),
     "points_path_human": str(_ROUTE_DIR / "map_points_human.json"),
     "routes_path_human": str(_HC_MAP_DATA_DIR / "map_routes_human.json"),
+    # AGV navigation: separate occupancy/points/routes because AGV footprint and
+    # free space differ from human (see map_with_points_robot.png).
     "map_path_robot": str(_ROUTE_DIR / "occupancy_map4robot.png"),
     "points_path_robot": str(_ROUTE_DIR / "map_points_robot.json"),
     "routes_path_robot": str(_HC_MAP_DATA_DIR / "map_routes_robot.json"),
+    # Gantry does not use its own map: gantry_parking_areas_ids are resolved via
+    # map_points_human (RouteManagerVectorEnv._step_gantry → human_roadmap).
     "png_image_coordinates": {
         "top_left": [0, 0],
         "bottom_right": [2202, 1645],

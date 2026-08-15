@@ -287,6 +287,9 @@ GroundStorage_example_flange_placement_cfg_absolute = _build_ground_storage_plac
 ###################################################################
 ###################################################################
 # 3. cfg storage for the environment
+# Area-id sources (same convention as cfg_machine working_area_ids):
+#   human_working_areas_ids / gantry_parking_areas_ids → map_points_human
+#   robot_parking_areas_ids → map_points_robot (AGV-only free space)
 ###################################################################
 ###################################################################
 CfgStorage = {
@@ -340,9 +343,9 @@ CfgStorage = {
                 ,
                 "capacity": 6,
                 "supporting_materials": {"product_00_pipe_raw", "product_00_pipe", "product_00_semi"},
-                "human_working_areas_ids": [53],
+                "human_working_areas_ids": [51],
                 "robot_parking_areas_ids": [54],
-                "gantry_parking_areas_ids": [53],
+                "gantry_parking_areas_ids": [51],
                 "placement_type": "vertical, the storage is vertical to the material, the material should be rotated 90 degrees around the z axis",
                 "placement_cfg": BlackStorage_vertical_placement_cfg_relative,
             },

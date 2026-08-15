@@ -288,7 +288,11 @@ class _RoadmapGraph:
 
 
 class RouteManagerVectorEnv:
-    """Route manager for human and robot using map_routes_*.json precomputed roadmap data."""
+    """Route manager for human and robot using map_routes_*.json precomputed roadmap data.
+
+    - Human + gantry parking XY: ``map_points_human`` / human occupancy.
+    - AGV: ``map_points_robot`` / robot occupancy (different valid points & free space).
+    """
 
     def __init__(self, cuda_device: torch.device):
         self.cuda_device = cuda_device
@@ -342,7 +346,12 @@ class RouteManagerVectorEnv:
         return env_state_action_dict
 
     def _step_gantry(self, env_state_action_dict: dict) -> None:
-        """Resolve per-gantry target_area_xy from map point id."""
+        """Resolve per-gantry target_area_xy from map point id.
+
+        Gantry parking ids always use the human point map (``human_roadmap`` /
+        ``map_points_human.json``), not the AGV robot map. AGV keeps a separate
+        occupancy/point set because its free space differs.
+        """
         gantry_state = env_state_action_dict["machine"]["num07_gantry_group"]
         active_indices = CfgMachine["num07_gantry_group"]["active_gantry_indices"]
         for gantry_index in active_indices:
@@ -351,6 +360,7 @@ class RouteManagerVectorEnv:
                 continue
 
             area_id = int(target_area_id)
+            # Intentionally human map — do not switch to robot_roadmap.
             x, y = self.human_roadmap.get_xy_at_area_id(area_id)
             gantry_state["target_area_xy"][gantry_index] = torch.tensor(
                 [x, y],
