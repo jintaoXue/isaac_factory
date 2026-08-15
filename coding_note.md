@@ -380,3 +380,11 @@ flowchart LR
 1. 训练与测试的决策范围：单产品焦点 vs 全产品，是否必须一致？
 2. 主实验是否先做：**Rule vs Flat DQN vs Hier A–D DQN**（算法族统一）？
 3. LLM warm-start 本阶段做不做、做到哪一层（建议仅 A/B 或离线示范）？
+
+
+
+# 8.12 确认
+并行制造的task的瓶颈原因要探究，有可能是gantry造成的，
+
+grantry只负责起落，AGV负责空间来往调度
+加入相似度，实现计算
