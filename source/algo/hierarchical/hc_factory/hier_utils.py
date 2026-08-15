@@ -81,6 +81,19 @@ def steps_per_min(global_step: int, wall_sec: float) -> float | None:
     return float(global_step) / (wall_sec / 60.0)
 
 
+def count_busy_agents(agent_group: dict | None) -> int:
+    """Count humans/robots currently assigned to a task (state != free)."""
+    if not isinstance(agent_group, dict):
+        return 0
+    n = 0
+    for ent in agent_group.values():
+        if not isinstance(ent, dict):
+            continue
+        if ent.get("state", "free") != "free":
+            n += 1
+    return n
+
+
 def detach_pre_to_cpu(pre: dict) -> dict:
     """Deep-copy preprocessed dict tensors to CPU without grad."""
     out: dict = {}

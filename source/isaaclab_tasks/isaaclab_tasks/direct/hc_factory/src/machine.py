@@ -368,9 +368,15 @@ class num08_workbench(Machine):
 class num07_gantry_group(Machine):
 
     ACTIVE_GANTRY_INDICES = CfgMachine["num07_gantry_group"]["active_gantry_indices"]
+    # Parking poses only for inactive cranes (empty when all 4 are active).
+    # Class-body comprehensions cannot see sibling class attrs → filter via CfgMachine.
     INVALID_GANTRY_PARKING_XY = {
-        2: torch.tensor([-46.0, 10.18675]),
-        3: torch.tensor([-42.0, 10.18675]),
+        idx: xy
+        for idx, xy in {
+            2: torch.tensor([-46.0, 10.18675]),
+            3: torch.tensor([-42.0, 10.18675]),
+        }.items()
+        if idx not in CfgMachine["num07_gantry_group"]["active_gantry_indices"]
     }
 
     def __init__(self, env_id: int, cuda_device: torch.device):
@@ -594,6 +600,9 @@ class num07_gantry_group(Machine):
                 subtasks["finished"][1] = True
             elif gantry_subtask == "carry_to_robot":
                 self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, gantry_index, "robot_start")
+            elif gantry_subtask == "go_to_goal_robot":
+                # Cross-zone unload: goal-zone crane to AGV parking at goal (unloaded).
+                self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, gantry_index, "robot_goal")
             elif gantry_subtask == "carry_to_goal_area":
                 self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, gantry_index, "goal")
             elif gantry_subtask == "move_to_goal_area":
@@ -635,6 +644,10 @@ class num07_gantry_group(Machine):
                 ][0]
             elif target_area_type == "robot_start":
                 self.state["target_area_id"][gantry_index] = task_record["subtasks_dict"]["start_area_ids"][
+                    "robot_parking_areas_ids"
+                ][0]
+            elif target_area_type == "robot_goal":
+                self.state["target_area_id"][gantry_index] = task_record["subtasks_dict"]["goal_area_ids"][
                     "robot_parking_areas_ids"
                 ][0]
             elif target_area_type == "goal":
@@ -690,6 +703,10 @@ class num07_gantry_group(Machine):
         joint_position: torch.Tensor,
     ) -> None:
         task_record["subtasks_dict"]["finished"][1] = True
+        # Allow mid-task release (cross-zone: free start crane, later re-acquire goal crane).
+        task_record["chosen_gantry_index"] = None
+        if task_record.get("goal_gantry_zone") is not None:
+            task_record["preferred_gantry_zone"] = task_record["goal_gantry_zone"]
         self.state["state"][chosen_gantry_index] = "free"
         self.state["ongoing_task_record_index"][chosen_gantry_index] = None
         self.state["target_area_id"][chosen_gantry_index] = None

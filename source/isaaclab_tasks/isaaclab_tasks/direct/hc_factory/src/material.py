@@ -262,18 +262,10 @@ class MaterialBatch:
         subtasks = task_record["subtasks_dict"]
         material_subtask = subtasks["material_states_in_subtasks"]
         ongoing_index = subtasks["ongoing_index"]
-        if ongoing_index == subtasks["num_subtasks"] - 1:
-            ## task done, set the finished task and ongoing task record index to none
-            if task_record["task_type"] == "processing":
-                if task_record["already_done_next_logistic_task"] == True:
-                    self.state["finished_task"] = task_record["next_logistic_task"]
-                else:
-                    self.state["finished_task"] = task_record["task"]
-            elif task_record["task_type"] == "logistic":
-                self.state["finished_task"] = task_record["task"]
-            else:
-                raise ValueError(f"Invalid task type: {task_record['task_type']}")
-            self.state["ongoing_task_record_index"] = None
+        # Do NOT finalize finished_task here when ongoing_index hits num_subtasks-1.
+        # Processing attaches outbound after the prefix last row; finalizing early clears
+        # ongoing_task_record_index and freezes storage_name / finished_task (dispatch deadlock).
+        # TaskManager finalizes material when the task record actually completes.
         all_materials = {**self.iter_raw_material_prims(), **self.iter_integrated_material_prims()}
         for material_type, material_prim in all_materials.items():
             material_name = f"num_{self.idx:02d}_{material_type}"
@@ -301,10 +293,14 @@ class MaterialBatch:
                 storage_name = "num07_gantry_group"
             elif material_state == "on_robot":
                 robot_name = task_record["robot"]
-                position = env_state_action_dict["rigid_prims"][robot_name]["position"].clone()
+                position = env_state_action_dict["rigid_prims"][robot_name]["position"].clone().to(
+                    self.cuda_device
+                )
                 position[0][2] = position[0][2] + 0.1
-                position += self.offset_for_AGV_placement
-                orientation = env_state_action_dict["rigid_prims"][robot_name]["orientation"].clone()
+                position += self.offset_for_AGV_placement.to(self.cuda_device)
+                orientation = env_state_action_dict["rigid_prims"][robot_name]["orientation"].clone().to(
+                    self.cuda_device
+                )
                 storage_name = robot_name
             elif (material_state == "on_goal_area" and (subtasks["material_goal_area"] in CfgMachine)) or \
                 (material_state == "on_machine"):
@@ -336,6 +332,24 @@ class MaterialBatch:
             env_state_action_dict["rigid_prims"][material_name]["position"] = position
             env_state_action_dict["rigid_prims"][material_name]["orientation"] = orientation
             self.state["submaterials"][material_type]["storage_name"] = storage_name
+
+    def finalize_task_done(self, task_record: dict) -> None:
+        """Commit finished_task / clear ongoing after TaskManager completes the record."""
+        finalize_material_batch_task_done(self.state, task_record)
+
+
+def finalize_material_batch_task_done(material_state: dict, task_record: dict) -> None:
+    """Write finished_task on the material batch dict (shared with env state)."""
+    if task_record["task_type"] == "processing":
+        if task_record.get("already_done_next_logistic_task") is True:
+            material_state["finished_task"] = task_record["next_logistic_task"]
+        else:
+            material_state["finished_task"] = task_record["task"]
+    elif task_record["task_type"] == "logistic":
+        material_state["finished_task"] = task_record["task"]
+    else:
+        raise ValueError(f"Invalid task type: {task_record['task_type']}")
+    material_state["ongoing_task_record_index"] = None
 
 
 class ProductWaterPipe(MaterialBatch):

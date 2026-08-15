@@ -365,11 +365,11 @@ CfgMachine = {
             "logistic_for_paint_rust_proof",
         ],
         "num_workstations": 4,
-        "active_gantry_indices": [0, 1],
+        "active_gantry_indices": [0, 1, 2, 3],
         "num_registration_parts": 1,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting", 4: "invalid"},
         "reset_state": {
-            "state": ["free", "free", "invalid", "invalid"],
+            "state": ["free", "free", "free", "free"],
             "ongoing_task_record_index": [None, None, None, None],
             "key_variables": {},
             "target_area_id": [None, None, None, None],

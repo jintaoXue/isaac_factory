@@ -79,7 +79,7 @@ CfgRoute = {
 # Optional init point ids from map points
 OptionalInitPointIds = {
     "human": [190, 191, 192, 193, 194, 195, 202, 203, 204, 205, 206, 207, 214, 215, 216, 217, 218, 219],
-    "robot": [236, 272],
+    "robot": [230, 237, 241, 271],
     "human_z": 0.13395,
     "robot_z": 0.13395,
 }

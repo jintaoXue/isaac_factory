@@ -191,7 +191,7 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
 
     single_env_parallel_producing_limit = 10
     human_number_upper_bound = 6
-    robot_upper_bound = 2
+    robot_upper_bound = 4
     material_batch_upper_bound = 16
     # RL episode horizon. Scale with CfgSubtaskPredefinedTimeGallery
     # (control_machine=200, material ops=50; up to 16 products, WIP ≤ parallel limit).

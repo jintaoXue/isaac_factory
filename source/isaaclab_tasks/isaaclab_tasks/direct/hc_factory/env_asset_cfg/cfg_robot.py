@@ -70,7 +70,7 @@ CfgRobot = {
 
 
 CfgRobotRegistrationInfos = {
-    "AGV": 2, #idx: 00-01
+    "AGV": 4,  # idx: 00-03 (matches USD robot_AGV_00..03)
 }
 
 RobotIdAppearance = {
@@ -84,6 +84,14 @@ RobotIdAppearance = {
         "num_01": {
             "color": "purple",
             "rgb_hint": (0.50, 0.10, 0.50),
+        },
+        "num_02": {
+            "color": "cyan",
+            "rgb_hint": (0.10, 0.75, 0.85),
+        },
+        "num_03": {
+            "color": "orange",
+            "rgb_hint": (0.95, 0.55, 0.10),
         },
     }
 }
