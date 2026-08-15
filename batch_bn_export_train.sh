@@ -4,22 +4,25 @@
 #
 # 组（只决定收哪些源文件夹）:
 #   OLD  old_{machine,human,logistics,material}2.0
-#   NORM new_norm10 + new_norm20
 #   I1   new_{dim}1.0
 #   I2   new_{dim}2.0
 #   I3   new_{dim}3.0
-#   ALL  上面五组
+#   EVT  事件较密：old_machine/logistics2.0 + new_machine1.0（不含 human / none）
+#   ALL  OLD+I1+I2+I3
+#
+# 无扰动对照是 bottleneck_dataset/norm，只做对照：./batch_bn_agg.sh NORM
+# 不要把 NORM 传给本脚本（会拒绝，避免进训练）。
 #
 # 输出标签:
-#   单组     old2.0 / norm / new1.0 / new2.0 / new3.0
-#   多组     用 _ 拼接，如 norm_new1.0
+#   单组     old2.0 / new1.0 / new2.0 / new3.0 / evt
+#   多组     用 _ 拼接，如 old2.0_new1.0
 #   ALL      all
 #   → raw_data/<tag>/episodes.npz
 #   → libcity/cache/model_cache/<tag>/BNPDFormer_best.pt
 #
 # 用法（仓库根目录，先 conda activate bn_pdformer）:
+#   ./batch_bn_export_train.sh EVT       # 推荐先跑：事件密子集
 #   ./batch_bn_export_train.sh OLD
-#   ./batch_bn_export_train.sh NORM I1
 #   ./batch_bn_export_train.sh ALL
 #   SKIP_EXISTING=1 ./batch_bn_export_train.sh OLD   # 已有 episodes.npz 则跳过导出，仍训练
 #   SKIP_TRAIN=1    ./batch_bn_export_train.sh OLD   # 只导出
@@ -31,7 +34,7 @@
 #   tmux new -s bn_train
 #   conda activate bn_pdformer
 #   cd ~/work/isaac_factory
-#   ./batch_bn_export_train.sh OLD
+#   ./batch_bn_export_train.sh EVT
 
 set -euo pipefail
 
@@ -46,18 +49,18 @@ DEVICE="${DEVICE:-cuda}"
 WINDOW_SIZE="${WINDOW_SIZE:-60}"
 
 DIMS=(machine human logistics material)
-ALL_GROUPS=(OLD NORM I1 I2 I3)
+ALL_GROUPS=(OLD I1 I2 I3)
 
 if [ $# -eq 0 ]; then
-    echo "用法: $0 <OLD|NORM|I1|I2|I3|ALL> [OLD|NORM|I1 ...]"
+    echo "用法: $0 <OLD|I1|I2|I3|EVT|ALL> [OLD|I1 ...]"
     echo "  选中的组合并成一份 raw_data/<标签>，再训一次"
     echo "  OLD:  old_*2.0"
-    echo "  NORM: new_norm10 / new_norm20"
     echo "  I1:   new_*1.0"
     echo "  I2:   new_*2.0"
     echo "  I3:   new_*3.0"
-    echo "  ALL:  五组合并 → raw_data/all"
-    echo "  多组例如 NORM I1 → raw_data/norm_new1.0"
+    echo "  EVT:  old_machine/logistics2.0 + new_machine1.0 → raw_data/evt"
+    echo "  ALL:  OLD+I1+I2+I3 → raw_data/all（不含 norm 对照）"
+    echo "  NORM / bottleneck_dataset/norm 只做无扰动对照，请用: ./batch_bn_agg.sh NORM"
     echo "  SKIP_EXISTING=1 跳过已有 episodes.npz 的导出；SKIP_TRAIN=1 只导出"
     echo "  wandb 默认开；WANDB=0 关闭。MAX_EPOCH / DEVICE 可覆盖"
     exit 1
@@ -69,11 +72,15 @@ for arg in "$@"; do
     if [ "$arg" = "ALL" ]; then
         WANT_ALL=1
         JOBS+=("${ALL_GROUPS[@]}")
-    elif [ "$arg" = "OLD" ] || [ "$arg" = "NORM" ] || [ "$arg" = "I1" ] || [ "$arg" = "I2" ] || [ "$arg" = "I3" ]; then
+    elif [ "$arg" = "NORM" ]; then
+        echo "错误: NORM / bottleneck_dataset/norm 只做无扰动对照，不进训练。"
+        echo "  聚合请用: ./batch_bn_agg.sh NORM"
+        exit 1
+    elif [ "$arg" = "OLD" ] || [ "$arg" = "I1" ] || [ "$arg" = "I2" ] || [ "$arg" = "I3" ] || [ "$arg" = "EVT" ]; then
         JOBS+=("$arg")
     else
         echo "错误: 无法识别参数 '$arg'"
-        echo "用法: $0 <OLD|NORM|I1|I2|I3|ALL>"
+        echo "用法: $0 <OLD|I1|I2|I3|EVT|ALL>"
         exit 1
     fi
 done
@@ -97,10 +104,10 @@ else
     for id in "${JOBS[@]}"; do
         case $id in
             OLD) part="old2.0" ;;
-            NORM) part="norm" ;;
             I1) part="new1.0" ;;
             I2) part="new2.0" ;;
             I3) part="new3.0" ;;
+            EVT) part="evt" ;;
             *) part="$id" ;;
         esac
         if [ -z "$TAG" ]; then
@@ -118,10 +125,6 @@ group_runs() {
         OLD)
             for d in "${DIMS[@]}"; do echo "old_${d}2.0"; done
             ;;
-        NORM)
-            echo "new_norm10"
-            echo "new_norm20"
-            ;;
         I1)
             for d in "${DIMS[@]}"; do echo "new_${d}1.0"; done
             ;;
@@ -130,6 +133,11 @@ group_runs() {
             ;;
         I3)
             for d in "${DIMS[@]}"; do echo "new_${d}3.0"; done
+            ;;
+        EVT)
+            echo "old_machine2.0"
+            echo "old_logistics2.0"
+            echo "new_machine1.0"
             ;;
     esac
 }

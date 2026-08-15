@@ -160,7 +160,11 @@ class BNPDFormer(nn.Module):
         self.cont_gru = ContinuousGRU(
             self.embed_dim, n_flow_layers=int(config.get("n_flow_layers", 2))
         )
-        self.intensity = PeriodicGatedIntensity(self.embed_dim, hidden=hidden)
+        self.intensity = PeriodicGatedIntensity(
+            self.embed_dim,
+            hidden=hidden,
+            gate_floor=float(config.get("intensity_gate_floor", 0.1)),
+        )
         # seed state when a node has no historical events: use last encoder state
         self.empty_event_proj = nn.Linear(self.embed_dim, self.embed_dim)
 
@@ -310,25 +314,50 @@ class BNPDFormer(nn.Module):
         loss_event = out["score_pred"].sum() * 0.0
         nll_v = loss_event
         dur_v = loss_event
-        if self.use_stgnpp and "next_mask" in batch and batch["next_mask"].sum() > 0:
+        nll_arr = loss_event
+        nll_surv = loss_event
+        if self.use_stgnpp and "h_event" in out:
             h_evt = out["h_event"]
             phase = batch["phase"]
             if phase.dim() == 2:
                 phase_exp = phase.unsqueeze(1).expand(-1, self.num_nodes, -1)
             else:
                 phase_exp = phase
-            # flatten valid next-event nodes
-            m = batch["next_mask"] > 0.5
-            loss_event, stats_e = self.intensity.nll_and_duration(
-                h_evt[m],
-                batch["next_tau"][m].clamp_min(1e-3),
-                batch["next_dur"][m],
-                torch.ones(m.sum(), device=m.device),
-                phase_exp[m],
-                dur_weight=1.0,
-            )
-            nll_v = stats_e["nll"]
-            dur_v = stats_e["dur_mae"]
+            next_mask = batch["next_mask"] > 0.5
+            if "surv_mask" in batch:
+                surv_mask = batch["surv_mask"] > 0.5
+            else:
+                surv_mask = ~next_mask
+            n_pos = int(next_mask.sum().item())
+            n_surv = int(surv_mask.sum().item())
+            if n_pos > 0:
+                _loss_arr, stats_e = self.intensity.nll_and_duration(
+                    h_evt[next_mask],
+                    batch["next_tau"][next_mask].clamp_min(1e-3),
+                    batch["next_dur"][next_mask],
+                    torch.ones(n_pos, device=h_evt.device),
+                    phase_exp[next_mask],
+                    dur_weight=1.0,
+                )
+                nll_arr = stats_e["nll"]
+                dur_v = stats_e["dur_mae"]
+            if n_surv > 0:
+                lam_h = self.intensity.cumulative(
+                    h_evt[surv_mask],
+                    batch["next_tau"][surv_mask].clamp_min(1e-3),
+                    phase_exp[surv_mask],
+                )
+                nll_surv = lam_h.mean()
+            # Equal-weight the two means so ~33 censored nodes do not drown
+            # the handful of in-horizon arrivals.
+            if n_pos > 0 and n_surv > 0:
+                nll_v = 0.5 * nll_arr + 0.5 * nll_surv
+            elif n_pos > 0:
+                nll_v = nll_arr
+            elif n_surv > 0:
+                nll_v = nll_surv
+            if n_pos + n_surv > 0:
+                loss_event = nll_v + dur_v
 
         total = (
             self.w_score * loss_score
@@ -347,6 +376,8 @@ class BNPDFormer(nn.Module):
             "loss_event": float(loss_event.detach().cpu()) if torch.is_tensor(loss_event) else float(loss_event),
             "loss_cause": float(loss_cause.detach().cpu()) if torch.is_tensor(loss_cause) else float(loss_cause),
             "nll": float(nll_v.detach().cpu()) if torch.is_tensor(nll_v) else float(nll_v),
+            "nll_arrival": float(nll_arr.detach().cpu()) if torch.is_tensor(nll_arr) else float(nll_arr),
+            "nll_surv": float(nll_surv.detach().cpu()) if torch.is_tensor(nll_surv) else float(nll_surv),
             "dur_mae": float(dur_v.detach().cpu()) if torch.is_tensor(dur_v) else float(dur_v),
         }
         return total, stats

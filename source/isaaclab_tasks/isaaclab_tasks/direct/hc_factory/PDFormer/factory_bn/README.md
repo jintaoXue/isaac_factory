@@ -30,7 +30,7 @@ Artifacts:
 |------|------|
 | `raw_data/<tag>/episodes.npz` | Primary training tensors |
 | `raw_data/<tag>/FactoryBN.geo/.rel/.dyna` | Optional LibCity atomic files |
-| `libcity/cache/model_cache/<tag>/BNPDFormer_best.pt` | Best checkpoint |
+| `libcity/cache/model_cache/<tag>/BNPDFormer_best.pt` | Best **score_mae** checkpoint |
 
 See repo root doc: `06.瓶颈预测模型_PDFormer与点过程适配.md`.
 See borrowing map: `factory_bn/BORROWING.md`.

@@ -99,6 +99,7 @@ class FactoryBNWindowDataset(Dataset):
             "next_tau": torch.from_numpy(s["next_tau"]),
             "next_dur": torch.from_numpy(s["next_dur"]),
             "next_mask": torch.from_numpy(s["next_mask"]),
+            "surv_mask": torch.from_numpy(s["surv_mask"]),
             "phase": torch.from_numpy(s["phase"]),
         }
 
@@ -162,14 +163,16 @@ def _build_samples(
     horizon_windows: int,
     max_hist_events: int = 8,
     window_size_s: float = 60.0,
+    horizon_s: float = 180.0,
 ) -> list[dict[str, Any]]:
     """Create causal windows with STGNPP event histories.
 
     Absolute episode time index ``t`` is the first future step.
     History covers ``[t-input_window, t)``.
     Historical events: start_ti in that range (mapped to relative idx 0..Tin-1).
-    Next event: first event with start_ti >= t; tau = start_s - window_start[t-1]
-    (or start_ti - (t-1) in windows). Censor if none.
+    Next event: first event with start_ti >= t; tau in minutes from
+    ``window_start[t-1]``. Arrival NLL only if that tau is within
+    ``horizon_s``; otherwise the node is right-censored at H (survival Λ(H)).
     """
     samples: list[dict[str, Any]] = []
     for ep in episodes:
@@ -214,22 +217,29 @@ def _build_samples(
 
             padded = _pad_events(nodes, idxs, durs, taus, n_nodes, max_hist_events)
 
-            # next event per node after label time
-            next_tau = np.full((n_nodes,), -1.0, dtype=np.float32)
+            # Next event per node after label time, censored at the will horizon.
+            # tau / duration are in minutes to match STGNPP intensity units.
+            horizon_min = max(float(horizon_s), 1.0) / 60.0
+            next_tau = np.full((n_nodes,), horizon_min, dtype=np.float32)
             next_dur = np.zeros((n_nodes,), dtype=np.float32)
             next_mask = np.zeros((n_nodes,), dtype=np.float32)
+            surv_mask = np.ones((n_nodes,), dtype=np.float32)
             ref_s = float(wstart[label_idx])
+            seen_next: set[int] = set()
             for k in range(len(ev_node)):
                 ti_abs = int(ev_ti[k])
                 if ti_abs < t:
                     continue
                 ni = int(ev_node[k])
-                if next_mask[ni] > 0:
-                    continue  # already have next
+                if ni in seen_next:
+                    continue
+                seen_next.add(ni)
                 tau_min = max(float(ev_start_s[k]) - ref_s, 1e-3) / 60.0
-                next_tau[ni] = tau_min
-                next_dur[ni] = float(ev_dur[k]) / 60.0
-                next_mask[ni] = 1.0
+                if tau_min <= horizon_min + 1e-6:
+                    next_tau[ni] = tau_min
+                    next_dur[ni] = float(ev_dur[k]) / 60.0
+                    next_mask[ni] = 1.0
+                    surv_mask[ni] = 0.0
 
             # episode phase proxies for periodic gate: [time_frac, day_frac≈0]
             phase = np.array(
@@ -251,6 +261,7 @@ def _build_samples(
                     "next_tau": next_tau,
                     "next_dur": next_dur,
                     "next_mask": next_mask,
+                    "surv_mask": surv_mask,
                     "phase": phase,
                 }
             )
@@ -299,6 +310,7 @@ def build_dataloaders(
         horizon_windows=horizon_windows,
         max_hist_events=max_hist_events,
         window_size_s=window_size,
+        horizon_s=horizon_s,
     )
     if not samples:
         raise RuntimeError("No training samples; check episode length vs input_window")
@@ -355,9 +367,11 @@ def build_dataloaders(
         "n_test": len(test_samples),
         "window_size_s": window_size,
         "horizon_windows": horizon_windows,
+        "horizon_s": float(horizon_s),
         "train_feature_windows": x_cat,
         "max_hist_events": max_hist_events,
         "n_event_positive_train": int(sum(s["next_mask"].sum() for s in train_samples)),
+        "n_event_surv_train": int(sum(s["surv_mask"].sum() for s in train_samples)),
         "cause_classes": bundle["cause_classes"],
         "n_cause_classes": len(bundle["cause_classes"]),
         "cause_class_weight": cause_w,

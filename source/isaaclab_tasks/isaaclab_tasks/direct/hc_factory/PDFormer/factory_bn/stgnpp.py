@@ -128,10 +128,14 @@ class PeriodicGatedIntensity(nn.Module):
     Λ is produced by MLP; intensity λ = ∂Λ/∂τ via autograd for NLL.
     Gate uses episode-phase proxies for (time-of-day, day-of-week) when
     calendar time is unavailable in simulation.
+
+    ``gate_floor`` keeps λ away from the 1e-6 NLL clamp when the sigmoid
+    gate would otherwise zero the cumulative intensity.
     """
 
-    def __init__(self, dim: int, hidden: int = 64):
+    def __init__(self, dim: int, hidden: int = 64, gate_floor: float = 0.1):
         super().__init__()
+        self.gate_floor = float(gate_floor)
         self.f_l = nn.Sequential(
             nn.Linear(dim + 1, hidden),
             nn.Softplus(),
@@ -140,6 +144,9 @@ class PeriodicGatedIntensity(nn.Module):
             nn.Linear(hidden, 1),
             nn.Softplus(),
         )
+        last_linear = self.f_l[-2]
+        assert isinstance(last_linear, nn.Linear)
+        nn.init.constant_(last_linear.bias, 1.0)
         self.f_p = nn.Sequential(
             nn.Linear(2, hidden),
             nn.ReLU(),
@@ -163,7 +170,9 @@ class PeriodicGatedIntensity(nn.Module):
         returns Λ: (...,)
         """
         base = self.f_l(torch.cat([h, tau.unsqueeze(-1)], dim=-1)).squeeze(-1)
-        gate = torch.sigmoid(self.f_p(phase)).squeeze(-1)
+        raw_gate = torch.sigmoid(self.f_p(phase)).squeeze(-1)
+        floor = self.gate_floor
+        gate = floor + (1.0 - floor) * raw_gate
         return base * gate
 
     def duration(self, h: torch.Tensor) -> torch.Tensor:

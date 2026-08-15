@@ -4,12 +4,12 @@
 #
 # 文件夹约定（采集结束后请把时间戳目录改成这些名字）:
 #   old_{machine,human,logistics,material}2.0
-#   new_norm10 / new_norm20
+#   norm                         # 无扰动对照（只聚合，不进训练）
 #   new_{machine,human,logistics,material}{1.0,2.0,3.0}
 #
 # 用法（仓库根目录；python 能 import bn_agg 即可，推荐 conda activate env_isaaclab）:
 #   ./batch_bn_agg.sh OLD          # 旧四维 I=2.0
-#   ./batch_bn_agg.sh NORM         # new_norm10 + new_norm20
+#   ./batch_bn_agg.sh NORM         # norm（对照）
 #   ./batch_bn_agg.sh I1           # 新四维 I=1.0（缺目录则跳过）
 #   ./batch_bn_agg.sh I2           # 新四维 I=2.0
 #   ./batch_bn_agg.sh I3           # 新四维 I=3.0
@@ -36,7 +36,7 @@ DIMS=(machine human logistics material)
 if [ $# -eq 0 ]; then
     echo "用法: $0 <OLD|NORM|I1|I2|I3|ALL|文件夹名> [I1|I2|...|文件夹名 ...]"
     echo "  OLD: old_machine2.0 / old_human2.0 / old_logistics2.0 / old_material2.0"
-    echo "  NORM: new_norm10 / new_norm20"
+    echo "  NORM: norm（无扰动对照，只聚合不训练）"
     echo "  I1:  new_{dim}1.0"
     echo "  I2:  new_{dim}2.0"
     echo "  I3:  new_{dim}3.0"
@@ -56,8 +56,7 @@ expand_job() {
             done
             ;;
         NORM)
-            echo "new_norm10"
-            echo "new_norm20"
+            echo "norm"
             ;;
         I1)
             local d

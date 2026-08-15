@@ -64,6 +64,7 @@ def _jsonable_cfg(cfg: dict[str, Any], data_feature: dict[str, Any]) -> dict[str
     out["n_val"] = int(data_feature["n_val"])
     out["n_test"] = int(data_feature["n_test"])
     out["n_event_positive_train"] = int(data_feature.get("n_event_positive_train") or 0)
+    out["n_event_surv_train"] = int(data_feature.get("n_event_surv_train") or 0)
     out["n_cause_labeled_train"] = int(data_feature.get("n_cause_labeled_train") or 0)
     out["n_cause_classes"] = int(data_feature.get("n_cause_classes") or 0)
     out["cause_majority"] = int(data_feature.get("cause_majority", -1))
@@ -117,6 +118,45 @@ def _wandb_log(parts: dict[str, dict[str, Any]], epoch: int) -> None:
     wandb.log(payload, step=epoch)
 
 
+def _average_precision(y_true: torch.Tensor, y_score: torch.Tensor) -> float:
+    """Non-interpolated AP (sklearn-style) for a 1-d binary label / score."""
+    y = y_true.reshape(-1).float()
+    s = y_score.reshape(-1).float()
+    n_pos = float(y.sum().item())
+    if n_pos <= 0 or y.numel() == 0:
+        return 0.0
+    try:
+        order = torch.argsort(s, descending=True, stable=True)
+    except TypeError:
+        order = torch.argsort(s, descending=True)
+    y = y[order]
+    tp = torch.cumsum(y, dim=0)
+    prec = tp / torch.arange(1, y.numel() + 1, device=y.device, dtype=torch.float32)
+    return float((prec * y).sum().item() / n_pos)
+
+
+def _will_metrics(y_true: torch.Tensor, y_prob: torch.Tensor, thresh: float = 0.5) -> dict[str, float]:
+    y = y_true.reshape(-1).float()
+    p = y_prob.reshape(-1).float()
+    hat = (p >= thresh).float()
+    tp = float(((hat == 1) & (y == 1)).sum().item())
+    fp = float(((hat == 1) & (y == 0)).sum().item())
+    fn = float(((hat == 0) & (y == 1)).sum().item())
+    tn = float(((hat == 0) & (y == 0)).sum().item())
+    prec = tp / max(tp + fp, 1.0)
+    rec = tp / max(tp + fn, 1.0)
+    f1 = (2.0 * prec * rec / max(prec + rec, 1e-8)) if (prec + rec) > 0 else 0.0
+    acc = (tp + tn) / max(tp + fp + fn + tn, 1.0)
+    return {
+        "will_acc": acc,
+        "will_precision": prec,
+        "will_recall": rec,
+        "will_f1": f1,
+        "will_ap": _average_precision(y, p),
+        "will_pos_rate": float(y.mean().item()) if y.numel() else 0.0,
+    }
+
+
 def _epoch_loop(
     model: BNPDFormer,
     loader: DataLoader,
@@ -132,12 +172,12 @@ def _epoch_loop(
 
     totals: dict[str, float] = {}
     n = 0
-    correct_will = 0
-    total_will = 0
     score_mae = 0.0
     correct_cause = 0
     total_cause = 0
     majority_hit = 0
+    will_true: list[torch.Tensor] = []
+    will_prob: list[torch.Tensor] = []
 
     for batch in loader:
         batch = _move_batch(batch, device)
@@ -153,9 +193,8 @@ def _epoch_loop(
                 loss, stats = model.calculate_loss(batch)
             with torch.no_grad():
                 pred = model.predict(batch)
-                will_hat = (pred["will_prob"] >= 0.5).float()
-                correct_will += int((will_hat == batch["will"]).sum().item())
-                total_will += batch["will"].numel()
+                will_true.append(batch["will"].detach().cpu())
+                will_prob.append(pred["will_prob"].detach().cpu())
                 score_mae += float(
                     torch.mean(torch.abs(pred["score_pred"] - batch["y_score"])).item()
                 ) * batch["X"].shape[0]
@@ -174,14 +213,15 @@ def _epoch_loop(
         n += 1
 
     out = {k: v / max(n, 1) for k, v in totals.items()}
-    if not train and total_will > 0:
-        out["will_acc"] = correct_will / total_will
+    if not train:
         out["score_mae"] = score_mae / max(len(loader.dataset), 1)
-    if not train and total_cause > 0:
-        out["cause_acc"] = correct_cause / total_cause
-        out["cause_n"] = float(total_cause)
-        if cause_majority >= 0:
-            out["cause_majority_acc"] = majority_hit / total_cause
+        if will_true:
+            out.update(_will_metrics(torch.cat(will_true), torch.cat(will_prob)))
+        if total_cause > 0:
+            out["cause_acc"] = correct_cause / total_cause
+            out["cause_n"] = float(total_cause)
+            if cause_majority >= 0:
+                out["cause_majority_acc"] = majority_hit / total_cause
     return out
 
 
@@ -242,16 +282,47 @@ def train(cfg: dict[str, Any]) -> Path:
         )
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    best_val = float("inf")
+    best_mae = float("inf")
+    best_val_loss = float("inf")
     best_path = save_dir / "BNPDFormer_best.pt"
     stale = 0
+    last_epoch = 0
+
+    def _ckpt_payload(epoch: int, val_metrics: dict[str, float]) -> dict[str, Any]:
+        return {
+            "model": model.state_dict(),
+            "config": {k: (str(v) if k == "device" else v) for k, v in cfg.items()},
+            "data_meta": {
+                "resource_ids": data_feature["resource_ids"],
+                "resource_types": data_feature["resource_types"],
+                "num_nodes": data_feature["num_nodes"],
+                "feature_dim": data_feature["feature_dim"],
+                "cause_classes": data_feature.get("cause_classes"),
+                "n_cause_classes": data_feature.get("n_cause_classes"),
+                "cause_majority": cause_majority,
+                "pattern_keys": pattern_keys,
+                "adj_mx": data_feature["adj_mx"],
+                "sh_mx": data_feature["sh_mx"],
+                "sem_mx": data_feature["sem_mx"],
+                "feature_scaler_mean": data_feature["feature_scaler"].mean,
+                "feature_scaler_std": data_feature["feature_scaler"].std,
+                "score_scaler_mean": data_feature["score_scaler"].mean,
+                "score_scaler_std": data_feature["score_scaler"].std,
+            },
+            "best_score_mae": best_mae,
+            "best_val_loss": best_val_loss,
+            "ckpt_metric": "score_mae",
+            "epoch": epoch,
+            "val_metrics": {k: float(v) for k, v in val_metrics.items() if isinstance(v, (int, float))},
+        }
 
     print(
         f"[train] device={device} N={data_feature['num_nodes']} F={data_feature['feature_dim']} "
         f"train/val/test={data_feature['n_train']}/{data_feature['n_val']}/{data_feature['n_test']} "
         f"event+train={data_feature.get('n_event_positive_train', 0)} "
+        f"event_surv_train={data_feature.get('n_event_surv_train', 0)} "
         f"cause+train={data_feature.get('n_cause_labeled_train', 0)} "
-        f"pattern_keys={pattern_keys.shape}"
+        f"ckpt=score_mae pattern_keys={pattern_keys.shape}"
     )
     cause_majority = int(data_feature.get("cause_majority", -1))
     counts = data_feature.get("cause_train_counts")
@@ -277,68 +348,51 @@ def train(cfg: dict[str, Any]) -> Path:
                 model, val_loader, None, device, train=False, cause_majority=cause_majority
             )
             dt = time.time() - t0
+            last_epoch = epoch
             print(
                 f"epoch {epoch:03d}/{max_epoch}  "
                 f"train_loss={tr['loss']:.4f} (score={tr['loss_score']:.4f} "
                 f"will={tr['loss_will']:.4f} cause={tr.get('loss_cause', 0):.4f} "
-                f"event={tr.get('loss_event', 0):.4f})  "
-                f"val_loss={va['loss']:.4f} will_acc={va.get('will_acc', 0):.3f} "
-                f"cause_acc={va.get('cause_acc', 0):.3f} "
-                f"cause_maj={va.get('cause_majority_acc', 0):.3f} "
-                f"score_mae={va.get('score_mae', 0):.4f}  ({dt:.1f}s)"
+                f"event={tr.get('loss_event', 0):.4f} nll={tr.get('nll', 0):.3f})  "
+                f"val_loss={va['loss']:.4f} score_mae={va.get('score_mae', 0):.4f} "
+                f"will_f1={va.get('will_f1', 0):.3f} will_p={va.get('will_precision', 0):.3f} "
+                f"will_r={va.get('will_recall', 0):.3f} will_ap={va.get('will_ap', 0):.3f} "
+                f"nll={va.get('nll', 0):.3f}  ({dt:.1f}s)"
             )
 
-            if va["loss"] < best_val - 1e-5:
-                best_val = va["loss"]
+            mae = float(va.get("score_mae", float("inf")))
+            if mae < best_mae - 1e-6:
+                best_mae = mae
                 stale = 0
-                torch.save(
-                    {
-                        "model": model.state_dict(),
-                        "config": {k: (str(v) if k == "device" else v) for k, v in cfg.items()},
-                        "data_meta": {
-                            "resource_ids": data_feature["resource_ids"],
-                            "resource_types": data_feature["resource_types"],
-                            "num_nodes": data_feature["num_nodes"],
-                            "feature_dim": data_feature["feature_dim"],
-                            "cause_classes": data_feature.get("cause_classes"),
-                            "n_cause_classes": data_feature.get("n_cause_classes"),
-                            "cause_majority": cause_majority,
-                            "pattern_keys": pattern_keys,
-                            "adj_mx": data_feature["adj_mx"],
-                            "sh_mx": data_feature["sh_mx"],
-                            "sem_mx": data_feature["sem_mx"],
-                            "feature_scaler_mean": data_feature["feature_scaler"].mean,
-                            "feature_scaler_std": data_feature["feature_scaler"].std,
-                            "score_scaler_mean": data_feature["score_scaler"].mean,
-                            "score_scaler_std": data_feature["score_scaler"].std,
-                        },
-                        "best_val_loss": best_val,
-                        "epoch": epoch,
-                    },
-                    best_path,
-                )
-                print(f"  saved best -> {best_path}")
+                torch.save(_ckpt_payload(epoch, va), best_path)
+                print(f"  saved best score_mae={best_mae:.4f} -> {best_path}")
                 if wandb_run is not None:
                     import wandb
 
-                    wandb.summary["best_val_loss"] = best_val
+                    wandb.summary["best_score_mae"] = best_mae
                     wandb.summary["best_epoch"] = epoch
             else:
                 stale += 1
+
+            loss_v = float(va.get("loss", float("inf")))
+            if loss_v < best_val_loss - 1e-5:
+                best_val_loss = loss_v
 
             if wandb_run is not None:
                 _wandb_log(
                     {
                         "Train": {**tr, "epoch_sec": dt},
-                        "Val": {**va, "best_loss": best_val},
+                        "Val": {**va, "best_score_mae": best_mae, "best_loss": best_val_loss},
                     },
                     epoch,
                 )
 
             if stale >= patience:
-                print(f"early stop at epoch {epoch}")
+                print(f"early stop at epoch {epoch} (score_mae patience={patience})")
                 break
 
+        if not best_path.is_file():
+            raise SystemExit("No checkpoint written; validation score_mae missing?")
         try:
             ckpt = torch.load(best_path, map_location=device, weights_only=False)
         except TypeError:
@@ -348,18 +402,23 @@ def train(cfg: dict[str, Any]) -> Path:
             model, test_loader, None, device, train=False, cause_majority=cause_majority
         )
         print(
-            f"[test] loss={te['loss']:.4f} will_acc={te.get('will_acc', 0):.3f} "
-            f"cause_acc={te.get('cause_acc', 0):.3f} "
-            f"cause_maj={te.get('cause_majority_acc', 0):.3f} "
-            f"score_mae={te.get('score_mae', 0):.4f}"
+            f"[test] loss={te['loss']:.4f} score_mae={te.get('score_mae', 0):.4f} "
+            f"will_f1={te.get('will_f1', 0):.3f} will_p={te.get('will_precision', 0):.3f} "
+            f"will_r={te.get('will_recall', 0):.3f} will_ap={te.get('will_ap', 0):.3f} "
+            f"nll={te.get('nll', 0):.3f} cause_acc={te.get('cause_acc', 0):.3f}"
         )
         metrics_path = save_dir / "last_metrics.json"
         metrics_path.write_text(
             json.dumps(
                 {
-                    "val_best": best_val,
+                    "ckpt_metric": "score_mae",
+                    "val_best_score_mae": best_mae,
+                    "val_best_loss": best_val_loss,
+                    "best_epoch": int(ckpt.get("epoch") or 0),
                     "test": te,
                     "n_train_windows_used": int(train_windows.shape[0]),
+                    "n_event_positive_train": int(data_feature.get("n_event_positive_train") or 0),
+                    "n_event_surv_train": int(data_feature.get("n_event_surv_train") or 0),
                 },
                 indent=2,
             ),
@@ -368,12 +427,15 @@ def train(cfg: dict[str, Any]) -> Path:
         if wandb_run is not None:
             import wandb
 
-            last_epoch = int(ckpt.get("epoch") or 0)
-            _wandb_log({"Test": te}, last_epoch)
+            log_epoch = last_epoch if last_epoch > 0 else int(ckpt.get("epoch") or 0)
+            _wandb_log({"Test": te}, log_epoch)
             wandb.summary["test_loss"] = te.get("loss")
             wandb.summary["test_will_acc"] = te.get("will_acc")
+            wandb.summary["test_will_f1"] = te.get("will_f1")
+            wandb.summary["test_will_ap"] = te.get("will_ap")
             wandb.summary["test_cause_acc"] = te.get("cause_acc")
             wandb.summary["test_score_mae"] = te.get("score_mae")
+            wandb.summary["test_nll"] = te.get("nll")
             wandb.save(str(best_path))
             wandb.save(str(metrics_path))
     finally:
