@@ -23,7 +23,7 @@
 #   ./batch_bn_export_train.sh ALL
 #   SKIP_EXISTING=1 ./batch_bn_export_train.sh OLD   # 已有 episodes.npz 则跳过导出，仍训练
 #   SKIP_TRAIN=1    ./batch_bn_export_train.sh OLD   # 只导出
-#   WANDB=1         ./batch_bn_export_train.sh OLD   # 打开 wandb
+#   WANDB=0         ./batch_bn_export_train.sh OLD   # 关掉 wandb（默认开）
 #
 # 训练不要和 Isaac 采集抢同一张 GPU。
 #
@@ -40,7 +40,7 @@ DATA_ROOT="${ROOT}/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output
 PDFORMER="${ROOT}/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/PDFormer"
 SKIP_EXISTING="${SKIP_EXISTING:-0}"
 SKIP_TRAIN="${SKIP_TRAIN:-0}"
-WANDB="${WANDB:-0}"
+WANDB="${WANDB:-1}"
 MAX_EPOCH="${MAX_EPOCH:-50}"
 DEVICE="${DEVICE:-cuda}"
 WINDOW_SIZE="${WINDOW_SIZE:-60}"
@@ -59,7 +59,7 @@ if [ $# -eq 0 ]; then
     echo "  ALL:  五组合并 → raw_data/all"
     echo "  多组例如 NORM I1 → raw_data/norm_new1.0"
     echo "  SKIP_EXISTING=1 跳过已有 episodes.npz 的导出；SKIP_TRAIN=1 只导出"
-    echo "  WANDB=1 打开 wandb；MAX_EPOCH / DEVICE 可覆盖"
+    echo "  wandb 默认开；WANDB=0 关闭。MAX_EPOCH / DEVICE 可覆盖"
     exit 1
 fi
 
