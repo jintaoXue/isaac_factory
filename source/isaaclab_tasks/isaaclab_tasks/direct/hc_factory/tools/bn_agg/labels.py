@@ -165,7 +165,7 @@ def _coalesce_per_node_score_events(
     score_threshold: float,
     min_event_windows: int,
 ) -> list[dict]:
-    """Merge consecutive windows where a given resource's own score is over threshold."""
+    """Merge consecutive windows where this resource is a turning-point (sparse)."""
     rid_type: dict[str, str] = {}
     for rs in windows.values():
         for r in rs:
@@ -225,11 +225,13 @@ def build_labels_and_events(
 ) -> tuple[list[dict], list[dict]]:
     """Window-level labels + bottleneck events for PDFormer / STGNPP.
 
-    Events (per node, onsets not merged):
-      1) consecutive hot windows: turning-point, momentary active-period, or
-         high score with absolute activity;
-      2) completed L2 disturbance intervals (own onset on the mapped node).
-    ``bottleneck_node_t`` prefers momentary BN, then turning-point, else score argmax.
+    Events (per node, onsets not merged) — dual path:
+      PDFormer uses dense ``bottleneck_score_s`` on every node/window.
+      STGNPP uses sparse events only:
+        1) consecutive turning-point windows (TPM shift of constraint);
+        2) completed L2 disturbance intervals (own onset; not merged with 1).
+      Inventory, routine stall, window-peak and momentary BN are features only.
+    ``bottleneck_node_t`` prefers TP-hot, then L2-active, then momentary, else score argmax.
     Graph-level ``will_bottleneck`` / ``future_bottleneck_object_id`` use the
     earliest event in (t, t+H] (PDFormer will/mark heads).
     """
@@ -250,15 +252,22 @@ def build_labels_and_events(
 
         window_meta: dict[int, dict] = {}
         for wi, rs in sorted(windows.items()):
-            momentary = [r for r in rs if int(r.get("is_momentary_bn") or 0)]
+            hot = [r for r in rs if row_is_hot(r, score_threshold)]
+            l2 = [r for r in rs if float(r.get("disturbance_active_s") or 0) > 0]
             turning = [r for r in rs if int(r.get("is_turning_point") or 0)]
-            if momentary:
-                best = max(momentary, key=lambda x: x["current_active_duration_s"])
+            momentary = [r for r in rs if int(r.get("is_momentary_bn") or 0)]
+            if hot:
+                best = max(hot, key=lambda x: x["bottleneck_score_s"])
+            elif l2:
+                best = max(l2, key=lambda x: x["bottleneck_score_s"])
             elif turning:
                 best = max(turning, key=lambda x: x["bottleneck_score_s"])
+            elif momentary:
+                best = max(momentary, key=lambda x: x["current_active_duration_s"])
             else:
                 best = max(rs, key=lambda x: x["bottleneck_score_s"])
-            n_hot_nodes = sum(1 for r in rs if row_is_hot(r, score_threshold))
+            hot_ids = {r["resource_id"] for r in hot} | {r["resource_id"] for r in l2}
+            n_hot_nodes = len(hot_ids)
             window_meta[wi] = {
                 "window_index": wi,
                 "window_start_s": rs[0]["window_start_s"],
@@ -308,7 +317,8 @@ def build_labels_and_events(
                 tts = ""
                 dur = ""
 
-            # Heuristic root cause; prefer disturbance type when L2 overlaps this window
+            # Heuristic root cause; prefer disturbance type when L2 overlaps this window.
+            # Class names must match factory_bn.causes.ROOT_CAUSE_CLASSES (A3 head).
             reason = ""
             for ev in events:
                 if ev.get("event_source") == "disturbance_log" and _intervals_overlap(

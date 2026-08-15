@@ -6,6 +6,7 @@ Example::
     python -m factory_bn.export_dataset \\
         --run_dir ../output/bottleneck_dataset/18_materials
     python -m factory_bn.train --config factory_bn/configs/FactoryBN.json --max_epoch 5
+    python -m factory_bn.train --config factory_bn/configs/FactoryBN.json --wandb_activate
 """
 
 from __future__ import annotations
@@ -37,12 +38,87 @@ def _move_batch(batch: dict[str, torch.Tensor], device: torch.device) -> dict[st
     return {k: v.to(device) if torch.is_tensor(v) else v for k, v in batch.items()}
 
 
+def _jsonable_cfg(cfg: dict[str, Any], data_feature: dict[str, Any]) -> dict[str, Any]:
+    """Hyper-params + data sizes for wandb.config (no tensors)."""
+    out: dict[str, Any] = {}
+    for k, v in cfg.items():
+        if k == "device":
+            out[k] = str(v)
+            continue
+        if isinstance(v, (str, int, float, bool)) or v is None:
+            out[k] = v
+        elif isinstance(v, (list, dict)):
+            try:
+                json.dumps(v)
+            except TypeError:
+                continue
+            out[k] = v
+    out["num_nodes"] = int(data_feature["num_nodes"])
+    out["feature_dim"] = int(data_feature["feature_dim"])
+    out["n_train"] = int(data_feature["n_train"])
+    out["n_val"] = int(data_feature["n_val"])
+    out["n_test"] = int(data_feature["n_test"])
+    out["n_event_positive_train"] = int(data_feature.get("n_event_positive_train") or 0)
+    out["n_cause_labeled_train"] = int(data_feature.get("n_cause_labeled_train") or 0)
+    out["n_cause_classes"] = int(data_feature.get("n_cause_classes") or 0)
+    out["cause_majority"] = int(data_feature.get("cause_majority", -1))
+    return out
+
+
+def _wandb_enabled(cfg: dict[str, Any]) -> bool:
+    return bool(cfg.get("wandb_activate"))
+
+
+def _init_wandb(cfg: dict[str, Any], data_feature: dict[str, Any]) -> Any:
+    """Same entry style as repo-root ``train.py`` (project / name / resume=allow)."""
+    try:
+        import wandb
+    except ImportError as exc:
+        raise ImportError(
+            "wandb_activate=true 需要先安装 wandb：pip install wandb && wandb login"
+        ) from exc
+
+    run_name = str(cfg.get("wandb_name") or "").strip()
+    if not run_name:
+        run_name = f"BNPDFormer_{time.strftime('%Y-%m-%d_%H-%M-%S')}"
+    init_kw: dict[str, Any] = {
+        "project": str(cfg.get("wandb_project") or "FactoryBN_PDFormer"),
+        "name": run_name,
+        "config": _jsonable_cfg(cfg, data_feature),
+        "resume": "allow",
+        "sync_tensorboard": False,
+    }
+    entity = str(cfg.get("wandb_entity") or "").strip()
+    if entity:
+        init_kw["entity"] = entity
+    run = wandb.init(**init_kw)
+    wandb.define_metric("epoch")
+    wandb.define_metric("Train/*", step_metric="epoch")
+    wandb.define_metric("Val/*", step_metric="epoch")
+    wandb.define_metric("Test/*", step_metric="epoch")
+    print(f"[wandb] project={init_kw['project']} name={run_name} url={getattr(run, 'url', '')}")
+    return run
+
+
+def _wandb_log(parts: dict[str, dict[str, Any]], epoch: int) -> None:
+    """One wandb.log per step so Train/Val/Test share the same epoch axis."""
+    import wandb
+
+    payload: dict[str, Any] = {"epoch": epoch}
+    for prefix, metrics in parts.items():
+        for k, v in metrics.items():
+            if isinstance(v, (int, float)) and k != "epoch":
+                payload[f"{prefix}/{k}"] = float(v)
+    wandb.log(payload, step=epoch)
+
+
 def _epoch_loop(
     model: BNPDFormer,
     loader: DataLoader,
     optimizer: torch.optim.Optimizer | None,
     device: torch.device,
     train: bool,
+    cause_majority: int = -1,
 ) -> dict[str, float]:
     if train:
         model.train()
@@ -54,6 +130,9 @@ def _epoch_loop(
     correct_will = 0
     total_will = 0
     score_mae = 0.0
+    correct_cause = 0
+    total_cause = 0
+    majority_hit = 0
 
     for batch in loader:
         batch = _move_batch(batch, device)
@@ -75,6 +154,15 @@ def _epoch_loop(
                 score_mae += float(
                     torch.mean(torch.abs(pred["score_pred"] - batch["y_score"])).item()
                 ) * batch["X"].shape[0]
+                if "cause" in batch and "cause_pred" in pred:
+                    valid = batch["cause"] >= 0
+                    if valid.any():
+                        y = batch["cause"][valid]
+                        hat = pred["cause_pred"][valid]
+                        correct_cause += int((hat == y).sum().item())
+                        total_cause += int(valid.sum().item())
+                        if cause_majority >= 0:
+                            majority_hit += int((y == cause_majority).sum().item())
 
         for k, v in stats.items():
             totals[k] = totals.get(k, 0.0) + v
@@ -84,6 +172,11 @@ def _epoch_loop(
     if not train and total_will > 0:
         out["will_acc"] = correct_will / total_will
         out["score_mae"] = score_mae / max(len(loader.dataset), 1)
+    if not train and total_cause > 0:
+        out["cause_acc"] = correct_cause / total_cause
+        out["cause_n"] = float(total_cause)
+        if cause_majority >= 0:
+            out["cause_majority_acc"] = majority_hit / total_cause
     return out
 
 
@@ -94,6 +187,13 @@ def train(cfg: dict[str, Any]) -> Path:
     data_dir = Path(cfg["data_dir"])
     if not data_dir.is_absolute():
         data_dir = (_PDFORMER_ROOT / data_dir).resolve()
+    npz_path = data_dir / "episodes.npz"
+    if not npz_path.is_file():
+        raise SystemExit(
+            f"No episodes.npz under {data_dir}. Pass a dataset folder, e.g.\n"
+            "  --data_dir raw_data/FactoryBN_18_none_machine1.0 \\\n"
+            "  --save_dir libcity/cache/model_cache/FactoryBN_18_none_machine1.0"
+        )
 
     train_loader, val_loader, test_loader, data_feature = build_dataloaders(
         data_dir=data_dir,
@@ -127,9 +227,14 @@ def train(cfg: dict[str, Any]) -> Path:
     )
     max_epoch = int(cfg.get("max_epoch", 50))
     patience = int(cfg.get("patience", 15))
-    save_dir = Path(cfg.get("save_dir", "libcity/cache/model_cache/FactoryBN"))
+    save_dir = Path(cfg.get("save_dir", "libcity/cache/model_cache"))
     if not save_dir.is_absolute():
         save_dir = (_PDFORMER_ROOT / save_dir).resolve()
+    if save_dir.name == "model_cache":
+        raise SystemExit(
+            f"save_dir is the cache root ({save_dir}). Pass a run folder, e.g.\n"
+            "  --save_dir libcity/cache/model_cache/FactoryBN_18_none_machine1.0"
+        )
     save_dir.mkdir(parents=True, exist_ok=True)
 
     best_val = float("inf")
@@ -140,75 +245,138 @@ def train(cfg: dict[str, Any]) -> Path:
         f"[train] device={device} N={data_feature['num_nodes']} F={data_feature['feature_dim']} "
         f"train/val/test={data_feature['n_train']}/{data_feature['n_val']}/{data_feature['n_test']} "
         f"event+train={data_feature.get('n_event_positive_train', 0)} "
+        f"cause+train={data_feature.get('n_cause_labeled_train', 0)} "
         f"pattern_keys={pattern_keys.shape}"
     )
-
-    for epoch in range(1, max_epoch + 1):
-        t0 = time.time()
-        tr = _epoch_loop(model, train_loader, optimizer, device, train=True)
-        va = _epoch_loop(model, val_loader, None, device, train=False)
-        dt = time.time() - t0
-        print(
-            f"epoch {epoch:03d}/{max_epoch}  "
-            f"train_loss={tr['loss']:.4f} (score={tr['loss_score']:.4f} "
-            f"will={tr['loss_will']:.4f} event={tr.get('loss_event', 0):.4f})  "
-            f"val_loss={va['loss']:.4f} will_acc={va.get('will_acc', 0):.3f} "
-            f"score_mae={va.get('score_mae', 0):.4f}  ({dt:.1f}s)"
+    cause_majority = int(data_feature.get("cause_majority", -1))
+    counts = data_feature.get("cause_train_counts")
+    classes = data_feature.get("cause_classes") or []
+    if counts is not None and classes:
+        brief = ", ".join(
+            f"{name}={int(counts[i])}"
+            for i, name in enumerate(classes)
+            if i < len(counts) and int(counts[i]) > 0
         )
-        if va["loss"] < best_val - 1e-5:
-            best_val = va["loss"]
-            stale = 0
-            torch.save(
-                {
-                    "model": model.state_dict(),
-                    "config": {k: (str(v) if k == "device" else v) for k, v in cfg.items()},
-                    "data_meta": {
-                        "resource_ids": data_feature["resource_ids"],
-                        "resource_types": data_feature["resource_types"],
-                        "num_nodes": data_feature["num_nodes"],
-                        "feature_dim": data_feature["feature_dim"],
-                        "pattern_keys": pattern_keys,
-                        "adj_mx": data_feature["adj_mx"],
-                        "sh_mx": data_feature["sh_mx"],
-                        "sem_mx": data_feature["sem_mx"],
-                        "feature_scaler_mean": data_feature["feature_scaler"].mean,
-                        "feature_scaler_std": data_feature["feature_scaler"].std,
-                        "score_scaler_mean": data_feature["score_scaler"].mean,
-                        "score_scaler_std": data_feature["score_scaler"].std,
-                    },
-                    "best_val_loss": best_val,
-                    "epoch": epoch,
-                },
-                best_path,
+        if brief:
+            print(f"[train] cause train counts: {brief} majority={cause_majority}")
+
+    wandb_run = None
+    if _wandb_enabled(cfg):
+        wandb_run = _init_wandb(cfg, data_feature)
+
+    try:
+        for epoch in range(1, max_epoch + 1):
+            t0 = time.time()
+            tr = _epoch_loop(model, train_loader, optimizer, device, train=True)
+            va = _epoch_loop(
+                model, val_loader, None, device, train=False, cause_majority=cause_majority
             )
-            print(f"  saved best -> {best_path}")
-        else:
-            stale += 1
+            dt = time.time() - t0
+            print(
+                f"epoch {epoch:03d}/{max_epoch}  "
+                f"train_loss={tr['loss']:.4f} (score={tr['loss_score']:.4f} "
+                f"will={tr['loss_will']:.4f} cause={tr.get('loss_cause', 0):.4f} "
+                f"event={tr.get('loss_event', 0):.4f})  "
+                f"val_loss={va['loss']:.4f} will_acc={va.get('will_acc', 0):.3f} "
+                f"cause_acc={va.get('cause_acc', 0):.3f} "
+                f"cause_maj={va.get('cause_majority_acc', 0):.3f} "
+                f"score_mae={va.get('score_mae', 0):.4f}  ({dt:.1f}s)"
+            )
+
+            if va["loss"] < best_val - 1e-5:
+                best_val = va["loss"]
+                stale = 0
+                torch.save(
+                    {
+                        "model": model.state_dict(),
+                        "config": {k: (str(v) if k == "device" else v) for k, v in cfg.items()},
+                        "data_meta": {
+                            "resource_ids": data_feature["resource_ids"],
+                            "resource_types": data_feature["resource_types"],
+                            "num_nodes": data_feature["num_nodes"],
+                            "feature_dim": data_feature["feature_dim"],
+                            "cause_classes": data_feature.get("cause_classes"),
+                            "n_cause_classes": data_feature.get("n_cause_classes"),
+                            "cause_majority": cause_majority,
+                            "pattern_keys": pattern_keys,
+                            "adj_mx": data_feature["adj_mx"],
+                            "sh_mx": data_feature["sh_mx"],
+                            "sem_mx": data_feature["sem_mx"],
+                            "feature_scaler_mean": data_feature["feature_scaler"].mean,
+                            "feature_scaler_std": data_feature["feature_scaler"].std,
+                            "score_scaler_mean": data_feature["score_scaler"].mean,
+                            "score_scaler_std": data_feature["score_scaler"].std,
+                        },
+                        "best_val_loss": best_val,
+                        "epoch": epoch,
+                    },
+                    best_path,
+                )
+                print(f"  saved best -> {best_path}")
+                if wandb_run is not None:
+                    import wandb
+
+                    wandb.summary["best_val_loss"] = best_val
+                    wandb.summary["best_epoch"] = epoch
+            else:
+                stale += 1
+
+            if wandb_run is not None:
+                _wandb_log(
+                    {
+                        "Train": {**tr, "epoch_sec": dt},
+                        "Val": {**va, "best_loss": best_val},
+                    },
+                    epoch,
+                )
+
             if stale >= patience:
                 print(f"early stop at epoch {epoch}")
                 break
 
-    try:
-        ckpt = torch.load(best_path, map_location=device, weights_only=False)
-    except TypeError:
-        ckpt = torch.load(best_path, map_location=device)
-    model.load_state_dict(ckpt["model"])
-    te = _epoch_loop(model, test_loader, None, device, train=False)
-    print(
-        f"[test] loss={te['loss']:.4f} will_acc={te.get('will_acc', 0):.3f} "
-        f"score_mae={te.get('score_mae', 0):.4f}"
-    )
-    (save_dir / "last_metrics.json").write_text(
-        json.dumps(
-            {
-                "val_best": best_val,
-                "test": te,
-                "n_train_windows_used": int(train_windows.shape[0]),
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
+        try:
+            ckpt = torch.load(best_path, map_location=device, weights_only=False)
+        except TypeError:
+            ckpt = torch.load(best_path, map_location=device)
+        model.load_state_dict(ckpt["model"])
+        te = _epoch_loop(
+            model, test_loader, None, device, train=False, cause_majority=cause_majority
+        )
+        print(
+            f"[test] loss={te['loss']:.4f} will_acc={te.get('will_acc', 0):.3f} "
+            f"cause_acc={te.get('cause_acc', 0):.3f} "
+            f"cause_maj={te.get('cause_majority_acc', 0):.3f} "
+            f"score_mae={te.get('score_mae', 0):.4f}"
+        )
+        metrics_path = save_dir / "last_metrics.json"
+        metrics_path.write_text(
+            json.dumps(
+                {
+                    "val_best": best_val,
+                    "test": te,
+                    "n_train_windows_used": int(train_windows.shape[0]),
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        if wandb_run is not None:
+            import wandb
+
+            last_epoch = int(ckpt.get("epoch") or 0)
+            _wandb_log({"Test": te}, last_epoch)
+            wandb.summary["test_loss"] = te.get("loss")
+            wandb.summary["test_will_acc"] = te.get("will_acc")
+            wandb.summary["test_cause_acc"] = te.get("cause_acc")
+            wandb.summary["test_score_mae"] = te.get("score_mae")
+            wandb.save(str(best_path))
+            wandb.save(str(metrics_path))
+    finally:
+        if wandb_run is not None:
+            import wandb
+
+            wandb.finish()
+
     return best_path
 
 
@@ -220,9 +388,29 @@ def main() -> None:
         default=str(Path(__file__).parent / "configs" / "FactoryBN.json"),
     )
     parser.add_argument("--max_epoch", type=int, default=None)
-    parser.add_argument("--data_dir", type=str, default=None)
+    parser.add_argument(
+        "--data_dir",
+        type=str,
+        default=None,
+        help="Dataset folder under raw_data/ (must contain episodes.npz).",
+    )
+    parser.add_argument(
+        "--save_dir",
+        type=str,
+        default=None,
+        help="Run folder under libcity/cache/model_cache/ for weights.",
+    )
     parser.add_argument("--batch_size", type=int, default=None)
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument(
+        "--wandb_activate",
+        action="store_true",
+        default=None,
+        help="Enable Weights & Biases logging (default off).",
+    )
+    parser.add_argument("--wandb_project", type=str, default=None, help="wandb project name.")
+    parser.add_argument("--wandb_name", type=str, default=None, help="Optional wandb run name.")
+    parser.add_argument("--wandb_entity", type=str, default=None, help="Optional wandb team/user.")
     args = parser.parse_args()
 
     cfg = _load_config(Path(args.config))
@@ -230,10 +418,20 @@ def main() -> None:
         cfg["max_epoch"] = args.max_epoch
     if args.data_dir is not None:
         cfg["data_dir"] = args.data_dir
+    if args.save_dir is not None:
+        cfg["save_dir"] = args.save_dir
     if args.batch_size is not None:
         cfg["batch_size"] = args.batch_size
     if args.device is not None:
         cfg["device"] = args.device
+    if args.wandb_activate:
+        cfg["wandb_activate"] = True
+    if args.wandb_project:
+        cfg["wandb_project"] = args.wandb_project
+    if args.wandb_name:
+        cfg["wandb_name"] = args.wandb_name
+    if args.wandb_entity:
+        cfg["wandb_entity"] = args.wandb_entity
 
     train(cfg)
 

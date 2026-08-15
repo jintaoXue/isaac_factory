@@ -1,6 +1,6 @@
 {
-  "data_dir": "raw_data/FactoryBN_18_four_dim2.0",
-  "save_dir": "libcity/cache/model_cache/FactoryBN_18_four_dim2.0",
+  "data_dir": "raw_data",
+  "save_dir": "libcity/cache/model_cache",
   "input_window": 12,
   "output_window": 1,
   "horizon_s": 180,
@@ -41,5 +41,10 @@
   "w_mark": 0.3,
   "w_tts": 0.1,
   "w_event": 1.0,
-  "will_pos_weight": 20.0
+  "w_cause": 0.4,
+  "will_pos_weight": 20.0,
+  "wandb_activate": false,
+  "wandb_project": "FactoryBN_PDFormer",
+  "wandb_name": "",
+  "wandb_entity": ""
 }

@@ -11,7 +11,6 @@ from .constants import (
     ACTIVE_STATES,
     BLOCKED_STATES,
     BUFFER_MACHINE_AFFINITY,
-    HOT_ACTIVE_PCT,
     MATERIAL_CONSUMER,
     PROCESS_NEIGHBORS,
     SCORE_PEAK_FLOOR,
@@ -22,6 +21,7 @@ from .constants import (
     W_ACTIVE_DUR,
     W_DOWNSTREAM,
     W_QUEUE,
+    W_STALL,
     W_STOP,
     W_UPSTREAM,
     W_WAIT,
@@ -36,35 +36,44 @@ from .timelines import (
     _overlap_duration,
 )
 
-def _row_has_activity(row: dict | None) -> bool:
-    if not row:
-        return False
-    return (
-        float(row.get("queue_length_s") or 0) > 0
-        or float(row.get("avg_waiting_time_s") or 0) > 0
-        or float(row.get("active_pct_s") or 0) >= HOT_ACTIVE_PCT
-        or float(row.get("unavailable_pct_s") or 0) > 0
-        or float(row.get("blocked_time_s") or 0) > 0
-        or float(row.get("starved_time_s") or 0) > 0
-    )
+def _is_buffer(resource_id: str, resource_type: str) -> bool:
+    return resource_type == "buffer" or str(resource_id).startswith("storage_")
 
 
-def row_is_hot(row: dict | None, score_threshold: float) -> bool:
-    """STGNPP event candidate: turning-point, window-peak, or high absolute score.
+def _window_len_s(row: dict) -> float:
+    w0 = float(row.get("window_start_s") or 0)
+    w1 = float(row.get("window_end_s") or 0)
+    ws = float(row.get("window_size_s") or 0)
+    return max(w1 - w0, ws, 1e-9)
 
-    Momentary active-period always has a winner, so it is *not* an event trigger.
-    Local coupling keeps raw scores below the old 0.55 bar; window-peak with an
-    absolute floor recovers sparse, persistent constraints.
+
+def _stall_pct(row: dict) -> float:
+    wlen = _window_len_s(row)
+    stall = float(row.get("blocked_time_s") or 0) + float(row.get("starved_time_s") or 0)
+    return min(stall / wlen, 1.0)
+
+
+def row_is_hot(row: dict | None, score_threshold: float | None = None) -> bool:
+    """STGNPP score-event candidate: process-chain turning point only.
+
+    Dual-path split
+    ---------------
+    PDFormer (dense): every node/window keeps ``bottleneck_score_s``,
+    ``is_window_peak``, ``is_momentary_bn``, occupancy, stall times, etc.
+    STGNPP (sparse): score-events are TPM turning-points; L2 disturbances
+    are a *separate* event source in ``labels.py`` (not merged onsets).
+
+    Inventory sitting in a warehouse, routine STARVED/BLOCKED, and "who is
+    busiest" must not mint events — those are PDFormer features.
+    ``score_threshold`` is kept for the call signature; high score alone
+    does not create events (scores are dense by design).
     """
+    del score_threshold
     if not row:
         return False
-    if int(row.get("is_turning_point") or 0):
-        return True
-    if not _row_has_activity(row):
+    if _is_buffer(str(row.get("resource_id") or ""), str(row.get("resource_type") or "")):
         return False
-    if int(row.get("is_window_peak") or 0):
-        return True
-    return float(row.get("bottleneck_score_s") or 0) >= score_threshold
+    return int(row.get("is_turning_point") or 0) == 1
 
 
 def _mean_ratio(timelines: dict[str, ResourceTimeline], rids: list[str], w0: float, w1: float, states: frozenset[str]) -> float:
@@ -266,10 +275,12 @@ def compute_window_features(
                 inter_dep_var = 0.0
 
             if tl.resource_type == "buffer" or rid.startswith("storage_"):
-                mean_occ, mean_ratio, growth = buffer_stats(rid, w0, w1)
-                queue_length = mean_occ
+                _mean_occ, mean_ratio, growth = buffer_stats(rid, w0, w1)
                 occupancy_ratio = mean_ratio
                 queue_growth = growth
+                # Stock count is occupancy, not station WIP. Putting it in
+                # queue_length_s made every window an STGNPP event.
+                queue_length = 0.0
             else:
                 occupancy_ratio = 0.0
                 queue_growth = 0.0
@@ -381,10 +392,12 @@ def add_bottleneck_scores(feature_rows: list[dict]) -> list[dict]:
         w = _norm_across([r["avg_waiting_time_s"] for r in rows])
         a = [r["active_pct_s"] for r in rows]  # already 0-1
         d = _norm_across([r["current_active_duration_s"] for r in rows])
+        stall = [_stall_pct(r) for r in rows]
         for i, r in enumerate(rows):
             score = (
                 W_QUEUE * q[i]
                 + W_WAIT * w[i]
+                + W_STALL * stall[i]
                 + W_ACTIVE * a[i]
                 + W_ACTIVE_DUR * d[i]
                 + W_UPSTREAM * r["upstream_blocked_ratio_s"]
@@ -397,6 +410,7 @@ def add_bottleneck_scores(feature_rows: list[dict]) -> list[dict]:
             r["norm_current_active_duration_s"] = round(d[i], 6)
         peak = max(float(r["bottleneck_score_s"]) for r in rows)
         for r in rows:
+            # Feature for PDFormer (who is relatively busiest). Not an event trigger.
             r["is_window_peak"] = int(
                 peak >= SCORE_PEAK_FLOOR
                 and float(r["bottleneck_score_s"]) >= SCORE_PEAK_RATIO * peak - 1e-12

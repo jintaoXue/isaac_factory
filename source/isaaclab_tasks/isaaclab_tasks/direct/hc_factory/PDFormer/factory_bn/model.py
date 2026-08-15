@@ -53,8 +53,22 @@ class BNPDFormer(nn.Module):
         self.w_mark = float(config.get("w_mark", 0.3))
         self.w_event = float(config.get("w_event", 1.0))
         self.w_tts = float(config.get("w_tts", 0.1))
+        self.w_cause = float(config.get("w_cause", 0.4))
         self.pos_weight = float(config.get("will_pos_weight", 20.0))
         self.use_stgnpp = bool(config.get("use_stgnpp", True))
+
+        self.n_cause_classes = int(
+            data_feature.get("n_cause_classes") or len(data_feature.get("cause_classes") or [])
+        )
+        if self.n_cause_classes <= 0:
+            self.n_cause_classes = 10
+        cause_w = data_feature.get("cause_class_weight")
+        if cause_w is None:
+            cause_w = np.ones(self.n_cause_classes, dtype=np.float32)
+        self.register_buffer(
+            "cause_class_weight",
+            torch.as_tensor(np.asarray(cause_w, dtype=np.float32)),
+        )
 
         adj_mx = data_feature["adj_mx"]
         sh_mx = data_feature["sh_mx"]
@@ -137,6 +151,7 @@ class BNPDFormer(nn.Module):
         hidden = int(config.get("event_hidden", 64))
         self.aux_pool = nn.Sequential(nn.Linear(self.embed_dim, hidden), nn.ReLU())
         self.will_head = nn.Linear(hidden + 1, 1)
+        self.cause_head = nn.Linear(hidden + 1, self.n_cause_classes)
         self.node_score_gate = nn.Linear(self.embed_dim, 1)
         self.tts_aux = nn.Sequential(nn.Linear(hidden + 1, 1), nn.Softplus())
 
@@ -216,11 +231,13 @@ class BNPDFormer(nn.Module):
         feat = torch.cat([pooled, max_e], dim=-1)
         will_logit = self.will_head(feat).squeeze(-1)
         tts_aux = self.tts_aux(feat).squeeze(-1)
+        cause_logits = self.cause_head(feat)
 
         out: dict[str, torch.Tensor] = {
             "score_pred": score_pred,
             "will_logit": will_logit,
             "mark_logits": node_energy,
+            "cause_logits": cause_logits,
             "tts_aux": tts_aux,
             "h_last": h_last,
         }
@@ -273,6 +290,23 @@ class BNPDFormer(nn.Module):
             loss_mark = zero
             loss_tts = zero
 
+        cause = batch.get("cause")
+        if cause is not None:
+            valid_cause = cause >= 0
+            if valid_cause.any():
+                w = self.cause_class_weight
+                if w.numel() != out["cause_logits"].shape[-1]:
+                    w = None
+                loss_cause = F.cross_entropy(
+                    out["cause_logits"][valid_cause],
+                    cause[valid_cause],
+                    weight=w,
+                )
+            else:
+                loss_cause = out["score_pred"].sum() * 0.0
+        else:
+            loss_cause = out["score_pred"].sum() * 0.0
+
         loss_event = out["score_pred"].sum() * 0.0
         nll_v = loss_event
         dur_v = loss_event
@@ -302,6 +336,7 @@ class BNPDFormer(nn.Module):
             + self.w_mark * loss_mark
             + self.w_tts * loss_tts
             + self.w_event * loss_event
+            + self.w_cause * loss_cause
         )
         stats = {
             "loss": float(total.detach().cpu()),
@@ -310,6 +345,7 @@ class BNPDFormer(nn.Module):
             "loss_mark": float(loss_mark.detach().cpu()),
             "loss_tts": float(loss_tts.detach().cpu()),
             "loss_event": float(loss_event.detach().cpu()) if torch.is_tensor(loss_event) else float(loss_event),
+            "loss_cause": float(loss_cause.detach().cpu()) if torch.is_tensor(loss_cause) else float(loss_cause),
             "nll": float(nll_v.detach().cpu()) if torch.is_tensor(nll_v) else float(nll_v),
             "dur_mae": float(dur_v.detach().cpu()) if torch.is_tensor(dur_v) else float(dur_v),
         }
@@ -322,4 +358,6 @@ class BNPDFormer(nn.Module):
         out = self.forward(batch)
         out["will_prob"] = torch.sigmoid(out["will_logit"])
         out["mark_prob"] = torch.softmax(out["mark_logits"], dim=-1)
+        out["cause_prob"] = torch.softmax(out["cause_logits"], dim=-1)
+        out["cause_pred"] = out["cause_prob"].argmax(dim=-1)
         return out

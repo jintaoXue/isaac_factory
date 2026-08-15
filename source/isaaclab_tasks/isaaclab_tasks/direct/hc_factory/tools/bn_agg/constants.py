@@ -7,15 +7,16 @@ BLOCKED_STATES = frozenset({"BLOCKED"})
 STARVED_STATES = frozenset({"STARVED", "WAITING"})
 STOP_STATES = frozenset({"STOP"})
 
-# Spec §7.2 weights (sum=1). STOP/unavailable was previously invisible.
-# Upstream/downstream terms are now *neighbor* ratios (BSTAN / turning-point).
-W_QUEUE = 0.20
-W_WAIT = 0.15
-W_ACTIVE = 0.20
-W_ACTIVE_DUR = 0.10
+# Spec §7.2 weights (sum=1). Dense PDFormer target = congestion, not mere busyness.
+# Stall/unavailable are already 0–1; queue/wait/duration are min-max within the window.
+W_QUEUE = 0.15
+W_WAIT = 0.10
+W_STALL = 0.20
+W_ACTIVE = 0.10
+W_ACTIVE_DUR = 0.05
 W_UPSTREAM = 0.10
 W_DOWNSTREAM = 0.10
-W_STOP = 0.15
+W_STOP = 0.20
 
 # Keep in sync with PDFormer/factory_bn/graph.py (serial flow; siblings are parallel).
 PROCESS_CHAIN: list[str] = [
@@ -87,11 +88,11 @@ PROCESS_NEIGHBORS: dict[str, dict[str, list[str]]] = {
 }
 
 DEFAULT_SCORE_THRESHOLD = 0.55
-DEFAULT_MIN_EVENT_WINDOWS = 2
-# Absolute activity so per-window min-max cannot mint events in a quiet shop.
+# Isolated turning-points are valid STGNPP onsets (do not require a 2-window run).
+DEFAULT_MIN_EVENT_WINDOWS = 1
+# Busy processing is a PDFormer feature, not an STGNPP event trigger.
 HOT_ACTIVE_PCT = 0.70
-# After local coupling, raw scores rarely reach 0.55. A node is also hot if it
-# is the window peak and the peak itself is above this floor (STGNPP sparsity).
+# is_window_peak (PDFormer input only): relative score peak inside a window.
 SCORE_PEAK_FLOOR = 0.20
 SCORE_PEAK_RATIO = 0.95
 

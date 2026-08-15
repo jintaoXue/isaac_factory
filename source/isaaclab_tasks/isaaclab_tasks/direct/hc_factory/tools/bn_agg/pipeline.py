@@ -170,7 +170,12 @@ def main() -> None:
     parser.add_argument("--window_sizes", type=str, default="30,60", help="Comma-separated logic seconds")
     parser.add_argument("--horizon", type=float, default=180.0, help="Future horizon H (logic seconds)")
     parser.add_argument("--score_threshold", type=float, default=DEFAULT_SCORE_THRESHOLD)
-    parser.add_argument("--min_event_windows", type=int, default=DEFAULT_MIN_EVENT_WINDOWS)
+    parser.add_argument(
+        "--min_event_windows",
+        type=int,
+        default=DEFAULT_MIN_EVENT_WINDOWS,
+        help="Min consecutive turning-point windows to emit a score event (default 1).",
+    )
     parser.add_argument(
         "--out_dir",
         type=Path,

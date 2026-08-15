@@ -32,6 +32,7 @@ _PDFORMER_ROOT = Path(__file__).resolve().parent.parent
 if str(_PDFORMER_ROOT) not in sys.path:
     sys.path.insert(0, str(_PDFORMER_ROOT))
 
+from factory_bn.causes import ROOT_CAUSE_CLASSES, encode_root_cause
 from factory_bn.graph import (
     RESOURCE_TYPES,
     build_factory_adjacency,
@@ -166,6 +167,7 @@ def _pivot_episode(
     scores = np.zeros((t_len, n, 1), dtype=np.float32)
     will = np.zeros((t_len,), dtype=np.float32)
     mark = np.full((t_len,), -1, dtype=np.int64)
+    cause = np.full((t_len,), -1, dtype=np.int64)
     tts = np.full((t_len,), -1.0, dtype=np.float32)
     duration = np.full((t_len,), -1.0, dtype=np.float32)
     is_hot = np.zeros((t_len,), dtype=np.float32)
@@ -197,6 +199,7 @@ def _pivot_episode(
                 tts[ti] = float(tts_v)
             if dur_v not in ("", "None", "nan"):
                 duration[ti] = float(dur_v)
+            cause[ti] = encode_root_cause(lab.get("root_cause_reason") or "")
 
     ev_rows = events or []
     ev_node, ev_start_s, ev_dur, ev_start_ti = [], [], [], []
@@ -221,6 +224,7 @@ def _pivot_episode(
         "scores": scores,
         "will_bottleneck": will,
         "mark_node": mark,
+        "cause": cause,
         "time_to_start": tts,
         "duration": duration,
         "is_bottleneck_window": is_hot,
@@ -420,11 +424,13 @@ def export_runs(
         sh_mx=sh_mx,
         sem_mx=sem_mx,
         feature_cols=np.asarray(FEATURE_COLS),
+        cause_classes=np.asarray(ROOT_CAUSE_CLASSES),
         window_size_s=np.asarray([window_size]),
         **{f"{ep}_features": v["features"] for ep, v in episodes_payload.items()},
         **{f"{ep}_scores": v["scores"] for ep, v in episodes_payload.items()},
         **{f"{ep}_will": v["will_bottleneck"] for ep, v in episodes_payload.items()},
         **{f"{ep}_mark": v["mark_node"] for ep, v in episodes_payload.items()},
+        **{f"{ep}_cause": v["cause"] for ep, v in episodes_payload.items()},
         **{f"{ep}_tts": v["time_to_start"] for ep, v in episodes_payload.items()},
         **{f"{ep}_duration": v["duration"] for ep, v in episodes_payload.items()},
         **{f"{ep}_is_hot": v["is_bottleneck_window"] for ep, v in episodes_payload.items()},
@@ -446,11 +452,13 @@ def export_runs(
         "ops_feature_dim": len(FEATURE_COLS),
         "resource_types": RESOURCE_TYPES,
         "feature_cols": FEATURE_COLS,
+        "cause_classes": list(ROOT_CAUSE_CLASSES),
         "target_col": TARGET_COL,
         "episodes": {
             ep: {
                 "T": int(v["features"].shape[0]),
                 "will_positive": int(v["will_bottleneck"].sum()),
+                "cause_labeled": int((v["cause"] >= 0).sum()),
                 "hot_windows": int(v["is_bottleneck_window"].sum()),
                 "n_events": int(len(v["event_node"])),
             }
@@ -461,6 +469,7 @@ def export_runs(
             "Score head (PDFormer): future bottleneck_score_s (dense per-node).",
             "Event path (STGNPP): per-node sequences from bottleneck_event.csv; score and L2 onsets are not merged.",
             "Window will/mark/tts kept as auxiliary when events are sparse.",
+            "A3 cause head: per-window root_cause_reason (L2 type or score heuristic); -1 = unlabeled.",
             "Coupling features are node-local (PROCESS_CHAIN, carrier delay, shortage at consumer).",
             "Multi-run merge uses episode keys {run_id}__episode_XX.",
         ],
@@ -489,14 +498,26 @@ def export_runs(
         )
 
     n_events = sum(len(v["event_node"]) for v in episodes_payload.values())
+    cause_hist = {name: 0 for name in ROOT_CAUSE_CLASSES}
+    n_cause = 0
+    for v in episodes_payload.values():
+        for cid in v["cause"]:
+            if int(cid) < 0:
+                continue
+            n_cause += 1
+            cause_hist[ROOT_CAUSE_CLASSES[int(cid)]] += 1
     print(
         f"[export] runs={len(run_dirs)} nodes={len(resource_ids)} "
-        f"episodes={len(episodes_payload)} events={n_events} → {out_dir}"
+        f"episodes={len(episodes_payload)} events={n_events} cause_labeled={n_cause} → {out_dir}"
     )
+    if n_cause:
+        brief = ", ".join(f"{k}={v}" for k, v in cause_hist.items() if v)
+        print(f"  cause histogram: {brief}")
     for ep, v in episodes_payload.items():
         print(
             f"  {ep}: T={v['features'].shape[0]} will+={int(v['will_bottleneck'].sum())} "
-            f"hot={int(v['is_bottleneck_window'].sum())} events={len(v['event_node'])}"
+            f"hot={int(v['is_bottleneck_window'].sum())} cause+={int((v['cause'] >= 0).sum())} "
+            f"events={len(v['event_node'])}"
         )
     return out_dir
 

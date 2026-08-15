@@ -11,6 +11,8 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+from factory_bn.causes import ROOT_CAUSE_CLASSES
+
 
 @dataclass
 class Scaler:
@@ -86,6 +88,7 @@ class FactoryBNWindowDataset(Dataset):
             "y_score": torch.from_numpy(y_score),
             "will": torch.tensor(s["will"], dtype=torch.float32),
             "mark": torch.tensor(s["mark"], dtype=torch.long),
+            "cause": torch.tensor(s["cause"], dtype=torch.long),
             "tts": torch.tensor(s["tts"], dtype=torch.float32),
             "duration": torch.tensor(s["duration"], dtype=torch.float32),
             "episode_id": torch.tensor(s["episode_id"], dtype=torch.long),
@@ -119,6 +122,10 @@ def load_factory_bn_bundle(data_dir: Path) -> dict[str, Any]:
             "windows": npz[f"{name}_windows"],
             "window_start_s": npz[f"{name}_window_start_s"],
         }
+        if f"{name}_cause" in npz:
+            ep["cause"] = np.asarray(npz[f"{name}_cause"], dtype=np.int64)
+        else:
+            ep["cause"] = np.full((ep["will"].shape[0],), -1, dtype=np.int64)
         # events optional for backward compat
         if f"{name}_event_node" in npz:
             ep["event_node"] = npz[f"{name}_event_node"]
@@ -131,10 +138,15 @@ def load_factory_bn_bundle(data_dir: Path) -> dict[str, Any]:
             ep["event_duration_s"] = np.zeros((0,), dtype=np.float32)
             ep["event_start_ti"] = np.zeros((0,), dtype=np.int64)
         episodes.append(ep)
+    if "cause_classes" in npz:
+        cause_classes = [str(x) for x in npz["cause_classes"].tolist()]
+    else:
+        cause_classes = list(ROOT_CAUSE_CLASSES)
     return {
         "meta": meta,
         "resource_ids": [str(x) for x in npz["resource_ids"].tolist()],
         "resource_types": [str(x) for x in npz["resource_types"].tolist()],
+        "cause_classes": cause_classes,
         "adj_mx": npz["adj_mx"].astype(np.float32),
         "sh_mx": npz["sh_mx"].astype(np.float32),
         "sem_mx": npz["sem_mx"].astype(np.float32),
@@ -165,6 +177,9 @@ def _build_samples(
         scores = ep["scores"]
         will = ep["will"]
         mark = ep["mark"]
+        cause = ep.get("cause")
+        if cause is None:
+            cause = np.full((will.shape[0],), -1, dtype=np.int64)
         tts = ep["tts"]
         duration = ep["duration"]
         wstart = ep["window_start_s"]
@@ -228,6 +243,7 @@ def _build_samples(
                     "y_score": scores[t : t + output_window].astype(np.float32),
                     "will": float(will[label_idx]),
                     "mark": int(mark[label_idx]),
+                    "cause": int(cause[label_idx]),
                     "tts": float(tts[label_idx]),
                     "duration": float(duration[label_idx]),
                     "episode_id": int(ep["episode_id"]),
@@ -239,6 +255,25 @@ def _build_samples(
                 }
             )
     return samples
+
+
+def _cause_stats(samples: list[dict[str, Any]], n_classes: int) -> tuple[np.ndarray, np.ndarray, int]:
+    """Inverse-frequency class weights, counts, majority class id (-1 if none)."""
+    counts = np.zeros(n_classes, dtype=np.float32)
+    for s in samples:
+        cid = int(s.get("cause", -1))
+        if 0 <= cid < n_classes:
+            counts[cid] += 1
+    weights = np.ones(n_classes, dtype=np.float32)
+    pos = counts > 0
+    n_pos = int(pos.sum())
+    if n_pos > 0:
+        weights[pos] = counts.sum() / (n_pos * counts[pos])
+        weights[~pos] = 0.0
+        majority = int(np.argmax(counts))
+    else:
+        majority = -1
+    return weights, counts, majority
 
 
 def build_dataloaders(
@@ -290,6 +325,9 @@ def build_dataloaders(
     y_cat = np.stack([s["y_score"] for s in train_samples], axis=0)
     feature_scaler = _fit_scaler(x_cat)
     score_scaler = _fit_scaler(y_cat)
+    cause_w, cause_counts, cause_majority = _cause_stats(
+        train_samples, len(bundle["cause_classes"])
+    )
 
     train_ds = FactoryBNWindowDataset(train_samples, feature_scaler, score_scaler)
     val_ds = FactoryBNWindowDataset(val_samples, feature_scaler, score_scaler)
@@ -320,6 +358,12 @@ def build_dataloaders(
         "train_feature_windows": x_cat,
         "max_hist_events": max_hist_events,
         "n_event_positive_train": int(sum(s["next_mask"].sum() for s in train_samples)),
+        "cause_classes": bundle["cause_classes"],
+        "n_cause_classes": len(bundle["cause_classes"]),
+        "cause_class_weight": cause_w,
+        "cause_train_counts": cause_counts,
+        "cause_majority": cause_majority,
+        "n_cause_labeled_train": int(sum(1 for s in train_samples if int(s.get("cause", -1)) >= 0)),
     }
     return (*loaders, data_feature)
 
