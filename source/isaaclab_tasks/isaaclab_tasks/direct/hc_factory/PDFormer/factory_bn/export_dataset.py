@@ -9,8 +9,7 @@ Multiple ``--run_dir`` values are merged into one bundle (episode keys
 
 Writes::
 
-    PDFormer/raw_data/FactoryBN/
-        FactoryBN.geo / .rel / .dyna / config.json   # LibCity atomic (optional)
+    PDFormer/raw_data/<tag>/
         meta.json
         node_map.json
         episodes.npz   # packed tensors for factory_bn.train
@@ -544,7 +543,7 @@ def main() -> None:
         "--out_dir",
         type=str,
         default=None,
-        help="default: PDFormer/raw_data/FactoryBN",
+        help="default: PDFormer/raw_data/export",
     )
     parser.add_argument("--window_size", type=float, default=60.0)
     parser.add_argument("--no_atomic", action="store_true")
@@ -553,7 +552,7 @@ def main() -> None:
     here = Path(__file__).resolve().parent
     pdformer_root = here.parent
     run_dirs = [Path(p).resolve() for p in args.run_dir]
-    out_dir = Path(args.out_dir).resolve() if args.out_dir else (pdformer_root / "raw_data" / "FactoryBN")
+    out_dir = Path(args.out_dir).resolve() if args.out_dir else (pdformer_root / "raw_data" / "export")
     export_runs(run_dirs, out_dir, window_size=args.window_size, write_atomic=not args.no_atomic)
 
 

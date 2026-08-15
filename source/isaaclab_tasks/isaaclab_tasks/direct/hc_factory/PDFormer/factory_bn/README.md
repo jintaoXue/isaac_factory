@@ -10,14 +10,17 @@ Bottleneck prediction for HC Factory, adapted from:
 ```bash
 cd source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/PDFormer
 
-# 1) Export derived bottleneck tables → raw_data/FactoryBN
+# 1) Export derived bottleneck tables → raw_data/<tag>
 python -m factory_bn.export_dataset \
-  --run_dir ../output/bottleneck_dataset/18_materials \
+  --run_dir ../output/bottleneck_dataset/old_machine2.0 \
+  --out_dir raw_data/old2.0 \
   --window_size 60
 
 # 2) Train multi-task BNPDFormer
 python -m factory_bn.train \
   --config factory_bn/configs/FactoryBN.json \
+  --data_dir raw_data/old2.0 \
+  --save_dir libcity/cache/model_cache/old2.0 \
   --max_epoch 50
 ```
 
@@ -25,9 +28,9 @@ Artifacts:
 
 | Path | Role |
 |------|------|
-| `raw_data/FactoryBN/episodes.npz` | Primary training tensors |
-| `raw_data/FactoryBN/*.geo/.rel/.dyna` | Optional LibCity atomic files |
-| `libcity/cache/model_cache/FactoryBN/BNPDFormer_best.pt` | Best checkpoint |
+| `raw_data/<tag>/episodes.npz` | Primary training tensors |
+| `raw_data/<tag>/FactoryBN.geo/.rel/.dyna` | Optional LibCity atomic files |
+| `libcity/cache/model_cache/<tag>/BNPDFormer_best.pt` | Best checkpoint |
 
 See repo root doc: `06.瓶颈预测模型_PDFormer与点过程适配.md`.
 See borrowing map: `factory_bn/BORROWING.md`.

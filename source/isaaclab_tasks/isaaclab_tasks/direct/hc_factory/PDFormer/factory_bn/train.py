@@ -4,8 +4,13 @@ Example::
 
     cd source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/PDFormer
     python -m factory_bn.export_dataset \\
-        --run_dir ../output/bottleneck_dataset/18_materials
-    python -m factory_bn.train --config factory_bn/configs/FactoryBN.json --max_epoch 5
+        --run_dir ../output/bottleneck_dataset/old_machine2.0 \\
+        --out_dir raw_data/old2.0
+    python -m factory_bn.train \\
+        --config factory_bn/configs/FactoryBN.json \\
+        --data_dir raw_data/old2.0 \\
+        --save_dir libcity/cache/model_cache/old2.0 \\
+        --max_epoch 5
     python -m factory_bn.train --config factory_bn/configs/FactoryBN.json --wandb_activate
 """
 
@@ -191,8 +196,8 @@ def train(cfg: dict[str, Any]) -> Path:
     if not npz_path.is_file():
         raise SystemExit(
             f"No episodes.npz under {data_dir}. Pass a dataset folder, e.g.\n"
-            "  --data_dir raw_data/FactoryBN_18_none_machine1.0 \\\n"
-            "  --save_dir libcity/cache/model_cache/FactoryBN_18_none_machine1.0"
+            "  --data_dir raw_data/new1.0 \\\n"
+            "  --save_dir libcity/cache/model_cache/new1.0"
         )
 
     train_loader, val_loader, test_loader, data_feature = build_dataloaders(
@@ -233,7 +238,7 @@ def train(cfg: dict[str, Any]) -> Path:
     if save_dir.name == "model_cache":
         raise SystemExit(
             f"save_dir is the cache root ({save_dir}). Pass a run folder, e.g.\n"
-            "  --save_dir libcity/cache/model_cache/FactoryBN_18_none_machine1.0"
+            "  --save_dir libcity/cache/model_cache/new1.0"
         )
     save_dir.mkdir(parents=True, exist_ok=True)
 
