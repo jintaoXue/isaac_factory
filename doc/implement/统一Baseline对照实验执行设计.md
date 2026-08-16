@@ -829,7 +829,8 @@ dataset_manifest_sha256
 
 `evaluate_torch_baseline.py` 从 `model_kind` 恢复对应模型，不根据目录名猜测。重构前的 B5
 checkpoint 不含 `model_kind`，不在当前主路径增加兼容兜底；正式服务器验证需要重新训练
-B5。现有 `dataset.pt`、derived 和 raw 均无需重建。
+B5。raw 无需重采，但聚合规则更新后必须从 raw 重建 `shared_bn_agg_v1` 和 `dataset.pt`，
+不能继续使用第 15 节旧 canonical 聚合产物。
 
 ### 18.4 统一服务器训练命令
 
@@ -873,3 +874,53 @@ episode split 相同
 validation/test 样本数相同
 所有模型输出 A.1/A.3 共享字段
 ```
+
+## 19. 服务器批处理脚本
+
+根目录提供两个可版本化的命令入口：
+
+```text
+batch_factory_baseline_build.sh  raw audit -> bn_agg -> derived -> shared dataset
+batch_factory_baseline_train.sh  shared dataset -> B2/B3/B4/B5
+```
+
+聚合与 dataset 重建：
+
+```bash
+./batch_factory_baseline_build.sh MH
+```
+
+`MH` 展开为 `new_machine1.0` 与 `new_human1.0`。脚本默认删除这两个 raw run 下旧的
+`shared_bn_agg_v1`，使用当前分支的 `dev_tyx@c101eff` 同源 `bn_agg` 重新派生，再写入：
+
+```text
+output/bottleneck_dataset/experiments/shared_bstan_machine_human_v1/
+  raw_quality_report.json
+  shared_build_summary.json
+  dataset.pt
+  dataset_manifest.json
+  split_manifest.json
+```
+
+该目录名与旧 `canonical_bstan_machine_human_v1` 分开，防止旧 label、旧 checkpoint 和
+新共享口径混用。需要自定义实验目录或 raw 组合时使用：
+
+```bash
+BENCHMARK_TAG=my_experiment ./batch_factory_baseline_build.sh \
+  new_machine1.0 new_human1.0
+```
+
+先执行四模型 smoke：
+
+```bash
+RUN_MODE=smoke ./batch_factory_baseline_train.sh ALL
+```
+
+smoke 通过后执行正式训练：
+
+```bash
+./batch_factory_baseline_train.sh ALL
+```
+
+也可以只训练一个模型，例如 `./batch_factory_baseline_train.sh B5`。所有模型从同一
+`dataset.pt` 和 `split_manifest.json` 读取监督与划分，脚本不在训练阶段重新聚合或改标签。
