@@ -1,4 +1,4 @@
-"""Training, checkpointing, and evaluation for the BSTAN baseline."""
+"""Training, checkpointing, and evaluation shared by B3-B5."""
 
 from __future__ import annotations
 
@@ -16,23 +16,19 @@ from typing import Any
 
 import numpy as np
 import torch
+from torch import nn
 from torch.utils.data import DataLoader
 
-from .dataset import BstanTensorDataset
-from .losses import BstanLossConfig, compute_multitask_loss
+from .dataset import FactoryBaselineTensorDataset, load_shared_dataset
+from .torch_losses import MultiTaskLossConfig, compute_multitask_loss
 from .metrics import compute_metrics, select_f1_threshold
-from .model import BstanGatGru, BstanModelConfig
-from .schema import (
-    DATASET_CONTRACT,
-    DATASET_VERSION,
-    LABEL_VERSION,
-    PREDICTION_TARGET_VERSION,
-    TARGET_NODE_CATEGORY,
-)
+from .b3_lstm import B3Lstm, B3ModelConfig
+from .b4_gcn_gru import B4GcnGru, B4ModelConfig
+from .b5_gat_gru import B5GatGru, B5ModelConfig
 
 
 @dataclass
-class BstanTrainConfig:
+class TorchTrainConfig:
     batch_size: int = 32
     max_epochs: int = 100
     patience: int = 15
@@ -49,6 +45,20 @@ class BstanTrainConfig:
                 raise ValueError(f"{name} must be positive")
         if self.num_workers < 0:
             raise ValueError("num_workers must be non-negative")
+
+
+def _model_spec(model_kind: str) -> tuple[type[nn.Module], type, str, str]:
+    specs = {
+        "b3_lstm": (B3Lstm, B3ModelConfig, "B3", "LSTM"),
+        "b4_gcn_gru": (B4GcnGru, B4ModelConfig, "B4", "GCN-GRU"),
+        "b5_gat_gru": (B5GatGru, B5ModelConfig, "B5", "BSTAN-style GAT-GRU"),
+    }
+    try:
+        return specs[model_kind]
+    except KeyError as exc:
+        raise ValueError(
+            f"Unknown model_kind {model_kind!r}; expected one of {sorted(specs)}"
+        ) from exc
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -141,52 +151,15 @@ def _model_inputs(batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
     }
 
 
-def _load_dataset(dataset_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
-    dataset_dir = dataset_dir.resolve()
-    manifest_path = dataset_dir / "dataset_manifest.json"
-    if not manifest_path.exists():
-        raise FileNotFoundError(manifest_path)
-    payload = _torch_load(
-        dataset_dir / "dataset.pt", map_location="cpu", weights_only=True
-    )
-    manifest = _read_json(manifest_path)
-    expected_manifest = {
-        "dataset_contract": DATASET_CONTRACT,
-        "dataset_version": DATASET_VERSION,
-        "label_version": LABEL_VERSION,
-        "target_node_category": TARGET_NODE_CATEGORY,
-        "prediction_target_version": PREDICTION_TARGET_VERSION,
-    }
-    for key, expected in expected_manifest.items():
-        actual = manifest.get(key)
-        if actual != expected:
-            raise ValueError(f"Unexpected {key}: expected {expected!r}, got {actual!r}")
-    required = {
-        "x",
-        "adjacency",
-        "node_mask",
-        "target_node_mask",
-        "global_features",
-        "y_occurrence",
-        "remain_series",
-        "max_remain_windows",
-        "split_indices",
-    }
-    missing = required.difference(payload)
-    if missing:
-        raise ValueError(f"dataset.pt is missing keys: {sorted(missing)}")
-    return payload, manifest
-
-
 def _loaders(
-    payload: dict[str, Any], config: BstanTrainConfig
+    payload: dict[str, Any], config: TorchTrainConfig
 ) -> dict[str, DataLoader]:
     generator = torch.Generator().manual_seed(config.seed)
     loaders: dict[str, DataLoader] = {}
     for split_name in ("train", "validation", "test"):
         indices = payload["split_indices"][split_name].tolist()
         loaders[split_name] = DataLoader(
-            BstanTensorDataset(payload, indices),
+            FactoryBaselineTensorDataset(payload, indices),
             batch_size=config.batch_size,
             shuffle=split_name == "train",
             num_workers=config.num_workers,
@@ -210,10 +183,10 @@ def _positive_weight(payload: dict[str, Any]) -> float:
 
 
 def _run_train_epoch(
-    model: BstanGatGru,
+    model: nn.Module,
     loader: DataLoader,
     optimizer: torch.optim.Optimizer,
-    loss_config: BstanLossConfig,
+    loss_config: MultiTaskLossConfig,
     pos_weight: torch.Tensor,
     device: torch.device,
     gradient_clip_norm: float,
@@ -267,9 +240,9 @@ def _occupancy_events(grid: np.ndarray, length: int) -> list[dict[str, int]]:
 
 
 def _evaluate_loader(
-    model: BstanGatGru,
+    model: nn.Module,
     loader: DataLoader,
-    loss_config: BstanLossConfig,
+    loss_config: MultiTaskLossConfig,
     pos_weight: torch.Tensor,
     device: torch.device,
     cause_class_count: int,
@@ -312,8 +285,11 @@ def _evaluate_loader(
                 collected.setdefault(name, []).append(value.detach().cpu().numpy())
 
             predicted_grid = (
-                torch.sigmoid(outputs["remain_hot_logit"]) >= 0.5
-            ).detach().cpu().numpy()
+                (torch.sigmoid(outputs["remain_hot_logit"]) >= 0.5)
+                .detach()
+                .cpu()
+                .numpy()
+            )
             target_grid = batch["y_hot"].bool().detach().cpu().numpy()
             predicted_lengths = outputs["remain_len"].round().long().detach().cpu()
             target_lengths = batch["target_remain_len"].long().detach().cpu()
@@ -361,9 +337,10 @@ def _evaluate_loader(
     metrics["remain"] = {
         "hot_precision": hot_precision,
         "hot_recall": hot_recall,
-        "hot_f1": 2 * hot_precision * hot_recall / max(
-            hot_precision + hot_recall, 1.0e-12
-        ),
+        "hot_f1": 2
+        * hot_precision
+        * hot_recall
+        / max(hot_precision + hot_recall, 1.0e-12),
         "score_mae": score_abs_sum / max(score_count, 1),
         "remain_len_mae_windows": float(
             np.abs(arrays["remain_len"] - arrays["target_remain_len"]).mean()
@@ -377,17 +354,19 @@ def _evaluate_loader(
 
 def save_checkpoint(
     path: Path,
-    model: BstanGatGru,
+    model: nn.Module,
     optimizer: torch.optim.Optimizer | None,
     epoch: int,
     best_validation_hot_f1: float,
-    model_config: BstanModelConfig,
-    loss_config: BstanLossConfig,
-    train_config: BstanTrainConfig,
+    model_kind: str,
+    model_config: Any,
+    loss_config: MultiTaskLossConfig,
+    train_config: TorchTrainConfig,
     metadata: dict[str, Any],
 ) -> None:
     torch.save(
         {
+            "model_kind": model_kind,
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": (
                 optimizer.state_dict() if optimizer is not None else None
@@ -405,10 +384,12 @@ def save_checkpoint(
 
 def load_checkpoint(
     path: Path, device: torch.device
-) -> tuple[BstanGatGru, dict[str, Any]]:
+) -> tuple[nn.Module, dict[str, Any]]:
     # Checkpoints are generated by this trainer and include optimizer metadata.
     checkpoint = _torch_load(path, map_location=device, weights_only=False)
-    model = BstanGatGru(BstanModelConfig.from_dict(checkpoint["model_config"]))
+    model_kind = checkpoint["model_kind"]
+    model_class, config_class, _baseline_id, _model_name = _model_spec(model_kind)
+    model = model_class(config_class.from_dict(checkpoint["model_config"]))
     model.load_state_dict(checkpoint["model_state_dict"])
     model.to(device)
     return model, checkpoint
@@ -448,9 +429,7 @@ def _prediction_rows(
                 "predicted_time_to_start_s": float(arrays["time_to_start"][position]),
                 "target_time_to_start_s": float(arrays["y_time_to_start"][position]),
                 "predicted_remain_len_windows": float(arrays["remain_len"][position]),
-                "target_remain_len_windows": int(
-                    arrays["target_remain_len"][position]
-                ),
+                "target_remain_len_windows": int(arrays["target_remain_len"][position]),
             }
         )
     return rows
@@ -562,22 +541,23 @@ def _write_evaluation_artifacts(
         )
 
 
-def train_bstan_baseline(
+def train_torch_baseline(
+    model_kind: str,
     dataset_dir: Path,
     output_dir: Path,
     model_overrides: dict[str, Any] | None = None,
-    train_config: BstanTrainConfig | None = None,
-    loss_config: BstanLossConfig | None = None,
+    train_config: TorchTrainConfig | None = None,
+    loss_config: MultiTaskLossConfig | None = None,
 ) -> dict[str, Any]:
-    """Train a baseline, select by validation hot F1, and evaluate test data."""
+    """Train one B3-B5 model and evaluate it with the shared protocol."""
     dataset_dir = dataset_dir.resolve()
     output_dir = output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    train_config = train_config or BstanTrainConfig()
-    loss_config = loss_config or BstanLossConfig()
+    train_config = train_config or TorchTrainConfig()
+    loss_config = loss_config or MultiTaskLossConfig()
     _seed_everything(train_config.seed)
     device = _resolve_device(train_config.device)
-    payload, manifest = _load_dataset(dataset_dir)
+    payload, manifest = load_shared_dataset(dataset_dir)
     if not math.isclose(
         loss_config.prediction_horizon,
         float(manifest["prediction_horizon_s"]),
@@ -596,8 +576,9 @@ def train_bstan_baseline(
         "num_causes": len(manifest["cause_classes"]),
         **(model_overrides or {}),
     }
-    model_config = BstanModelConfig(**model_values)
-    model = BstanGatGru(model_config).to(device)
+    model_class, config_class, baseline_id, model_name = _model_spec(model_kind)
+    model_config = config_class(**model_values)
+    model = model_class(model_config).to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=train_config.learning_rate,
@@ -608,6 +589,9 @@ def train_bstan_baseline(
     pos_weight = torch.tensor(pos_weight_value, device=device)
     manifest_path = dataset_dir / "dataset_manifest.json"
     metadata = {
+        "baseline_id": baseline_id,
+        "model_name": model_name,
+        "model_kind": model_kind,
         "dataset_dir": str(dataset_dir),
         "dataset_manifest_sha256": _manifest_hash(manifest_path),
         "dataset_version": manifest["dataset_version"],
@@ -677,6 +661,7 @@ def train_bstan_baseline(
             optimizer,
             epoch,
             max(best_score, score),
+            model_kind,
             model_config,
             loss_config,
             train_config,
@@ -692,6 +677,7 @@ def train_bstan_baseline(
                 optimizer,
                 epoch,
                 best_score,
+                model_kind,
                 model_config,
                 loss_config,
                 train_config,
@@ -770,6 +756,9 @@ def train_bstan_baseline(
     _write_json(output_dir / "metrics.json", all_metrics)
     summary = {
         "status": "completed",
+        "baseline_id": baseline_id,
+        "model_name": model_name,
+        "model_kind": model_kind,
         "dataset_contract": manifest["dataset_contract"],
         "dataset_version": manifest["dataset_version"],
         "label_version": manifest["label_version"],
@@ -789,7 +778,7 @@ def train_bstan_baseline(
     return summary
 
 
-def evaluate_checkpoint(
+def evaluate_torch_checkpoint(
     dataset_dir: Path,
     checkpoint_path: Path,
     output_dir: Path,
@@ -805,19 +794,19 @@ def evaluate_checkpoint(
     output_dir = output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     device = _resolve_device(device_name)
-    payload, manifest = _load_dataset(dataset_dir)
+    payload, manifest = load_shared_dataset(dataset_dir)
     model, checkpoint = load_checkpoint(checkpoint_path.resolve(), device)
     expected_hash = checkpoint["metadata"]["dataset_manifest_sha256"]
     actual_hash = _manifest_hash(dataset_dir / "dataset_manifest.json")
     if expected_hash != actual_hash:
         raise ValueError("Checkpoint and dataset manifest hashes do not match")
-    train_config = BstanTrainConfig(
+    train_config = TorchTrainConfig(
         batch_size=batch_size,
         num_workers=num_workers,
         device=device_name,
     )
     loaders = _loaders(payload, train_config)
-    loss_config = BstanLossConfig.from_dict(checkpoint["loss_config"])
+    loss_config = MultiTaskLossConfig.from_dict(checkpoint["loss_config"])
     pos_weight = torch.tensor(checkpoint["metadata"]["pos_weight"], device=device)
     occurrence_threshold = float(checkpoint["metadata"]["occurrence_threshold"])
     metrics, arrays, confusion = _evaluate_loader(
@@ -849,6 +838,9 @@ def evaluate_checkpoint(
     summary.update(
         {
             "status": "evaluation_completed",
+            "baseline_id": checkpoint["metadata"]["baseline_id"],
+            "model_name": checkpoint["metadata"]["model_name"],
+            "model_kind": checkpoint["model_kind"],
             "best_epoch": checkpoint["epoch"],
             "best_validation_hot_f1": checkpoint["best_validation_hot_f1"],
             "checkpoint": str(checkpoint_path.resolve()),

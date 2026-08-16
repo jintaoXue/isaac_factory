@@ -1,4 +1,4 @@
-"""Stable feature and tensor schema for the BSTAN baseline."""
+"""Stable feature and tensor schema shared by B2-B5 baselines."""
 
 from __future__ import annotations
 

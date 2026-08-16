@@ -1,4 +1,4 @@
-"""Evaluation metrics for the BSTAN multi-task prediction heads."""
+"""Evaluation metrics shared by factory bottleneck baselines."""
 
 from __future__ import annotations
 

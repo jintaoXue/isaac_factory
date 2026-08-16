@@ -9,9 +9,11 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from .torch_heads import FactoryPredictionHeads
+
 
 @dataclass
-class BstanModelConfig:
+class B5ModelConfig:
     input_dim: int
     global_dim: int
     num_nodes: int
@@ -47,7 +49,7 @@ class BstanModelConfig:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, values: dict[str, Any]) -> "BstanModelConfig":
+    def from_dict(cls, values: dict[str, Any]) -> "B5ModelConfig":
         return cls(**values)
 
 
@@ -113,10 +115,10 @@ class DenseGraphAttention(nn.Module):
         return output * node_mask[:, :, None].to(output.dtype)
 
 
-class BstanGatGru(nn.Module):
+class B5GatGru(nn.Module):
     """Two spatial GAT layers followed by a shared node-wise GRU."""
 
-    def __init__(self, config: BstanModelConfig) -> None:
+    def __init__(self, config: B5ModelConfig) -> None:
         super().__init__()
         self.config = config
         first_head_dim = config.gat_hidden // config.gat_heads
@@ -142,30 +144,14 @@ class BstanGatGru(nn.Module):
             batch_first=True,
             dropout=config.dropout if config.gru_layers > 1 else 0.0,
         )
-        graph_dim = config.gru_hidden + config.global_dim
-        self.node_head = nn.Linear(config.gru_hidden, 1)
-        self.occurrence_head = nn.Linear(graph_dim, 1)
-        self.time_to_start_head = nn.Linear(graph_dim, 1)
-        self.remain_time_embedding = nn.Embedding(
-            config.max_remain_windows, config.gru_hidden
+        self.heads = FactoryPredictionHeads(
+            node_hidden_dim=config.gru_hidden,
+            global_dim=config.global_dim,
+            num_nodes=config.num_nodes,
+            prediction_horizon=config.prediction_horizon,
+            max_remain_windows=config.max_remain_windows,
+            num_causes=config.num_causes,
         )
-        self.remain_score_head = nn.Sequential(
-            nn.Linear(config.gru_hidden * 2, config.gru_hidden),
-            nn.GELU(),
-            nn.Linear(config.gru_hidden, 1),
-        )
-        self.remain_hot_head = nn.Sequential(
-            nn.Linear(config.gru_hidden * 2, config.gru_hidden),
-            nn.GELU(),
-            nn.Linear(config.gru_hidden, 1),
-        )
-        self.remain_len_head = nn.Sequential(
-            nn.Linear(graph_dim + 2, config.gru_hidden),
-            nn.GELU(),
-            nn.Linear(config.gru_hidden, 1),
-            nn.Softplus(),
-        )
-        self.cause_head = nn.Linear(graph_dim, config.num_causes)
 
     def forward(
         self,
@@ -205,49 +191,11 @@ class BstanGatGru(nn.Module):
         node_hidden = temporal_output[:, -1].view(
             batch_size, node_count, self.config.gru_hidden
         )
-        node_hidden = node_hidden * node_mask[:, :, None].to(node_hidden.dtype)
-
-        node_logits = self.node_head(node_hidden).squeeze(-1)
-        node_logits = node_logits.masked_fill(~target_node_mask.bool(), -1.0e9)
-        mask_float = node_mask[:, :, None].to(node_hidden.dtype)
-        graph_embedding = (node_hidden * mask_float).sum(dim=1) / mask_float.sum(
-            dim=1
-        ).clamp_min(1.0)
-        graph_context = (
-            torch.cat((graph_embedding, global_features[:, -1]), dim=-1)
-            if self.config.global_dim
-            else graph_embedding
+        return self.heads(
+            node_hidden,
+            node_mask,
+            target_node_mask,
+            global_features,
+            jobs_remaining,
+            jobs_total,
         )
-        future_steps = torch.arange(
-            self.config.max_remain_windows, device=x.device
-        )
-        future_time = self.remain_time_embedding(future_steps)
-        future_nodes = node_hidden[:, None].expand(
-            -1, self.config.max_remain_windows, -1, -1
-        )
-        future_time = future_time[None, :, None].expand(
-            batch_size, -1, node_count, -1
-        )
-        future_context = torch.cat((future_nodes, future_time), dim=-1)
-        remain_score = self.remain_score_head(future_context)
-        remain_hot_logit = self.remain_hot_head(future_context).squeeze(-1)
-        jobs_context = torch.stack(
-            (jobs_remaining, jobs_total),
-            dim=-1,
-        )
-
-        return {
-            "occurrence_logit": self.occurrence_head(graph_context).squeeze(-1),
-            "node_logits": node_logits,
-            "time_to_start": torch.sigmoid(
-                self.time_to_start_head(graph_context).squeeze(-1)
-            )
-            * self.config.prediction_horizon,
-            "remain_score": remain_score,
-            "remain_hot_logit": remain_hot_logit,
-            "remain_len": self.remain_len_head(
-                torch.cat((graph_context, jobs_context), dim=-1)
-            ).squeeze(-1),
-            "cause_logits": self.cause_head(graph_context),
-            "node_hidden": node_hidden,
-        }

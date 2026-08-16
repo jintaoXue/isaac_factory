@@ -1,4 +1,4 @@
-"""Masked multi-task losses for BSTAN training."""
+"""Masked multi-task losses shared by B3-B5."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from torch.nn import functional as F
 
 
 @dataclass
-class BstanLossConfig:
+class MultiTaskLossConfig:
     lambda_occurrence: float = 1.0
     lambda_node: float = 1.0
     lambda_time_to_start: float = 1.0
@@ -31,7 +31,7 @@ class BstanLossConfig:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, values: dict[str, Any]) -> "BstanLossConfig":
+    def from_dict(cls, values: dict[str, Any]) -> "MultiTaskLossConfig":
         return cls(**values)
 
 
@@ -42,7 +42,7 @@ def _zero_from(outputs: dict[str, torch.Tensor]) -> torch.Tensor:
 def compute_multitask_loss(
     outputs: dict[str, torch.Tensor],
     batch: dict[str, torch.Tensor],
-    config: BstanLossConfig,
+    config: MultiTaskLossConfig,
     pos_weight: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     occurrence = F.binary_cross_entropy_with_logits(
@@ -70,9 +70,7 @@ def compute_multitask_loss(
     hot_error = F.binary_cross_entropy_with_logits(
         outputs["remain_hot_logit"], batch["y_hot"].float(), reduction="none"
     )
-    hot_class_weight = 1.0 + (
-        config.hot_pos_weight - 1.0
-    ) * batch["y_hot"].float()
+    hot_class_weight = 1.0 + (config.hot_pos_weight - 1.0) * batch["y_hot"].float()
     hot_weight = step_weight[:, :, None]
     remain_hot = (hot_error * hot_class_weight * hot_weight).sum() / (
         hot_weight.sum() * outputs["remain_hot_logit"].shape[2]

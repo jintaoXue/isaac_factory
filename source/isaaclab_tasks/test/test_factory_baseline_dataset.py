@@ -18,13 +18,19 @@ TOOLS_DIR = (
 )
 sys.path.insert(0, str(TOOLS_DIR))
 
-from bstan_baseline.dataset import BstanTensorDataset, build_bstan_dataset  # noqa: E402
-from bstan_baseline.schema import CONTINUOUS_FEATURES, GLOBAL_FEATURES  # noqa: E402
-from bstan_baseline.losses import BstanLossConfig  # noqa: E402
-from bstan_baseline.trainer import BstanTrainConfig, train_bstan_baseline  # noqa: E402
+from factory_baselines.torch_losses import MultiTaskLossConfig  # noqa: E402
+from factory_baselines.torch_trainer import (  # noqa: E402
+    TorchTrainConfig,
+    train_torch_baseline,
+)
+from factory_baselines.dataset import (  # noqa: E402
+    FactoryBaselineTensorDataset,
+    build_factory_baseline_dataset,
+)
+from factory_baselines.schema import CONTINUOUS_FEATURES, GLOBAL_FEATURES  # noqa: E402
 
 
-class TestBstanDataset(unittest.TestCase):
+class TestFactoryBaselineDataset(unittest.TestCase):
     @staticmethod
     def _write_csv(path: Path, fieldnames: list[str], rows: list[dict]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -38,10 +44,7 @@ class TestBstanDataset(unittest.TestCase):
         for episode_id in range(6):
             raw_dir = run_dir / f"episode_{episode_id:02d}" / "env_00"
             derived_dir = (
-                run_dir
-                / "shared_bn_agg_v1"
-                / f"episode_{episode_id:02d}"
-                / "env_00"
+                run_dir / "shared_bn_agg_v1" / f"episode_{episode_id:02d}" / "env_00"
             )
             config = {
                 "run_id": "run_seed42",
@@ -129,7 +132,8 @@ class TestBstanDataset(unittest.TestCase):
                         "will_bottleneck": int(positive),
                         "future_bottleneck_object_id": (
                             "num02_rollerbedCNCPipeIntersectionCuttingMachine_ws0"
-                            if positive else ""
+                            if positive
+                            else ""
                         ),
                         "future_bottleneck_type": "machine" if positive else "",
                         "time_to_start": 30 if positive else "",
@@ -155,9 +159,7 @@ class TestBstanDataset(unittest.TestCase):
                 }
                 for job_id in range(2)
             ]
-            self._write_csv(
-                derived_dir / "job_kpi.csv", list(job_rows[0]), job_rows
-            )
+            self._write_csv(derived_dir / "job_kpi.csv", list(job_rows[0]), job_rows)
         return run_dir
 
     def test_builds_fixed_graph_sequences_and_group_splits(self):
@@ -165,7 +167,7 @@ class TestBstanDataset(unittest.TestCase):
             root = Path(temp_dir)
             run_dir = self._make_run(root)
             out_dir = root / "dataset"
-            result = build_bstan_dataset(
+            result = build_factory_baseline_dataset(
                 run_dirs=[run_dir],
                 out_dir=out_dir,
                 window_size=60,
@@ -220,7 +222,8 @@ class TestBstanDataset(unittest.TestCase):
             self.assertAlmostEqual(float(train_queue.mean()), 0.0, places=5)
 
             loader = DataLoader(
-                BstanTensorDataset(payload, train_indices.tolist()), batch_size=3
+                FactoryBaselineTensorDataset(payload, train_indices.tolist()),
+                batch_size=3,
             )
             batch = next(iter(loader))
             self.assertEqual(batch["x"].shape[1:], payload["x"].shape[1:])
@@ -242,7 +245,7 @@ class TestBstanDataset(unittest.TestCase):
             loaded = torch.load(out_dir / "dataset.pt", map_location="cpu")
             self.assertTrue(torch.equal(payload["x"], loaded["x"]))
 
-            repeated = build_bstan_dataset(
+            repeated = build_factory_baseline_dataset(
                 run_dirs=[run_dir],
                 out_dir=root / "dataset_repeated",
                 window_size=60,
@@ -254,27 +257,45 @@ class TestBstanDataset(unittest.TestCase):
             self.assertEqual(result["split"], repeated["split"])
             self.assertTrue(torch.equal(payload["x"], repeated["payload"]["x"]))
 
-            model_dir = root / "model"
-            summary = train_bstan_baseline(
-                dataset_dir=out_dir,
-                output_dir=model_dir,
-                model_overrides={
+            model_cases = {
+                "b3_lstm": {
+                    "lstm_hidden": 8,
+                    "node_hidden": 8,
+                    "node_embedding": 4,
+                    "dropout": 0.0,
+                },
+                "b4_gcn_gru": {
+                    "gcn_hidden": 8,
+                    "gru_hidden": 8,
+                    "dropout": 0.0,
+                },
+                "b5_gat_gru": {
                     "gat_hidden": 8,
                     "gat_heads": 2,
                     "gru_hidden": 8,
                     "dropout": 0.0,
                 },
-                train_config=BstanTrainConfig(
-                    batch_size=8,
-                    max_epochs=1,
-                    patience=1,
-                    device="cpu",
-                ),
-                loss_config=BstanLossConfig(),
-            )
-            self.assertEqual(summary["status"], "completed")
-            self.assertIn("test_hot_f1", summary)
-            self.assertTrue((model_dir / "occupancy_events_test.csv").is_file())
+            }
+            for model_kind, overrides in model_cases.items():
+                with self.subTest(model_kind=model_kind):
+                    model_dir = root / model_kind
+                    summary = train_torch_baseline(
+                        model_kind=model_kind,
+                        dataset_dir=out_dir,
+                        output_dir=model_dir,
+                        model_overrides=overrides,
+                        train_config=TorchTrainConfig(
+                            batch_size=8,
+                            max_epochs=1,
+                            patience=1,
+                            device="cpu",
+                        ),
+                        loss_config=MultiTaskLossConfig(),
+                    )
+                    self.assertEqual(summary["status"], "completed")
+                    self.assertEqual(summary["model_kind"], model_kind)
+                    self.assertIn("test_hot_f1", summary)
+                    self.assertTrue((model_dir / "occupancy_events_test.csv").is_file())
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Train the BSTAN-style dense GAT-GRU baseline."""
+"""Train the B5 BSTAN-style dense GAT-GRU baseline."""
 
 from __future__ import annotations
 
@@ -7,8 +7,11 @@ import argparse
 import json
 from pathlib import Path
 
-from bstan_baseline.losses import BstanLossConfig
-from bstan_baseline.trainer import BstanTrainConfig, train_bstan_baseline
+from factory_baselines import (
+    MultiTaskLossConfig,
+    TorchTrainConfig,
+    train_torch_baseline,
+)
 
 
 def main() -> None:
@@ -32,7 +35,7 @@ def main() -> None:
     parser.add_argument("--prediction_horizon", type=float, default=180.0)
     args = parser.parse_args()
 
-    train_config = BstanTrainConfig(
+    train_config = TorchTrainConfig(
         batch_size=args.batch_size,
         max_epochs=args.max_epochs,
         patience=args.patience,
@@ -43,8 +46,9 @@ def main() -> None:
         num_workers=args.num_workers,
         device=args.device,
     )
-    loss_config = BstanLossConfig(prediction_horizon=args.prediction_horizon)
-    summary = train_bstan_baseline(
+    loss_config = MultiTaskLossConfig(prediction_horizon=args.prediction_horizon)
+    summary = train_torch_baseline(
+        model_kind="b5_gat_gru",
         dataset_dir=args.dataset_dir,
         output_dir=args.output_dir,
         model_overrides={

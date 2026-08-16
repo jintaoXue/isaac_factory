@@ -1,9 +1,10 @@
-"""Build and validate fixed-shape BSTAN graph-sequence datasets."""
+"""Build and validate fixed-shape B2-B5 graph-sequence datasets."""
 
 from __future__ import annotations
 
 import csv
 import hashlib
+import inspect
 import json
 import math
 import random
@@ -349,8 +350,8 @@ def _validate_dataset(
                 raise ValueError("Episode group leakage across splits")
 
 
-class BstanTensorDataset(Dataset):
-    """Dictionary-style tensor dataset used by the Phase-D trainer."""
+class FactoryBaselineTensorDataset(Dataset):
+    """Dictionary-style tensor dataset shared by B2-B5 baselines."""
 
     TENSOR_KEYS = (
         "x",
@@ -399,7 +400,49 @@ class BstanTensorDataset(Dataset):
         return sample
 
 
-def build_bstan_dataset(
+def load_shared_dataset(dataset_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Load and validate the single tensor contract consumed by B2-B5."""
+    dataset_dir = Path(dataset_dir).resolve()
+    manifest_path = dataset_dir / "dataset_manifest.json"
+    dataset_path = dataset_dir / "dataset.pt"
+    if not manifest_path.exists():
+        raise FileNotFoundError(manifest_path)
+    if not dataset_path.exists():
+        raise FileNotFoundError(dataset_path)
+    load_options: dict[str, Any] = {"map_location": "cpu"}
+    if "weights_only" in inspect.signature(torch.load).parameters:
+        load_options["weights_only"] = True
+    payload = torch.load(dataset_path, **load_options)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    expected_manifest = {
+        "dataset_contract": DATASET_CONTRACT,
+        "dataset_version": DATASET_VERSION,
+        "label_version": LABEL_VERSION,
+        "target_node_category": TARGET_NODE_CATEGORY,
+        "prediction_target_version": PREDICTION_TARGET_VERSION,
+    }
+    for key, expected in expected_manifest.items():
+        actual = manifest.get(key)
+        if actual != expected:
+            raise ValueError(f"Unexpected {key}: expected {expected!r}, got {actual!r}")
+    required = {
+        "x",
+        "adjacency",
+        "node_mask",
+        "target_node_mask",
+        "global_features",
+        "y_occurrence",
+        "remain_series",
+        "max_remain_windows",
+        "split_indices",
+    }
+    missing = required.difference(payload)
+    if missing:
+        raise ValueError(f"dataset.pt is missing keys: {sorted(missing)}")
+    return payload, manifest
+
+
+def build_factory_baseline_dataset(
     run_dirs: Iterable[Path],
     out_dir: Path,
     derived_dir_name: str = "shared_bn_agg_v1",
@@ -413,7 +456,7 @@ def build_bstan_dataset(
     max_remain_windows: int = 512,
     hot_score_threshold: float = 0.55,
 ) -> dict[str, Any]:
-    """Build BSTAN tensors from the shared dev_tyx bn_agg contract."""
+    """Build B2-B5 tensors from the shared dev_tyx bn_agg contract."""
     if input_windows <= 0:
         raise ValueError("input_windows must be positive")
     if max_remain_windows <= 0:
@@ -511,9 +554,7 @@ def build_bstan_dataset(
         window_starts = []
         for time_index, window_index_value in enumerate(window_indices):
             rows = by_window[window_index_value]
-            window_starts.append(
-                _f(next(iter(rows.values())).get("window_start_s"))
-            )
+            window_starts.append(_f(next(iter(rows.values())).get("window_start_s")))
             for node_id, row in rows.items():
                 catalog_index = node_index[node_id]
                 raw_features[time_index, catalog_index] = torch.tensor(
@@ -528,8 +569,7 @@ def build_bstan_dataset(
             "hot": raw_hot,
         }
         completion_times = sorted(
-            _f(row.get("complete_s"), float("inf"))
-            for row in group["job_kpi_rows"]
+            _f(row.get("complete_s"), float("inf")) for row in group["job_kpi_rows"]
         )
         jobs_total = len(completion_times)
         jobs_remaining = [
@@ -545,9 +585,7 @@ def build_bstan_dataset(
             len(window_indices),
         )
         for position in range(input_windows, len(window_indices)):
-            sequence_indices = window_indices[
-                position - input_windows : position
-            ]
+            sequence_indices = window_indices[position - input_windows : position]
             if any(
                 current != previous + 1
                 for previous, current in zip(sequence_indices, sequence_indices[1:])

@@ -1,4 +1,4 @@
-"""Static graph matching dev_tyx PDFormer's factory graph prior."""
+"""Shared static graph matching dev_tyx PDFormer's factory graph prior."""
 
 from __future__ import annotations
 
@@ -67,7 +67,9 @@ def build_static_graph(
 
     for resource_type in ("gantry", "transport_robot"):
         members = [
-            node_id for node_id in active_nodes if node_types.get(node_id) == resource_type
+            node_id
+            for node_id in active_nodes
+            if node_types.get(node_id) == resource_type
         ]
         for i, source in enumerate(members):
             for target in members[i + 1 :]:

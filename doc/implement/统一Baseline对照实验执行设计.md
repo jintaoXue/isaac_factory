@@ -10,8 +10,8 @@
 - 本文不修改或伪造服务器已有 raw 数据
 
 本轮实验不再要求 raw 必须由 `collector_version=v0.6` 生成。v0.6 及
-`bstan_weak_v2_3` 的既有实现继续由 Git 历史和原实现文档记录，但不在新的
-benchmark 主路径中保留兼容分支或无效兜底。
+`bstan_weak_v2_3` 的既有实现仅由 Git 历史记录，不在新的 benchmark 主路径中
+保留兼容分支、过时设计文档或无效兜底。
 
 > 2026-08-16 修订：第 4-14 节记录了第一轮 canonical 方案的设计过程，
 > 现行可执行口径以第 16 节为准。第 15 节结果仅作为历史 smoke，不进入
@@ -305,27 +305,24 @@ raw quality gate 的 episode。该 cohort 可用于跑通 baseline 并比较两�
 
 | 编号 | 模型 | 类型 | 实验作用 |
 | --- | --- | --- | --- |
-| B0 | No-event / Prevalence | 类别先验 | 判断是否超过无事件基线 |
-| B1 | Persistence Heuristic | 规则模型 | 判断是否只需外推当前状态 |
 | B2 | XGBoost | 非深度、非图 | 衡量特征工程本身的效果 |
 | B3 | LSTM | 深度时序、非图 | 判断图结构是否必要 |
 | B4 | GCN-GRU | 传统时空图 | 普通图卷积与循环网络基线 |
 | B5 | BSTAN-style GAT-GRU | 图注意力时序 | 判断 attention graph 的收益 |
-| B6 | PDFormer | 图 Transformer | 较强现代时空模型 |
-| Proposed | 最终主模型 | 主方法 | 与统一 baseline 比较 |
 
-最小可交付主表为：
+最终 baseline 只包含 B2-B5，不实现 B0 No-event 或 B1 Persistence 模型。类别
+prevalence、always-negative 和 train-majority 仍可作为指标解释中的统计参照，但不编号、
+不训练，也不进入 baseline 模型主表。
+
+PDFormer 和最终 proposed model 使用相同共享任务契约与 B2-B5 比较，但不再编号为
+baseline。最终 baseline 主表固定为：
 
 ```text
-No-event
-XGBoost
-LSTM
-GCN-GRU
-BSTAN-style GAT-GRU
-Proposed Model
+B2  XGBoost
+B3  LSTM
+B4  GCN-GRU
+B5  BSTAN-style GAT-GRU
 ```
-
-PDFormer 在 canonical 输入和 episode split 完成适配后加入正式主表。
 
 ### 8.2 消融实验
 
@@ -343,11 +340,20 @@ PDFormer 在 canonical 输入和 episode split 完成适配后加入正式主表
 
 所有主结果模型使用相同历史范围、标签和 split。
 
-- XGBoost：展平 `T x N x F`、mask 和 global features；
+- XGBoost：标量头读取各节点历史的 last/mean/max/delta、mask、global 和 jobs；
+  A.1 cell 头读取目标节点历史摘要、全图聚合、future offset 和 jobs，不读取 adjacency；
 - LSTM：每个时刻展平固定节点顺序，不读取 adjacency；
 - GCN-GRU：每个时刻 GCN，再沿时间维度 GRU；
 - GAT-GRU：每个时刻 GAT，再沿时间维度 GRU；
 - PDFormer：读取相同 node features、graph、mask 和标签。
+
+XGBoost 不直接为每个 future cell 复制完整 `T x N x F`，否则 512 窗全量目标会产生
+不可接受的内存开销。A.1 主任务采用共享 cell classifier。每个训练 cell 表示
+`(sample, future_offset, node)`，特征由节点与全图历史统计、future offset、
+jobs remaining/total 和有效性 mask 组成。当前实现具体使用目标节点的
+last/mean/max/delta、最后窗口的全图 mean/max、future offset 周期编码和 jobs 状态。
+训练保留全部正 cell，并使用固定 seed 对负 cell 下采样；validation/test 必须恢复完整
+有效 `[K,N]`，不得下采样后计算指标。
 
 模型专属 auxiliary loss 必须单独报告。不能依靠它获得的额外监督与其他模型的主结果直接比较。
 
@@ -380,10 +386,10 @@ tools/bn_agg/*
 tools/audit_bottleneck_data.py
   -> tyx v0.3 raw quality gate
 
-tools/bstan_baseline/dataset.py
+tools/factory_baselines/dataset.py
   -> 读取 canonical dataset 和 shared split
 
-tools/bstan_baseline/graph_builder.py
+tools/factory_baselines/graph_builder.py
   -> 读取 canonical edge table
 
 PDFormer/factory_bn/export_dataset.py
@@ -419,17 +425,28 @@ BSTAN 优先的原因：
 - 跑通后 LSTM 和 GCN-GRU 只需替换 encoder；
 - 不需要先处理 PDFormer 更复杂的 exporter 和训练接口。
 
-### Step 2：低成本对照
+### Step 2：B2 XGBoost
 
-在同一 dataset 上实现 No-event、Persistence、XGBoost 和 LSTM。
+在同一 dataset 上实现 XGBoost。先完成 A.1 完整 occupancy 输出，再接入共享 A.3 和
+近窗辅助目标。验证通过后冻结 B2 命令与产物格式。
 
-### Step 3：图模型对照
+### Step 3：B3 LSTM
+
+复用 B5 的预测头和 loss，以展平固定节点顺序的每时刻特征作为 LSTM 输入，不读取
+adjacency。验证通过后冻结 B3 命令与产物格式。
+
+### Step 4：B4 GCN-GRU
 
 复用 BSTAN 训练器和预测头实现 GCN-GRU，并完成 GCN 与 GAT 对比。
 
-### Step 4：强模型适配
+### Step 5：B5 BSTAN-style GAT-GRU
 
-最后将 PDFormer 改为读取 canonical dataset 和 shared split，再进入正式主表。
+保留已实现的 GAT-GRU，并在七点共享设计决策落地后，用最终 shared split、mask、标签和
+evaluator 重建正式结果。
+
+### Step 6：主模型对齐
+
+最后将 PDFormer 改为读取相同 dataset 和 shared split，再与 B2-B5 比较。
 
 ## 13. 验收标准
 
@@ -465,9 +482,9 @@ dataset_version = bstan_canonical_dataset_v1
 - buffer supporting materials 的 canonical graph config；
 - canonical features、events、labels 和 provenance checksum；
 - episode-level shared split manifest；
-- BSTAN dataset、训练、checkpoint 和 test evaluation；
+- shared factory baseline dataset、B5 训练、checkpoint 和 test evaluation；
 - validation 选择 occurrence F1 threshold，test 固定使用该 threshold；
-- 一条命令执行 audit、canonical build 和 BSTAN dataset build。
+- 一条命令执行 audit、canonical build 和 shared baseline dataset build。
 
 首轮服务器 raw 与 BSTAN smoke 验收已通过，可以在同一 canonical dataset
 和 split 上开始后续 baseline 适配。
@@ -491,7 +508,7 @@ trainable = 40
 rejected = 0
 ```
 
-Canonical BSTAN dataset：
+Canonical factory baseline dataset：
 
 ```text
 dataset_contract = canonical_factory_bn_v1
@@ -589,7 +606,7 @@ tyx raw v0.3
 ```text
 derived_contract = tyx_bn_agg_v1
 label_version = tyx_bn_agg_event_v1
-BSTAN dataset = bstan_tyxbn_dataset_v2
+shared baseline tensor dataset = bstan_tyxbn_dataset_v2
 prediction target = factory_a1a3_remain_v1
 window_size = 60 s
 input_windows = 12
@@ -653,3 +670,206 @@ tyx 标签不提供 `severity_weak`，因此 severity head、loss、指标和数
 主预测目标不一致的问题已在 BSTAN 中修复。前两项也已在 BSTAN exporter
 修复，但正式公平对照仍要求 PDFormer 采用同一 split 与 horizon gate；其余项
 不在本轮私自改变，避免再次形成两套标签口径。
+
+## 17. B2 XGBoost 实现与服务器验收
+
+### 17.1 实现状态
+
+B2 已接入与 B5 相同的 `dataset.pt`、manifest 和 episode split，不重新读取 raw 或
+派生另一套标签。实现入口：
+
+```text
+tools/train_b2_xgboost.py
+tools/factory_baselines/b2_xgboost.py
+```
+
+B2-B5 的共享 dataset、schema、graph 和 metrics，以及 B3-B5 共用的 heads、loss、
+trainer，均位于 `tools/factory_baselines/`。旧 `tools/bstan_baseline/` 已删除，不保留
+alias 或兼容转发；历史路径只通过 Git 查询。
+
+模型包含：
+
+| Head | XGBoost 任务 | 共享目标 |
+| --- | --- | --- |
+| occurrence | binary classifier | 近 180 秒 `will_bottleneck` |
+| mark node | multiclass classifier | 第一个未来瓶颈节点 |
+| time-to-start | regressor | 第一个未来事件开始时间 |
+| cause | multiclass classifier | A.3 十分类 |
+| remain length | regressor | 到剩余工单清零的窗口数 |
+| remain hot | shared binary cell classifier | A.1 `hot[K,N]` |
+| remain score | shared cell regressor | A.1 `score[K,N]` |
+
+标量头和 cell 头都不读取 adjacency，因此 B2 保持“非图模型”属性。cell 训练保留全部
+正例，负例按固定 seed 下采样；validation/test 对全部有效未来 cell 进行推理和评价。
+occurrence threshold 和 occupancy threshold 都只在 validation 上选择，后者通过流式
+概率直方图计算，避免一次性持有全部未来概率。
+
+本地已完成：
+
+```text
+Python compile passed
+16 focused dataset/B2/B3/B4/B5 unit tests passed
+XGBoost 3.2.0 synthetic end-to-end smoke passed
+B3/B4/B5 one-epoch synthetic train/evaluate smoke passed
+```
+
+本地 smoke 只验证代码链路，不作为实验结果。
+
+### 17.2 服务器命令
+
+先确认服务器环境安装 XGBoost：
+
+```bash
+python -c "import xgboost; print(xgboost.__version__)" || \
+  python -m pip install xgboost
+```
+
+使用已经生成的共享 dataset：
+
+```bash
+DATA_ROOT="$PWD/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset"
+BENCHMARK_DIR="$DATA_ROOT/experiments/canonical_bstan_machine_human_v1"
+DATASET_DIR="$BENCHMARK_DIR"
+MODEL_DIR="$BENCHMARK_DIR/models/b2_xgboost_seed42"
+
+python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools/train_b2_xgboost.py \
+  --dataset_dir "$DATASET_DIR" \
+  --output_dir "$MODEL_DIR" \
+  --seed 42 \
+  --n_jobs 8
+```
+
+如果现行共享 dataset 实际位于 `bstan_dataset_v*` 子目录，应将 `DATASET_DIR` 指向包含
+`dataset.pt` 和 `dataset_manifest.json` 的那个目录。运行前可验证：
+
+```bash
+test -f "$DATASET_DIR/dataset.pt"
+test -f "$DATASET_DIR/dataset_manifest.json"
+```
+
+### 17.3 预期产物
+
+```text
+models/b2_xgboost_seed42/
+  config.json
+  run_summary.json
+  metrics.json
+  metrics_validation.json
+  metrics_test.json
+  predictions_validation.csv
+  predictions_test.csv
+  occupancy_events_validation.csv
+  occupancy_events_test.csv
+  confusion_matrix_validation.csv
+  confusion_matrix_test.csv
+  occurrence.json
+  node.json
+  time_to_start.json          # 非常量 head 时存在
+  cause.json
+  remain_len.json             # 非常量 head 时存在
+  remain_hot.json
+  remain_score.json
+```
+
+常量 head 不生成空模型文件，其常量值直接记录在 `config.json`。服务器验收至少检查：
+
+```bash
+python -m json.tool "$MODEL_DIR/run_summary.json"
+python -m json.tool "$MODEL_DIR/metrics.json"
+```
+
+## 18. B3-B5 共享 PyTorch 实现
+
+### 18.1 文件结构
+
+```text
+tools/factory_baselines/
+  b3_lstm.py
+  b4_gcn_gru.py
+  b5_gat_gru.py
+  torch_heads.py
+  torch_losses.py
+  torch_trainer.py
+
+tools/train_b3_lstm.py
+tools/train_b4_gcn_gru.py
+tools/train_b5_gat_gru.py
+tools/evaluate_torch_baseline.py
+```
+
+三种模型只替换 encoder，统一输出 `node_hidden[B,N,H]`，随后使用同一个
+`FactoryPredictionHeads` 产生 occurrence、mark、time-to-start、remain score/hot、
+remain length 和 cause。三者共用相同 loss、validation checkpoint 指标、threshold、
+metrics 和产物格式。
+
+### 18.2 Encoder 定义
+
+| Baseline | Encoder | 是否读取 adjacency |
+| --- | --- | --- |
+| B3 LSTM | 每个时刻展平固定节点顺序，LSTM 编码历史；graph hidden 与可学习 node embedding 组合为 node hidden | 否 |
+| B4 GCN-GRU | 每个窗口两层对称归一化 GCN，之后每节点共享 GRU | 是 |
+| B5 GAT-GRU | 每个窗口两层 dense multi-head GAT，之后每节点共享 GRU | 是 |
+
+B3 的 forward 显式丢弃 adjacency；测试要求改变 adjacency 后输出逐值不变。B4 测试要求
+full adjacency 与 identity adjacency 产生不同 node hidden。B4 与 B5 的隐藏维度默认均为
+64 的空间层和 128 的 GRU，B3 默认 128 LSTM hidden、128 node hidden。
+
+### 18.3 Checkpoint 契约
+
+新 PyTorch checkpoint 必须包含：
+
+```text
+model_kind = b3_lstm | b4_gcn_gru | b5_gat_gru
+model_config
+model_state_dict
+loss_config
+train_config
+dataset_manifest_sha256
+```
+
+`evaluate_torch_baseline.py` 从 `model_kind` 恢复对应模型，不根据目录名猜测。重构前的 B5
+checkpoint 不含 `model_kind`，不在当前主路径增加兼容兜底；正式服务器验证需要重新训练
+B5。现有 `dataset.pt`、derived 和 raw 均无需重建。
+
+### 18.4 统一服务器训练命令
+
+```bash
+DATA_ROOT="$PWD/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset"
+DATASET_DIR="$DATA_ROOT/experiments/canonical_bstan_machine_human_v1"
+MODELS_DIR="$DATASET_DIR/models"
+
+python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools/train_b3_lstm.py \
+  --dataset_dir "$DATASET_DIR" \
+  --output_dir "$MODELS_DIR/b3_lstm_seed42" \
+  --device cuda:0 \
+  --seed 42
+
+python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools/train_b4_gcn_gru.py \
+  --dataset_dir "$DATASET_DIR" \
+  --output_dir "$MODELS_DIR/b4_gcn_gru_seed42" \
+  --device cuda:0 \
+  --seed 42
+
+python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools/train_b5_gat_gru.py \
+  --dataset_dir "$DATASET_DIR" \
+  --output_dir "$MODELS_DIR/b5_gat_gru_seed42" \
+  --device cuda:0 \
+  --seed 42
+```
+
+B2 使用第 17 节命令。四个模型均输出 `run_summary.json`、`metrics.json`、validation/test
+predictions、occupancy events 和 confusion matrix；B3-B5 另外输出 `best.pt`、`last.pt`
+和 `history.csv`。
+
+### 18.5 验收顺序
+
+服务器统一测试时按 B2、B3、B4、B5 顺序执行。先分别使用 1 epoch smoke 输出目录验证，
+再运行正式配置；不要让 smoke 与正式结果共用目录。完成后检查：
+
+```text
+baseline_id/model_kind 正确
+dataset manifest hash 相同
+episode split 相同
+validation/test 样本数相同
+所有模型输出 A.1/A.3 共享字段
+```

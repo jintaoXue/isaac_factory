@@ -15,23 +15,23 @@ TOOLS_DIR = (
 )
 sys.path.insert(0, str(TOOLS_DIR))
 
-from bstan_baseline.losses import (  # noqa: E402
-    BstanLossConfig,
+from factory_baselines.torch_losses import (  # noqa: E402
+    MultiTaskLossConfig,
     compute_multitask_loss,
 )
-from bstan_baseline.model import BstanGatGru, BstanModelConfig  # noqa: E402
-from bstan_baseline.metrics import compute_metrics, select_f1_threshold  # noqa: E402
-from bstan_baseline.trainer import (  # noqa: E402
-    BstanTrainConfig,
+from factory_baselines.b5_gat_gru import B5GatGru, B5ModelConfig  # noqa: E402
+from factory_baselines.metrics import compute_metrics, select_f1_threshold  # noqa: E402
+from factory_baselines.torch_trainer import (  # noqa: E402
+    TorchTrainConfig,
     load_checkpoint,
     save_checkpoint,
 )
 
 
-class TestBstanModel(unittest.TestCase):
+class TestB5GatGru(unittest.TestCase):
     def setUp(self) -> None:
         torch.manual_seed(7)
-        self.config = BstanModelConfig(
+        self.config = B5ModelConfig(
             input_dim=6,
             global_dim=2,
             num_nodes=5,
@@ -88,7 +88,7 @@ class TestBstanModel(unittest.TestCase):
         }
 
     def test_forward_shapes_and_masked_node_logits(self) -> None:
-        model = BstanGatGru(self.config)
+        model = B5GatGru(self.config)
         batch = self._batch()
         outputs = model(**self._inputs(batch))
         self.assertEqual(outputs["occurrence_logit"].shape, (4,))
@@ -104,7 +104,7 @@ class TestBstanModel(unittest.TestCase):
         self.assertEqual(outputs["cause_logits"].shape, (4, 10))
 
     def test_forward_accepts_shared_contract_without_global_features(self) -> None:
-        config = BstanModelConfig(
+        config = B5ModelConfig(
             input_dim=6,
             global_dim=0,
             num_nodes=5,
@@ -113,18 +113,18 @@ class TestBstanModel(unittest.TestCase):
             gru_hidden=8,
             dropout=0.0,
         )
-        model = BstanGatGru(config)
+        model = B5GatGru(config)
         batch = self._batch()
         batch["global_features"] = torch.empty(4, 4, 0)
         outputs = model(**self._inputs(batch))
         self.assertEqual(outputs["occurrence_logit"].shape, (4,))
 
     def test_loss_without_positive_samples_is_finite(self) -> None:
-        model = BstanGatGru(self.config)
+        model = B5GatGru(self.config)
         batch = self._batch(positive=False)
         outputs = model(**self._inputs(batch))
         loss, components = compute_multitask_loss(
-            outputs, batch, BstanLossConfig(), pos_weight=torch.tensor(1.0)
+            outputs, batch, MultiTaskLossConfig(), pos_weight=torch.tensor(1.0)
         )
         self.assertTrue(torch.isfinite(loss))
         self.assertEqual(float(components["node"]), 0.0)
@@ -132,9 +132,9 @@ class TestBstanModel(unittest.TestCase):
         loss.backward()
 
     def test_two_epoch_synthetic_overfit_smoke(self) -> None:
-        model = BstanGatGru(self.config)
+        model = B5GatGru(self.config)
         batch = self._batch(positive=True)
-        config = BstanLossConfig(
+        config = MultiTaskLossConfig(
             lambda_node=0.0,
             lambda_time_to_start=0.0,
             lambda_remain_score=0.0,
@@ -162,7 +162,7 @@ class TestBstanModel(unittest.TestCase):
         self.assertLess(float(final), float(initial))
 
     def test_checkpoint_round_trip_preserves_predictions(self) -> None:
-        model = BstanGatGru(self.config).eval()
+        model = B5GatGru(self.config).eval()
         optimizer = torch.optim.AdamW(model.parameters())
         batch = self._batch()
         with torch.no_grad():
@@ -175,9 +175,10 @@ class TestBstanModel(unittest.TestCase):
                 optimizer,
                 epoch=2,
                 best_validation_hot_f1=0.5,
+                model_kind="b5_gat_gru",
                 model_config=self.config,
-                loss_config=BstanLossConfig(),
-                train_config=BstanTrainConfig(),
+                loss_config=MultiTaskLossConfig(),
+                train_config=TorchTrainConfig(),
                 metadata={"dataset_manifest_sha256": "test"},
             )
             loaded, checkpoint = load_checkpoint(path, torch.device("cpu"))

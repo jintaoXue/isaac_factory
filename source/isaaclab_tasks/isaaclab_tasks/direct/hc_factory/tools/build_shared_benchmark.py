@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the shared dev_tyx-derived tables and a BSTAN dataset."""
+"""Build shared dev_tyx-derived tables and the B2-B5 tensor dataset."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 
 from audit_bottleneck_data import audit_env_dir, build_report, discover_env_dirs
 from bn_agg.pipeline import process_env_dir
-from bstan_baseline.dataset import build_bstan_dataset
+from factory_baselines import build_factory_baseline_dataset
 from factory_bn_shared.contract import (
     DERIVED_CONTRACT_VERSION,
     DERIVED_SOURCE_BRANCH,
@@ -45,10 +45,14 @@ def main() -> None:
         detail = "\n".join(
             f"  {row['env_dir']}: {'; '.join(row['errors'])}" for row in rejected
         )
-        raise SystemExit(f"Rejected {len(rejected)}/{len(audit_rows)} episodes:\n{detail}")
+        raise SystemExit(
+            f"Rejected {len(rejected)}/{len(audit_rows)} episodes:\n{detail}"
+        )
     accepted = [row for row in audit_rows if row["accepted"]]
     if len(accepted) < 3:
-        raise SystemExit(f"At least 3 accepted episodes are required, got {len(accepted)}")
+        raise SystemExit(
+            f"At least 3 accepted episodes are required, got {len(accepted)}"
+        )
 
     accepted_dirs = {row["env_dir"]: row for row in accepted}
     derived_summaries = []
@@ -89,7 +93,7 @@ def main() -> None:
         )
         derived_summaries.append(summary)
 
-    result = build_bstan_dataset(
+    result = build_factory_baseline_dataset(
         run_dirs=run_dirs,
         out_dir=args.out_dir,
         derived_dir_name=SHARED_DERIVED_DIR,
@@ -110,10 +114,19 @@ def main() -> None:
     summary = {
         "raw_audit": report,
         "derived_episodes": derived_summaries,
-        "dataset": {key: manifest[key] for key in (
-            "dataset_contract", "dataset_version", "label_version", "total_samples",
-            "positive_samples", "positive_rate", "sample_counts", "episode_counts",
-        )},
+        "dataset": {
+            key: manifest[key]
+            for key in (
+                "dataset_contract",
+                "dataset_version",
+                "label_version",
+                "total_samples",
+                "positive_samples",
+                "positive_rate",
+                "sample_counts",
+                "episode_counts",
+            )
+        },
     }
     (args.out_dir / "shared_build_summary.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"

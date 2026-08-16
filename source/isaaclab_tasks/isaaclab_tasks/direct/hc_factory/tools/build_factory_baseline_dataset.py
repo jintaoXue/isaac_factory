@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build BSTAN A.1/A.3 targets from shared bn_agg tables."""
+"""Build shared B2-B5 A.1/A.3 targets from bn_agg tables."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import argparse
 import json
 from pathlib import Path
 
-from bstan_baseline.dataset import build_bstan_dataset
+from factory_baselines import build_factory_baseline_dataset
 
 
 def main() -> None:
@@ -25,7 +25,7 @@ def main() -> None:
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[6]
-    result = build_bstan_dataset(
+    result = build_factory_baseline_dataset(
         run_dirs=args.run_dirs,
         out_dir=args.out_dir,
         derived_dir_name=args.derived_dir_name,
