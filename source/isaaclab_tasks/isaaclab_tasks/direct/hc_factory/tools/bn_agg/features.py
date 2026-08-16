@@ -105,6 +105,7 @@ def compute_window_features(
     run_id: str,
     env_id: int,
     disturbance_intervals: list[dict[str, Any]] | None = None,
+    closed_windows_only: bool = False,
 ) -> list[dict]:
     # Precompute job waiting intervals keyed by *downstream* resource.
     wait_by_station: dict[str, list[tuple[float, float]]] = defaultdict(list)
@@ -240,6 +241,8 @@ def compute_window_features(
         w0 = wi * window_size
         w1 = min((wi + 1) * window_size, episode_end)
         if w1 <= w0:
+            continue
+        if closed_windows_only and (w1 - w0) + 1e-9 < window_size:
             continue
         wlen = w1 - w0
         delay_carrier = route_delay_by_carrier(w0, w1)

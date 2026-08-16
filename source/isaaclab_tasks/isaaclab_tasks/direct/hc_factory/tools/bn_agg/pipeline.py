@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -14,6 +15,15 @@ from .kpi import build_job_kpis
 from .labels import build_labels_and_events, parse_disturbance_l2_intervals
 from .timelines import build_timelines
 
+def _max_timestamp(events: list, job_rows: list) -> float:
+    times = []
+    for e in events:
+        times.append(_f(e.get("logic_time_s"), _f(e.get("time_step"))))
+    for r in job_rows:
+        times.append(_f(r.get("logic_time_s"), _f(r.get("time_step"))))
+    return max(times) if times else 0.0
+
+
 def process_env_dir(
     env_dir: Path,
     out_dir: Path,
@@ -21,6 +31,8 @@ def process_env_dir(
     horizon: float,
     score_threshold: float,
     min_event_windows: int,
+    *,
+    closed_windows_only: bool = False,
 ) -> dict:
     events = _read_jsonl(env_dir / "resource_event_log.jsonl")
     job_rows = _read_csv(env_dir / "job_trace.csv")
@@ -43,17 +55,15 @@ def process_env_dir(
                     pass
                 break
 
-    times = []
-    for e in events:
-        times.append(_f(e.get("logic_time_s"), _f(e.get("time_step"))))
-    for r in job_rows:
-        times.append(_f(r.get("logic_time_s"), _f(r.get("time_step"))))
-    episode_end = max(times) if times else 0.0
+    episode_end = _max_timestamp(events, job_rows)
     if episode_end <= 0:
         raise RuntimeError(f"No usable timestamps in {env_dir}")
 
+    as_of_s = episode_end if closed_windows_only else None
     timelines = build_timelines(events, episode_end)
-    dist_intervals = parse_disturbance_l2_intervals(disturbance_rows)
+    dist_intervals = parse_disturbance_l2_intervals(
+        disturbance_rows, open_end_s=as_of_s
+    )
 
     all_features: list[dict] = []
     for ws in window_sizes:
@@ -68,6 +78,7 @@ def process_env_dir(
             run_id=run_id,
             env_id=env_id if env_id is not None else 0,
             disturbance_intervals=dist_intervals,
+            closed_windows_only=closed_windows_only,
         )
         all_features.extend(feats)
 
@@ -78,6 +89,7 @@ def process_env_dir(
         score_threshold,
         min_event_windows,
         disturbance_rows=disturbance_rows,
+        as_of_s=as_of_s,
     )
     job_kpi_rows, order_kpi = build_job_kpis(
         job_rows,
@@ -138,6 +150,8 @@ def process_env_dir(
             for e in event_rows
             if e.get("event_source") == "disturbance_log"
         ),
+        "closed_windows_only": closed_windows_only,
+        "as_of_s": as_of_s,
         "per_window_size": top_nodes,
         "will_bottleneck_rate": {
             str(ws): (
@@ -153,8 +167,58 @@ def process_env_dir(
     return summary
 
 
+def _run_once(
+    run_dir: Path,
+    out_root: Path,
+    env_id: int | None,
+    window_sizes: list[float],
+    horizon: float,
+    score_threshold: float,
+    min_event_windows: int,
+    closed_windows_only: bool,
+) -> list[dict]:
+    env_dirs = _discover_env_dirs(run_dir, env_id)
+    if not env_dirs:
+        return []
+
+    summaries = []
+    for env_dir in env_dirs:
+        out_dir = _derived_out_dir(out_root, run_dir, env_dir)
+        print(f"[build] {env_dir} → {out_dir}")
+        summary = process_env_dir(
+            env_dir=env_dir,
+            out_dir=out_dir,
+            window_sizes=window_sizes,
+            horizon=horizon,
+            score_threshold=score_threshold,
+            min_event_windows=min_event_windows,
+            closed_windows_only=closed_windows_only,
+        )
+        summaries.append(summary)
+        print(
+            f"  episode_end={summary['episode_end_s']:.0f}s  "
+            f"features={summary['n_feature_rows']}  "
+            f"labels={summary['n_label_rows']}  "
+            f"events={summary['n_events']}"
+            + ("  [closed windows]" if closed_windows_only else "")
+        )
+        okpi = summary.get("order_kpi") or {}
+        if okpi.get("n_completed"):
+            print(
+                f"  jobs={okpi.get('n_completed')}/{okpi.get('n_jobs')}  "
+                f"makespan={okpi.get('order_makespan_s')}s  "
+                f"mean_cycle={okpi.get('mean_cycle_time_s')}s  "
+                f"throughput={okpi.get('throughput_jobs_per_hour')}/h"
+            )
+        for ps in summary["per_window_size"]:
+            print(f"  ws={ps['window_size_s']}: hot_windows={ps['hot_windows']} top={ps['top_nodes'][:3]}")
+    return summaries
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build offline bottleneck features & labels")
+    parser = argparse.ArgumentParser(
+        description="Build bottleneck features & labels (offline, or --follow while Isaac is collecting)"
+    )
     parser.add_argument(
         "--run_dir",
         type=Path,
@@ -182,46 +246,70 @@ def main() -> None:
         default=None,
         help="Output directory (default: <run_dir>/derived)",
     )
+    parser.add_argument(
+        "--follow",
+        action="store_true",
+        help="Watch a live run: re-aggregate closed 60s windows as logs grow. Ctrl-C to stop.",
+    )
+    parser.add_argument("--poll", type=float, default=5.0, help="--follow poll interval in seconds")
+    parser.add_argument(
+        "--closed-windows",
+        action="store_true",
+        help="One-shot: only emit fully closed windows (no short last window). Implied by --follow.",
+    )
     args = parser.parse_args()
 
     window_sizes = [float(x) for x in args.window_sizes.split(",") if x.strip()]
     run_dir = args.run_dir.resolve()
     out_root = (args.out_dir or (run_dir / "derived")).resolve()
+    closed = bool(args.follow or args.closed_windows)
 
-    env_dirs = _discover_env_dirs(run_dir, args.env_id)
-    if not env_dirs:
+    if args.follow:
+        print(f"[follow] {run_dir}  poll={args.poll}s  closed windows only  Ctrl-C to stop")
+        last_sig = None
+        try:
+            while True:
+                env_dirs = _discover_env_dirs(run_dir, args.env_id)
+                sig = tuple(
+                    (str(d), (d / "resource_event_log.jsonl").stat().st_size if (d / "resource_event_log.jsonl").exists() else 0)
+                    for d in env_dirs
+                )
+                if sig and sig != last_sig:
+                    try:
+                        summaries = _run_once(
+                            run_dir,
+                            out_root,
+                            args.env_id,
+                            window_sizes,
+                            args.horizon,
+                            args.score_threshold,
+                            args.min_event_windows,
+                            closed_windows_only=True,
+                        )
+                        (out_root / "all_env_summary.json").write_text(
+                            json.dumps(summaries, indent=2, ensure_ascii=False) + "\n",
+                            encoding="utf-8",
+                        )
+                        last_sig = sig
+                    except RuntimeError as exc:
+                        print(f"[follow] skip: {exc}")
+                time.sleep(max(args.poll, 0.5))
+        except KeyboardInterrupt:
+            print("[follow] stopped")
+            return
+
+    summaries = _run_once(
+        run_dir,
+        out_root,
+        args.env_id,
+        window_sizes,
+        args.horizon,
+        args.score_threshold,
+        args.min_event_windows,
+        closed_windows_only=closed,
+    )
+    if not summaries:
         raise SystemExit(f"No env_* directories under {run_dir} (checked flat and episode_*/ layouts)")
-
-    summaries = []
-    for env_dir in env_dirs:
-        out_dir = _derived_out_dir(out_root, run_dir, env_dir)
-        print(f"[build] {env_dir} → {out_dir}")
-        summary = process_env_dir(
-            env_dir=env_dir,
-            out_dir=out_dir,
-            window_sizes=window_sizes,
-            horizon=args.horizon,
-            score_threshold=args.score_threshold,
-            min_event_windows=args.min_event_windows,
-        )
-        summaries.append(summary)
-        print(
-            f"  episode_end={summary['episode_end_s']:.0f}s  "
-            f"features={summary['n_feature_rows']}  "
-            f"labels={summary['n_label_rows']}  "
-            f"events={summary['n_events']}"
-        )
-        okpi = summary.get("order_kpi") or {}
-        if okpi.get("n_completed"):
-            print(
-                f"  jobs={okpi.get('n_completed')}/{okpi.get('n_jobs')}  "
-                f"makespan={okpi.get('order_makespan_s')}s  "
-                f"mean_cycle={okpi.get('mean_cycle_time_s')}s  "
-                f"throughput={okpi.get('throughput_jobs_per_hour')}/h"
-            )
-        for ps in summary["per_window_size"]:
-            print(f"  ws={ps['window_size_s']}: hot_windows={ps['hot_windows']} top={ps['top_nodes'][:3]}")
-
     (out_root / "all_env_summary.json").write_text(
         json.dumps(summaries, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )

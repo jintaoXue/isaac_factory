@@ -19,6 +19,7 @@ from __future__ import annotations
 from functools import partial
 from typing import Any
 
+import math
 import numpy as np
 import torch
 import torch.nn as nn
@@ -56,6 +57,13 @@ class BNPDFormer(nn.Module):
         self.w_cause = float(config.get("w_cause", 0.4))
         self.pos_weight = float(config.get("will_pos_weight", 20.0))
         self.use_stgnpp = bool(config.get("use_stgnpp", True))
+        self.remain_to_jobs_done = bool(config.get("remain_to_jobs_done", False))
+        self.max_remain_windows = int(config.get("max_remain_windows", 512))
+        self.w_hot = float(config.get("w_hot", 1.0))
+        self.w_remain_len = float(config.get("w_remain_len", 0.3))
+        self.hot_pos_weight = float(config.get("hot_pos_weight", 32.0))
+        self.near_remain_windows = int(config.get("near_remain_windows", 60))
+        self.remain_loss_tau = float(config.get("remain_loss_tau", 20.0))
 
         self.n_cause_classes = int(
             data_feature.get("n_cause_classes") or len(data_feature.get("cause_classes") or [])
@@ -144,11 +152,33 @@ class BNPDFormer(nn.Module):
         self.skip_convs = nn.ModuleList(
             [nn.Conv2d(self.embed_dim, self.skip_dim, kernel_size=1) for _ in range(enc_depth)]
         )
-        self.end_conv1 = nn.Conv2d(self.input_window, self.output_window, kernel_size=1)
-        self.end_conv2 = nn.Conv2d(self.skip_dim, self.output_dim, kernel_size=1)
+        hidden = int(config.get("event_hidden", 64))
+        if self.remain_to_jobs_done:
+            self.remain_fuse = nn.Linear(self.embed_dim + self.skip_dim, self.embed_dim)
+            self.jobs_mlp = nn.Sequential(nn.Linear(2, self.embed_dim), nn.GELU())
+            self.remain_len_head = nn.Sequential(
+                nn.Linear(hidden + self.embed_dim, hidden),
+                nn.GELU(),
+                nn.Linear(hidden, 1),
+                nn.Softplus(),
+            )
+            self.remain_score_mlp = nn.Sequential(
+                nn.Linear(self.embed_dim, self.embed_dim),
+                nn.GELU(),
+                nn.Linear(self.embed_dim, 1),
+            )
+            self.remain_hot_mlp = nn.Sequential(
+                nn.Linear(self.embed_dim, self.embed_dim),
+                nn.GELU(),
+                nn.Linear(self.embed_dim, 1),
+            )
+            self.end_conv1 = None
+            self.end_conv2 = None
+        else:
+            self.end_conv1 = nn.Conv2d(self.input_window, self.output_window, kernel_size=1)
+            self.end_conv2 = nn.Conv2d(self.skip_dim, self.output_dim, kernel_size=1)
 
         # ---- Auxiliary window heads (sparse-data friendly) ----
-        hidden = int(config.get("event_hidden", 64))
         self.aux_pool = nn.Sequential(nn.Linear(self.embed_dim, hidden), nn.ReLU())
         self.will_head = nn.Linear(hidden + 1, 1)
         self.cause_head = nn.Linear(hidden + 1, self.n_cause_classes)
@@ -193,7 +223,7 @@ class BNPDFormer(nn.Module):
         return torch.from_numpy(pe)
 
     def encode(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Returns score_pred (B,Tout,N,1), enc (B,T,N,D), h_last (B,N,D)."""
+        """Returns skip (B, skip_dim, N, T), enc (B,T,N,D), h_last (B,N,D)."""
         B, T, N, _ = x.shape
         x_pattern_list = []
         for i in range(self.s_attn_size):
@@ -220,13 +250,64 @@ class BNPDFormer(nn.Module):
             skip = skip + self.skip_convs[i](enc.permute(0, 3, 2, 1))
 
         h_last = enc[:, -1, :, :]
-        skip = self.end_conv1(F.relu(skip.permute(0, 3, 2, 1)))
-        skip = self.end_conv2(F.relu(skip.permute(0, 3, 2, 1)))
-        score_pred = skip.permute(0, 3, 2, 1)
-        return score_pred, enc, h_last
+        return skip, enc, h_last
+
+    @staticmethod
+    def _sin_time_pe(k_max: int, dim: int, device: torch.device) -> torch.Tensor:
+        pos = torch.arange(k_max, device=device, dtype=torch.float32).unsqueeze(1)
+        div = torch.exp(
+            torch.arange(0, dim, 2, device=device, dtype=torch.float32)
+            * (-math.log(10000.0) / max(dim, 1))
+        )
+        pe = torch.zeros(k_max, dim, device=device)
+        pe[:, 0::2] = torch.sin(pos * div)
+        n_cos = pe[:, 1::2].shape[1]
+        pe[:, 1::2] = torch.cos(pos * div[:n_cos])
+        return pe
+
+    def _remain_decode(
+        self,
+        skip: torch.Tensor,
+        h_last: torch.Tensor,
+        jobs_remaining: torch.Tensor,
+        jobs_total: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Occupancy until remaining jobs done: scores (B,K,N,1), hot logits (B,K,N), R (B,)."""
+        skip_pool = skip.mean(dim=-1).permute(0, 2, 1)
+        h = self.remain_fuse(torch.cat([h_last, skip_pool], dim=-1))
+        jobs = jobs_remaining.float().clamp_min(0.0)
+        total = jobs_total.float().clamp_min(1.0)
+        cond = torch.stack([jobs / total, jobs / 18.0], dim=-1)
+        cond_e = self.jobs_mlp(cond)
+        h = h + cond_e.unsqueeze(1)
+        pooled = self.aux_pool(h).mean(dim=1)
+        remain_len = self.remain_len_head(torch.cat([pooled, cond_e], dim=-1)).squeeze(-1)
+        k_max = self.max_remain_windows
+        pe = self._sin_time_pe(k_max, self.embed_dim, h.device)
+        h_k = h.unsqueeze(1) + pe.unsqueeze(0).unsqueeze(2)
+        score_pred = self.remain_score_mlp(h_k)
+        hot_logit = self.remain_hot_mlp(h_k).squeeze(-1)
+        return score_pred, hot_logit, remain_len
 
     def forward(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        score_pred, enc, h_last = self.encode(batch["X"])
+        skip, enc, h_last = self.encode(batch["X"])
+        if self.remain_to_jobs_done:
+            jobs_r = batch.get("jobs_remaining")
+            jobs_t = batch.get("jobs_total")
+            if jobs_r is None:
+                jobs_r = torch.ones(h_last.shape[0], device=h_last.device)
+            if jobs_t is None:
+                jobs_t = torch.ones(h_last.shape[0], device=h_last.device)
+            score_pred, hot_logit, remain_len_pred = self._remain_decode(
+                skip, h_last, jobs_r, jobs_t
+            )
+        else:
+            skip_t = F.relu(skip.permute(0, 3, 2, 1))
+            skip_t = self.end_conv1(skip_t)
+            skip_t = self.end_conv2(F.relu(skip_t.permute(0, 3, 2, 1)))
+            score_pred = skip_t.permute(0, 3, 2, 1)
+            hot_logit = None
+            remain_len_pred = None
 
         # auxiliary graph-level will / mark from last hidden
         node_energy = self.node_score_gate(h_last).squeeze(-1)  # (B, N)
@@ -245,6 +326,10 @@ class BNPDFormer(nn.Module):
             "tts_aux": tts_aux,
             "h_last": h_last,
         }
+        if hot_logit is not None:
+            out["hot_logit"] = hot_logit
+        if remain_len_pred is not None:
+            out["remain_len_pred"] = remain_len_pred
 
         if self.use_stgnpp and "event_idx" in batch:
             H_e = self.inquirer(
@@ -272,13 +357,50 @@ class BNPDFormer(nn.Module):
 
         return out
 
+    def _remain_step_weight(self, remain_mask: torch.Tensor | None) -> torch.Tensor | None:
+        """Down-weight far remaining windows so occupancy loss is not all-zero.
+
+        Supervise at most ``near_remain_windows`` (default 60 min) with
+        exponential decay ``exp(-k / tau)``. ``remain_len`` is still full-horizon.
+        """
+        if remain_mask is None:
+            return None
+        k_max = remain_mask.shape[-1]
+        steps = torch.arange(k_max, device=remain_mask.device, dtype=torch.float32)
+        near = max(int(self.near_remain_windows), 1)
+        tau = max(float(self.remain_loss_tau), 1.0)
+        decay = torch.exp(-steps / tau) * (steps < float(near)).float()
+        return remain_mask.float() * decay.unsqueeze(0)
+
     def calculate_loss(self, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, dict[str, float]]:
         out = self.forward(batch)
         y_score = batch["y_score"]
         will = batch["will"]
         mark = batch["mark"]
 
-        loss_score = F.smooth_l1_loss(out["score_pred"], y_score)
+        remain_mask = batch.get("remain_mask")
+        step_w = self._remain_step_weight(remain_mask) if remain_mask is not None else None
+        if step_w is not None and step_w.dim() == 2:
+            m = step_w.unsqueeze(-1).unsqueeze(-1)
+            denom = m.sum().clamp_min(1.0)
+            loss_score = (F.smooth_l1_loss(out["score_pred"], y_score, reduction="none") * m).sum() / denom
+        else:
+            loss_score = F.smooth_l1_loss(out["score_pred"], y_score)
+
+        loss_hot = out["score_pred"].sum() * 0.0
+        loss_remain_len = out["score_pred"].sum() * 0.0
+        if "hot_logit" in out and "y_hot" in batch and step_w is not None:
+            hot_m = step_w.unsqueeze(-1)
+            logits = out["hot_logit"]
+            y_hot = batch["y_hot"]
+            bce = F.binary_cross_entropy_with_logits(logits, y_hot, reduction="none")
+            pw = 1.0 + (self.hot_pos_weight - 1.0) * y_hot
+            loss_hot = (bce * pw * hot_m).sum() / hot_m.sum().clamp_min(1.0)
+        if "remain_len_pred" in out and "remain_len" in batch:
+            loss_remain_len = F.smooth_l1_loss(
+                torch.log1p(out["remain_len_pred"]),
+                torch.log1p(batch["remain_len"].clamp_min(0.0)),
+            )
         pos_weight = torch.tensor([self.pos_weight], device=will.device)
         loss_will = F.binary_cross_entropy_with_logits(
             out["will_logit"], will, pos_weight=pos_weight
@@ -366,6 +488,8 @@ class BNPDFormer(nn.Module):
             + self.w_tts * loss_tts
             + self.w_event * loss_event
             + self.w_cause * loss_cause
+            + self.w_hot * loss_hot
+            + self.w_remain_len * loss_remain_len
         )
         stats = {
             "loss": float(total.detach().cpu()),
@@ -375,6 +499,8 @@ class BNPDFormer(nn.Module):
             "loss_tts": float(loss_tts.detach().cpu()),
             "loss_event": float(loss_event.detach().cpu()) if torch.is_tensor(loss_event) else float(loss_event),
             "loss_cause": float(loss_cause.detach().cpu()) if torch.is_tensor(loss_cause) else float(loss_cause),
+            "loss_hot": float(loss_hot.detach().cpu()) if torch.is_tensor(loss_hot) else float(loss_hot),
+            "loss_remain_len": float(loss_remain_len.detach().cpu()) if torch.is_tensor(loss_remain_len) else float(loss_remain_len),
             "nll": float(nll_v.detach().cpu()) if torch.is_tensor(nll_v) else float(nll_v),
             "nll_arrival": float(nll_arr.detach().cpu()) if torch.is_tensor(nll_arr) else float(nll_arr),
             "nll_surv": float(nll_surv.detach().cpu()) if torch.is_tensor(nll_surv) else float(nll_surv),
@@ -391,4 +517,6 @@ class BNPDFormer(nn.Module):
         out["mark_prob"] = torch.softmax(out["mark_logits"], dim=-1)
         out["cause_prob"] = torch.softmax(out["cause_logits"], dim=-1)
         out["cause_pred"] = out["cause_prob"].argmax(dim=-1)
+        if "hot_logit" in out:
+            out["hot_prob"] = torch.sigmoid(out["hot_logit"])
         return out

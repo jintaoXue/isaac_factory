@@ -118,6 +118,23 @@ def _wandb_log(parts: dict[str, dict[str, Any]], epoch: int) -> None:
     wandb.log(payload, step=epoch)
 
 
+def _masked_score_mae(
+    pred: torch.Tensor, target: torch.Tensor, remain_mask: torch.Tensor | None
+) -> float:
+    if remain_mask is None:
+        return float(torch.mean(torch.abs(pred - target)).item())
+    m = remain_mask.unsqueeze(-1).unsqueeze(-1)
+    denom = m.sum().clamp_min(1.0)
+    return float(((pred - target).abs() * m).sum().item() / denom.item())
+
+
+def _near_remain_mask(remain_mask: torch.Tensor | None, near_k: int) -> torch.Tensor | None:
+    if remain_mask is None:
+        return None
+    steps = torch.arange(remain_mask.shape[-1], device=remain_mask.device)
+    return remain_mask.float() * (steps < max(int(near_k), 1)).float()
+
+
 def _average_precision(y_true: torch.Tensor, y_score: torch.Tensor) -> float:
     """Non-interpolated AP (sklearn-style) for a 1-d binary label / score."""
     y = y_true.reshape(-1).float()
@@ -173,6 +190,10 @@ def _epoch_loop(
     totals: dict[str, float] = {}
     n = 0
     score_mae = 0.0
+    remain_len_mae = 0.0
+    remain_n = 0
+    hot_true: list[torch.Tensor] = []
+    hot_prob: list[torch.Tensor] = []
     correct_cause = 0
     total_cause = 0
     majority_hit = 0
@@ -195,9 +216,21 @@ def _epoch_loop(
                 pred = model.predict(batch)
                 will_true.append(batch["will"].detach().cpu())
                 will_prob.append(pred["will_prob"].detach().cpu())
+                near_k = int(getattr(model, "near_remain_windows", 60) or 60)
+                near_m = _near_remain_mask(batch.get("remain_mask"), near_k)
                 score_mae += float(
-                    torch.mean(torch.abs(pred["score_pred"] - batch["y_score"])).item()
+                    _masked_score_mae(pred["score_pred"], batch["y_score"], near_m)
                 ) * batch["X"].shape[0]
+                if "remain_len" in batch and "remain_len_pred" in pred:
+                    remain_len_mae += float(
+                        torch.mean(torch.abs(pred["remain_len_pred"] - batch["remain_len"])).item()
+                    ) * batch["X"].shape[0]
+                    remain_n += batch["X"].shape[0]
+                if "y_hot" in batch and "hot_prob" in pred and near_m is not None:
+                    m = near_m > 0.5
+                    if m.any():
+                        hot_true.append(batch["y_hot"][m].detach().cpu().reshape(-1))
+                        hot_prob.append(pred["hot_prob"][m].detach().cpu().reshape(-1))
                 if "cause" in batch and "cause_pred" in pred:
                     valid = batch["cause"] >= 0
                     if valid.any():
@@ -217,6 +250,14 @@ def _epoch_loop(
         out["score_mae"] = score_mae / max(len(loader.dataset), 1)
         if will_true:
             out.update(_will_metrics(torch.cat(will_true), torch.cat(will_prob)))
+        if remain_n > 0:
+            out["remain_len_mae"] = remain_len_mae / remain_n
+        if hot_true:
+            hm = _will_metrics(torch.cat(hot_true), torch.cat(hot_prob))
+            out["hot_f1"] = hm["will_f1"]
+            out["hot_precision"] = hm["will_precision"]
+            out["hot_recall"] = hm["will_recall"]
+            out["hot_ap"] = hm["will_ap"]
         if total_cause > 0:
             out["cause_acc"] = correct_cause / total_cause
             out["cause_n"] = float(total_cause)
@@ -250,6 +291,9 @@ def train(cfg: dict[str, Any]) -> Path:
         val_ratio=float(cfg.get("eval_rate", 0.15)),
         seed=int(cfg.get("seed", 42)),
         max_hist_events=int(cfg.get("max_hist_events", 8)),
+        remain_to_jobs_done=bool(cfg.get("remain_to_jobs_done", True)),
+        max_remain_windows=int(cfg.get("max_remain_windows", 512)),
+        hot_score_threshold=float(cfg.get("hot_score_threshold", 0.55)),
     )
 
     pattern_keys = make_pattern_keys(
@@ -283,6 +327,7 @@ def train(cfg: dict[str, Any]) -> Path:
     save_dir.mkdir(parents=True, exist_ok=True)
 
     best_mae = float("inf")
+    best_hot_f1 = -1.0
     best_val_loss = float("inf")
     best_path = save_dir / "BNPDFormer_best.pt"
     stale = 0
@@ -308,10 +353,13 @@ def train(cfg: dict[str, Any]) -> Path:
                 "feature_scaler_std": data_feature["feature_scaler"].std,
                 "score_scaler_mean": data_feature["score_scaler"].mean,
                 "score_scaler_std": data_feature["score_scaler"].std,
+                "remain_to_jobs_done": bool(cfg.get("remain_to_jobs_done", True)),
+                "max_remain_windows": int(cfg.get("max_remain_windows", 512)),
             },
             "best_score_mae": best_mae,
+            "best_hot_f1": best_hot_f1,
             "best_val_loss": best_val_loss,
-            "ckpt_metric": "score_mae",
+            "ckpt_metric": str(cfg.get("ckpt_metric") or "hot_f1"),
             "epoch": epoch,
             "val_metrics": {k: float(v) for k, v in val_metrics.items() if isinstance(v, (int, float))},
         }
@@ -322,7 +370,9 @@ def train(cfg: dict[str, Any]) -> Path:
         f"event+train={data_feature.get('n_event_positive_train', 0)} "
         f"event_surv_train={data_feature.get('n_event_surv_train', 0)} "
         f"cause+train={data_feature.get('n_cause_labeled_train', 0)} "
-        f"ckpt=score_mae pattern_keys={pattern_keys.shape}"
+        f"remain_jobs={data_feature.get('remain_to_jobs_done', True)} "
+        f"Kmax={data_feature.get('max_remain_windows', 512)} "
+        f"ckpt={cfg.get('ckpt_metric', 'hot_f1')} pattern_keys={pattern_keys.shape}"
     )
     cause_majority = int(data_feature.get("cause_majority", -1))
     counts = data_feature.get("cause_train_counts")
@@ -357,19 +407,31 @@ def train(cfg: dict[str, Any]) -> Path:
                 f"val_loss={va['loss']:.4f} score_mae={va.get('score_mae', 0):.4f} "
                 f"will_f1={va.get('will_f1', 0):.3f} will_p={va.get('will_precision', 0):.3f} "
                 f"will_r={va.get('will_recall', 0):.3f} will_ap={va.get('will_ap', 0):.3f} "
+                f"hot_f1={va.get('hot_f1', 0):.3f} remain_mae={va.get('remain_len_mae', 0):.1f} "
                 f"nll={va.get('nll', 0):.3f}  ({dt:.1f}s)"
             )
 
+            ckpt_metric = str(cfg.get("ckpt_metric") or "hot_f1")
             mae = float(va.get("score_mae", float("inf")))
-            if mae < best_mae - 1e-6:
-                best_mae = mae
+            hot_f1 = float(va.get("hot_f1", 0.0))
+            if ckpt_metric == "hot_f1":
+                improved = hot_f1 > best_hot_f1 + 1e-6
+            else:
+                improved = mae < best_mae - 1e-6
+            if improved:
+                best_mae = min(best_mae, mae)
+                best_hot_f1 = max(best_hot_f1, hot_f1)
                 stale = 0
                 torch.save(_ckpt_payload(epoch, va), best_path)
-                print(f"  saved best score_mae={best_mae:.4f} -> {best_path}")
+                print(
+                    f"  saved best {ckpt_metric}="
+                    f"{hot_f1 if ckpt_metric == 'hot_f1' else mae:.4f} -> {best_path}"
+                )
                 if wandb_run is not None:
                     import wandb
 
                     wandb.summary["best_score_mae"] = best_mae
+                    wandb.summary["best_hot_f1"] = best_hot_f1
                     wandb.summary["best_epoch"] = epoch
             else:
                 stale += 1
@@ -382,13 +444,18 @@ def train(cfg: dict[str, Any]) -> Path:
                 _wandb_log(
                     {
                         "Train": {**tr, "epoch_sec": dt},
-                        "Val": {**va, "best_score_mae": best_mae, "best_loss": best_val_loss},
+                        "Val": {
+                            **va,
+                            "best_score_mae": best_mae,
+                            "best_hot_f1": best_hot_f1,
+                            "best_loss": best_val_loss,
+                        },
                     },
                     epoch,
                 )
 
             if stale >= patience:
-                print(f"early stop at epoch {epoch} (score_mae patience={patience})")
+                print(f"early stop at epoch {epoch} ({ckpt_metric} patience={patience})")
                 break
 
         if not best_path.is_file():
@@ -405,14 +472,16 @@ def train(cfg: dict[str, Any]) -> Path:
             f"[test] loss={te['loss']:.4f} score_mae={te.get('score_mae', 0):.4f} "
             f"will_f1={te.get('will_f1', 0):.3f} will_p={te.get('will_precision', 0):.3f} "
             f"will_r={te.get('will_recall', 0):.3f} will_ap={te.get('will_ap', 0):.3f} "
+            f"hot_f1={te.get('hot_f1', 0):.3f} remain_mae={te.get('remain_len_mae', 0):.1f} "
             f"nll={te.get('nll', 0):.3f} cause_acc={te.get('cause_acc', 0):.3f}"
         )
         metrics_path = save_dir / "last_metrics.json"
         metrics_path.write_text(
             json.dumps(
                 {
-                    "ckpt_metric": "score_mae",
+                    "ckpt_metric": str(cfg.get("ckpt_metric") or "hot_f1"),
                     "val_best_score_mae": best_mae,
+                    "val_best_hot_f1": best_hot_f1,
                     "val_best_loss": best_val_loss,
                     "best_epoch": int(ckpt.get("epoch") or 0),
                     "test": te,
@@ -435,6 +504,8 @@ def train(cfg: dict[str, Any]) -> Path:
             wandb.summary["test_will_ap"] = te.get("will_ap")
             wandb.summary["test_cause_acc"] = te.get("cause_acc")
             wandb.summary["test_score_mae"] = te.get("score_mae")
+            wandb.summary["test_hot_f1"] = te.get("hot_f1")
+            wandb.summary["test_remain_len_mae"] = te.get("remain_len_mae")
             wandb.summary["test_nll"] = te.get("nll")
             wandb.save(str(best_path))
             wandb.save(str(metrics_path))

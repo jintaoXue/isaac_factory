@@ -12,6 +12,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from factory_bn.causes import ROOT_CAUSE_CLASSES
+from factory_bn.remain import first_done_index, node_hot_mask, pack_remain_target
 
 
 @dataclass
@@ -65,6 +66,38 @@ def _pad_events(
     }
 
 
+def _collect_hist_events(
+    ev_node: np.ndarray,
+    ev_start_s: np.ndarray,
+    ev_dur: np.ndarray,
+    ev_ti: np.ndarray,
+    hist_start: int,
+    t: int,
+    wstart: np.ndarray,
+    n_nodes: int,
+    max_hist_events: int,
+) -> dict[str, np.ndarray]:
+    """Events whose start window lies in ``[hist_start, t)``; tau in minutes."""
+    nodes: list[int] = []
+    idxs: list[int] = []
+    durs: list[float] = []
+    taus: list[float] = []
+    last_s_by_node: dict[int, float] = {}
+    for k in range(len(ev_node)):
+        ti_abs = int(ev_ti[k])
+        if hist_start <= ti_abs < t:
+            ni = int(ev_node[k])
+            rel = ti_abs - hist_start
+            prev = last_s_by_node.get(ni, float(wstart[hist_start]))
+            tau = max(float(ev_start_s[k]) - prev, 0.0) / 60.0
+            nodes.append(ni)
+            idxs.append(rel)
+            durs.append(float(ev_dur[k]) / 60.0)
+            taus.append(tau)
+            last_s_by_node[ni] = float(ev_start_s[k])
+    return _pad_events(nodes, idxs, durs, taus, n_nodes, max_hist_events)
+
+
 class FactoryBNWindowDataset(Dataset):
     def __init__(
         self,
@@ -83,7 +116,7 @@ class FactoryBNWindowDataset(Dataset):
         s = self.samples[idx]
         x = self.feature_scaler.transform(s["x"])
         y_score = self.score_scaler.transform(s["y_score"])
-        return {
+        item = {
             "X": torch.from_numpy(x),
             "y_score": torch.from_numpy(y_score),
             "will": torch.tensor(s["will"], dtype=torch.float32),
@@ -102,6 +135,13 @@ class FactoryBNWindowDataset(Dataset):
             "surv_mask": torch.from_numpy(s["surv_mask"]),
             "phase": torch.from_numpy(s["phase"]),
         }
+        if "remain_mask" in s:
+            item["remain_mask"] = torch.from_numpy(np.asarray(s["remain_mask"], dtype=np.float32))
+            item["y_hot"] = torch.from_numpy(np.asarray(s["y_hot"], dtype=np.float32))
+            item["remain_len"] = torch.tensor(float(s["remain_len"]), dtype=torch.float32)
+            item["jobs_remaining"] = torch.tensor(float(s["jobs_remaining"]), dtype=torch.float32)
+            item["jobs_total"] = torch.tensor(float(s["jobs_total"]), dtype=torch.float32)
+        return item
 
 
 def load_factory_bn_bundle(data_dir: Path) -> dict[str, Any]:
@@ -138,6 +178,14 @@ def load_factory_bn_bundle(data_dir: Path) -> dict[str, Any]:
             ep["event_start_s"] = np.zeros((0,), dtype=np.float32)
             ep["event_duration_s"] = np.zeros((0,), dtype=np.float32)
             ep["event_start_ti"] = np.zeros((0,), dtype=np.int64)
+        if f"{name}_jobs_remaining" in npz:
+            ep["jobs_remaining"] = np.asarray(npz[f"{name}_jobs_remaining"], dtype=np.float32)
+            tot = np.asarray(npz[f"{name}_jobs_total"]).reshape(-1)
+            ep["jobs_total"] = float(tot[0]) if tot.size else 0.0
+        else:
+            t_len = int(ep["features"].shape[0])
+            ep["jobs_remaining"] = np.linspace(float(t_len), 1.0, t_len, dtype=np.float32)
+            ep["jobs_total"] = float(t_len)
         episodes.append(ep)
     if "cause_classes" in npz:
         cause_classes = [str(x) for x in npz["cause_classes"].tolist()]
@@ -164,6 +212,9 @@ def _build_samples(
     max_hist_events: int = 8,
     window_size_s: float = 60.0,
     horizon_s: float = 180.0,
+    remain_to_jobs_done: bool = False,
+    max_remain_windows: int = 512,
+    hot_score_threshold: float = 0.55,
 ) -> list[dict[str, Any]]:
     """Create causal windows with STGNPP event histories.
 
@@ -172,7 +223,11 @@ def _build_samples(
     Historical events: start_ti in that range (mapped to relative idx 0..Tin-1).
     Next event: first event with start_ti >= t; tau in minutes from
     ``window_start[t-1]``. Arrival NLL only if that tau is within
-    ``horizon_s``; otherwise the node is right-censored at H (survival Λ(H)).
+    the event horizon; otherwise the node is right-censored at H (survival Λ(H)).
+
+    When ``remain_to_jobs_done``, the dense target is occupancy from ``t`` until
+    remaining jobs hit zero (padded to ``max_remain_windows``). Event-horizon
+    H is that remaining time. Auxiliary ``will`` stays the 180s near-term label.
     """
     samples: list[dict[str, Any]] = []
     for ep in episodes:
@@ -189,37 +244,61 @@ def _build_samples(
         t_len = feats.shape[0]
         n_nodes = feats.shape[1]
         ep_end_s = float(wstart[-1]) + window_size_s if t_len else 1.0
+        jobs_rem = np.asarray(
+            ep.get("jobs_remaining", np.linspace(t_len, 1, t_len, dtype=np.float32)),
+            dtype=np.float32,
+        )
+        jobs_total = float(ep.get("jobs_total") or (jobs_rem[0] if jobs_rem.size else 0.0))
+        done_ti = first_done_index(jobs_rem) if remain_to_jobs_done else t_len
+        hot = node_hot_mask(feats, scores, score_threshold=hot_score_threshold)
 
         ev_node = ep["event_node"]
         ev_start_s = ep["event_start_s"]
         ev_dur = ep["event_duration_s"]
         ev_ti = ep["event_start_ti"]
 
-        for t in range(input_window, t_len - output_window + 1):
+        if remain_to_jobs_done:
+            t_hi = min(t_len, done_ti)
+        else:
+            t_hi = t_len - output_window + 1
+        for t in range(input_window, t_hi):
             label_idx = t - 1
             hist_start = t - input_window
+            obs_jobs = float(jobs_rem[label_idx]) if label_idx < len(jobs_rem) else 0.0
+            if remain_to_jobs_done and obs_jobs <= 0:
+                continue
 
-            # collect historical events inside the input window
-            nodes, idxs, durs, taus = [], [], [], []
-            last_s_by_node: dict[int, float] = {}
-            for k in range(len(ev_node)):
-                ti_abs = int(ev_ti[k])
-                if hist_start <= ti_abs < t:
-                    ni = int(ev_node[k])
-                    rel = ti_abs - hist_start
-                    prev = last_s_by_node.get(ni, float(wstart[hist_start]))
-                    tau = max(float(ev_start_s[k]) - prev, 0.0) / 60.0  # minutes
-                    nodes.append(ni)
-                    idxs.append(rel)
-                    durs.append(float(ev_dur[k]) / 60.0)
-                    taus.append(tau)
-                    last_s_by_node[ni] = float(ev_start_s[k])
+            padded = _collect_hist_events(
+                ev_node,
+                ev_start_s,
+                ev_dur,
+                ev_ti,
+                hist_start,
+                t,
+                wstart,
+                n_nodes,
+                max_hist_events,
+            )
 
-            padded = _pad_events(nodes, idxs, durs, taus, n_nodes, max_hist_events)
+            if remain_to_jobs_done:
+                y_score, y_hot, remain_mask, remain_len = pack_remain_target(
+                    scores,
+                    hot,
+                    t=t,
+                    done_ti=done_ti,
+                    max_remain_windows=max_remain_windows,
+                )
+                if remain_len <= 0:
+                    continue
+                event_h_s = max(remain_len * float(window_size_s), float(window_size_s))
+            else:
+                y_score = scores[t : t + output_window].astype(np.float32)
+                y_hot = None
+                remain_mask = None
+                remain_len = int(output_window)
+                event_h_s = float(horizon_s)
 
-            # Next event per node after label time, censored at the will horizon.
-            # tau / duration are in minutes to match STGNPP intensity units.
-            horizon_min = max(float(horizon_s), 1.0) / 60.0
+            horizon_min = max(event_h_s, 1.0) / 60.0
             next_tau = np.full((n_nodes,), horizon_min, dtype=np.float32)
             next_dur = np.zeros((n_nodes,), dtype=np.float32)
             next_mask = np.zeros((n_nodes,), dtype=np.float32)
@@ -241,31 +320,147 @@ def _build_samples(
                     next_mask[ni] = 1.0
                     surv_mask[ni] = 0.0
 
-            # episode phase proxies for periodic gate: [time_frac, day_frac≈0]
             phase = np.array(
                 [ref_s / max(ep_end_s, 1.0), (ref_s / 86400.0) % 1.0],
                 dtype=np.float32,
             )
 
-            samples.append(
-                {
-                    "x": feats[hist_start:t].astype(np.float32),
-                    "y_score": scores[t : t + output_window].astype(np.float32),
-                    "will": float(will[label_idx]),
-                    "mark": int(mark[label_idx]),
-                    "cause": int(cause[label_idx]),
-                    "tts": float(tts[label_idx]),
-                    "duration": float(duration[label_idx]),
-                    "episode_id": int(ep["episode_id"]),
-                    **padded,
-                    "next_tau": next_tau,
-                    "next_dur": next_dur,
-                    "next_mask": next_mask,
-                    "surv_mask": surv_mask,
-                    "phase": phase,
-                }
-            )
+            sample = {
+                "x": feats[hist_start:t].astype(np.float32),
+                "y_score": y_score,
+                "will": float(will[label_idx]),
+                "mark": int(mark[label_idx]),
+                "cause": int(cause[label_idx]),
+                "tts": float(tts[label_idx]),
+                "duration": float(duration[label_idx]),
+                "episode_id": int(ep["episode_id"]),
+                **padded,
+                "next_tau": next_tau,
+                "next_dur": next_dur,
+                "next_mask": next_mask,
+                "surv_mask": surv_mask,
+                "phase": phase,
+            }
+            if remain_mask is not None and y_hot is not None:
+                sample["remain_mask"] = remain_mask
+                sample["y_hot"] = y_hot
+                sample["remain_len"] = float(remain_len)
+                sample["jobs_remaining"] = obs_jobs
+                sample["jobs_total"] = jobs_total
+            samples.append(sample)
     return samples
+
+
+def build_infer_sample(
+    features: np.ndarray,
+    window_start_s: np.ndarray,
+    *,
+    t: int,
+    event_node: np.ndarray | None = None,
+    event_start_s: np.ndarray | None = None,
+    event_duration_s: np.ndarray | None = None,
+    event_start_ti: np.ndarray | None = None,
+    scores: np.ndarray | None = None,
+    will: np.ndarray | None = None,
+    mark: np.ndarray | None = None,
+    cause: np.ndarray | None = None,
+    input_window: int = 12,
+    output_window: int = 1,
+    max_hist_events: int = 8,
+    window_size_s: float = 60.0,
+    horizon_s: float = 180.0,
+    episode_end_s: float | None = None,
+    episode_id: int = 0,
+    remain_to_jobs_done: bool = False,
+    max_remain_windows: int = 512,
+    jobs_remaining: float | None = None,
+    jobs_total: float | None = None,
+    done_ti: int | None = None,
+    hot: np.ndarray | None = None,
+) -> dict[str, Any]:
+    """Pack one causal window for ``model.predict`` (no future labels required).
+
+    ``t`` is the first future step: ``X = features[t-input_window:t]``.
+    Online: observed windows ``0..T-1``, pass ``t=T`` to forecast remaining occupancy.
+    Future event labels are unknown, so every node is right-censored at H.
+    """
+    t_len, n_nodes, _ = features.shape
+    if t < input_window:
+        raise ValueError(f"t={t} needs at least {input_window} history windows")
+    if t > t_len:
+        raise ValueError(f"t={t} exceeds available windows T={t_len}")
+    hist_start = t - input_window
+    label_idx = t - 1
+    wstart = np.asarray(window_start_s, dtype=np.float32)
+    ev_node = np.asarray(event_node if event_node is not None else [], dtype=np.int64)
+    ev_start_s = np.asarray(event_start_s if event_start_s is not None else [], dtype=np.float32)
+    ev_dur = np.asarray(
+        event_duration_s if event_duration_s is not None else [], dtype=np.float32
+    )
+    ev_ti = np.asarray(event_start_ti if event_start_ti is not None else [], dtype=np.int64)
+    padded = _collect_hist_events(
+        ev_node, ev_start_s, ev_dur, ev_ti, hist_start, t, wstart, n_nodes, max_hist_events
+    )
+    k_out = int(max_remain_windows) if remain_to_jobs_done else int(output_window)
+    event_h_s = float(k_out) * float(window_size_s) if remain_to_jobs_done else float(horizon_s)
+    horizon_min = max(event_h_s, 1.0) / 60.0
+    ref_s = float(wstart[label_idx])
+    last_obs_end = float(wstart[-1]) + float(window_size_s)
+    ep_end = float(episode_end_s) if episode_end_s is not None else max(last_obs_end, ref_s + event_h_s)
+    y_score = np.zeros((k_out, n_nodes, 1), dtype=np.float32)
+    y_hot = np.zeros((k_out, n_nodes), dtype=np.float32)
+    remain_mask = np.zeros((k_out,), dtype=np.float32)
+    remain_len = 0
+    has_future = False
+    if remain_to_jobs_done and scores is not None and t < t_len:
+        hot_arr = hot if hot is not None else node_hot_mask(features, scores)
+        end_i = int(done_ti) if done_ti is not None else t_len
+        y_score, y_hot, remain_mask, remain_len = pack_remain_target(
+            scores, hot_arr, t=t, done_ti=end_i, max_remain_windows=k_out
+        )
+        has_future = remain_len > 0
+    elif scores is not None and t + output_window <= t_len:
+        y_score = np.asarray(scores[t : t + output_window], dtype=np.float32)
+        has_future = True
+    will_v = 0.0
+    mark_v = -1
+    cause_v = -1
+    if will is not None and label_idx < len(will):
+        will_v = float(will[label_idx])
+    if mark is not None and label_idx < len(mark):
+        mark_v = int(mark[label_idx])
+    if cause is not None and label_idx < len(cause):
+        cause_v = int(cause[label_idx])
+    jobs_rem = 0.0 if jobs_remaining is None else float(jobs_remaining)
+    jobs_tot = 1.0 if not jobs_total else float(jobs_total)
+    sample = {
+        "x": np.asarray(features[hist_start:t], dtype=np.float32),
+        "y_score": y_score,
+        "will": will_v,
+        "mark": mark_v,
+        "cause": cause_v,
+        "tts": -1.0,
+        "duration": -1.0,
+        "episode_id": int(episode_id),
+        **padded,
+        "next_tau": np.full((n_nodes,), horizon_min, dtype=np.float32),
+        "next_dur": np.zeros((n_nodes,), dtype=np.float32),
+        "next_mask": np.zeros((n_nodes,), dtype=np.float32),
+        "surv_mask": np.ones((n_nodes,), dtype=np.float32),
+        "phase": np.array(
+            [ref_s / max(ep_end, 1.0), (ref_s / 86400.0) % 1.0], dtype=np.float32
+        ),
+        "t": int(t),
+        "window_start_s": ref_s,
+        "has_future_score": has_future,
+    }
+    if remain_to_jobs_done:
+        sample["remain_mask"] = remain_mask
+        sample["y_hot"] = y_hot
+        sample["remain_len"] = float(remain_len)
+        sample["jobs_remaining"] = jobs_rem
+        sample["jobs_total"] = jobs_tot
+    return sample
 
 
 def _cause_stats(samples: list[dict[str, Any]], n_classes: int) -> tuple[np.ndarray, np.ndarray, int]:
@@ -298,6 +493,9 @@ def build_dataloaders(
     seed: int = 42,
     num_workers: int = 0,
     max_hist_events: int = 8,
+    remain_to_jobs_done: bool = True,
+    max_remain_windows: int = 512,
+    hot_score_threshold: float = 0.55,
 ) -> tuple[DataLoader, DataLoader, DataLoader, dict[str, Any]]:
     bundle = load_factory_bn_bundle(data_dir)
     window_size = bundle["window_size_s"]
@@ -311,6 +509,9 @@ def build_dataloaders(
         max_hist_events=max_hist_events,
         window_size_s=window_size,
         horizon_s=horizon_s,
+        remain_to_jobs_done=remain_to_jobs_done,
+        max_remain_windows=max_remain_windows,
+        hot_score_threshold=hot_score_threshold,
     )
     if not samples:
         raise RuntimeError("No training samples; check episode length vs input_window")
@@ -334,7 +535,15 @@ def build_dataloaders(
     test_samples = [samples[i] for i in test_idx]
 
     x_cat = np.stack([s["x"] for s in train_samples], axis=0)
-    y_cat = np.stack([s["y_score"] for s in train_samples], axis=0)
+    if remain_to_jobs_done:
+        chunks = [
+            s["y_score"][np.asarray(s["remain_mask"]) > 0.5]
+            for s in train_samples
+            if float(np.asarray(s.get("remain_mask", [0])).sum()) > 0
+        ]
+        y_cat = np.concatenate(chunks, axis=0) if chunks else np.stack([s["y_score"] for s in train_samples], axis=0)
+    else:
+        y_cat = np.stack([s["y_score"] for s in train_samples], axis=0)
     feature_scaler = _fit_scaler(x_cat)
     score_scaler = _fit_scaler(y_cat)
     cause_w, cause_counts, cause_majority = _cause_stats(
@@ -378,6 +587,9 @@ def build_dataloaders(
         "cause_train_counts": cause_counts,
         "cause_majority": cause_majority,
         "n_cause_labeled_train": int(sum(1 for s in train_samples if int(s.get("cause", -1)) >= 0)),
+        "remain_to_jobs_done": bool(remain_to_jobs_done),
+        "max_remain_windows": int(max_remain_windows),
+        "hot_score_threshold": float(hot_score_threshold),
     }
     return (*loaders, data_feature)
 

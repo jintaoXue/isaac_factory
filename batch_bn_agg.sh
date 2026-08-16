@@ -23,6 +23,8 @@
 #   conda activate env_isaaclab
 #   cd ~/work/isaac_factory
 #   ./batch_bn_agg.sh OLD
+# 采集还在跑、要边关窗边聚:
+#   python -m bn_agg --run_dir .../output/bottleneck_dataset/<run_id> --follow
 
 set -euo pipefail
 

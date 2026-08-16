@@ -42,8 +42,13 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     with path.open(encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            if line:
+            if not line:
+                continue
+            try:
                 rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                # Live collect may race the last incomplete line.
+                continue
     return rows
 
 

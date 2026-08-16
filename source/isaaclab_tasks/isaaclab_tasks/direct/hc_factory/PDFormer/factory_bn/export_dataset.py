@@ -40,6 +40,7 @@ from factory_bn.graph import (
     semantic_distance_matrix,
     type_onehot,
 )
+from factory_bn.remain import jobs_remaining_series
 
 
 FEATURE_COLS = [
@@ -106,6 +107,13 @@ def _load_labels(path: Path, window_size: float) -> dict[int, dict[str, str]]:
     return out
 
 
+def _load_job_kpi(path: Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+    with path.open(newline="") as f:
+        return list(csv.DictReader(f))
+
+
 def _load_events(path: Path, window_size: float) -> list[dict[str, Any]]:
     """Load bottleneck_event.csv rows for STGNPP-style event sequences."""
     events: list[dict[str, Any]] = []
@@ -149,6 +157,7 @@ def _pivot_episode(
     resource_ids: list[str],
     resource_types: list[str],
     events: list[dict[str, Any]] | None = None,
+    job_kpi_rows: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     node_index = {rid: i for i, rid in enumerate(resource_ids)}
     n = len(resource_ids)
@@ -216,6 +225,8 @@ def _pivot_episode(
         ev_dur.append(e["duration_s"])
         ev_start_ti.append(ti)
 
+    jobs_rem, jobs_total = jobs_remaining_series(job_kpi_rows or [], window_start)
+
     return {
         "windows": np.asarray(windows, dtype=np.int64),
         "window_start_s": window_start,
@@ -227,6 +238,8 @@ def _pivot_episode(
         "time_to_start": tts,
         "duration": duration,
         "is_bottleneck_window": is_hot,
+        "jobs_remaining": jobs_rem,
+        "jobs_total": np.float32(jobs_total),
         "event_node": np.asarray(ev_node, dtype=np.int64),
         "event_start_s": np.asarray(ev_start_s, dtype=np.float32),
         "event_duration_s": np.asarray(ev_dur, dtype=np.float32),
@@ -319,7 +332,18 @@ def _collect_run_episodes(
     window_size: float,
     *,
     name_prefix: str | None = None,
-) -> tuple[dict[str, str], list[tuple[str, list[dict[str, str]], dict[int, dict[str, str]], list[dict[str, Any]]]]]:
+) -> tuple[
+    dict[str, str],
+    list[
+        tuple[
+            str,
+            list[dict[str, str]],
+            dict[int, dict[str, str]],
+            list[dict[str, Any]],
+            list[dict[str, str]],
+        ]
+    ],
+]:
     derived = run_dir / "derived"
     if not derived.is_dir():
         raise FileNotFoundError(f"derived/ not found under {run_dir}")
@@ -330,7 +354,13 @@ def _collect_run_episodes(
 
     all_ids: dict[str, str] = {}
     per_ep_rows: list[
-        tuple[str, list[dict[str, str]], dict[int, dict[str, str]], list[dict[str, Any]]]
+        tuple[
+            str,
+            list[dict[str, str]],
+            dict[int, dict[str, str]],
+            list[dict[str, Any]],
+            list[dict[str, str]],
+        ]
     ] = []
     for ep_dir in episode_dirs:
         feat_path = ep_dir / "window_feature_table.csv"
@@ -341,14 +371,46 @@ def _collect_run_episodes(
         rows = _load_feature_table(feat_path, window_size)
         labs = _load_labels(lab_path, window_size)
         events = _load_events(ev_path, window_size)
+        kpi = _load_job_kpi(ep_dir / "job_kpi.csv")
         if not rows:
             continue
         for row in rows:
             all_ids.setdefault(row["resource_id"], row["resource_type"])
         ep_base = ep_dir.parent.name if ep_dir.parent.name.startswith("episode_") else "episode_00"
         ep_name = f"{name_prefix}__{ep_base}" if name_prefix else ep_base
-        per_ep_rows.append((ep_name, rows, labs, events))
+        per_ep_rows.append((ep_name, rows, labs, events, kpi))
     return all_ids, per_ep_rows
+
+
+def load_derived_episode(
+    episode_dir: Path,
+    window_size: float = 60.0,
+) -> dict[str, Any]:
+    """Load one ``derived/episode_XX/env_00`` folder into a pivot dict.
+
+    Adds ``resource_ids`` / ``resource_types`` / ``name`` on top of
+    ``_pivot_episode`` arrays. Node order is local to this episode; callers
+    that load a checkpoint should reindex to ``data_meta['resource_ids']``.
+    """
+    episode_dir = Path(episode_dir)
+    feat_path = episode_dir / "window_feature_table.csv"
+    if not feat_path.is_file():
+        raise FileNotFoundError(f"missing {feat_path}")
+    rows = _load_feature_table(feat_path, window_size)
+    if not rows:
+        raise RuntimeError(f"no window_size={window_size} rows in {feat_path}")
+    labs = _load_labels(episode_dir / "bottleneck_label.csv", window_size)
+    events = _load_events(episode_dir / "bottleneck_event.csv", window_size)
+    kpi = _load_job_kpi(episode_dir / "job_kpi.csv")
+    resource_ids, resource_types = _collect_nodes(rows)
+    pivoted = _pivot_episode(
+        rows, labs, resource_ids, resource_types, events, job_kpi_rows=kpi
+    )
+    pivoted["resource_ids"] = resource_ids
+    pivoted["resource_types"] = resource_types
+    parent = episode_dir.parent.name
+    pivoted["name"] = parent if parent.startswith("episode_") else episode_dir.name
+    return pivoted
 
 
 def export_runs(
@@ -370,7 +432,13 @@ def export_runs(
 
     all_ids: dict[str, str] = {}
     per_ep_rows: list[
-        tuple[str, list[dict[str, str]], dict[int, dict[str, str]], list[dict[str, Any]]]
+        tuple[
+            str,
+            list[dict[str, str]],
+            dict[int, dict[str, str]],
+            list[dict[str, Any]],
+            list[dict[str, str]],
+        ]
     ] = []
     for run_dir in run_dirs:
         prefix = run_dir.name if multi else None
@@ -401,8 +469,10 @@ def export_runs(
     score_series_for_atomic: list[np.ndarray] = []
     concat_features = []
 
-    for ep_name, rows, labs, events in per_ep_rows:
-        packed = _pivot_episode(rows, labs, resource_ids, resource_types, events=events)
+    for ep_name, rows, labs, events, kpi in per_ep_rows:
+        packed = _pivot_episode(
+            rows, labs, resource_ids, resource_types, events=events, job_kpi_rows=kpi
+        )
         episodes_payload[ep_name] = packed
         atomic = np.concatenate(
             [packed["scores"], packed["features"][:, :, : len(FEATURE_COLS)]],
@@ -439,6 +509,8 @@ def export_runs(
         **{f"{ep}_event_start_s": v["event_start_s"] for ep, v in episodes_payload.items()},
         **{f"{ep}_event_duration_s": v["event_duration_s"] for ep, v in episodes_payload.items()},
         **{f"{ep}_event_start_ti": v["event_start_ti"] for ep, v in episodes_payload.items()},
+        **{f"{ep}_jobs_remaining": v["jobs_remaining"] for ep, v in episodes_payload.items()},
+        **{f"{ep}_jobs_total": np.asarray([v["jobs_total"]], dtype=np.float32) for ep, v in episodes_payload.items()},
         episode_names=np.asarray(list(episodes_payload.keys())),
     )
 
@@ -460,14 +532,17 @@ def export_runs(
                 "cause_labeled": int((v["cause"] >= 0).sum()),
                 "hot_windows": int(v["is_bottleneck_window"].sum()),
                 "n_events": int(len(v["event_node"])),
+                "jobs_total": float(v["jobs_total"]),
+                "jobs_remaining_start": float(v["jobs_remaining"][0]) if len(v["jobs_remaining"]) else 0.0,
             }
             for ep, v in episodes_payload.items()
         },
         "notes": [
             "Input X uses FEATURE_COLS + type one-hot; does NOT include bottleneck_score_s (label leak).",
-            "Score head (PDFormer): future bottleneck_score_s (dense per-node).",
+            "A.1 remain-to-jobs-done: jobs_remaining[t] unfinished jobs at window start; occupancy is [t, done).",
+            "Score head (PDFormer): future bottleneck_score_s (dense per-node) over remaining windows.",
             "Event path (STGNPP): per-node sequences from bottleneck_event.csv; score and L2 onsets are not merged.",
-            "Window will/mark/tts kept as auxiliary when events are sparse.",
+            "Window will/mark/tts kept as auxiliary when events are sparse (still 180s near-term).",
             "A3 cause head: per-window root_cause_reason (L2 type or score heuristic); -1 = unlabeled.",
             "Coupling features are node-local (PROCESS_CHAIN, carrier delay, shortage at consumer).",
             "Multi-run merge uses episode keys {run_id}__episode_XX.",
@@ -516,7 +591,7 @@ def export_runs(
         print(
             f"  {ep}: T={v['features'].shape[0]} will+={int(v['will_bottleneck'].sum())} "
             f"hot={int(v['is_bottleneck_window'].sum())} cause+={int((v['cause'] >= 0).sum())} "
-            f"events={len(v['event_node'])}"
+            f"events={len(v['event_node'])} jobs={int(v['jobs_total'])}"
         )
     return out_dir
 

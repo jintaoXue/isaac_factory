@@ -26,11 +26,16 @@ def _map_disturbance_resource_type(resource_id: str, raw_type: str) -> str:
     return raw_type or "machine"
 
 
-def parse_disturbance_l2_intervals(disturbance_rows: list[dict[str, str]]) -> list[dict[str, Any]]:
-    """Extract completed L2 intervals from disturbance_log.csv.
+def parse_disturbance_l2_intervals(
+    disturbance_rows: list[dict[str, str]],
+    *,
+    open_end_s: float | None = None,
+) -> list[dict[str, Any]]:
+    """Extract L2 intervals from disturbance_log.csv.
 
     Collector writes a start row (no end) and an end row (with end_time_step).
-    We keep only completed intervals whose disturbance_type is in DISTURBANCE_L2_TYPES.
+    Completed intervals are always kept. If ``open_end_s`` is set, still-open
+    disturbances are truncated there so live windows can see ``disturbance_active_s``.
     """
     by_id: dict[str, dict[str, Any]] = {}
     for row in disturbance_rows:
@@ -69,7 +74,11 @@ def parse_disturbance_l2_intervals(disturbance_rows: list[dict[str, str]]) -> li
         if not ev.get("resource_id"):
             continue
         if ev.get("end_s") is None:
-            continue
+            if open_end_s is None:
+                continue
+            ev = dict(ev)
+            ev["end_s"] = float(open_end_s)
+            ev["open"] = True
         if float(ev["end_s"]) <= float(ev["start_s"]):
             continue
         out.append(ev)
@@ -222,6 +231,7 @@ def build_labels_and_events(
     score_threshold: float,
     min_event_windows: int,
     disturbance_rows: list[dict[str, str]] | None = None,
+    as_of_s: float | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """Window-level labels + bottleneck events for PDFormer / STGNPP.
 
@@ -239,7 +249,9 @@ def build_labels_and_events(
     for r in feature_rows:
         by_ws[r["window_size_s"]].append(r)
 
-    dist_intervals = parse_disturbance_l2_intervals(disturbance_rows or [])
+    dist_intervals = parse_disturbance_l2_intervals(
+        disturbance_rows or [], open_end_s=as_of_s
+    )
 
     label_rows: list[dict] = []
     event_rows: list[dict] = []
@@ -288,6 +300,8 @@ def build_labels_and_events(
 
         dist_events: list[dict] = []
         for interval in dist_intervals:
+            if interval.get("open"):
+                continue
             ev = _disturbance_to_window_event(interval, window_size, window_meta, windows)
             if ev is not None:
                 dist_events.append(ev)
@@ -298,12 +312,13 @@ def build_labels_and_events(
         # Future labels per window (uses merged events, including disturbance L2)
         for wi, meta in sorted(window_meta.items()):
             t = meta["window_start_s"]
+            horizon_ready = as_of_s is None or (t + horizon) <= float(as_of_s) + 1e-6
             future = [
                 ev
                 for ev in events
                 if ev["start_s"] > t and ev["start_s"] <= t + horizon
             ]
-            if future:
+            if horizon_ready and future:
                 first = min(future, key=lambda e: e["start_s"])
                 will = 1
                 fut_id = first["resource_id"]
@@ -360,6 +375,7 @@ def build_labels_and_events(
                     "time_to_start": tts,
                     "duration": dur,
                     "root_cause_reason": reason,
+                    "label_horizon_ready": int(horizon_ready),
                 }
             )
 
