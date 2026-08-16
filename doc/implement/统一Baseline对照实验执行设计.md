@@ -2,7 +2,7 @@
 
 ## 1. 文档状态
 
-- 状态：BSTAN 优先链路已进入本地实现，等待服务器 raw 验收
+- 状态：BSTAN 优先链路已完成服务器 smoke 验收
 - raw 来源：`dev_tyx@a8b4f38` 采集的 `collector_version=v0.3` 数据
 - 第一实现目标：BSTAN-style GAT-GRU
 - 最终目标：所有 baseline 使用同一 raw、canonical features、标签、split 和评估协议
@@ -464,4 +464,102 @@ dataset_version = bstan_canonical_dataset_v1
 - validation 选择 occurrence F1 threshold，test 固定使用该 threshold；
 - 一条命令执行 audit、canonical build 和 BSTAN dataset build。
 
-服务器 raw 验收通过前，不开始 LSTM、GCN-GRU 或 PDFormer 适配。
+首轮服务器 raw 与 BSTAN smoke 验收已通过，可以在同一 canonical dataset
+和 split 上开始后续 baseline 适配。
+
+## 15. 首轮服务器验收结果
+
+### 15.1 Raw 与 dataset
+
+2026-08-16 在服务器 `dev_xwt` 上对以下 raw 执行验收：
+
+```text
+new_machine1.0
+new_human1.0
+```
+
+Raw quality gate 结果：
+
+```text
+attempted = 40
+trainable = 40
+rejected = 0
+```
+
+Canonical BSTAN dataset：
+
+```text
+dataset_contract = canonical_factory_bn_v1
+dataset_version = bstan_canonical_dataset_v1
+label_version = factory_bn_weak_v1
+total_samples = 33210
+positive_samples = 178
+positive_rate = 0.005360
+episode_split = 28 / 6 / 6
+sample_split = 23092 / 5066 / 5052
+```
+
+Split 无 episode 交叉，validation/test 均含正负样本。正例分布为：
+
+| 范围 | 正例窗口 | 总窗口 | 正例率 |
+| --- | ---: | ---: | ---: |
+| train | 146 | 23092 | 0.6323% |
+| validation | 12 | 5066 | 0.2369% |
+| test | 20 | 5052 | 0.3959% |
+| human I1 | 154 | 14318 | 1.0756% |
+| machine I1 | 24 | 18892 | 0.1270% |
+
+40 个 episode 中 22 个产生至少一个正例窗口。machine 正例明显少于
+human，这是当前数据与 weak label 门禁共同形成的实际分布，不通过降低
+阈值人为追平。
+
+### 15.2 BSTAN-style GAT-GRU smoke 结果
+
+```text
+best_epoch = 13
+epochs_trained = 28
+validation_pr_auc = 0.023736
+test_pr_auc = 0.081533
+validation_selected_threshold = 0.040635
+test_f1 = 0.079051
+```
+
+Occurrence 结果：
+
+| split | PR-AUC | prevalence baseline | precision | recall | F1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| validation | 0.023736 | 0.002369 | 0.0513 | 0.3333 | 0.0889 |
+| test | 0.081533 | 0.003959 | 0.0429 | 0.5000 | 0.0791 |
+
+Test PR-AUC 约为当前 test prevalence 的 20.6 倍，说明模型已学到非随机信号；
+但 test 只有 20 个正窗口，且来自 4 个 episode，该倍数和 F1 不能作为
+稳定泛化结论。
+
+条件于真实正例的 test 辅助任务结果：
+
+```text
+node_top1 = 0.75
+node_top3 = 0.90
+node_mrr = 0.8367
+time_to_start_mae_s = 28.16
+duration_mae_s = 7.89
+```
+
+这些 node/type/regression 指标只在 ground-truth 正样本上计算，不是端到端指标。
+type macro-F1 仅 0.1778，当前正标签的资源类型支持高度集中，不能用
+0.80 accuracy 声称已具备多类型泛化能力。
+
+### 15.3 本轮结论
+
+本轮证明了以下工程链路：
+
+```text
+tyx raw v0.3
+  -> strict raw quality gate
+  -> canonical features and weak labels
+  -> episode-level shared split
+  -> BSTAN training/checkpoint/test evaluation
+```
+
+它不证明扰动因果、跨 seed/布局泛化或 machine 单场景性能。正式实验需补齐
+场景矩阵和多 seed，并在同一 shared split 上增加其他 baseline。
