@@ -15,13 +15,14 @@ class BstanModelConfig:
     input_dim: int
     global_dim: int
     num_nodes: int
-    num_types: int
     gat_hidden: int = 64
     gat_heads: int = 4
     gru_hidden: int = 128
     gru_layers: int = 1
     dropout: float = 0.2
     prediction_horizon: float = 180.0
+    max_remain_windows: int = 512
+    num_causes: int = 10
 
     def __post_init__(self) -> None:
         if self.gat_hidden % self.gat_heads != 0:
@@ -29,12 +30,13 @@ class BstanModelConfig:
         for name in (
             "input_dim",
             "num_nodes",
-            "num_types",
             "gat_hidden",
             "gat_heads",
             "gru_hidden",
             "gru_layers",
             "prediction_horizon",
+            "max_remain_windows",
+            "num_causes",
         ):
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be positive")
@@ -143,9 +145,27 @@ class BstanGatGru(nn.Module):
         graph_dim = config.gru_hidden + config.global_dim
         self.node_head = nn.Linear(config.gru_hidden, 1)
         self.occurrence_head = nn.Linear(graph_dim, 1)
-        self.type_head = nn.Linear(graph_dim, config.num_types)
         self.time_to_start_head = nn.Linear(graph_dim, 1)
-        self.duration_head = nn.Linear(graph_dim, 1)
+        self.remain_time_embedding = nn.Embedding(
+            config.max_remain_windows, config.gru_hidden
+        )
+        self.remain_score_head = nn.Sequential(
+            nn.Linear(config.gru_hidden * 2, config.gru_hidden),
+            nn.GELU(),
+            nn.Linear(config.gru_hidden, 1),
+        )
+        self.remain_hot_head = nn.Sequential(
+            nn.Linear(config.gru_hidden * 2, config.gru_hidden),
+            nn.GELU(),
+            nn.Linear(config.gru_hidden, 1),
+        )
+        self.remain_len_head = nn.Sequential(
+            nn.Linear(graph_dim + 2, config.gru_hidden),
+            nn.GELU(),
+            nn.Linear(config.gru_hidden, 1),
+            nn.Softplus(),
+        )
+        self.cause_head = nn.Linear(graph_dim, config.num_causes)
 
     def forward(
         self,
@@ -153,8 +173,9 @@ class BstanGatGru(nn.Module):
         adjacency: torch.Tensor,
         node_mask: torch.Tensor,
         target_node_mask: torch.Tensor,
-        target_type_mask: torch.Tensor,
         global_features: torch.Tensor,
+        jobs_remaining: torch.Tensor,
+        jobs_total: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
         batch_size, time_steps, node_count, _ = x.shape
         if node_count != self.config.num_nodes:
@@ -197,18 +218,36 @@ class BstanGatGru(nn.Module):
             if self.config.global_dim
             else graph_embedding
         )
-        type_logits = self.type_head(graph_context)
-        type_logits = type_logits.masked_fill(~target_type_mask.bool(), -1.0e9)
+        future_steps = torch.arange(
+            self.config.max_remain_windows, device=x.device
+        )
+        future_time = self.remain_time_embedding(future_steps)
+        future_nodes = node_hidden[:, None].expand(
+            -1, self.config.max_remain_windows, -1, -1
+        )
+        future_time = future_time[None, :, None].expand(
+            batch_size, -1, node_count, -1
+        )
+        future_context = torch.cat((future_nodes, future_time), dim=-1)
+        remain_score = self.remain_score_head(future_context)
+        remain_hot_logit = self.remain_hot_head(future_context).squeeze(-1)
+        jobs_context = torch.stack(
+            (jobs_remaining, jobs_total),
+            dim=-1,
+        )
 
         return {
             "occurrence_logit": self.occurrence_head(graph_context).squeeze(-1),
             "node_logits": node_logits,
-            "type_logits": type_logits,
             "time_to_start": torch.sigmoid(
                 self.time_to_start_head(graph_context).squeeze(-1)
             )
             * self.config.prediction_horizon,
-            "duration": F.softplus(self.duration_head(graph_context).squeeze(-1))
-            * self.config.prediction_horizon,
+            "remain_score": remain_score,
+            "remain_hot_logit": remain_hot_logit,
+            "remain_len": self.remain_len_head(
+                torch.cat((graph_context, jobs_context), dim=-1)
+            ).squeeze(-1),
+            "cause_logits": self.cause_head(graph_context),
             "node_hidden": node_hidden,
         }

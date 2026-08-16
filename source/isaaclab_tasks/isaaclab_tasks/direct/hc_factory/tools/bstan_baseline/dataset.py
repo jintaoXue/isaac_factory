@@ -16,6 +16,8 @@ import torch
 from torch.utils.data import Dataset
 
 from .graph_builder import build_static_graph
+from factory_bn_shared.causes import ROOT_CAUSE_CLASSES, encode_root_cause
+from factory_bn_shared.remain import node_hot_mask, pack_remain_target
 from .schema import (
     COLLECTOR_VERSION,
     CONTINUOUS_FEATURES,
@@ -23,6 +25,7 @@ from .schema import (
     DATASET_VERSION,
     GLOBAL_FEATURES,
     LABEL_VERSION,
+    PREDICTION_TARGET_VERSION,
     TARGET_NODE_CATEGORY,
     feature_is_applicable,
     is_buffer,
@@ -134,6 +137,7 @@ def _discover_groups(
                     "config": config,
                     "feature_rows": _read_csv(feature_path),
                     "label_rows": _read_csv(label_path),
+                    "job_kpi_rows": _read_csv(feature_path.parent / "job_kpi.csv"),
                 }
             )
     if not groups:
@@ -302,17 +306,10 @@ def _validate_dataset(
         raise ValueError("Observation mask shape does not match x")
     if payload["target_node_mask"].shape != (sample_count, node_count):
         raise ValueError("Target node mask shape does not match x")
-    if (
-        payload["target_type_mask"].ndim != 2
-        or payload["target_type_mask"].shape[0] != sample_count
-    ):
-        raise ValueError("Target type mask shape does not match dataset")
     if bool((payload["target_node_mask"] & ~payload["node_mask"]).any()):
         raise ValueError("Target node mask contains inactive graph nodes")
     if not bool(payload["target_node_mask"].any(dim=1).all()):
         raise ValueError("Every sample must have at least one process target node")
-    if not bool(payload["target_type_mask"].any(dim=1).all()):
-        raise ValueError("Every sample must have at least one process target type")
     if (
         not torch.isfinite(x).all()
         or not torch.isfinite(payload["global_features"]).all()
@@ -328,11 +325,6 @@ def _validate_dataset(
             raise ValueError("Positive sample target node is masked")
         if not bool(payload["target_node_mask"][sample_index, node_index]):
             raise ValueError("Positive sample target node is not a process target")
-        type_index = int(payload["y_type"][sample_index])
-        if type_index < 0 or type_index >= payload["target_type_mask"].shape[1]:
-            raise ValueError("Positive sample target type is outside type catalog")
-        if not bool(payload["target_type_mask"][sample_index, type_index]):
-            raise ValueError("Positive sample target type is not a process type")
 
     all_indices: list[int] = []
     split_group_sets: dict[str, set[str]] = {}
@@ -366,15 +358,16 @@ class BstanTensorDataset(Dataset):
         "node_mask",
         "observation_mask",
         "target_node_mask",
-        "target_type_mask",
         "global_features",
         "y_occurrence",
         "y_node",
-        "y_type",
         "y_time_to_start",
-        "y_duration",
+        "y_cause",
+        "jobs_remaining",
+        "jobs_total",
+        "target_start_position",
+        "target_remain_len",
         "positive_mask",
-        "duration_mask",
         "sample_group_id",
     )
 
@@ -390,6 +383,18 @@ class BstanTensorDataset(Dataset):
     def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
         sample_index = self.indices[index]
         sample = {key: self.payload[key][sample_index] for key in self.TENSOR_KEYS}
+        group_number = str(int(sample["sample_group_id"]))
+        series = self.payload["remain_series"][group_number]
+        y_score, y_hot, remain_mask, _ = pack_remain_target(
+            series["score"],
+            series["hot"],
+            int(sample["target_start_position"]),
+            int(sample["target_start_position"] + sample["target_remain_len"]),
+            int(self.payload["max_remain_windows"]),
+        )
+        sample["y_score"] = y_score
+        sample["y_hot"] = y_hot
+        sample["remain_mask"] = remain_mask
         sample["sample_index"] = torch.tensor(sample_index, dtype=torch.int64)
         return sample
 
@@ -405,10 +410,14 @@ def build_bstan_dataset(
     seed: int = 42,
     repo_root: Path | None = None,
     allowed_group_ids: set[str] | None = None,
+    max_remain_windows: int = 512,
+    hot_score_threshold: float = 0.55,
 ) -> dict[str, Any]:
     """Build BSTAN tensors from the shared dev_tyx bn_agg contract."""
     if input_windows <= 0:
         raise ValueError("input_windows must be positive")
+    if max_remain_windows <= 0:
+        raise ValueError("max_remain_windows must be positive")
     out_dir = Path(out_dir).resolve()
     groups = _discover_groups(run_dirs, derived_dir_name)
     if allowed_group_ids is not None:
@@ -455,11 +464,11 @@ def build_bstan_dataset(
     node_masks: list[torch.Tensor] = []
     observation_masks: list[torch.Tensor] = []
     target_node_masks: list[torch.Tensor] = []
-    target_type_masks: list[torch.Tensor] = []
     targets: list[dict[str, Any]] = []
     sample_rows: list[dict[str, Any]] = []
     edge_rows: list[dict[str, Any]] = []
     group_sample_indices: dict[str, list[int]] = defaultdict(list)
+    remain_series: dict[str, dict[str, torch.Tensor]] = {}
 
     for group in groups:
         by_window: dict[int, dict[str, dict[str, str]]] = defaultdict(dict)
@@ -479,15 +488,6 @@ def build_bstan_dataset(
             ],
             dtype=torch.bool,
         )
-        active_target_types = {
-            node_types[node_id]
-            for node_id in active_nodes
-            if not is_buffer(node_id, node_types[node_id])
-        }
-        target_type_mask = torch.tensor(
-            [resource_type in active_target_types for resource_type in resource_types],
-            dtype=torch.bool,
-        )
         adjacency, group_edges = build_static_graph(
             node_ids, node_types, active_nodes, group["config"]
         )
@@ -501,6 +501,49 @@ def build_bstan_dataset(
             )
 
         window_indices = sorted(set(by_window).intersection(labels))
+        raw_features = torch.zeros(
+            (len(window_indices), len(node_ids), len(CONTINUOUS_FEATURES)),
+            dtype=torch.float32,
+        )
+        raw_scores = torch.zeros(
+            (len(window_indices), len(node_ids), 1), dtype=torch.float32
+        )
+        window_starts = []
+        for time_index, window_index_value in enumerate(window_indices):
+            rows = by_window[window_index_value]
+            window_starts.append(
+                _f(next(iter(rows.values())).get("window_start_s"))
+            )
+            for node_id, row in rows.items():
+                catalog_index = node_index[node_id]
+                raw_features[time_index, catalog_index] = torch.tensor(
+                    [_f(row.get(name)) for name in CONTINUOUS_FEATURES]
+                )
+                raw_scores[time_index, catalog_index, 0] = _f(
+                    row.get("bottleneck_score_s")
+                )
+        raw_hot = node_hot_mask(raw_features, raw_scores, hot_score_threshold)
+        remain_series[str(group["group_number"])] = {
+            "score": raw_scores,
+            "hot": raw_hot,
+        }
+        completion_times = sorted(
+            _f(row.get("complete_s"), float("inf"))
+            for row in group["job_kpi_rows"]
+        )
+        jobs_total = len(completion_times)
+        jobs_remaining = [
+            sum(complete_s > start_s for complete_s in completion_times)
+            for start_s in window_starts
+        ]
+        done_position = next(
+            (
+                position
+                for position, remaining in enumerate(jobs_remaining)
+                if remaining <= 0
+            ),
+            len(window_indices),
+        )
         for position in range(input_windows, len(window_indices)):
             sequence_indices = window_indices[
                 position - input_windows : position
@@ -513,6 +556,9 @@ def build_bstan_dataset(
             anchor_index = window_indices[position]
             label = labels[anchor_index]
             if _i(label.get("label_horizon_ready")) != 1:
+                continue
+            remain_len = done_position - position
+            if remain_len <= 0:
                 continue
             sequence_rows = [by_window[index] for index in sequence_indices]
             starts = [
@@ -591,15 +637,16 @@ def build_bstan_dataset(
             node_masks.append(node_mask)
             observation_masks.append(observation_mask)
             target_node_masks.append(target_node_mask)
-            target_type_masks.append(target_type_mask)
             targets.append(
                 {
                     "occurrence": occurrence,
                     "node": node_index.get(target_node_id, -1),
-                    "type": resource_type_index.get(target_type, -1),
                     "time_to_start": _f(label.get("time_to_start")),
-                    "duration": _f(label.get("duration")),
-                    "duration_observed": occurrence,
+                    "cause": encode_root_cause(label.get("root_cause_reason")),
+                    "jobs_remaining": jobs_remaining[position],
+                    "jobs_total": jobs_total,
+                    "target_start_position": position,
+                    "target_remain_len": remain_len,
                     "group_number": group["group_number"],
                 }
             )
@@ -632,7 +679,6 @@ def build_bstan_dataset(
     node_mask = torch.stack(node_masks)
     observation_mask = torch.stack(observation_masks)
     target_node_mask = torch.stack(target_node_masks)
-    target_type_mask = torch.stack(target_type_masks)
     y_occurrence = torch.tensor(
         [target["occurrence"] for target in targets], dtype=torch.float32
     )
@@ -673,29 +719,32 @@ def build_bstan_dataset(
         "node_mask": node_mask,
         "observation_mask": observation_mask,
         "target_node_mask": target_node_mask,
-        "target_type_mask": target_type_mask,
         "global_features": normalized_global,
         "y_occurrence": y_occurrence,
         "y_node": torch.tensor(
             [target["node"] for target in targets], dtype=torch.int64
         ),
-        "y_type": torch.tensor(
-            [target["type"] for target in targets], dtype=torch.int64
-        ),
         "y_time_to_start": torch.tensor(
             [target["time_to_start"] for target in targets], dtype=torch.float32
         ),
-        "y_duration": torch.tensor(
-            [target["duration"] for target in targets], dtype=torch.float32
+        "y_cause": torch.tensor(
+            [target["cause"] for target in targets], dtype=torch.int64
         ),
+        "jobs_remaining": torch.tensor(
+            [target["jobs_remaining"] for target in targets], dtype=torch.float32
+        ),
+        "jobs_total": torch.tensor(
+            [target["jobs_total"] for target in targets], dtype=torch.float32
+        ),
+        "target_start_position": torch.tensor(
+            [target["target_start_position"] for target in targets], dtype=torch.int64
+        ),
+        "target_remain_len": torch.tensor(
+            [target["target_remain_len"] for target in targets], dtype=torch.int64
+        ),
+        "remain_series": remain_series,
+        "max_remain_windows": max_remain_windows,
         "positive_mask": y_occurrence.bool(),
-        "duration_mask": torch.tensor(
-            [
-                target["occurrence"] == 1 and target["duration_observed"] == 1
-                for target in targets
-            ],
-            dtype=torch.bool,
-        ),
         "sample_group_id": torch.tensor(
             [target["group_number"] for target in targets], dtype=torch.int64
         ),
@@ -799,6 +848,7 @@ def build_bstan_dataset(
         "dataset_version": DATASET_VERSION,
         "dataset_contract": DATASET_CONTRACT,
         "label_version": LABEL_VERSION,
+        "prediction_target_version": PREDICTION_TARGET_VERSION,
         "target_node_category": TARGET_NODE_CATEGORY,
         "source_run_directories": sorted({str(group["run_dir"]) for group in groups}),
         "source_episodes": [
@@ -815,6 +865,10 @@ def build_bstan_dataset(
         "stride_s": stride,
         "input_windows": input_windows,
         "prediction_horizon_s": horizon,
+        "remain_to_jobs_done": True,
+        "max_remain_windows": max_remain_windows,
+        "hot_score_threshold": hot_score_threshold,
+        "cause_classes": list(ROOT_CAUSE_CLASSES),
         "feature_names": feature_names,
         "global_feature_names": list(GLOBAL_FEATURES),
         "node_ids": node_ids,

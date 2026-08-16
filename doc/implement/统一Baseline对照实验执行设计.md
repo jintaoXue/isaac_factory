@@ -589,7 +589,8 @@ tyx raw v0.3
 ```text
 derived_contract = tyx_bn_agg_v1
 label_version = tyx_bn_agg_event_v1
-BSTAN dataset = bstan_tyxbn_dataset_v1
+BSTAN dataset = bstan_tyxbn_dataset_v2
+prediction target = factory_a1a3_remain_v1
 window_size = 60 s
 input_windows = 12
 horizon = 180 s
@@ -601,11 +602,26 @@ min_event_windows = 1
 `closed_windows_only=True`。只保留完整窗口，且 BSTAN 只接收
 `label_horizon_ready=1` 的标签，从而排除 episode 尾部预测区间不完整的样本。
 
-### 16.2 BSTAN 适配边界
+### 16.2 与 `04.期望输出.md` 对齐的预测目标
 
 BSTAN 不重新定义评分或标签，只消费 tyx 的 21 个窗口特征、
-`bottleneck_score_s`、事件表和 `will_bottleneck` 标签。输入严格使用标签窗口
-之前的 12 个窗口 `[t-12, t)`，不把目标窗口特征放进历史序列。
+`bottleneck_score_s`、事件表、`job_kpi` 和 `bottleneck_label`。输入严格使用
+目标窗口之前的 12 个窗口 `[t-12, t)`，不把目标窗口特征放进历史序列。
+
+按照 `dev_tyx@c101eff` 根目录的 `04.期望输出.md`，当前模型目标固定为：
+
+| 期望输出 | BSTAN 监督与输出 | 与 PDFormer 关系 |
+| --- | --- | --- |
+| A.1 瓶颈 0/1、开始、持续、工位 | 主头预测从当前时刻到剩余工单清零的 `score/hot[K,N]` 及 `remain_len`；连通 hot 段还原事件 | 同一标签与事件还原规则 |
+| A.2 setting×工位热力图 | 对多个 setting 的 A.1 预测按工位聚合 | 同属实验后处理，不增加网络头 |
+| A.3 瓶颈原因 | `root_cause_reason` 十分类，空值为 `-1` 并 mask loss | 同一类别顺序 |
+| 近 180 秒辅助任务 | `will_bottleneck`、mark node、time-to-start | 与 PDFormer 辅头一致 |
+| B.1/B.2/B.3 | 本轮不训练 | PDFormer 当前也未实现产品/工序预测头 |
+
+A.1 hot 定义与 tyx 保持一致：`score>=0.55`，或当前节点出现
+`is_turning_point` / `disturbance_active_s`。未来长度上限为 512 个 60 秒窗口，
+但 loss 只重点监督前 60 窗并按时间衰减。checkpoint 统一按 validation
+`hot_f1` 选择，PR-AUC 仅作为 180 秒 will 辅助指标。
 
 图边与最新 PDFormer 的工厂先验保持一致：工艺链、同机型 workstation、
 buffer-machine affinity、agent-machine、同类 gantry/robot 和 self-loop。
@@ -613,6 +629,9 @@ BSTAN 仍采用 episode 级 70/15/15 split，并只用 train split 拟合标准�
 
 tyx 标签不提供 `severity_weak`，因此 severity head、loss、指标和数据字段已从
 现行 BSTAN 路径删除，没有默认值或兼容兜底。
+
+直接 type/duration 头也已删除。工位由 mark 或 A.1 事件节点给出，duration
+由 hot 连通段给出，避免同一含义出现两套不一致标签。
 
 ### 16.3 历史 smoke 的处理
 
@@ -629,8 +648,8 @@ tyx 标签不提供 `severity_weak`，因此 severity head、loss、指标和数
 | 时间线在首次事件前假定 IDLE | 保持 tyx 现状以确保口径一致 | 采集初始快照或引入明确 observed mask |
 | L2 扰动区间直接并入瓶颈事件 | 保持 tyx 现状以确保标签一致 | 区分 disturbance cause 与 operational bottleneck label |
 | 工艺链、buffer affinity 和 material consumer 硬编码 | 与 PDFormer 相同 | 后续从 episode 配置生成并版本化拓扑 |
-| 最新 PDFormer 主头偏向 remain-to-jobs-done，BSTAN 是 180 秒事件预测 | 先比较共享 will/mark 任务 | 正式实验前固定共同主任务和主指标 |
-| 末个事件持续时间可能被 episode 结束截断 | 当前仍按事件表值训练 | 增加事件 duration censor 标记并使用 masked loss |
+| A.3 原因标签稀疏且多数类明显 | 输出 cause accuracy、macro-F1 和 majority baseline | 标签不足时只作分析字段，不宣称可用原因分类 |
 
-其中前两项已在 BSTAN exporter 修复，但正式公平对照要求 PDFormer 也采用同一
-split 与 horizon gate；其余项不在本轮私自改变，避免再次形成两套标签口径。
+主预测目标不一致的问题已在 BSTAN 中修复。前两项也已在 BSTAN exporter
+修复，但正式公平对照仍要求 PDFormer 采用同一 split 与 horizon gate；其余项
+不在本轮私自改变，避免再次形成两套标签口径。

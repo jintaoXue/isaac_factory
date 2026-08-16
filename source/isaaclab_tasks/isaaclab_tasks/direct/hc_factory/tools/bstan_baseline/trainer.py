@@ -26,6 +26,7 @@ from .schema import (
     DATASET_CONTRACT,
     DATASET_VERSION,
     LABEL_VERSION,
+    PREDICTION_TARGET_VERSION,
     TARGET_NODE_CATEGORY,
 )
 
@@ -134,8 +135,9 @@ def _model_inputs(batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         "adjacency": batch["adjacency"],
         "node_mask": batch["node_mask"],
         "target_node_mask": batch["target_node_mask"],
-        "target_type_mask": batch["target_type_mask"],
         "global_features": batch["global_features"],
+        "jobs_remaining": batch["jobs_remaining"],
+        "jobs_total": batch["jobs_total"],
     }
 
 
@@ -153,6 +155,7 @@ def _load_dataset(dataset_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         "dataset_version": DATASET_VERSION,
         "label_version": LABEL_VERSION,
         "target_node_category": TARGET_NODE_CATEGORY,
+        "prediction_target_version": PREDICTION_TARGET_VERSION,
     }
     for key, expected in expected_manifest.items():
         actual = manifest.get(key)
@@ -163,9 +166,10 @@ def _load_dataset(dataset_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         "adjacency",
         "node_mask",
         "target_node_mask",
-        "target_type_mask",
         "global_features",
         "y_occurrence",
+        "remain_series",
+        "max_remain_windows",
         "split_indices",
     }
     missing = required.difference(payload)
@@ -235,19 +239,49 @@ def _run_train_epoch(
     return {name: value / sample_count for name, value in totals.items()}
 
 
+def _occupancy_events(grid: np.ndarray, length: int) -> list[dict[str, int]]:
+    """Collapse connected hot runs into A.1 node/start/duration events."""
+    events = []
+    event_id = 0
+    usable = grid[: max(min(length, grid.shape[0]), 0)]
+    for node_index in range(usable.shape[1]):
+        offset = 0
+        while offset < usable.shape[0]:
+            if not usable[offset, node_index]:
+                offset += 1
+                continue
+            end = offset + 1
+            while end < usable.shape[0] and usable[end, node_index]:
+                end += 1
+            events.append(
+                {
+                    "event_id": event_id,
+                    "node_index": node_index,
+                    "start_offset_windows": offset,
+                    "duration_windows": end - offset,
+                }
+            )
+            event_id += 1
+            offset = end
+    return events
+
+
 def _evaluate_loader(
     model: BstanGatGru,
     loader: DataLoader,
     loss_config: BstanLossConfig,
     pos_weight: torch.Tensor,
     device: torch.device,
-    class_count: int,
+    cause_class_count: int,
     occurrence_threshold: float = 0.5,
 ) -> tuple[dict[str, Any], dict[str, np.ndarray], np.ndarray]:
     model.eval()
     collected: dict[str, list[np.ndarray]] = {}
     totals: dict[str, float] = {}
     sample_count = 0
+    hot_tp = hot_fp = hot_fn = 0
+    score_abs_sum = 0.0
+    score_count = 0
     with torch.no_grad():
         for cpu_batch in loader:
             batch = _move_batch(cpu_batch, device)
@@ -264,24 +298,78 @@ def _evaluate_loader(
                 "sample_index": batch["sample_index"],
                 "y_occurrence": batch["y_occurrence"],
                 "y_node": batch["y_node"],
-                "y_type": batch["y_type"],
                 "y_time_to_start": batch["y_time_to_start"],
-                "y_duration": batch["y_duration"],
+                "y_cause": batch["y_cause"],
+                "target_remain_len": batch["target_remain_len"],
                 "positive_mask": batch["positive_mask"],
-                "duration_mask": batch["duration_mask"],
                 "occurrence_probability": torch.sigmoid(outputs["occurrence_logit"]),
                 "node_probabilities": torch.softmax(outputs["node_logits"], dim=-1),
-                "type_predictions": outputs["type_logits"].argmax(dim=-1),
                 "time_to_start": outputs["time_to_start"],
-                "duration": outputs["duration"],
+                "cause_predictions": outputs["cause_logits"].argmax(dim=-1),
+                "remain_len": outputs["remain_len"],
             }
             for name, value in values.items():
                 collected.setdefault(name, []).append(value.detach().cpu().numpy())
 
+            predicted_grid = (
+                torch.sigmoid(outputs["remain_hot_logit"]) >= 0.5
+            ).detach().cpu().numpy()
+            target_grid = batch["y_hot"].bool().detach().cpu().numpy()
+            predicted_lengths = outputs["remain_len"].round().long().detach().cpu()
+            target_lengths = batch["target_remain_len"].long().detach().cpu()
+            predicted_events = np.asarray(
+                [
+                    json.dumps(
+                        _occupancy_events(predicted_grid[i], int(predicted_lengths[i])),
+                        separators=(",", ":"),
+                    )
+                    for i in range(batch_size)
+                ]
+            )
+            target_events = np.asarray(
+                [
+                    json.dumps(
+                        _occupancy_events(target_grid[i], int(target_lengths[i])),
+                        separators=(",", ":"),
+                    )
+                    for i in range(batch_size)
+                ]
+            )
+            collected.setdefault("predicted_events_json", []).append(predicted_events)
+            collected.setdefault("target_events_json", []).append(target_events)
+
+            valid = batch["remain_mask"].bool()[:, :, None]
+            predicted_hot = torch.sigmoid(outputs["remain_hot_logit"]) >= 0.5
+            target_hot = batch["y_hot"].bool()
+            hot_tp += int((predicted_hot & target_hot & valid).sum().item())
+            hot_fp += int((predicted_hot & ~target_hot & valid).sum().item())
+            hot_fn += int((~predicted_hot & target_hot & valid).sum().item())
+            score_valid = valid[:, :, :, None].expand_as(outputs["remain_score"])
+            score_abs_sum += float(
+                torch.abs(outputs["remain_score"] - batch["y_score"])[score_valid]
+                .sum()
+                .item()
+            )
+            score_count += int(score_valid.sum().item())
+
     arrays = {name: np.concatenate(values) for name, values in collected.items()}
     metrics, confusion = compute_metrics(
-        arrays, class_count, occurrence_threshold=occurrence_threshold
+        arrays, cause_class_count, occurrence_threshold=occurrence_threshold
     )
+    hot_precision = hot_tp / max(hot_tp + hot_fp, 1)
+    hot_recall = hot_tp / max(hot_tp + hot_fn, 1)
+    metrics["remain"] = {
+        "hot_precision": hot_precision,
+        "hot_recall": hot_recall,
+        "hot_f1": 2 * hot_precision * hot_recall / max(
+            hot_precision + hot_recall, 1.0e-12
+        ),
+        "score_mae": score_abs_sum / max(score_count, 1),
+        "remain_len_mae_windows": float(
+            np.abs(arrays["remain_len"] - arrays["target_remain_len"]).mean()
+        ),
+        "valid_node_windows": score_count,
+    }
     metrics["loss"] = {name: value / sample_count for name, value in totals.items()}
     metrics["sample_count"] = sample_count
     return metrics, arrays, confusion
@@ -292,7 +380,7 @@ def save_checkpoint(
     model: BstanGatGru,
     optimizer: torch.optim.Optimizer | None,
     epoch: int,
-    best_validation_pr_auc: float,
+    best_validation_hot_f1: float,
     model_config: BstanModelConfig,
     loss_config: BstanLossConfig,
     train_config: BstanTrainConfig,
@@ -305,7 +393,7 @@ def save_checkpoint(
                 optimizer.state_dict() if optimizer is not None else None
             ),
             "epoch": epoch,
-            "best_validation_pr_auc": best_validation_pr_auc,
+            "best_validation_hot_f1": best_validation_hot_f1,
             "model_config": model_config.to_dict(),
             "loss_config": loss_config.to_dict(),
             "train_config": asdict(train_config),
@@ -330,7 +418,7 @@ def _prediction_rows(
     arrays: dict[str, np.ndarray],
     sample_lookup: dict[int, dict[str, str]],
     node_ids: list[str],
-    resource_types: list[str],
+    cause_classes: list[str],
     occurrence_threshold: float,
 ) -> list[dict[str, Any]]:
     rows = []
@@ -338,8 +426,8 @@ def _prediction_rows(
         sample_index = int(raw_index)
         node_target = int(arrays["y_node"][position])
         node_prediction = int(arrays["node_probabilities"][position].argmax())
-        type_target = int(arrays["y_type"][position])
-        type_prediction = int(arrays["type_predictions"][position])
+        cause_target = int(arrays["y_cause"][position])
+        cause_prediction = int(arrays["cause_predictions"][position])
         rows.append(
             {
                 **sample_lookup[sample_index],
@@ -353,14 +441,16 @@ def _prediction_rows(
                 "target_node_id_indexed": (
                     node_ids[node_target] if node_target >= 0 else ""
                 ),
-                "predicted_type": resource_types[type_prediction],
-                "target_type_indexed": (
-                    resource_types[type_target] if type_target >= 0 else ""
+                "predicted_cause": cause_classes[cause_prediction],
+                "target_cause": (
+                    cause_classes[cause_target] if cause_target >= 0 else ""
                 ),
                 "predicted_time_to_start_s": float(arrays["time_to_start"][position]),
                 "target_time_to_start_s": float(arrays["y_time_to_start"][position]),
-                "predicted_duration_s": float(arrays["duration"][position]),
-                "target_duration_s": float(arrays["y_duration"][position]),
+                "predicted_remain_len_windows": float(arrays["remain_len"][position]),
+                "target_remain_len_windows": int(
+                    arrays["target_remain_len"][position]
+                ),
             }
         )
     return rows
@@ -383,7 +473,7 @@ def _write_evaluation_artifacts(
         arrays,
         sample_lookup,
         manifest["node_ids"],
-        manifest["resource_types"],
+        manifest["cause_classes"],
         occurrence_threshold,
     )
     prediction_fields = list(sample_rows[0]) + [
@@ -391,31 +481,73 @@ def _write_evaluation_artifacts(
         "occurrence_prediction",
         "predicted_node_id",
         "target_node_id_indexed",
-        "predicted_type",
-        "target_type_indexed",
+        "predicted_cause",
+        "target_cause",
         "predicted_time_to_start_s",
         "target_time_to_start_s",
-        "predicted_duration_s",
-        "target_duration_s",
+        "predicted_remain_len_windows",
+        "target_remain_len_windows",
     ]
     _write_csv(
         output_dir / f"predictions_{split_name}.csv",
         prediction_rows,
         prediction_fields,
     )
+    event_rows = []
+    window_size_s = float(manifest["window_size_s"])
+    for position, raw_index in enumerate(arrays["sample_index"]):
+        sample = sample_lookup[int(raw_index)]
+        first_future_start_s = float(sample["anchor_time_s"])
+        for source, field in (
+            ("prediction", "predicted_events_json"),
+            ("target", "target_events_json"),
+        ):
+            for event in json.loads(str(arrays[field][position])):
+                start_s = first_future_start_s + (
+                    event["start_offset_windows"] * window_size_s
+                )
+                duration_s = event["duration_windows"] * window_size_s
+                event_rows.append(
+                    {
+                        "sample_index": int(raw_index),
+                        "split": split_name,
+                        "source": source,
+                        "event_id": event["event_id"],
+                        "resource_id": manifest["node_ids"][event["node_index"]],
+                        "start_s": start_s,
+                        "end_s": start_s + duration_s,
+                        "duration_s": duration_s,
+                        "n_windows": event["duration_windows"],
+                    }
+                )
+    _write_csv(
+        output_dir / f"occupancy_events_{split_name}.csv",
+        event_rows,
+        [
+            "sample_index",
+            "split",
+            "source",
+            "event_id",
+            "resource_id",
+            "start_s",
+            "end_s",
+            "duration_s",
+            "n_windows",
+        ],
+    )
     confusion_rows = []
-    for target_index, target_name in enumerate(manifest["resource_types"]):
+    for target_index, target_name in enumerate(manifest["cause_classes"]):
         confusion_rows.append(
             {
-                "target_type": target_name,
+                "target_cause": target_name,
                 **{
                     f"predicted__{name}": int(confusion[target_index, prediction_index])
-                    for prediction_index, name in enumerate(manifest["resource_types"])
+                    for prediction_index, name in enumerate(manifest["cause_classes"])
                 },
             }
         )
-    confusion_fields = ["target_type"] + [
-        f"predicted__{name}" for name in manifest["resource_types"]
+    confusion_fields = ["target_cause"] + [
+        f"predicted__{name}" for name in manifest["cause_classes"]
     ]
     _write_csv(
         output_dir / f"confusion_matrix_{split_name}.csv",
@@ -437,7 +569,7 @@ def train_bstan_baseline(
     train_config: BstanTrainConfig | None = None,
     loss_config: BstanLossConfig | None = None,
 ) -> dict[str, Any]:
-    """Train a baseline, select by validation PR-AUC, and evaluate test data."""
+    """Train a baseline, select by validation hot F1, and evaluate test data."""
     dataset_dir = dataset_dir.resolve()
     output_dir = output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -459,8 +591,9 @@ def train_bstan_baseline(
         "input_dim": int(payload["x"].shape[-1]),
         "global_dim": int(payload["global_features"].shape[-1]),
         "num_nodes": int(payload["x"].shape[-2]),
-        "num_types": len(manifest["resource_types"]),
         "prediction_horizon": loss_config.prediction_horizon,
+        "max_remain_windows": int(manifest["max_remain_windows"]),
+        "num_causes": len(manifest["cause_classes"]),
         **(model_overrides or {}),
     }
     model_config = BstanModelConfig(**model_values)
@@ -519,16 +652,17 @@ def train_bstan_baseline(
             loss_config,
             pos_weight,
             device,
-            model_config.num_types,
+            model_config.num_causes,
         )
-        validation_score = validation_metrics["occurrence"]["pr_auc"]
+        validation_score = validation_metrics["remain"]["hot_f1"]
         score = float(validation_score) if validation_score is not None else -1.0
         row = {"epoch": epoch}
         row.update({f"train_{name}": value for name, value in train_losses.items()})
         row.update(
             {
                 "validation_total_loss": validation_metrics["loss"]["total"],
-                "validation_pr_auc": validation_score,
+                "validation_hot_f1": validation_score,
+                "validation_pr_auc": validation_metrics["occurrence"]["pr_auc"],
                 "validation_roc_auc": validation_metrics["occurrence"]["roc_auc"],
                 "validation_f1_at_threshold": validation_metrics["occurrence"][
                     "f1_at_threshold"
@@ -568,7 +702,7 @@ def train_bstan_baseline(
         print(
             f"epoch={epoch:03d} train_loss={train_losses['total']:.6f} "
             f"val_loss={validation_metrics['loss']['total']:.6f} "
-            f"val_pr_auc={score:.6f}",
+            f"val_hot_f1={score:.6f}",
             flush=True,
         )
         if epochs_without_improvement >= train_config.patience:
@@ -582,7 +716,7 @@ def train_bstan_baseline(
         loss_config,
         pos_weight,
         device,
-        model_config.num_types,
+        model_config.num_causes,
     )
     occurrence_threshold = select_f1_threshold(
         validation_arrays["y_occurrence"],
@@ -592,20 +726,24 @@ def train_bstan_baseline(
     torch.save(checkpoint, output_dir / "best.pt")
     config_payload["metadata"]["occurrence_threshold"] = occurrence_threshold
     _write_json(output_dir / "config.json", config_payload)
-    validation_metrics, validation_confusion = compute_metrics(
+    threshold_metrics, validation_confusion = compute_metrics(
         validation_arrays,
-        model_config.num_types,
+        model_config.num_causes,
         occurrence_threshold=occurrence_threshold,
     )
-    validation_metrics["loss"] = initial_validation_metrics["loss"]
-    validation_metrics["sample_count"] = initial_validation_metrics["sample_count"]
+    validation_metrics = {
+        **threshold_metrics,
+        "remain": initial_validation_metrics["remain"],
+        "loss": initial_validation_metrics["loss"],
+        "sample_count": initial_validation_metrics["sample_count"],
+    }
     test_metrics, test_arrays, test_confusion = _evaluate_loader(
         best_model,
         loaders["test"],
         loss_config,
         pos_weight,
         device,
-        model_config.num_types,
+        model_config.num_causes,
         occurrence_threshold,
     )
     evaluations = {
@@ -637,10 +775,12 @@ def train_bstan_baseline(
         "label_version": manifest["label_version"],
         "best_epoch": best_epoch,
         "epochs_trained": len(history),
-        "best_validation_pr_auc": best_score,
+        "best_validation_hot_f1": best_score,
+        "best_validation_pr_auc": validation_metrics["occurrence"]["pr_auc"],
         "test_pr_auc": all_metrics["test"]["occurrence"]["pr_auc"],
         "occurrence_threshold": occurrence_threshold,
         "test_f1_at_threshold": all_metrics["test"]["occurrence"]["f1_at_threshold"],
+        "test_hot_f1": all_metrics["test"]["remain"]["hot_f1"],
         "elapsed_seconds": time.time() - started_at,
         "checkpoint_epoch": checkpoint["epoch"],
         "output_dir": str(output_dir),
@@ -686,7 +826,7 @@ def evaluate_checkpoint(
         loss_config,
         pos_weight,
         device,
-        model.config.num_types,
+        model.config.num_causes,
         occurrence_threshold,
     )
     _write_evaluation_artifacts(
@@ -710,7 +850,7 @@ def evaluate_checkpoint(
         {
             "status": "evaluation_completed",
             "best_epoch": checkpoint["epoch"],
-            "best_validation_pr_auc": checkpoint["best_validation_pr_auc"],
+            "best_validation_hot_f1": checkpoint["best_validation_hot_f1"],
             "checkpoint": str(checkpoint_path.resolve()),
             "output_dir": str(output_dir),
         }
@@ -721,6 +861,7 @@ def evaluate_checkpoint(
                 "test_pr_auc": metrics["occurrence"]["pr_auc"],
                 "occurrence_threshold": occurrence_threshold,
                 "test_f1_at_threshold": metrics["occurrence"]["f1_at_threshold"],
+                "test_hot_f1": metrics["remain"]["hot_f1"],
             }
         )
     _write_json(summary_path, summary)

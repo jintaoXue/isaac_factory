@@ -13,9 +13,14 @@ from torch.nn import functional as F
 class BstanLossConfig:
     lambda_occurrence: float = 1.0
     lambda_node: float = 1.0
-    lambda_type: float = 1.0
     lambda_time_to_start: float = 1.0
-    lambda_duration: float = 1.0
+    lambda_remain_score: float = 1.0
+    lambda_remain_hot: float = 1.0
+    lambda_remain_len: float = 0.3
+    lambda_cause: float = 0.4
+    hot_pos_weight: float = 32.0
+    near_remain_windows: int = 60
+    remain_loss_tau: float = 20.0
     prediction_horizon: float = 180.0
 
     def __post_init__(self) -> None:
@@ -46,15 +51,48 @@ def compute_multitask_loss(
         pos_weight=pos_weight,
     )
     positive = batch["positive_mask"].bool()
-    duration_mask = batch["duration_mask"].bool() & positive
     zero = _zero_from(outputs)
+
+    remain_mask = batch["remain_mask"].float()
+    steps = torch.arange(remain_mask.shape[1], device=remain_mask.device).float()
+    step_weight = (
+        torch.exp(-steps / max(config.remain_loss_tau, 1.0))
+        * (steps < float(max(config.near_remain_windows, 1))).float()
+    )
+    step_weight = remain_mask * step_weight[None]
+    score_weight = step_weight[:, :, None, None]
+    score_error = F.smooth_l1_loss(
+        outputs["remain_score"], batch["y_score"].float(), reduction="none"
+    )
+    remain_score = (score_error * score_weight).sum() / (
+        score_weight.sum() * outputs["remain_score"].shape[2]
+    ).clamp_min(1.0)
+    hot_error = F.binary_cross_entropy_with_logits(
+        outputs["remain_hot_logit"], batch["y_hot"].float(), reduction="none"
+    )
+    hot_class_weight = 1.0 + (
+        config.hot_pos_weight - 1.0
+    ) * batch["y_hot"].float()
+    hot_weight = step_weight[:, :, None]
+    remain_hot = (hot_error * hot_class_weight * hot_weight).sum() / (
+        hot_weight.sum() * outputs["remain_hot_logit"].shape[2]
+    ).clamp_min(1.0)
+    remain_len = F.smooth_l1_loss(
+        torch.log1p(outputs["remain_len"]),
+        torch.log1p(batch["target_remain_len"].float()),
+    )
+    valid_cause = batch["y_cause"] >= 0
+    cause = (
+        F.cross_entropy(
+            outputs["cause_logits"][valid_cause], batch["y_cause"][valid_cause]
+        )
+        if valid_cause.any()
+        else zero
+    )
 
     if positive.any():
         node = F.cross_entropy(
             outputs["node_logits"][positive], batch["y_node"][positive]
-        )
-        bottleneck_type = F.cross_entropy(
-            outputs["type_logits"][positive], batch["y_type"][positive]
         )
         time_to_start = F.smooth_l1_loss(
             outputs["time_to_start"][positive] / config.prediction_horizon,
@@ -62,29 +100,24 @@ def compute_multitask_loss(
         )
     else:
         node = zero
-        bottleneck_type = zero
         time_to_start = zero
-
-    if duration_mask.any():
-        duration = F.smooth_l1_loss(
-            outputs["duration"][duration_mask] / config.prediction_horizon,
-            batch["y_duration"][duration_mask].float() / config.prediction_horizon,
-        )
-    else:
-        duration = zero
 
     components = {
         "occurrence": occurrence,
         "node": node,
-        "type": bottleneck_type,
         "time_to_start": time_to_start,
-        "duration": duration,
+        "remain_score": remain_score,
+        "remain_hot": remain_hot,
+        "remain_len": remain_len,
+        "cause": cause,
     }
     total = (
         config.lambda_occurrence * occurrence
         + config.lambda_node * node
-        + config.lambda_type * bottleneck_type
         + config.lambda_time_to_start * time_to_start
-        + config.lambda_duration * duration
+        + config.lambda_remain_score * remain_score
+        + config.lambda_remain_hot * remain_hot
+        + config.lambda_remain_len * remain_len
+        + config.lambda_cause * cause
     )
     return total, components

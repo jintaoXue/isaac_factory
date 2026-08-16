@@ -11,6 +11,7 @@ from .contract import (
     audit_raw_episode,
     paired_disturbance_intervals,
 )
+from .causes import ROOT_CAUSE_CLASSES, decode_root_cause, encode_root_cause
 
 __all__ = [
     "DERIVED_CONTRACT_VERSION",
@@ -22,4 +23,7 @@ __all__ = [
     "SHARED_LABEL_VERSION",
     "audit_raw_episode",
     "paired_disturbance_intervals",
+    "ROOT_CAUSE_CLASSES",
+    "decode_root_cause",
+    "encode_root_cause",
 ]

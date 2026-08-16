@@ -97,6 +97,8 @@ def main() -> None:
         stride=args.window_size,
         input_windows=args.input_windows,
         horizon=args.horizon,
+        max_remain_windows=512,
+        hot_score_threshold=args.score_threshold,
         seed=args.seed,
         repo_root=Path(__file__).resolve().parents[6],
         allowed_group_ids={

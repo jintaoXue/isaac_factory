@@ -35,7 +35,6 @@ class TestBstanModel(unittest.TestCase):
             input_dim=6,
             global_dim=2,
             num_nodes=5,
-            num_types=3,
             gat_hidden=8,
             gat_heads=2,
             gru_hidden=8,
@@ -48,10 +47,6 @@ class TestBstanModel(unittest.TestCase):
         node_mask[:, -1] = False
         target_node_mask = node_mask.clone()
         target_node_mask[:, -2] = False
-        target_type_mask = torch.ones(
-            batch_size, self.config.num_types, dtype=torch.bool
-        )
-        target_type_mask[:, -1] = False
         adjacency = torch.ones(batch_size, node_count, node_count, dtype=torch.bool)
         adjacency[:, -1, :] = False
         adjacency[:, :, -1] = False
@@ -61,17 +56,20 @@ class TestBstanModel(unittest.TestCase):
             "adjacency": adjacency,
             "node_mask": node_mask,
             "target_node_mask": target_node_mask,
-            "target_type_mask": target_type_mask,
             "global_features": torch.randn(
                 batch_size, time_steps, self.config.global_dim
             ),
+            "jobs_remaining": torch.full((batch_size,), 2.0),
+            "jobs_total": torch.full((batch_size,), 2.0),
             "y_occurrence": occurrence,
             "y_node": torch.zeros(batch_size, dtype=torch.int64),
-            "y_type": torch.ones(batch_size, dtype=torch.int64),
             "y_time_to_start": torch.full((batch_size,), 30.0),
-            "y_duration": torch.full((batch_size,), 60.0),
             "positive_mask": occurrence.bool(),
-            "duration_mask": occurrence.bool(),
+            "y_cause": torch.zeros(batch_size, dtype=torch.int64),
+            "target_remain_len": torch.full((batch_size,), 4, dtype=torch.int64),
+            "remain_mask": torch.ones(batch_size, 512),
+            "y_score": torch.rand(batch_size, 512, node_count, 1),
+            "y_hot": torch.zeros(batch_size, 512, node_count),
         }
 
     @staticmethod
@@ -83,8 +81,9 @@ class TestBstanModel(unittest.TestCase):
                 "adjacency",
                 "node_mask",
                 "target_node_mask",
-                "target_type_mask",
                 "global_features",
+                "jobs_remaining",
+                "jobs_total",
             )
         }
 
@@ -94,22 +93,21 @@ class TestBstanModel(unittest.TestCase):
         outputs = model(**self._inputs(batch))
         self.assertEqual(outputs["occurrence_logit"].shape, (4,))
         self.assertEqual(outputs["node_logits"].shape, (4, 5))
-        self.assertEqual(outputs["type_logits"].shape, (4, 3))
         self.assertEqual(outputs["node_hidden"].shape, (4, 5, 8))
         self.assertTrue((outputs["node_logits"][:, -1] < -1.0e8).all())
         self.assertTrue((outputs["node_logits"][:, -2] < -1.0e8).all())
         probabilities = torch.softmax(outputs["node_logits"], dim=-1)
         self.assertTrue(torch.equal(probabilities[:, -1], torch.zeros(4)))
         self.assertTrue(torch.equal(probabilities[:, -2], torch.zeros(4)))
-        type_probabilities = torch.softmax(outputs["type_logits"], dim=-1)
-        self.assertTrue(torch.equal(type_probabilities[:, -1], torch.zeros(4)))
+        self.assertEqual(outputs["remain_score"].shape, (4, 512, 5, 1))
+        self.assertEqual(outputs["remain_hot_logit"].shape, (4, 512, 5))
+        self.assertEqual(outputs["cause_logits"].shape, (4, 10))
 
     def test_forward_accepts_shared_contract_without_global_features(self) -> None:
         config = BstanModelConfig(
             input_dim=6,
             global_dim=0,
             num_nodes=5,
-            num_types=3,
             gat_hidden=8,
             gat_heads=2,
             gru_hidden=8,
@@ -130,7 +128,7 @@ class TestBstanModel(unittest.TestCase):
         )
         self.assertTrue(torch.isfinite(loss))
         self.assertEqual(float(components["node"]), 0.0)
-        self.assertEqual(float(components["duration"]), 0.0)
+        self.assertTrue(torch.isfinite(components["remain_hot"]))
         loss.backward()
 
     def test_two_epoch_synthetic_overfit_smoke(self) -> None:
@@ -138,9 +136,11 @@ class TestBstanModel(unittest.TestCase):
         batch = self._batch(positive=True)
         config = BstanLossConfig(
             lambda_node=0.0,
-            lambda_type=0.0,
             lambda_time_to_start=0.0,
-            lambda_duration=0.0,
+            lambda_remain_score=0.0,
+            lambda_remain_hot=0.0,
+            lambda_remain_len=0.0,
+            lambda_cause=0.0,
         )
         optimizer = torch.optim.Adam(model.parameters(), lr=0.03)
         with torch.no_grad():
@@ -174,7 +174,7 @@ class TestBstanModel(unittest.TestCase):
                 model,
                 optimizer,
                 epoch=2,
-                best_validation_pr_auc=0.5,
+                best_validation_hot_f1=0.5,
                 model_config=self.config,
                 loss_config=BstanLossConfig(),
                 train_config=BstanTrainConfig(),
@@ -196,15 +196,12 @@ class TestBstanModel(unittest.TestCase):
             "positive_mask": np.array([False, False, True, False, True]),
             "node_probabilities": np.array([[0.6, 0.3, 0.1]] * 5, dtype=np.float64),
             "y_node": np.array([-1, -1, 0, -1, 1]),
-            "type_predictions": np.array([0, 0, 1, 0, 1]),
-            "y_type": np.array([-1, -1, 1, -1, 1]),
             "time_to_start": np.array([0, 0, 20, 0, 40]),
             "y_time_to_start": np.array([0, 0, 30, 0, 30]),
-            "duration": np.array([0, 0, 50, 0, 70]),
-            "y_duration": np.array([0, 0, 60, 0, 60]),
-            "duration_mask": np.array([False, False, True, False, True]),
+            "y_cause": np.array([-1, -1, 1, -1, 1]),
+            "cause_predictions": np.array([0, 0, 1, 0, 1]),
         }
-        metrics, confusion = compute_metrics(arrays, class_count=2)
+        metrics, confusion = compute_metrics(arrays, cause_class_count=2)
         self.assertAlmostEqual(metrics["no_event_baseline"]["pr_auc"], 0.4)
         self.assertEqual(confusion.sum(), 2)
 

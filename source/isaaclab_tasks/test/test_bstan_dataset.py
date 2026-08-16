@@ -20,6 +20,8 @@ sys.path.insert(0, str(TOOLS_DIR))
 
 from bstan_baseline.dataset import BstanTensorDataset, build_bstan_dataset  # noqa: E402
 from bstan_baseline.schema import CONTINUOUS_FEATURES, GLOBAL_FEATURES  # noqa: E402
+from bstan_baseline.losses import BstanLossConfig  # noqa: E402
+from bstan_baseline.trainer import BstanTrainConfig, train_bstan_baseline  # noqa: E402
 
 
 class TestBstanDataset(unittest.TestCase):
@@ -145,6 +147,17 @@ class TestBstanDataset(unittest.TestCase):
                 list(label_rows[0]),
                 label_rows,
             )
+            job_rows = [
+                {
+                    "job_id": job_id,
+                    "complete_s": 1140 + job_id,
+                    "completed": 1,
+                }
+                for job_id in range(2)
+            ]
+            self._write_csv(
+                derived_dir / "job_kpi.csv", list(job_rows[0]), job_rows
+            )
         return run_dir
 
     def test_builds_fixed_graph_sequences_and_group_splits(self):
@@ -176,13 +189,11 @@ class TestBstanDataset(unittest.TestCase):
             buffer_index = manifest["node_ids"].index("storage_BlackStorage_00")
             self.assertTrue(payload["target_node_mask"][:, machine_index].all())
             self.assertFalse(payload["target_node_mask"][:, buffer_index].any())
-            self.assertEqual(payload["target_type_mask"].shape, (48, 2))
-            machine_type_index = manifest["resource_types"].index("machine")
-            buffer_type_index = manifest["resource_types"].index("buffer")
-            self.assertTrue(payload["target_type_mask"][:, machine_type_index].all())
-            self.assertFalse(payload["target_type_mask"][:, buffer_type_index].any())
             self.assertTrue(torch.isfinite(payload["x"]).all())
-            self.assertEqual(manifest["dataset_version"], "bstan_tyxbn_dataset_v1")
+            self.assertEqual(manifest["dataset_version"], "bstan_tyxbn_dataset_v2")
+            self.assertEqual(
+                manifest["prediction_target_version"], "factory_a1a3_remain_v1"
+            )
             self.assertEqual(manifest["dataset_contract"], "tyx_bn_agg_v1")
             self.assertEqual(manifest["label_version"], "tyx_bn_agg_event_v1")
             self.assertEqual(manifest["target_node_category"], "process")
@@ -214,6 +225,9 @@ class TestBstanDataset(unittest.TestCase):
             batch = next(iter(loader))
             self.assertEqual(batch["x"].shape[1:], payload["x"].shape[1:])
             self.assertEqual(batch["adjacency"].dtype, torch.bool)
+            self.assertEqual(batch["y_score"].shape[1:], (512, 2, 1))
+            self.assertEqual(batch["y_hot"].shape[1:], (512, 2))
+            self.assertEqual(batch["remain_mask"].shape[1:], (512,))
 
             expected_files = {
                 "dataset.pt",
@@ -239,6 +253,28 @@ class TestBstanDataset(unittest.TestCase):
             )
             self.assertEqual(result["split"], repeated["split"])
             self.assertTrue(torch.equal(payload["x"], repeated["payload"]["x"]))
+
+            model_dir = root / "model"
+            summary = train_bstan_baseline(
+                dataset_dir=out_dir,
+                output_dir=model_dir,
+                model_overrides={
+                    "gat_hidden": 8,
+                    "gat_heads": 2,
+                    "gru_hidden": 8,
+                    "dropout": 0.0,
+                },
+                train_config=BstanTrainConfig(
+                    batch_size=8,
+                    max_epochs=1,
+                    patience=1,
+                    device="cpu",
+                ),
+                loss_config=BstanLossConfig(),
+            )
+            self.assertEqual(summary["status"], "completed")
+            self.assertIn("test_hot_f1", summary)
+            self.assertTrue((model_dir / "occupancy_events_test.csv").is_file())
 
 
 if __name__ == "__main__":

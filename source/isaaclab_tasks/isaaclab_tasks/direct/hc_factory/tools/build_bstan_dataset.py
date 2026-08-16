@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build fixed-shape BSTAN tensors from shared canonical benchmark tables."""
+"""Build BSTAN A.1/A.3 targets from shared bn_agg tables."""
 
 from __future__ import annotations
 
@@ -18,6 +18,8 @@ def main() -> None:
     parser.add_argument("--stride", type=float, default=60.0)
     parser.add_argument("--input_windows", type=int, default=12)
     parser.add_argument("--horizon", type=float, default=180.0)
+    parser.add_argument("--max_remain_windows", type=int, default=512)
+    parser.add_argument("--hot_score_threshold", type=float, default=0.55)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--out_dir", type=Path, required=True)
     args = parser.parse_args()
@@ -31,6 +33,8 @@ def main() -> None:
         stride=args.stride,
         input_windows=args.input_windows,
         horizon=args.horizon,
+        max_remain_windows=args.max_remain_windows,
+        hot_score_threshold=args.hot_score_threshold,
         seed=args.seed,
         repo_root=repo_root,
     )

@@ -103,10 +103,10 @@ def select_f1_threshold(labels: np.ndarray, probabilities: np.ndarray) -> float:
 
 def compute_metrics(
     arrays: dict[str, np.ndarray],
-    class_count: int,
+    cause_class_count: int,
     occurrence_threshold: float = 0.5,
 ) -> tuple[dict[str, Any], np.ndarray]:
-    """Compute all Phase-D metrics and the bottleneck-type confusion matrix."""
+    """Compute shared will/mark/time-to-start and A.3 cause metrics."""
     occurrence = arrays["y_occurrence"].astype(np.int64)
     occurrence_probability = arrays["occurrence_probability"]
     metrics: dict[str, Any] = {
@@ -131,12 +131,6 @@ def compute_metrics(
             "mrr": float((1.0 / target_ranks).mean()),
             "sample_count": positive_count,
         }
-        type_targets = arrays["y_type"][positive].astype(np.int64)
-        type_predictions = arrays["type_predictions"][positive].astype(np.int64)
-        type_metrics, confusion = _multiclass_metrics(
-            type_targets, type_predictions, class_count
-        )
-        metrics["type"] = type_metrics
         metrics["regression"] = {
             "time_to_start_mae_s": float(
                 np.abs(
@@ -146,32 +140,35 @@ def compute_metrics(
             ),
         }
     else:
-        confusion = np.zeros((class_count, class_count), dtype=np.int64)
         metrics["node"] = {
             "top_1_accuracy": None,
             "top_3_accuracy": None,
             "mrr": None,
             "sample_count": 0,
         }
-        metrics["type"] = {
-            "accuracy": None,
-            "macro_f1": None,
-            "class_f1": [0.0] * class_count,
-            "sample_count": 0,
-        }
         metrics["regression"] = {
             "time_to_start_mae_s": None,
         }
-
-    duration_mask = arrays["duration_mask"].astype(bool) & positive
-    metrics["regression"]["duration_mae_s"] = (
-        float(
-            np.abs(
-                arrays["duration"][duration_mask] - arrays["y_duration"][duration_mask]
-            ).mean()
+    valid_cause = arrays["y_cause"] >= 0
+    if valid_cause.any():
+        cause_metrics, confusion = _multiclass_metrics(
+            arrays["y_cause"][valid_cause].astype(np.int64),
+            arrays["cause_predictions"][valid_cause].astype(np.int64),
+            cause_class_count,
         )
-        if duration_mask.any()
-        else None
-    )
-    metrics["regression"]["duration_sample_count"] = int(duration_mask.sum())
+        labels = arrays["y_cause"][valid_cause].astype(np.int64)
+        majority = int(np.bincount(labels, minlength=cause_class_count).argmax())
+        cause_metrics["majority_accuracy"] = float((labels == majority).mean())
+        cause_metrics["majority_class"] = majority
+        metrics["cause"] = cause_metrics
+    else:
+        confusion = np.zeros((cause_class_count, cause_class_count), dtype=np.int64)
+        metrics["cause"] = {
+            "accuracy": None,
+            "macro_f1": None,
+            "class_f1": [0.0] * cause_class_count,
+            "sample_count": 0,
+            "majority_accuracy": None,
+            "majority_class": None,
+        }
     return metrics, confusion
