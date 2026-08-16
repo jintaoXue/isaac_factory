@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
-"""Offline Phase-B pipeline: raw bottleneck tables → window features + labels.
+"""Build canonical bottleneck features and labels from strict tyx-v0.3 raw data.
 
-    Reads a single-run directory produced by BottleneckDataCollector v0.6, e.g.::
+    Reads a single-run directory produced by the dev_tyx v0.3 collector, e.g.::
 
         output/bottleneck_dataset/<run_id>/episode_00/env_00/
 
 Writes::
 
-    derived_phase_b_v2_3/window_feature_table.csv
-    derived_phase_b_v2_3/bottleneck_label.csv
-    derived_phase_b_v2_3/bottleneck_event.csv
-    derived_phase_b_v2_3/label_metadata.json
-    derived_phase_b_v2_3/job_kpi.csv              # per-job start / complete / cycle time
-    derived_phase_b_v2_3/pipeline_summary.json    # includes order makespan & mean cycle
+    canonical_factory_bn_v1/window_feature_table.csv
+    canonical_factory_bn_v1/bottleneck_label.csv
+    canonical_factory_bn_v1/bottleneck_event.csv
+    canonical_factory_bn_v1/canonical_metadata.json
 
 Usage::
 
@@ -33,6 +31,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from canonical_factory_bn.contract import (
+    CANONICAL_CONTRACT_VERSION,
+    CANONICAL_DERIVED_DIR,
+    CANONICAL_LABEL_VERSION,
+    RAW_COLLECTOR_VERSION,
+    RAW_CONTRACT_VERSION,
+    audit_raw_episode,
+    canonical_resource_state,
+    json_dict,
+    paired_disturbance_intervals,
+)
 
 ACTIVE_STATES = frozenset({"PROCESSING"})
 BLOCKED_STATES = frozenset({"BLOCKED"})
@@ -55,9 +64,9 @@ MIN_THROUGHPUT_DROP_RATIO = 0.25
 SYSTEM_LOOKBACK_S = 120.0
 WARMUP_S = 120.0
 MIN_BASELINE_OPERATIONS = 2
-LABEL_VERSION = "bstan_weak_v2_3"
-COLLECTOR_VERSION = "v0.6"
-DERIVED_DIR_NAME = "derived_phase_b_v2_3"
+LABEL_VERSION = CANONICAL_LABEL_VERSION
+COLLECTOR_VERSION = RAW_COLLECTOR_VERSION
+DERIVED_DIR_NAME = CANONICAL_DERIVED_DIR
 
 SCORE_CONFIG = {
     "process": {
@@ -86,6 +95,7 @@ SCORE_CONFIG = {
 }
 
 MODEL_FEATURE_FIELDS = (
+    "observation_available_s",
     "queue_length_s",
     "avg_waiting_time_s",
     "occupancy_ratio_s",
@@ -113,10 +123,11 @@ class ResourceTimeline:
     resource_id: str
     resource_type: str
     intervals: list[Interval] = field(default_factory=list)
+    observed: bool = True
 
 
 def _discover_env_dirs(run_dir: Path, env_id: int | None) -> list[Path]:
-    """Return collector-v0.6 env directories under episode_* folders."""
+    """Return strict tyx-v0.3 env directories under episode_* folders."""
     env_dirs = sorted(run_dir.glob("episode_*/env_*"))
     if env_id is not None:
         env_dirs = [d for d in env_dirs if d.name == f"env_{env_id:02d}"]
@@ -189,61 +200,13 @@ def _canonical_node_id(node_id: Any) -> str:
 
 
 def _json_dict(value: Any) -> dict[str, Any]:
-    if isinstance(value, dict):
-        return value
-    if not value:
-        return {}
-    try:
-        parsed = json.loads(value)
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
+    return json_dict(value)
 
 
 def _paired_disturbance_events(
     rows: list[dict[str, Any]], logic_dt: float, episode_end: float
 ) -> list[dict[str, Any]]:
-    """Return paired runtime intervals; CONFIG rows never become active features."""
-    grouped: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
-    for row in rows:
-        phase = str(row.get("event_phase") or "").upper()
-        if phase not in {"CONFIG", "START", "END", "SYSTEM"}:
-            raise ValueError(f"Invalid disturbance event_phase: {phase!r}")
-        if phase in {"START", "END"}:
-            event_id = str(row.get("disturbance_id") or "")
-            if not event_id:
-                raise ValueError("Runtime disturbance is missing disturbance_id")
-            if phase in grouped[event_id]:
-                raise ValueError(f"Duplicate disturbance {phase}: {event_id}")
-            grouped[event_id][phase] = row
-
-    events = []
-    for event_id, phases in sorted(grouped.items()):
-        if "START" not in phases or "END" not in phases:
-            raise ValueError(f"Unpaired runtime disturbance: {event_id}")
-        start_row, end_row = phases["START"], phases["END"]
-        actual_start = _i(start_row.get("actual_start_time_step"))
-        actual_end = _i(end_row.get("actual_end_time_step"))
-        target = str(start_row.get("actual_target_resource_id") or "")
-        end_target = str(end_row.get("actual_target_resource_id") or "")
-        if actual_start is None or actual_end is None:
-            raise ValueError(f"Disturbance lacks actual interval: {event_id}")
-        if not target or end_target != target:
-            raise ValueError(f"Disturbance target mismatch: {event_id}")
-        start = actual_start * logic_dt
-        end = actual_end * logic_dt
-        if end < start or end > episode_end:
-            raise ValueError(f"Invalid disturbance interval: {event_id}={start}:{end}")
-        events.append(
-            {
-                "event_id": event_id,
-                "start": start,
-                "end": end,
-                "type": str(start_row.get("disturbance_type") or ""),
-                "target": target,
-            }
-        )
-    return events
+    return paired_disturbance_intervals(rows, logic_dt, episode_end)
 
 
 def build_timelines(
@@ -259,18 +222,75 @@ def build_timelines(
         evs = sorted(evs, key=lambda x: _time_s(x, logic_dt))
         rtype = evs[0].get("resource_type", "unknown")
         intervals: list[Interval] = []
-        # Assume IDLE before first event
+        # v0.3 omits INIT rows but every transition preserves its raw from-state.
         t0 = 0.0
-        state = "IDLE"
+        state = canonical_resource_state(evs[0], "raw_from_state")
         for e in evs:
             t = _time_s(e, logic_dt)
             if t > t0:
                 intervals.append(Interval(t0, t, state))
-            state = e.get("to_state") or state
+            state = canonical_resource_state(e)
             t0 = t
         if episode_end > t0:
             intervals.append(Interval(t0, episode_end, state))
         timelines[rid] = ResourceTimeline(rid, rtype, intervals)
+    return timelines
+
+
+def add_configured_resource_timelines(
+    timelines: dict[str, ResourceTimeline],
+    episode_config: dict[str, Any],
+    episode_end: float,
+) -> dict[str, ResourceTimeline]:
+    """Add configured resources absent from the event-only v0.3 log."""
+    configured: dict[str, str] = {}
+    process_config = _json_dict(episode_config.get("process_time_config"))
+    for product_steps in process_config.values():
+        if not isinstance(product_steps, dict):
+            continue
+        for step_config in product_steps.values():
+            if not isinstance(step_config, dict):
+                continue
+            machine = str(step_config.get("machine") or "")
+            if not machine:
+                continue
+            matches = [
+                resource_id
+                for resource_id in timelines
+                if resource_id == machine or resource_id.startswith(f"{machine}_ws")
+            ]
+            if not matches:
+                configured[f"{machine}_ws0"] = "machine"
+
+    human_count = sum(
+        _i(value, 0) or 0
+        for value in _json_dict(episode_config.get("human_config")).values()
+    )
+    robot_count = sum(
+        _i(value, 0) or 0
+        for value in _json_dict(episode_config.get("robot_config")).values()
+    )
+    for index in range(human_count):
+        configured[f"human_{index}"] = "human"
+    for index in range(robot_count):
+        configured[f"robot_{index}"] = "transport_robot"
+    gantry_indices = _json_dict(episode_config.get("gantry_config")).get(
+        "active_gantry_indices", []
+    )
+    if isinstance(gantry_indices, list):
+        for index in gantry_indices:
+            configured[f"gantry_{int(index)}"] = "gantry"
+
+    for resource_id, resource_type in configured.items():
+        timelines.setdefault(
+            resource_id,
+            ResourceTimeline(
+                resource_id,
+                resource_type,
+                [Interval(0.0, episode_end, "IDLE")],
+                observed=False,
+            ),
+        )
     return timelines
 
 
@@ -625,6 +645,7 @@ def compute_window_features(
                     "stride_s": stride,
                     "resource_id": rid,
                     "resource_type": tl.resource_type,
+                    "observation_available_s": int(tl.observed),
                     "queue_length_s": round(queue_length, 6),
                     "avg_waiting_time_s": round(avg_wait, 6),
                     "occupancy_ratio_s": round(occupancy_ratio, 6),
@@ -1249,25 +1270,24 @@ def process_env_dir(
     score_threshold: float,
     min_event_windows: int,
 ) -> dict:
+    audit = audit_raw_episode(env_dir)
+    if not audit["accepted"]:
+        raise ValueError(
+            f"Rejected raw episode {env_dir}: " + "; ".join(audit["errors"])
+        )
+
     events = _read_jsonl(env_dir / "resource_event_log.jsonl")
     job_rows = _read_csv(env_dir / "job_trace.csv")
     buffer_rows = _read_csv(env_dir / "buffer_event_log.csv")
     transport_rows = _read_csv(env_dir / "route_transport_task.csv")
     material_rows = _read_csv(env_dir / "material_inventory_log.csv")
     disturbance_rows = _read_csv(env_dir / "disturbance_log.csv")
-    lifecycle_rows = _read_csv(env_dir / "episode_lifecycle.csv")
     ep_rows = _read_csv(env_dir / "episode_config.csv")
 
     if len(ep_rows) != 1:
         raise ValueError(
             f"Expected one episode_config row in {env_dir}, got {len(ep_rows)}"
         )
-    if ep_rows[0].get("collector_version") != COLLECTOR_VERSION:
-        raise ValueError(
-            f"Expected collector {COLLECTOR_VERSION!r} in {env_dir}, "
-            f"got {ep_rows[0].get('collector_version')!r}"
-        )
-
     run_id = ep_rows[0].get("run_id") or ""
     env_id = _i(ep_rows[0].get("env_id"))
     episode_id = _i(ep_rows[0].get("episode_id"))
@@ -1279,46 +1299,15 @@ def process_env_dir(
     if logic_dt <= 0:
         raise ValueError(f"Invalid logic_dt in {env_dir}: {logic_dt}")
 
-    aborted_rows = [
-        row for row in lifecycle_rows if str(row.get("event", "")).upper() == "ABORTED"
-    ]
-    if aborted_rows:
-        aborted = aborted_rows[-1]
-        summary = {
-            "status": "skipped",
-            "skip_reason": "aborted_episode",
-            "termination_event": "ABORTED",
-            "termination_reason": aborted.get("termination_reason") or "unknown",
-            "run_id": run_id,
-            "env_id": env_id,
-            "episode_id": episode_id,
-            "abort_time_s": _time_s(aborted, logic_dt),
-            "completed_jobs": _i(aborted.get("completed_jobs"), 0),
-        }
-        out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / "pipeline_summary.json").write_text(
-            json.dumps(summary, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        return summary
-
-    times = []
-    for e in events:
-        times.append(_time_s(e, logic_dt))
-    for r in job_rows:
-        times.append(_time_s(r, logic_dt))
-    lifecycle_ends = [
-        _time_s(row, logic_dt)
-        for row in lifecycle_rows
-        if str(row.get("event", "")).upper() == "END"
-    ]
-    episode_end = (
-        max(lifecycle_ends) if lifecycle_ends else (max(times) if times else 0.0)
-    )
+    episode_end = _f(audit.get("episode_end_s"))
     if episode_end <= 0:
         raise RuntimeError(f"No usable timestamps in {env_dir}")
 
-    timelines = build_timelines(events, episode_end, logic_dt)
+    timelines = add_configured_resource_timelines(
+        build_timelines(events, episode_end, logic_dt),
+        episode_config,
+        episode_end,
+    )
 
     all_features: list[dict] = []
     for ws in window_sizes:
@@ -1394,6 +1383,70 @@ def process_env_dir(
         json.dumps(label_metadata, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
+    buffer_config = _json_dict(episode_config.get("buffer_capacity_config"))
+    buffer_support: dict[str, set[str]] = defaultdict(set)
+    buffer_capacity: dict[str, float] = {}
+    for row in buffer_rows:
+        buffer_id = str(row.get("buffer_id") or "")
+        if not buffer_id:
+            continue
+        buffer_capacity[buffer_id] = _f(row.get("capacity"))
+        supporting = row.get("supporting_materials")
+        try:
+            parsed_supporting = json.loads(supporting) if supporting else []
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Invalid supporting_materials for {buffer_id} in {env_dir}"
+            ) from exc
+        if isinstance(parsed_supporting, list):
+            buffer_support[buffer_id].update(str(item) for item in parsed_supporting)
+    canonical_buffer_config = {}
+    for raw_buffer_id, raw_value in buffer_config.items():
+        buffer_id = _canonical_node_id(raw_buffer_id)
+        if isinstance(raw_value, dict):
+            capacity = _f(raw_value.get("capacity"))
+        else:
+            capacity = _f(raw_value)
+        canonical_buffer_config[buffer_id] = {
+            "capacity": capacity or buffer_capacity.get(buffer_id, 0.0),
+            "supporting_materials": sorted(buffer_support.get(buffer_id, set())),
+        }
+    for buffer_id in sorted(buffer_capacity):
+        canonical_buffer_config.setdefault(
+            buffer_id,
+            {
+                "capacity": buffer_capacity[buffer_id],
+                "supporting_materials": sorted(buffer_support.get(buffer_id, set())),
+            },
+        )
+
+    scenario_id = str(audit["scenario_id"])
+    canonical_metadata = {
+        "canonical_contract_version": CANONICAL_CONTRACT_VERSION,
+        "raw_contract_version": RAW_CONTRACT_VERSION,
+        "raw_collector_version": COLLECTOR_VERSION,
+        "label_version": LABEL_VERSION,
+        "run_id": run_id,
+        "env_id": env_id,
+        "episode_id": episode_id,
+        "scenario_id": scenario_id,
+        "episode_end_s": episode_end,
+        "completion_evidence": audit["completion_evidence"],
+        "episode_end_evidence": audit["episode_end_evidence"],
+        "raw_file_sha256": audit["raw_file_sha256"],
+        "raw_episode_sha256": audit["raw_episode_sha256"],
+        "quality_warnings": audit["warnings"],
+        "graph_config": {
+            "process_time_config": _json_dict(
+                episode_config.get("process_time_config")
+            ),
+            "buffer_capacity_config": canonical_buffer_config,
+        },
+    }
+    (out_dir / "canonical_metadata.json").write_text(
+        json.dumps(canonical_metadata, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
     _write_csv(
         out_dir / "job_kpi.csv",
         job_kpi_rows,
@@ -1431,11 +1484,17 @@ def process_env_dir(
 
     summary = {
         "status": "processed",
+        "canonical_contract_version": CANONICAL_CONTRACT_VERSION,
+        "raw_contract_version": RAW_CONTRACT_VERSION,
+        "raw_collector_version": COLLECTOR_VERSION,
         "label_version": LABEL_VERSION,
         "run_id": run_id,
         "env_id": env_id,
         "episode_id": episode_id,
+        "scenario_id": scenario_id,
         "episode_end_s": episode_end,
+        "completion_evidence": audit["completion_evidence"],
+        "quality_warnings": audit["warnings"],
         "n_resources": len(feature_node_ids),
         "n_resource_event_nodes": len(resource_event_node_ids),
         "n_buffer_nodes": len(buffer_node_ids),

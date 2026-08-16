@@ -13,6 +13,9 @@ from pathlib import Path
 
 
 HC_ROOT = Path(__file__).resolve().parents[1] / "isaaclab_tasks/direct/hc_factory"
+sys.path.insert(0, str(HC_ROOT / "tools"))
+
+from canonical_factory_bn.contract import canonical_resource_state
 
 
 def _load_module(name: str, path: Path):
@@ -170,7 +173,7 @@ class TestRawDataAudit(unittest.TestCase):
         self,
         root: Path,
         *,
-        aborted: bool = False,
+        completed_jobs: int = 2,
         include_event_end: bool = True,
     ) -> tuple[Path, Path]:
         run_dir = root / "run_seed42"
@@ -180,69 +183,38 @@ class TestRawDataAudit(unittest.TestCase):
             "run_id": "run_seed42",
             "env_id": 0,
             "episode_id": 0,
-            "collector_version": "v0.6",
-            "scenario_id": "human_i1",
+            "collector_version": "v0.3",
             "disturbance_dim": "human",
             "disturbance_intensity": 1.0,
-            "product_order": json.dumps({"ProductWaterPipe": 18}),
+            "logic_dt": 1.0,
+            "product_order": json.dumps({"ProductWaterPipe": 2}),
+            "human_config": json.dumps({"NormalHuman": 3}),
+            "robot_config": json.dumps({"Robot": 2}),
+            "gantry_config": json.dumps({"active_gantry_indices": [0, 1]}),
         }
         self._write_csv(env_dir / "episode_config.csv", list(config), [config])
-
-        lifecycle_rows = [
-            {
-                "event": "START",
-                "time_step": 0,
-                "production_done": 0,
-                "completed_jobs": 0,
-                "termination_reason": "",
-            }
-        ]
-        lifecycle_rows.append(
-            {
-                "event": "ABORTED" if aborted else "END",
-                "time_step": 3000,
-                "production_done": 0 if aborted else 1,
-                "completed_jobs": 12 if aborted else 18,
-                "termination_reason": "deadlock_watchdog" if aborted else "",
-            }
-        )
-        self._write_csv(
-            env_dir / "episode_lifecycle.csv",
-            list(lifecycle_rows[0]),
-            lifecycle_rows,
-        )
 
         event_rows = [
             {
                 "disturbance_id": "human_cfg",
-                "event_phase": "CONFIG",
                 "disturbance_type": "human_config",
+                "target_resource_id": "episode",
                 "start_time_step": 0,
                 "end_time_step": "",
-                "actual_start_time_step": "",
-                "actual_end_time_step": "",
-                "actual_target_resource_id": "episode",
-                "target_resource_id": "episode",
             },
             {
                 "disturbance_id": "human_event_1",
-                "event_phase": "START",
                 "disturbance_type": "human_unavailable",
+                "target_resource_id": "human_1",
                 "start_time_step": 700,
                 "end_time_step": "",
-                "actual_start_time_step": 700,
-                "actual_end_time_step": "",
-                "actual_target_resource_id": "human_1",
-                "target_resource_id": "human_1",
             },
         ]
         if include_event_end:
             event_rows.append(
                 {
                     **event_rows[-1],
-                    "event_phase": "END",
                     "end_time_step": 850,
-                    "actual_end_time_step": 850,
                 }
             )
         self._write_csv(
@@ -254,26 +226,83 @@ class TestRawDataAudit(unittest.TestCase):
                 for row in (
                     {
                         "resource_id": "machine_a_ws0",
-                        "time_step": 0,
-                        "from_state": "INIT",
-                        "to_state": "IDLE",
+                        "time_step": 100,
+                        "resource_type": "machine",
+                        "from_state": "IDLE",
+                        "to_state": "PROCESSING",
+                        "raw_from_state": "free",
+                        "raw_to_state": "working_cutting",
                     },
                     {
                         "resource_id": "human_1",
-                        "time_step": 0,
-                        "from_state": "INIT",
-                        "to_state": "IDLE",
-                    },
-                    {
-                        "resource_id": "machine_a_ws0",
-                        "time_step": 100,
+                        "time_step": 700,
+                        "resource_type": "human",
                         "from_state": "IDLE",
                         "to_state": "PROCESSING",
+                        "raw_from_state": "free",
+                        "raw_to_state": "working_disturbance_absent",
                     },
                 )
             )
             + "\n",
             encoding="utf-8",
+        )
+        job_rows = []
+        for job_id in range(2):
+            job_rows.extend(
+                [
+                    {
+                        "job_id": job_id,
+                        "task": "cutting",
+                        "event": "job_selected",
+                        "time_step": 100 + job_id * 400,
+                    },
+                    {
+                        "job_id": job_id,
+                        "task": "cutting",
+                        "event": "departure",
+                        "time_step": 300 + job_id * 400,
+                    },
+                ]
+            )
+            if job_id < completed_jobs:
+                job_rows.append(
+                    {
+                        "job_id": job_id,
+                        "task": "paint_rust_proof",
+                        "event": "stage_complete",
+                        "time_step": 400 + job_id * 400,
+                    }
+                )
+        self._write_csv(env_dir / "job_trace.csv", list(job_rows[0]), job_rows)
+        self._write_csv(
+            env_dir / "buffer_event_log.csv",
+            ["time_step", "buffer_id", "capacity", "occupancy"],
+            [
+                {
+                    "time_step": 30,
+                    "buffer_id": "storage_A",
+                    "capacity": 4,
+                    "occupancy": 1,
+                }
+            ],
+        )
+        self._write_csv(
+            env_dir / "route_transport_task.csv",
+            ["task_id", "status", "request_time_step", "transport_end_time_step"],
+            [
+                {
+                    "task_id": "0_move",
+                    "status": "completed",
+                    "request_time_step": 100,
+                    "transport_end_time_step": 200,
+                }
+            ],
+        )
+        self._write_csv(
+            env_dir / "material_inventory_log.csv",
+            ["time_step", "material_id", "shortage_flag"],
+            [{"time_step": 60, "material_id": "material_0_pipe", "shortage_flag": 0}],
         )
         return run_dir, env_dir
 
@@ -283,8 +312,29 @@ class TestRawDataAudit(unittest.TestCase):
             row = AUDIT.audit_env_dir(run_dir, env_dir)
             self.assertTrue(row["trainable"])
             self.assertEqual(row["runtime_event_count"], 1)
-            self.assertEqual(row["completed_jobs"], 18)
+            self.assertEqual(row["completed_jobs"], 2)
+            self.assertEqual(row["lifecycle_event"], "PROVEN_COMPLETE")
             self.assertEqual(AUDIT.build_report([row])["status"], "passed")
+
+    def test_raw_human_absence_is_canonical_down(self):
+        state = canonical_resource_state(
+            {
+                "resource_type": "human",
+                "raw_to_state": "working_disturbance_absent",
+            }
+        )
+        self.assertEqual(state, "DOWN")
+
+    def test_raw_from_state_recovers_pre_transition_state(self):
+        state = canonical_resource_state(
+            {
+                "resource_type": "machine",
+                "raw_from_state": "materialReadyFor_cut",
+                "raw_to_state": "working_cut",
+            },
+            "raw_from_state",
+        )
+        self.assertEqual(state, "READY")
 
     def test_unpaired_event_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -293,49 +343,28 @@ class TestRawDataAudit(unittest.TestCase):
             )
             row = AUDIT.audit_env_dir(run_dir, env_dir)
             self.assertFalse(row["trainable"])
-            self.assertIn("event:human_event_1:end_count=0", row["errors"])
+            self.assertIn("Unpaired runtime disturbance: human_event_1", row["errors"])
 
-    def test_aborted_episode_is_rejected(self):
+    def test_incomplete_episode_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            run_dir, env_dir = self._make_episode(Path(temp_dir), aborted=True)
+            run_dir, env_dir = self._make_episode(Path(temp_dir), completed_jobs=1)
             row = AUDIT.audit_env_dir(run_dir, env_dir)
             self.assertFalse(row["trainable"])
-            self.assertEqual(row["lifecycle_event"], "ABORTED")
-            self.assertTrue(
-                any(error.startswith("episode_aborted=") for error in row["errors"])
-            )
-
-    def test_runtime_target_must_use_resource_catalog_id(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            run_dir, env_dir = self._make_episode(Path(temp_dir))
-            disturbance_path = env_dir / "disturbance_log.csv"
-            rows = AUDIT._read_csv(disturbance_path)
-            for event in rows:
-                if event["event_phase"] in {"START", "END"}:
-                    event["actual_target_resource_id"] = "num_01_NormalHuman"
-                    event["target_resource_id"] = "num_01_NormalHuman"
-            self._write_csv(disturbance_path, list(rows[0]), rows)
-
-            row = AUDIT.audit_env_dir(run_dir, env_dir)
-
-            self.assertFalse(row["trainable"])
-            self.assertIn(
-                "event:human_event_1:target_not_in_resource_catalog=num_01_NormalHuman",
-                row["errors"],
-            )
+            self.assertIn("completed_jobs=1/2", row["errors"])
 
     def test_old_collector_version_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             run_dir, env_dir = self._make_episode(Path(temp_dir))
             config_path = env_dir / "episode_config.csv"
-            config = AUDIT._read_csv(config_path)[0]
-            config["collector_version"] = "v0.5"
+            with config_path.open(newline="", encoding="utf-8") as stream:
+                config = next(csv.DictReader(stream))
+            config["collector_version"] = "v0.6"
             self._write_csv(config_path, list(config), [config])
 
             row = AUDIT.audit_env_dir(run_dir, env_dir)
 
             self.assertFalse(row["trainable"])
-            self.assertIn("collector_version='v0.5', expected='v0.6'", row["errors"])
+            self.assertIn("collector_version='v0.6', expected='v0.3'", row["errors"])
 
     def test_flat_env_layout_is_not_discovered(self):
         with tempfile.TemporaryDirectory() as temp_dir:

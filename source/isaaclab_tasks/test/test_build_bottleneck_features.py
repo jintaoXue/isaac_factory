@@ -15,6 +15,7 @@ SCRIPT = (
     Path(__file__).resolve().parents[1]
     / "isaaclab_tasks/direct/hc_factory/tools/build_bottleneck_features.py"
 )
+sys.path.insert(0, str(SCRIPT.parent))
 SPEC = importlib.util.spec_from_file_location("build_bottleneck_features", SCRIPT)
 MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
@@ -170,16 +171,16 @@ class TestPhaseBFeatures(unittest.TestCase):
             disturbance_rows=[
                 {
                     "disturbance_id": "machine_event_1",
-                    "event_phase": "START",
-                    "actual_start_time_step": "10",
-                    "actual_target_resource_id": "machine_a_ws0",
+                    "start_time_step": "10",
+                    "end_time_step": "",
+                    "target_resource_id": "machine_a_ws0",
                     "disturbance_type": "machine_failure",
                 },
                 {
                     "disturbance_id": "machine_event_1",
-                    "event_phase": "END",
-                    "actual_end_time_step": "30",
-                    "actual_target_resource_id": "machine_a_ws0",
+                    "start_time_step": "10",
+                    "end_time_step": "30",
+                    "target_resource_id": "machine_a_ws0",
                     "disturbance_type": "machine_failure",
                 },
             ],
@@ -232,22 +233,22 @@ class TestPhaseBFeatures(unittest.TestCase):
         rows = [
             {
                 "disturbance_id": "human_cfg",
-                "event_phase": "CONFIG",
                 "start_logic_time_s": "0",
-                "actual_target_resource_id": "episode",
+                "target_resource_id": "episode",
+                "disturbance_type": "human_config",
             },
             {
                 "disturbance_id": "human_event_1",
-                "event_phase": "START",
-                "actual_start_time_step": "10",
-                "actual_target_resource_id": "human_2",
+                "start_time_step": "10",
+                "end_time_step": "",
+                "target_resource_id": "human_2",
                 "disturbance_type": "human_unavailable",
             },
             {
                 "disturbance_id": "human_event_1",
-                "event_phase": "END",
-                "actual_end_time_step": "20",
-                "actual_target_resource_id": "human_2",
+                "start_time_step": "10",
+                "end_time_step": "20",
+                "target_resource_id": "human_2",
                 "disturbance_type": "human_unavailable",
             },
         ]
@@ -280,17 +281,17 @@ class TestPhaseBFeatures(unittest.TestCase):
             disturbance_rows=[
                 {
                     "disturbance_id": "machine_event_1",
-                    "event_phase": "START",
-                    "actual_start_time_step": "120",
+                    "start_time_step": "120",
+                    "end_time_step": "",
                     "disturbance_type": "machine_failure",
-                    "actual_target_resource_id": "machine_a_ws0",
+                    "target_resource_id": "machine_a_ws0",
                 },
                 {
                     "disturbance_id": "machine_event_1",
-                    "event_phase": "END",
-                    "actual_end_time_step": "210",
+                    "start_time_step": "120",
+                    "end_time_step": "210",
                     "disturbance_type": "machine_failure",
-                    "actual_target_resource_id": "machine_a_ws0",
+                    "target_resource_id": "machine_a_ws0",
                 },
             ],
         )
@@ -411,67 +412,124 @@ class TestPhaseBFeatures(unittest.TestCase):
             throughput_labels[7]["baseline_completed_operations_t"], 2
         )
 
-    def test_process_prefers_lifecycle_end_and_writes_metadata(self):
+    def _make_canonical_raw_episode(self, env_dir, *, complete=True):
+        env_dir.mkdir(parents=True)
+        (env_dir / "resource_event_log.jsonl").write_text(
+            json.dumps(
+                {
+                    "run_id": "run",
+                    "env_id": 0,
+                    "episode_id": 0,
+                    "time_step": 1,
+                    "logic_time_s": 0.5,
+                    "resource_id": "machine_a_ws0",
+                    "resource_type": "machine",
+                    "raw_from_state": "free",
+                    "raw_to_state": "working_cut",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        config = {
+            "run_id": "run",
+            "env_id": 0,
+            "episode_id": 0,
+            "collector_version": "v0.3",
+            "logic_dt": 0.5,
+            "disturbance_dim": "none",
+            "disturbance_intensity": 0,
+            "product_order": json.dumps({"Product": 1}),
+            "process_time_config": json.dumps(
+                {
+                    "Product": {
+                        "cut": {
+                            "machine": "machine_a",
+                            "required_materials": ["pipe"],
+                        }
+                    }
+                }
+            ),
+            "buffer_capacity_config": json.dumps({"BlackStorage_00": 2}),
+            "human_config": "{}",
+            "robot_config": "{}",
+            "gantry_config": json.dumps({"active_gantry_indices": []}),
+        }
+        self._write_csv(env_dir / "episode_config.csv", list(config), [config])
+        job_rows = [
+            {
+                "job_id": 0,
+                "task": "cut",
+                "task_type": "processing",
+                "station_id": "machine_a_ws0",
+                "event": "job_selected",
+                "time_step": 1,
+            },
+            {
+                "job_id": 0,
+                "task": "cut",
+                "task_type": "processing",
+                "station_id": "machine_a_ws0",
+                "event": "departure",
+                "time_step": 250,
+            },
+        ]
+        if complete:
+            job_rows.append(
+                {
+                    "job_id": 0,
+                    "task": "paint_rust_proof",
+                    "task_type": "processing",
+                    "station_id": "machine_a_ws0",
+                    "event": "stage_complete",
+                    "time_step": 300,
+                }
+            )
+        self._write_csv(env_dir / "job_trace.csv", list(job_rows[0]), job_rows)
+        self._write_csv(
+            env_dir / "buffer_event_log.csv",
+            [
+                "time_step",
+                "logic_time_s",
+                "buffer_id",
+                "capacity",
+                "occupancy",
+                "occupancy_ratio",
+                "supporting_materials",
+            ],
+            [
+                {
+                    "time_step": 30,
+                    "logic_time_s": 15,
+                    "buffer_id": "storage_BlackStorage_00",
+                    "capacity": 2,
+                    "occupancy": 1,
+                    "occupancy_ratio": 0.5,
+                    "supporting_materials": json.dumps(["pipe"]),
+                }
+            ],
+        )
+        for filename, fieldnames in (
+            ("route_transport_task.csv", ["task_id", "status"]),
+            ("material_inventory_log.csv", ["time_step", "material_id"]),
+            (
+                "disturbance_log.csv",
+                [
+                    "disturbance_id",
+                    "disturbance_type",
+                    "target_resource_id",
+                    "start_time_step",
+                    "end_time_step",
+                ],
+            ),
+        ):
+            self._write_csv(env_dir / filename, fieldnames, [])
+
+    def test_process_uses_proven_raw_end_and_writes_canonical_metadata(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             env_dir = Path(temp_dir) / "episode_00" / "env_00"
             out_dir = Path(temp_dir) / "derived" / "episode_00" / "env_00"
-            env_dir.mkdir(parents=True)
-            (env_dir / "resource_event_log.jsonl").write_text(
-                json.dumps(
-                    {
-                        "run_id": "run",
-                        "env_id": 0,
-                        "episode_id": 0,
-                        "time_step": 0,
-                        "logic_time_s": 0,
-                        "resource_id": "machine_a_ws0",
-                        "resource_type": "machine",
-                        "from_state": "INIT",
-                        "to_state": "IDLE",
-                    }
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-            self._write_csv(
-                env_dir / "episode_config.csv",
-                [
-                    "run_id",
-                    "env_id",
-                    "episode_id",
-                    "collector_version",
-                    "logic_dt",
-                    "process_time_config",
-                    "buffer_capacity_config",
-                ],
-                [
-                    {
-                        "run_id": "run",
-                        "env_id": 0,
-                        "episode_id": 0,
-                        "collector_version": "v0.6",
-                        "logic_dt": 0.5,
-                        "process_time_config": "{}",
-                        "buffer_capacity_config": "{}",
-                    }
-                ],
-            )
-            self._write_csv(
-                env_dir / "episode_lifecycle.csv",
-                ["event", "time_step", "logic_time_s"],
-                [
-                    {"event": "START", "time_step": 0, "logic_time_s": 0},
-                    {"event": "END", "time_step": 300, "logic_time_s": 150},
-                ],
-            )
-            for filename in (
-                "job_trace.csv",
-                "buffer_event_log.csv",
-                "route_transport_task.csv",
-                "material_inventory_log.csv",
-                "disturbance_log.csv",
-            ):
-                self._write_csv(env_dir / filename, ["time_step"], [])
+            self._make_canonical_raw_episode(env_dir)
 
             summary = MODULE.process_env_dir(
                 env_dir=env_dir,
@@ -484,91 +542,49 @@ class TestPhaseBFeatures(unittest.TestCase):
             )
 
             self.assertEqual(summary["episode_end_s"], 150.0)
-            self.assertEqual(summary["n_resources"], 1)
+            self.assertEqual(
+                summary["canonical_contract_version"], "canonical_factory_bn_v1"
+            )
+            self.assertEqual(summary["n_resources"], 2)
             self.assertEqual(summary["n_resource_event_nodes"], 1)
-            self.assertEqual(summary["n_buffer_nodes"], 0)
-            self.assertEqual(summary["n_feature_rows"], 5)
+            self.assertEqual(summary["n_buffer_nodes"], 1)
+            self.assertEqual(summary["n_feature_rows"], 10)
             self.assertEqual(summary["observed_label_rows"], 3)
             self.assertEqual(summary["censored_label_rows"], 2)
             metadata = json.loads(
                 (out_dir / "label_metadata.json").read_text(encoding="utf-8")
             )
-            self.assertEqual(metadata["label_version"], "bstan_weak_v2_3")
+            self.assertEqual(metadata["label_version"], "factory_bn_weak_v1")
             self.assertEqual(metadata["system_impact_config"]["impact_hold_windows"], 2)
             self.assertEqual(metadata["relative_score_margin"], 0.1)
             self.assertEqual(metadata["strides_s"], {"30.0": 30.0})
+            canonical = json.loads(
+                (out_dir / "canonical_metadata.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(canonical["raw_contract_version"], "tyx_raw_v0.3")
+            self.assertEqual(
+                canonical["graph_config"]["buffer_capacity_config"][
+                    "storage_BlackStorage_00"
+                ]["supporting_materials"],
+                ["pipe"],
+            )
 
-    def test_process_skips_aborted_episode_and_keeps_audit_summary(self):
+    def test_process_rejects_incomplete_raw_episode(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             env_dir = Path(temp_dir) / "episode_00" / "env_00"
             out_dir = Path(temp_dir) / "derived" / "episode_00" / "env_00"
-            env_dir.mkdir(parents=True)
-            (env_dir / "resource_event_log.jsonl").write_text("", encoding="utf-8")
-            self._write_csv(
-                env_dir / "episode_config.csv",
-                ["run_id", "env_id", "episode_id", "collector_version", "logic_dt"],
-                [
-                    {
-                        "run_id": "run",
-                        "env_id": 0,
-                        "episode_id": 0,
-                        "collector_version": "v0.6",
-                        "logic_dt": 0.5,
-                    }
-                ],
-            )
-            self._write_csv(
-                env_dir / "episode_lifecycle.csv",
-                [
-                    "event",
-                    "time_step",
-                    "logic_time_s",
-                    "completed_jobs",
-                    "termination_reason",
-                ],
-                [
-                    {
-                        "event": "START",
-                        "time_step": 0,
-                        "logic_time_s": 0,
-                        "completed_jobs": 0,
-                        "termination_reason": "",
-                    },
-                    {
-                        "event": "ABORTED",
-                        "time_step": 5000,
-                        "logic_time_s": 2500,
-                        "completed_jobs": 2,
-                        "termination_reason": "deadlock_watchdog",
-                    },
-                ],
-            )
-            for filename in (
-                "job_trace.csv",
-                "buffer_event_log.csv",
-                "route_transport_task.csv",
-                "material_inventory_log.csv",
-                "disturbance_log.csv",
-            ):
-                self._write_csv(env_dir / filename, ["time_step"], [])
+            self._make_canonical_raw_episode(env_dir, complete=False)
 
-            summary = MODULE.process_env_dir(
-                env_dir=env_dir,
-                out_dir=out_dir,
-                window_sizes=[30.0],
-                stride=30.0,
-                horizon=60.0,
-                score_threshold=0.55,
-                min_event_windows=2,
-            )
-
-            self.assertEqual(summary["status"], "skipped")
-            self.assertEqual(summary["termination_reason"], "deadlock_watchdog")
-            self.assertEqual(summary["abort_time_s"], 2500.0)
-            self.assertEqual(summary["completed_jobs"], 2)
-            self.assertTrue((out_dir / "pipeline_summary.json").is_file())
-            self.assertFalse((out_dir / "window_feature_table.csv").exists())
-            self.assertFalse((out_dir / "bottleneck_labels.csv").exists())
+            with self.assertRaisesRegex(ValueError, "completed_jobs=0/1"):
+                MODULE.process_env_dir(
+                    env_dir=env_dir,
+                    out_dir=out_dir,
+                    window_sizes=[30.0],
+                    stride=30.0,
+                    horizon=60.0,
+                    score_threshold=0.55,
+                    min_event_windows=2,
+                )
 
 
 if __name__ == "__main__":

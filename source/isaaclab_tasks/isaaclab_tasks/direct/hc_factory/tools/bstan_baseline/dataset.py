@@ -19,6 +19,7 @@ from .graph_builder import build_static_graph
 from .schema import (
     COLLECTOR_VERSION,
     CONTINUOUS_FEATURES,
+    DATASET_CONTRACT,
     DATASET_VERSION,
     GLOBAL_FEATURES,
     LABEL_VERSION,
@@ -106,10 +107,27 @@ def _discover_groups(
             rel = feature_path.parent.relative_to(derived_root)
             raw_dir = run_dir / rel
             label_path = feature_path.parent / "bottleneck_label.csv"
+            metadata_path = feature_path.parent / "canonical_metadata.json"
             config_rows = _read_csv(raw_dir / "episode_config.csv")
             if not config_rows:
                 raise ValueError(f"Missing episode config row: {raw_dir}")
             config = config_rows[0]
+            if not metadata_path.is_file():
+                raise FileNotFoundError(metadata_path)
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if metadata.get("canonical_contract_version") != DATASET_CONTRACT:
+                raise ValueError(
+                    f"Unexpected canonical contract in {metadata_path}: "
+                    f"{metadata.get('canonical_contract_version')!r}"
+                )
+            graph_config = metadata.get("graph_config") or {}
+            canonical_config = dict(config)
+            canonical_config["process_time_config"] = graph_config.get(
+                "process_time_config", {}
+            )
+            canonical_config["buffer_capacity_config"] = graph_config.get(
+                "buffer_capacity_config", {}
+            )
             run_id = config.get("run_id") or run_dir.name
             env_id = _i(config.get("env_id"))
             episode_id = _i(config.get("episode_id"))
@@ -125,9 +143,14 @@ def _discover_groups(
                     "run_id": run_id,
                     "env_id": env_id,
                     "episode_id": episode_id,
-                    "scenario_id": config.get("scenario_id") or "unknown",
+                    "scenario_id": metadata.get("scenario_id") or "unknown",
                     "collector_version": config.get("collector_version") or "unknown",
-                    "config": config,
+                    "canonical_contract_version": metadata.get(
+                        "canonical_contract_version"
+                    ),
+                    "raw_contract_version": metadata.get("raw_contract_version"),
+                    "raw_episode_sha256": metadata.get("raw_episode_sha256") or "",
+                    "config": canonical_config,
                     "feature_rows": _read_csv(feature_path),
                     "label_rows": _read_csv(label_path),
                 }
@@ -314,6 +337,8 @@ def _validate_dataset(
         raise ValueError("Adjacency shape does not match x")
     if payload["node_mask"].shape != (sample_count, node_count):
         raise ValueError("Node mask shape does not match x")
+    if payload["observation_mask"].shape != x.shape[:3]:
+        raise ValueError("Observation mask shape does not match x")
     if payload["target_node_mask"].shape != (sample_count, node_count):
         raise ValueError("Target node mask shape does not match x")
     if (
@@ -378,6 +403,7 @@ class BstanTensorDataset(Dataset):
         "x",
         "adjacency",
         "node_mask",
+        "observation_mask",
         "target_node_mask",
         "target_type_mask",
         "global_features",
@@ -411,25 +437,37 @@ class BstanTensorDataset(Dataset):
 def build_bstan_dataset(
     run_dirs: Iterable[Path],
     out_dir: Path,
-    derived_dir_name: str = "derived_phase_b_v2_3",
+    derived_dir_name: str = "canonical_factory_bn_v1",
     window_size: float = 30.0,
     stride: float = 30.0,
     input_windows: int = 4,
     horizon: float = 120.0,
     seed: int = 42,
     repo_root: Path | None = None,
+    allowed_group_ids: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Build, validate, and persist the Phase-C graph-sequence dataset."""
+    """Build and persist BSTAN tensors from the shared canonical contract."""
     if input_windows <= 0:
         raise ValueError("input_windows must be positive")
     out_dir = Path(out_dir).resolve()
     groups = _discover_groups(run_dirs, derived_dir_name)
+    if allowed_group_ids is not None:
+        groups = [group for group in groups if group["group_id"] in allowed_group_ids]
+        if not groups:
+            raise ValueError(
+                "No canonical episode groups matched the accepted allowlist"
+            )
     for group in groups:
         if group["collector_version"] != COLLECTOR_VERSION:
             raise ValueError(
                 f"Unexpected collector version for {group['group_id']}: "
                 f"expected {COLLECTOR_VERSION!r}, "
                 f"got {group['collector_version']!r}"
+            )
+        if group["canonical_contract_version"] != DATASET_CONTRACT:
+            raise ValueError(
+                f"Unexpected canonical contract for {group['group_id']}: "
+                f"{group['canonical_contract_version']!r}"
             )
         group["feature_rows"] = _filter_rows(group["feature_rows"], window_size, stride)
         group["label_rows"] = _filter_rows(group["label_rows"], window_size, stride)
@@ -456,6 +494,7 @@ def build_bstan_dataset(
     global_samples: list[torch.Tensor] = []
     adjacency_samples: list[torch.Tensor] = []
     node_masks: list[torch.Tensor] = []
+    observation_masks: list[torch.Tensor] = []
     target_node_masks: list[torch.Tensor] = []
     target_type_masks: list[torch.Tensor] = []
     targets: list[dict[str, Any]] = []
@@ -538,6 +577,9 @@ def build_bstan_dataset(
             x_global = torch.zeros(
                 (input_windows, len(GLOBAL_FEATURES)), dtype=torch.float32
             )
+            observation_mask = torch.zeros(
+                (input_windows, len(node_ids)), dtype=torch.bool
+            )
             for time_index, rows in enumerate(sequence_rows):
                 first_row = next(iter(rows.values()))
                 x_global[time_index] = torch.tensor(
@@ -547,8 +589,14 @@ def build_bstan_dataset(
                 for node_id, row in rows.items():
                     catalog_index = node_index[node_id]
                     resource_type = node_types[node_id]
+                    observation_mask[time_index, catalog_index] = bool(
+                        _i(row.get("observation_available_s"))
+                    )
                     for feature_index, feature_name in enumerate(CONTINUOUS_FEATURES):
-                        applicable = feature_is_applicable(
+                        applicable = (
+                            feature_name == "observation_available_s"
+                            or observation_mask[time_index, catalog_index]
+                        ) and feature_is_applicable(
                             feature_name, node_id, resource_type
                         )
                         applicability[
@@ -583,6 +631,7 @@ def build_bstan_dataset(
             global_samples.append(x_global)
             adjacency_samples.append(adjacency)
             node_masks.append(node_mask)
+            observation_masks.append(observation_mask)
             target_node_masks.append(target_node_mask)
             target_type_masks.append(target_type_mask)
             targets.append(
@@ -624,6 +673,7 @@ def build_bstan_dataset(
     global_features = torch.stack(global_samples)
     adjacency = torch.stack(adjacency_samples)
     node_mask = torch.stack(node_masks)
+    observation_mask = torch.stack(observation_masks)
     target_node_mask = torch.stack(target_node_masks)
     target_type_mask = torch.stack(target_type_masks)
     y_occurrence = torch.tensor(
@@ -664,6 +714,7 @@ def build_bstan_dataset(
         "x": torch.cat((normalized_continuous, x_type), dim=-1),
         "adjacency": adjacency,
         "node_mask": node_mask,
+        "observation_mask": observation_mask,
         "target_node_mask": target_node_mask,
         "target_type_mask": target_type_mask,
         "global_features": normalized_global,
@@ -769,7 +820,7 @@ def build_bstan_dataset(
         name: {"group_ids": split_groups[name], "sample_indices": split_indices[name]}
         for name in ("train", "validation", "test")
     }
-    (out_dir / "split.json").write_text(
+    (out_dir / "split_manifest.json").write_text(
         json.dumps(split_json, indent=2) + "\n", encoding="utf-8"
     )
     normalization_json = {
@@ -791,9 +842,18 @@ def build_bstan_dataset(
     ]
     manifest = {
         "dataset_version": DATASET_VERSION,
+        "dataset_contract": DATASET_CONTRACT,
         "label_version": LABEL_VERSION,
         "target_node_category": TARGET_NODE_CATEGORY,
         "source_run_directories": sorted({str(group["run_dir"]) for group in groups}),
+        "source_episodes": [
+            {
+                "group_id": group["group_id"],
+                "scenario_id": group["scenario_id"],
+                "raw_episode_sha256": group["raw_episode_sha256"],
+            }
+            for group in sorted(groups, key=lambda item: item["group_id"])
+        ],
         "derived_dir_name": derived_dir_name,
         "collector_versions": collector_versions,
         "window_size_s": window_size,

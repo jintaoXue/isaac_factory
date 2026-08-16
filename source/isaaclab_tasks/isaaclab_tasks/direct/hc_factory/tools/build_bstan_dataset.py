@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a fixed-shape BSTAN graph-sequence dataset from Phase-B tables."""
+"""Build fixed-shape BSTAN tensors from shared canonical benchmark tables."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from bstan_baseline.dataset import build_bstan_dataset
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run_dirs", type=Path, nargs="+", required=True)
-    parser.add_argument("--derived_dir_name", default="derived_phase_b_v2_3")
+    parser.add_argument("--derived_dir_name", default="canonical_factory_bn_v1")
     parser.add_argument("--window_size", type=float, default=30.0)
     parser.add_argument("--stride", type=float, default=30.0)
     parser.add_argument("--input_windows", type=int, default=4)
@@ -39,6 +39,8 @@ def main() -> None:
         json.dumps(
             {
                 "dataset_dir": str(args.out_dir.resolve()),
+                "dataset_contract": manifest["dataset_contract"],
+                "label_version": manifest["label_version"],
                 "total_samples": manifest["total_samples"],
                 "positive_samples": manifest["positive_samples"],
                 "positive_rate": manifest["positive_rate"],

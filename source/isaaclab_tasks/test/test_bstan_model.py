@@ -20,7 +20,7 @@ from bstan_baseline.losses import (  # noqa: E402
     compute_multitask_loss,
 )
 from bstan_baseline.model import BstanGatGru, BstanModelConfig  # noqa: E402
-from bstan_baseline.metrics import compute_metrics  # noqa: E402
+from bstan_baseline.metrics import compute_metrics, select_f1_threshold  # noqa: E402
 from bstan_baseline.trainer import (  # noqa: E402
     BstanTrainConfig,
     load_checkpoint,
@@ -194,6 +194,16 @@ class TestBstanModel(unittest.TestCase):
         metrics, confusion = compute_metrics(arrays, class_count=2)
         self.assertAlmostEqual(metrics["no_event_baseline"]["pr_auc"], 0.4)
         self.assertEqual(confusion.sum(), 2)
+
+    def test_occurrence_threshold_is_selected_on_validation_predictions(self) -> None:
+        import numpy as np
+
+        threshold = select_f1_threshold(
+            np.array([0, 1, 0, 1]),
+            np.array([0.20, 0.45, 0.40, 0.80]),
+        )
+
+        self.assertEqual(threshold, 0.45)
 
 
 if __name__ == "__main__":

@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+from canonical_factory_bn.contract import (
+    CANONICAL_CONTRACT_VERSION,
+    CANONICAL_LABEL_VERSION,
+    RAW_COLLECTOR_VERSION,
+)
 
-DATASET_VERSION = "bstan_dataset_v3"
-LABEL_VERSION = "bstan_weak_v2_3"
-COLLECTOR_VERSION = "v0.6"
+DATASET_VERSION = "bstan_canonical_dataset_v1"
+LABEL_VERSION = CANONICAL_LABEL_VERSION
+COLLECTOR_VERSION = RAW_COLLECTOR_VERSION
+DATASET_CONTRACT = CANONICAL_CONTRACT_VERSION
 TARGET_NODE_CATEGORY = "process"
 
 CONTINUOUS_FEATURES = (
+    "observation_available_s",
     "queue_length_s",
     "avg_waiting_time_s",
     "occupancy_ratio_s",

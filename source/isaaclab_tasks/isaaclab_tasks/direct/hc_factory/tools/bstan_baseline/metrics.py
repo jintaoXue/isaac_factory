@@ -7,9 +7,11 @@ from typing import Any
 import numpy as np
 
 
-def _binary_metrics(labels: np.ndarray, probabilities: np.ndarray) -> dict[str, Any]:
+def _binary_metrics(
+    labels: np.ndarray, probabilities: np.ndarray, threshold: float = 0.5
+) -> dict[str, Any]:
     labels = labels.astype(np.int64)
-    predictions = probabilities >= 0.5
+    predictions = probabilities >= threshold
     positives = labels == 1
     negatives = ~positives
     true_positive = int(np.logical_and(predictions, positives).sum())
@@ -54,9 +56,10 @@ def _binary_metrics(labels: np.ndarray, probabilities: np.ndarray) -> dict[str, 
     return {
         "pr_auc": average_precision,
         "roc_auc": roc_auc,
-        "precision_at_0_5": precision,
-        "recall_at_0_5": recall,
-        "f1_at_0_5": f1,
+        "decision_threshold": threshold,
+        "precision_at_threshold": precision,
+        "recall_at_threshold": recall,
+        "f1_at_threshold": f1,
         "positive_count": positive_count,
         "negative_count": negative_count,
     }
@@ -85,16 +88,33 @@ def _multiclass_metrics(
     }, confusion
 
 
+def select_f1_threshold(labels: np.ndarray, probabilities: np.ndarray) -> float:
+    """Select the highest validation threshold among equal best F1 values."""
+    candidates = np.unique(np.r_[0.0, probabilities, 1.0])
+    scored = [
+        (
+            _binary_metrics(labels, probabilities, float(threshold))["f1_at_threshold"],
+            float(threshold),
+        )
+        for threshold in candidates
+    ]
+    return max(scored, key=lambda item: (item[0], item[1]))[1]
+
+
 def compute_metrics(
-    arrays: dict[str, np.ndarray], class_count: int
+    arrays: dict[str, np.ndarray],
+    class_count: int,
+    occurrence_threshold: float = 0.5,
 ) -> tuple[dict[str, Any], np.ndarray]:
     """Compute all Phase-D metrics and the bottleneck-type confusion matrix."""
     occurrence = arrays["y_occurrence"].astype(np.int64)
     occurrence_probability = arrays["occurrence_probability"]
     metrics: dict[str, Any] = {
-        "occurrence": _binary_metrics(occurrence, occurrence_probability),
+        "occurrence": _binary_metrics(
+            occurrence, occurrence_probability, occurrence_threshold
+        ),
         "no_event_baseline": _binary_metrics(
-            occurrence, np.zeros_like(occurrence_probability)
+            occurrence, np.zeros_like(occurrence_probability), 0.5
         ),
     }
 

@@ -37,7 +37,7 @@ class TestBstanDataset(unittest.TestCase):
             raw_dir = run_dir / f"episode_{episode_id:02d}" / "env_00"
             derived_dir = (
                 run_dir
-                / "derived_phase_b_v2_3"
+                / "canonical_factory_bn_v1"
                 / f"episode_{episode_id:02d}"
                 / "env_00"
             )
@@ -45,8 +45,7 @@ class TestBstanDataset(unittest.TestCase):
                 "run_id": "run_seed42",
                 "env_id": 0,
                 "episode_id": episode_id,
-                "scenario_id": f"scenario_{episode_id % 2}",
-                "collector_version": "v0.6",
+                "collector_version": "v0.3",
                 "process_time_config": json.dumps(
                     {
                         "Product": {
@@ -67,6 +66,28 @@ class TestBstanDataset(unittest.TestCase):
                 ),
             }
             self._write_csv(raw_dir / "episode_config.csv", list(config), [config])
+            (derived_dir / "canonical_metadata.json").parent.mkdir(
+                parents=True, exist_ok=True
+            )
+            (derived_dir / "canonical_metadata.json").write_text(
+                json.dumps(
+                    {
+                        "canonical_contract_version": "canonical_factory_bn_v1",
+                        "raw_contract_version": "tyx_raw_v0.3",
+                        "scenario_id": f"scenario_{episode_id % 2}",
+                        "graph_config": {
+                            "process_time_config": json.loads(
+                                config["process_time_config"]
+                            ),
+                            "buffer_capacity_config": json.loads(
+                                config["buffer_capacity_config"]
+                            ),
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
 
             feature_rows = []
             label_rows = []
@@ -122,7 +143,7 @@ class TestBstanDataset(unittest.TestCase):
                         "duration": 60 if positive else "",
                         "severity_weak": 0.8 if positive else "",
                         "duration_observed": int(positive),
-                        "label_version": "bstan_weak_v2_3",
+                        "label_version": "factory_bn_weak_v1",
                         "prediction_horizon": 120,
                     }
                 )
@@ -160,6 +181,7 @@ class TestBstanDataset(unittest.TestCase):
             self.assertEqual(payload["global_features"].shape, (30, 4, 6))
             self.assertEqual(payload["adjacency"].shape, (30, 2, 2))
             self.assertEqual(payload["target_node_mask"].shape, (30, 2))
+            self.assertEqual(payload["observation_mask"].shape, (30, 4, 2))
             machine_index = manifest["node_ids"].index("machine_a_ws0")
             buffer_index = manifest["node_ids"].index("storage_BlackStorage_00")
             self.assertTrue(payload["target_node_mask"][:, machine_index].all())
@@ -170,8 +192,9 @@ class TestBstanDataset(unittest.TestCase):
             self.assertTrue(payload["target_type_mask"][:, machine_type_index].all())
             self.assertFalse(payload["target_type_mask"][:, buffer_type_index].any())
             self.assertTrue(torch.isfinite(payload["x"]).all())
-            self.assertEqual(manifest["dataset_version"], "bstan_dataset_v3")
-            self.assertEqual(manifest["label_version"], "bstan_weak_v2_3")
+            self.assertEqual(manifest["dataset_version"], "bstan_canonical_dataset_v1")
+            self.assertEqual(manifest["dataset_contract"], "canonical_factory_bn_v1")
+            self.assertEqual(manifest["label_version"], "factory_bn_weak_v1")
             self.assertEqual(manifest["target_node_category"], "process")
             self.assertEqual(manifest["positive_samples"], 5)
             self.assertEqual(
@@ -203,7 +226,7 @@ class TestBstanDataset(unittest.TestCase):
                 "node_catalog.csv",
                 "graph_edge_table.csv",
                 "model_sample_index.csv",
-                "split.json",
+                "split_manifest.json",
                 "normalization.json",
                 "dataset_manifest.json",
             }

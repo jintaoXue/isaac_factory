@@ -20,9 +20,14 @@ from torch.utils.data import DataLoader
 
 from .dataset import BstanTensorDataset
 from .losses import BstanLossConfig, compute_multitask_loss
-from .metrics import compute_metrics
+from .metrics import compute_metrics, select_f1_threshold
 from .model import BstanGatGru, BstanModelConfig
-from .schema import DATASET_VERSION, LABEL_VERSION, TARGET_NODE_CATEGORY
+from .schema import (
+    DATASET_CONTRACT,
+    DATASET_VERSION,
+    LABEL_VERSION,
+    TARGET_NODE_CATEGORY,
+)
 
 
 @dataclass
@@ -144,6 +149,7 @@ def _load_dataset(dataset_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     )
     manifest = _read_json(manifest_path)
     expected_manifest = {
+        "dataset_contract": DATASET_CONTRACT,
         "dataset_version": DATASET_VERSION,
         "label_version": LABEL_VERSION,
         "target_node_category": TARGET_NODE_CATEGORY,
@@ -236,6 +242,7 @@ def _evaluate_loader(
     pos_weight: torch.Tensor,
     device: torch.device,
     class_count: int,
+    occurrence_threshold: float = 0.5,
 ) -> tuple[dict[str, Any], dict[str, np.ndarray], np.ndarray]:
     model.eval()
     collected: dict[str, list[np.ndarray]] = {}
@@ -274,7 +281,9 @@ def _evaluate_loader(
                 collected.setdefault(name, []).append(value.detach().cpu().numpy())
 
     arrays = {name: np.concatenate(values) for name, values in collected.items()}
-    metrics, confusion = compute_metrics(arrays, class_count)
+    metrics, confusion = compute_metrics(
+        arrays, class_count, occurrence_threshold=occurrence_threshold
+    )
     metrics["loss"] = {name: value / sample_count for name, value in totals.items()}
     metrics["sample_count"] = sample_count
     return metrics, arrays, confusion
@@ -324,6 +333,7 @@ def _prediction_rows(
     sample_lookup: dict[int, dict[str, str]],
     node_ids: list[str],
     resource_types: list[str],
+    occurrence_threshold: float,
 ) -> list[dict[str, Any]]:
     rows = []
     for position, raw_index in enumerate(arrays["sample_index"]):
@@ -339,7 +349,7 @@ def _prediction_rows(
                     arrays["occurrence_probability"][position]
                 ),
                 "occurrence_prediction": int(
-                    arrays["occurrence_probability"][position] >= 0.5
+                    arrays["occurrence_probability"][position] >= occurrence_threshold
                 ),
                 "predicted_node_id": node_ids[node_prediction],
                 "target_node_id_indexed": (
@@ -368,6 +378,7 @@ def _write_evaluation_artifacts(
     confusion: np.ndarray,
     dataset_dir: Path,
     manifest: dict[str, Any],
+    occurrence_threshold: float,
 ) -> None:
     _write_json(output_dir / f"metrics_{split_name}.json", metrics)
     sample_rows = _read_csv(dataset_dir / "model_sample_index.csv")
@@ -377,6 +388,7 @@ def _write_evaluation_artifacts(
         sample_lookup,
         manifest["node_ids"],
         manifest["resource_types"],
+        occurrence_threshold,
     )
     prediction_fields = list(sample_rows[0]) + [
         "occurrence_probability",
@@ -472,6 +484,7 @@ def train_bstan_baseline(
         "dataset_dir": str(dataset_dir),
         "dataset_manifest_sha256": _manifest_hash(manifest_path),
         "dataset_version": manifest["dataset_version"],
+        "dataset_contract": manifest["dataset_contract"],
         "label_version": manifest["label_version"],
         "feature_names": manifest["feature_names"],
         "global_feature_names": manifest["global_feature_names"],
@@ -523,7 +536,10 @@ def train_bstan_baseline(
                 "validation_total_loss": validation_metrics["loss"]["total"],
                 "validation_pr_auc": validation_score,
                 "validation_roc_auc": validation_metrics["occurrence"]["roc_auc"],
-                "validation_f1_at_0_5": validation_metrics["occurrence"]["f1_at_0_5"],
+                "validation_f1_at_threshold": validation_metrics["occurrence"][
+                    "f1_at_threshold"
+                ],
+                "validation_decision_threshold": 0.5,
             }
         )
         history.append(row)
@@ -566,16 +582,48 @@ def train_bstan_baseline(
 
     _write_csv(output_dir / "history.csv", history, list(history[0]))
     best_model, checkpoint = load_checkpoint(output_dir / "best.pt", device)
+    initial_validation_metrics, validation_arrays, _ = _evaluate_loader(
+        best_model,
+        loaders["validation"],
+        loss_config,
+        pos_weight,
+        device,
+        model_config.num_types,
+    )
+    occurrence_threshold = select_f1_threshold(
+        validation_arrays["y_occurrence"],
+        validation_arrays["occurrence_probability"],
+    )
+    checkpoint["metadata"]["occurrence_threshold"] = occurrence_threshold
+    torch.save(checkpoint, output_dir / "best.pt")
+    config_payload["metadata"]["occurrence_threshold"] = occurrence_threshold
+    _write_json(output_dir / "config.json", config_payload)
+    validation_metrics, validation_confusion = compute_metrics(
+        validation_arrays,
+        model_config.num_types,
+        occurrence_threshold=occurrence_threshold,
+    )
+    validation_metrics["loss"] = initial_validation_metrics["loss"]
+    validation_metrics["sample_count"] = initial_validation_metrics["sample_count"]
+    test_metrics, test_arrays, test_confusion = _evaluate_loader(
+        best_model,
+        loaders["test"],
+        loss_config,
+        pos_weight,
+        device,
+        model_config.num_types,
+        occurrence_threshold,
+    )
+    evaluations = {
+        "validation": (
+            validation_metrics,
+            validation_arrays,
+            validation_confusion,
+        ),
+        "test": (test_metrics, test_arrays, test_confusion),
+    }
     all_metrics: dict[str, Any] = {}
-    for split_name in ("validation", "test"):
-        metrics, arrays, confusion = _evaluate_loader(
-            best_model,
-            loaders[split_name],
-            loss_config,
-            pos_weight,
-            device,
-            model_config.num_types,
-        )
+    for split_name, (metrics, arrays, confusion) in evaluations.items():
         all_metrics[split_name] = metrics
         _write_evaluation_artifacts(
             output_dir,
@@ -585,15 +633,20 @@ def train_bstan_baseline(
             confusion,
             dataset_dir,
             manifest,
+            occurrence_threshold,
         )
     _write_json(output_dir / "metrics.json", all_metrics)
     summary = {
         "status": "completed",
+        "dataset_contract": manifest["dataset_contract"],
+        "dataset_version": manifest["dataset_version"],
+        "label_version": manifest["label_version"],
         "best_epoch": best_epoch,
         "epochs_trained": len(history),
         "best_validation_pr_auc": best_score,
         "test_pr_auc": all_metrics["test"]["occurrence"]["pr_auc"],
-        "test_f1_at_0_5": all_metrics["test"]["occurrence"]["f1_at_0_5"],
+        "occurrence_threshold": occurrence_threshold,
+        "test_f1_at_threshold": all_metrics["test"]["occurrence"]["f1_at_threshold"],
         "elapsed_seconds": time.time() - started_at,
         "checkpoint_epoch": checkpoint["epoch"],
         "output_dir": str(output_dir),
@@ -632,6 +685,7 @@ def evaluate_checkpoint(
     loaders = _loaders(payload, train_config)
     loss_config = BstanLossConfig.from_dict(checkpoint["loss_config"])
     pos_weight = torch.tensor(checkpoint["metadata"]["pos_weight"], device=device)
+    occurrence_threshold = float(checkpoint["metadata"]["occurrence_threshold"])
     metrics, arrays, confusion = _evaluate_loader(
         model,
         loaders[split_name],
@@ -639,6 +693,7 @@ def evaluate_checkpoint(
         pos_weight,
         device,
         model.config.num_types,
+        occurrence_threshold,
     )
     _write_evaluation_artifacts(
         output_dir,
@@ -648,6 +703,7 @@ def evaluate_checkpoint(
         confusion,
         dataset_dir,
         manifest,
+        occurrence_threshold,
     )
     metrics_path = output_dir / "metrics.json"
     all_metrics = _read_json(metrics_path) if metrics_path.exists() else {}
@@ -669,7 +725,8 @@ def evaluate_checkpoint(
         summary.update(
             {
                 "test_pr_auc": metrics["occurrence"]["pr_auc"],
-                "test_f1_at_0_5": metrics["occurrence"]["f1_at_0_5"],
+                "occurrence_threshold": occurrence_threshold,
+                "test_f1_at_threshold": metrics["occurrence"]["f1_at_threshold"],
             }
         )
     _write_json(summary_path, summary)
