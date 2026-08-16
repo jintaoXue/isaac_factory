@@ -12,6 +12,29 @@
 `bstan_weak_v2_3` 的既有实现继续由 Git 历史和原实现文档记录，但不在新的
 benchmark 主路径中保留兼容分支或无效兜底。
 
+### 1.1 首轮服务器数据 cohort
+
+首轮 BSTAN 验证只读取服务器上以下两个已采集 run：
+
+```text
+output/bottleneck_dataset/new_machine1.0
+output/bottleneck_dataset/new_human1.0
+```
+
+根据 `dev_tyx@a8b4f38` 的 `batch_bn_collect.sh` 和
+`01.瓶颈数据采集规范.md`：
+
+- `new_machine1.0` 为 `disturbance_dim=machine`、`intensity=1.0`；
+- `new_human1.0` 为 `disturbance_dim=human`、`intensity=1.0`；
+- 每个 run 计划采集 20 个 episode，实际纳入数以 raw quality gate 为准；
+- L2 事件每个 episode 重新采样，同时保留该维度的 L0/L1 持续扰动；
+- 目录改名不改写 `episode_config.csv` 中的 raw provenance。
+
+这两个 run 用于验证 canonical 链路和 BSTAN 在 machine/human I1
+上的 baseline 结果，不代表完整场景矩阵。正式实验还需补入
+`none`、`logistics`、`material` 以及预定的多 seed 数据。数据目录名只出现
+在执行配置中，不硬编码进 canonical builder。
+
 ## 2. 实验原则
 
 baseline 对照实验只允许模型结构变化，以下内容必须固定：
@@ -267,7 +290,9 @@ split 规则：
 - 所有模型读取同一个 `split_manifest.json`；
 - manifest 固定 episode key、source commit、配置摘要和文件校验值。
 
-现有 10 个 Pilot episode 可先按 `6/2/2` 完成 smoke baseline，但不足以支撑单场景强结论。
+首轮 machine/human I1 计划共 40 个 episode，实际 split 只使用通过
+raw quality gate 的 episode。该 cohort 可用于跑通 baseline 并比较两个已覆盖场景，
+但不足以支撑全扰动矩阵或跨强度结论。
 
 ## 8. 最终 Baseline 矩阵
 
