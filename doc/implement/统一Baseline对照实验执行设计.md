@@ -2,15 +2,20 @@
 
 ## 1. 文档状态
 
-- 状态：BSTAN 优先链路已完成服务器 smoke 验收
-- raw 来源：`dev_tyx@a8b4f38` 采集的 `collector_version=v0.3` 数据
+- 状态：已切换到最新 tyx 共享派生口径，等待服务器重建验收
+- raw 来源：`collector_version=v0.3` 数据
+- 派生来源：`dev_tyx@c101eff` 的 `tools/bn_agg`
 - 第一实现目标：BSTAN-style GAT-GRU
-- 最终目标：所有 baseline 使用同一 raw、canonical features、标签、split 和评估协议
+- 最终目标：所有 baseline 使用同一 raw、共享 features、标签、split 和评估协议
 - 本文不修改或伪造服务器已有 raw 数据
 
 本轮实验不再要求 raw 必须由 `collector_version=v0.6` 生成。v0.6 及
 `bstan_weak_v2_3` 的既有实现继续由 Git 历史和原实现文档记录，但不在新的
 benchmark 主路径中保留兼容分支或无效兜底。
+
+> 2026-08-16 修订：第 4-14 节记录了第一轮 canonical 方案的设计过程，
+> 现行可执行口径以第 16 节为准。第 15 节结果仅作为历史 smoke，不进入
+> PDFormer/BSTAN 正式横向比较。
 
 ### 1.1 首轮服务器数据 cohort
 
@@ -563,3 +568,69 @@ tyx raw v0.3
 
 它不证明扰动因果、跨 seed/布局泛化或 machine 单场景性能。正式实验需补齐
 场景矩阵和多 seed，并在同一 shared split 上增加其他 baseline。
+
+## 16. 现行共享实现（dev_tyx c101eff）
+
+### 16.1 单一派生入口
+
+当前主路径不再运行 `build_bottleneck_features.py` 或
+`build_canonical_benchmark.py`，统一执行：
+
+```text
+tyx raw v0.3
+  -> audit_bottleneck_data.py
+  -> dev_tyx tools/bn_agg
+  -> shared_bn_agg_v1
+  -> model-specific causal sequence exporter
+```
+
+共享版本固定为：
+
+```text
+derived_contract = tyx_bn_agg_v1
+label_version = tyx_bn_agg_event_v1
+BSTAN dataset = bstan_tyxbn_dataset_v1
+window_size = 60 s
+input_windows = 12
+horizon = 180 s
+score_threshold = 0.55
+min_event_windows = 1
+```
+
+`build_shared_benchmark.py` 直接调用 `bn_agg.pipeline.process_env_dir`，并固定
+`closed_windows_only=True`。只保留完整窗口，且 BSTAN 只接收
+`label_horizon_ready=1` 的标签，从而排除 episode 尾部预测区间不完整的样本。
+
+### 16.2 BSTAN 适配边界
+
+BSTAN 不重新定义评分或标签，只消费 tyx 的 21 个窗口特征、
+`bottleneck_score_s`、事件表和 `will_bottleneck` 标签。输入严格使用标签窗口
+之前的 12 个窗口 `[t-12, t)`，不把目标窗口特征放进历史序列。
+
+图边与最新 PDFormer 的工厂先验保持一致：工艺链、同机型 workstation、
+buffer-machine affinity、agent-machine、同类 gantry/robot 和 self-loop。
+BSTAN 仍采用 episode 级 70/15/15 split，并只用 train split 拟合标准化参数。
+
+tyx 标签不提供 `severity_weak`，因此 severity head、loss、指标和数据字段已从
+现行 BSTAN 路径删除，没有默认值或兼容兜底。
+
+### 16.3 历史 smoke 的处理
+
+第 15 节的 33,210 样本和模型指标来自旧 `canonical_factory_bn_v1`，只能证明
+训练代码可运行。共享口径重建后，样本数、正例率、节点数和模型指标都会变化，
+不得把两次结果放在同一正式结果表中比较。
+
+### 16.4 待与 tyx 讨论的问题
+
+| 问题 | 当前 BSTAN 处理 | 建议统一动作 |
+| --- | --- | --- |
+| PDFormer 按窗口随机切分，同 episode 可跨 split | episode 级切分 | 两边统一读取同一 split manifest |
+| episode 尾部 horizon 不完整 | closed windows + `label_horizon_ready` | PDFormer 离线训练也固定该门禁 |
+| 时间线在首次事件前假定 IDLE | 保持 tyx 现状以确保口径一致 | 采集初始快照或引入明确 observed mask |
+| L2 扰动区间直接并入瓶颈事件 | 保持 tyx 现状以确保标签一致 | 区分 disturbance cause 与 operational bottleneck label |
+| 工艺链、buffer affinity 和 material consumer 硬编码 | 与 PDFormer 相同 | 后续从 episode 配置生成并版本化拓扑 |
+| 最新 PDFormer 主头偏向 remain-to-jobs-done，BSTAN 是 180 秒事件预测 | 先比较共享 will/mark 任务 | 正式实验前固定共同主任务和主指标 |
+| 末个事件持续时间可能被 episode 结束截断 | 当前仍按事件表值训练 | 增加事件 duration censor 标记并使用 masked loss |
+
+其中前两项已在 BSTAN exporter 修复，但正式公平对照要求 PDFormer 也采用同一
+split 与 horizon gate；其余项不在本轮私自改变，避免再次形成两套标签口径。

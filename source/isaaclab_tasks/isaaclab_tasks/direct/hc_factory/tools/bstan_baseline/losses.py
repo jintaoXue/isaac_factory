@@ -16,8 +16,7 @@ class BstanLossConfig:
     lambda_type: float = 1.0
     lambda_time_to_start: float = 1.0
     lambda_duration: float = 1.0
-    lambda_severity: float = 1.0
-    prediction_horizon: float = 120.0
+    prediction_horizon: float = 180.0
 
     def __post_init__(self) -> None:
         if self.prediction_horizon <= 0:
@@ -61,14 +60,10 @@ def compute_multitask_loss(
             outputs["time_to_start"][positive] / config.prediction_horizon,
             batch["y_time_to_start"][positive].float() / config.prediction_horizon,
         )
-        severity = F.smooth_l1_loss(
-            outputs["severity"][positive], batch["y_severity"][positive].float()
-        )
     else:
         node = zero
         bottleneck_type = zero
         time_to_start = zero
-        severity = zero
 
     if duration_mask.any():
         duration = F.smooth_l1_loss(
@@ -84,7 +79,6 @@ def compute_multitask_loss(
         "type": bottleneck_type,
         "time_to_start": time_to_start,
         "duration": duration,
-        "severity": severity,
     }
     total = (
         config.lambda_occurrence * occurrence
@@ -92,6 +86,5 @@ def compute_multitask_loss(
         + config.lambda_type * bottleneck_type
         + config.lambda_time_to_start * time_to_start
         + config.lambda_duration * duration
-        + config.lambda_severity * severity
     )
     return total, components

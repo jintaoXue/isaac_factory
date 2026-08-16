@@ -29,7 +29,7 @@ def main() -> None:
     parser.add_argument("--gru_hidden", type=int, default=128)
     parser.add_argument("--gru_layers", type=int, default=1)
     parser.add_argument("--dropout", type=float, default=0.2)
-    parser.add_argument("--prediction_horizon", type=float, default=120.0)
+    parser.add_argument("--prediction_horizon", type=float, default=180.0)
     args = parser.parse_args()
 
     train_config = BstanTrainConfig(

@@ -21,14 +21,13 @@ class BstanModelConfig:
     gru_hidden: int = 128
     gru_layers: int = 1
     dropout: float = 0.2
-    prediction_horizon: float = 120.0
+    prediction_horizon: float = 180.0
 
     def __post_init__(self) -> None:
         if self.gat_hidden % self.gat_heads != 0:
             raise ValueError("gat_hidden must be divisible by gat_heads")
         for name in (
             "input_dim",
-            "global_dim",
             "num_nodes",
             "num_types",
             "gat_hidden",
@@ -39,6 +38,8 @@ class BstanModelConfig:
         ):
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be positive")
+        if self.global_dim < 0:
+            raise ValueError("global_dim must be non-negative")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -145,7 +146,6 @@ class BstanGatGru(nn.Module):
         self.type_head = nn.Linear(graph_dim, config.num_types)
         self.time_to_start_head = nn.Linear(graph_dim, 1)
         self.duration_head = nn.Linear(graph_dim, 1)
-        self.severity_head = nn.Linear(graph_dim, 1)
 
     def forward(
         self,
@@ -192,7 +192,11 @@ class BstanGatGru(nn.Module):
         graph_embedding = (node_hidden * mask_float).sum(dim=1) / mask_float.sum(
             dim=1
         ).clamp_min(1.0)
-        graph_context = torch.cat((graph_embedding, global_features[:, -1]), dim=-1)
+        graph_context = (
+            torch.cat((graph_embedding, global_features[:, -1]), dim=-1)
+            if self.config.global_dim
+            else graph_embedding
+        )
         type_logits = self.type_head(graph_context)
         type_logits = type_logits.masked_fill(~target_type_mask.bool(), -1.0e9)
 
@@ -206,6 +210,5 @@ class BstanGatGru(nn.Module):
             * self.config.prediction_horizon,
             "duration": F.softplus(self.duration_head(graph_context).squeeze(-1))
             * self.config.prediction_horizon,
-            "severity": torch.sigmoid(self.severity_head(graph_context).squeeze(-1)),
             "node_hidden": node_hidden,
         }

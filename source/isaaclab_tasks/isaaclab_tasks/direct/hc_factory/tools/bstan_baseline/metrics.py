@@ -144,11 +144,6 @@ def compute_metrics(
                     - arrays["y_time_to_start"][positive]
                 ).mean()
             ),
-            "severity_mae": float(
-                np.abs(
-                    arrays["severity"][positive] - arrays["y_severity"][positive]
-                ).mean()
-            ),
         }
     else:
         confusion = np.zeros((class_count, class_count), dtype=np.int64)
@@ -166,7 +161,6 @@ def compute_metrics(
         }
         metrics["regression"] = {
             "time_to_start_mae_s": None,
-            "severity_mae": None,
         }
 
     duration_mask = arrays["duration_mask"].astype(bool) & positive

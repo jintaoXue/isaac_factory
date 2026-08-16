@@ -70,7 +70,6 @@ class TestBstanModel(unittest.TestCase):
             "y_type": torch.ones(batch_size, dtype=torch.int64),
             "y_time_to_start": torch.full((batch_size,), 30.0),
             "y_duration": torch.full((batch_size,), 60.0),
-            "y_severity": torch.full((batch_size,), 0.7),
             "positive_mask": occurrence.bool(),
             "duration_mask": occurrence.bool(),
         }
@@ -105,6 +104,23 @@ class TestBstanModel(unittest.TestCase):
         type_probabilities = torch.softmax(outputs["type_logits"], dim=-1)
         self.assertTrue(torch.equal(type_probabilities[:, -1], torch.zeros(4)))
 
+    def test_forward_accepts_shared_contract_without_global_features(self) -> None:
+        config = BstanModelConfig(
+            input_dim=6,
+            global_dim=0,
+            num_nodes=5,
+            num_types=3,
+            gat_hidden=8,
+            gat_heads=2,
+            gru_hidden=8,
+            dropout=0.0,
+        )
+        model = BstanGatGru(config)
+        batch = self._batch()
+        batch["global_features"] = torch.empty(4, 4, 0)
+        outputs = model(**self._inputs(batch))
+        self.assertEqual(outputs["occurrence_logit"].shape, (4,))
+
     def test_loss_without_positive_samples_is_finite(self) -> None:
         model = BstanGatGru(self.config)
         batch = self._batch(positive=False)
@@ -125,7 +141,6 @@ class TestBstanModel(unittest.TestCase):
             lambda_type=0.0,
             lambda_time_to_start=0.0,
             lambda_duration=0.0,
-            lambda_severity=0.0,
         )
         optimizer = torch.optim.Adam(model.parameters(), lr=0.03)
         with torch.no_grad():
@@ -187,8 +202,6 @@ class TestBstanModel(unittest.TestCase):
             "y_time_to_start": np.array([0, 0, 30, 0, 30]),
             "duration": np.array([0, 0, 50, 0, 70]),
             "y_duration": np.array([0, 0, 60, 0, 60]),
-            "severity": np.array([0, 0, 0.6, 0, 0.8]),
-            "y_severity": np.array([0, 0, 0.7, 0, 0.7]),
             "duration_mask": np.array([False, False, True, False, True]),
         }
         metrics, confusion = compute_metrics(arrays, class_count=2)

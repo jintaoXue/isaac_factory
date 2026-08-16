@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit strict tyx-v0.3 raw episodes before canonical aggregation."""
+"""Audit strict tyx-v0.3 raw episodes before shared aggregation."""
 
 from __future__ import annotations
 
@@ -10,14 +10,14 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
-from canonical_factory_bn.contract import (
-    CANONICAL_CONTRACT_VERSION,
+from factory_bn_shared.contract import (
+    DERIVED_CONTRACT_VERSION,
     RAW_CONTRACT_VERSION,
     audit_raw_episode,
 )
 
 
-AUDIT_VERSION = "canonical_raw_audit_v1"
+AUDIT_VERSION = "shared_raw_audit_v1"
 
 
 def discover_env_dirs(run_dirs: Iterable[Path]) -> list[tuple[Path, Path]]:
@@ -70,7 +70,7 @@ def build_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "audit_version": AUDIT_VERSION,
         "raw_contract_version": RAW_CONTRACT_VERSION,
-        "canonical_contract_version": CANONICAL_CONTRACT_VERSION,
+        "derived_contract_version": DERIVED_CONTRACT_VERSION,
         "status": "passed" if attempted > 0 and accepted == attempted else "failed",
         "attempted_episodes": attempted,
         "accepted_episodes": accepted,

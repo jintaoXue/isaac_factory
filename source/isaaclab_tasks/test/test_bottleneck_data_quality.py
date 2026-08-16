@@ -15,9 +15,6 @@ from pathlib import Path
 HC_ROOT = Path(__file__).resolve().parents[1] / "isaaclab_tasks/direct/hc_factory"
 sys.path.insert(0, str(HC_ROOT / "tools"))
 
-from canonical_factory_bn.contract import canonical_resource_state
-
-
 def _load_module(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
@@ -315,26 +312,6 @@ class TestRawDataAudit(unittest.TestCase):
             self.assertEqual(row["completed_jobs"], 2)
             self.assertEqual(row["lifecycle_event"], "PROVEN_COMPLETE")
             self.assertEqual(AUDIT.build_report([row])["status"], "passed")
-
-    def test_raw_human_absence_is_canonical_down(self):
-        state = canonical_resource_state(
-            {
-                "resource_type": "human",
-                "raw_to_state": "working_disturbance_absent",
-            }
-        )
-        self.assertEqual(state, "DOWN")
-
-    def test_raw_from_state_recovers_pre_transition_state(self):
-        state = canonical_resource_state(
-            {
-                "resource_type": "machine",
-                "raw_from_state": "materialReadyFor_cut",
-                "raw_to_state": "working_cut",
-            },
-            "raw_from_state",
-        )
-        self.assertEqual(state, "READY")
 
     def test_unpaired_event_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp_dir:

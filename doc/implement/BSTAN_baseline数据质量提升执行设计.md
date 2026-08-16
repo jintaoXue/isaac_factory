@@ -1,5 +1,8 @@
 # BSTAN Baseline 数据质量提升执行设计
 
+> 历史设计：本文记录 v0.6/weak-label 路径，不再作为当前 benchmark 的执行
+> 命令来源。现行共享口径见 `统一Baseline对照实验执行设计.md` 第 16 节。
+
 ## 1. 文档状态
 
 - 状态：Phase E0-E2 已通过；v2.3 已在 10 个 Pilot episode 上重建验收，dataset v3 smoke 数据集已通过张量、target mask 和 split 门禁

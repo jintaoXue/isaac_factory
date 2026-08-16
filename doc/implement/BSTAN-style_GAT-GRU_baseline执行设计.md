@@ -1,5 +1,9 @@
 # BSTAN-style GAT-GRU Baseline 执行设计
 
+> 历史阶段文档：Phase A-D 的旧派生命令已退出当前主路径。模型现已适配
+> `dev_tyx@c101eff` 的共享 `bn_agg` 数据契约，现行命令与差异记录见
+> `统一Baseline对照实验执行设计.md` 第 16 节。
+
 ## 1. 文档状态
 
 - 状态：Phase A-D 已通过服务器 smoke 验收

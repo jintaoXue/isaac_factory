@@ -1,5 +1,9 @@
 # BSTAN 瓶颈标签 v2.3 实现说明
 
+> 历史实现：该标签路径已由 Git 历史保留，不再属于当前 benchmark 主路径。
+> 现行实现统一使用 `dev_tyx@c101eff` 的 `tools/bn_agg`，详见
+> `统一Baseline对照实验执行设计.md` 第 16 节。
+
 ## 1. 文档目的
 
 本文档单独记录 BSTAN-style GAT-GRU baseline 的瓶颈标签定义、修订证据、当前实现契约和服务器验收结果，方便后续回顾和复现。

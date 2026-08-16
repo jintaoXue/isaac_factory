@@ -1,4 +1,4 @@
-"""Strict tyx-v0.3 raw contract and canonical normalization helpers."""
+"""Strict raw and shared-derived contracts for bottleneck benchmarks."""
 
 from __future__ import annotations
 
@@ -12,9 +12,11 @@ from typing import Any
 
 RAW_COLLECTOR_VERSION = "v0.3"
 RAW_CONTRACT_VERSION = "tyx_raw_v0.3"
-CANONICAL_CONTRACT_VERSION = "canonical_factory_bn_v1"
-CANONICAL_LABEL_VERSION = "factory_bn_weak_v1"
-CANONICAL_DERIVED_DIR = "canonical_factory_bn_v1"
+DERIVED_CONTRACT_VERSION = "tyx_bn_agg_v1"
+SHARED_LABEL_VERSION = "tyx_bn_agg_event_v1"
+SHARED_DERIVED_DIR = "shared_bn_agg_v1"
+DERIVED_SOURCE_BRANCH = "dev_tyx"
+DERIVED_SOURCE_COMMIT = "c101eff"
 
 REQUIRED_RAW_FILES = (
     "episode_config.csv",
@@ -186,30 +188,6 @@ def paired_disturbance_intervals(
             }
         )
     return intervals
-
-
-def canonical_resource_state(
-    event: dict[str, Any], raw_state_key: str = "raw_to_state"
-) -> str:
-    """Map v0.3 raw resource state to one canonical state."""
-    raw_state = str(event.get(raw_state_key) or "")
-    resource_type = str(event.get("resource_type") or "unknown")
-    subtask = str(event.get("subtask_name") or "")
-
-    if raw_state == "free":
-        return "IDLE"
-    if raw_state == "invalid" or raw_state == "working_disturbance_absent":
-        return "DOWN"
-    if raw_state.startswith("waiting_"):
-        return "WAITING"
-    if raw_state.startswith("materialReadyFor_"):
-        return "READY"
-    if raw_state.startswith("working_"):
-        if resource_type in {"human", "robot", "transport_robot", "gantry"}:
-            if subtask == "wait":
-                return "STARVED"
-        return "PROCESSING"
-    return "IDLE"
 
 
 def _monotonic(rows: list[dict[str, Any]], key: str) -> bool:
@@ -389,7 +367,7 @@ def audit_raw_episode(env_dir: Path) -> dict[str, Any]:
 
     return {
         "raw_contract_version": RAW_CONTRACT_VERSION,
-        "canonical_contract_version": CANONICAL_CONTRACT_VERSION,
+        "derived_contract_version": DERIVED_CONTRACT_VERSION,
         "env_dir": str(env_dir),
         "run_id": config.get("run_id") or env_dir.parents[1].name,
         "env_id": as_int(config.get("env_id"), 0),

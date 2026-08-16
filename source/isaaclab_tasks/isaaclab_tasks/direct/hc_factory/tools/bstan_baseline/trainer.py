@@ -267,7 +267,6 @@ def _evaluate_loader(
                 "y_type": batch["y_type"],
                 "y_time_to_start": batch["y_time_to_start"],
                 "y_duration": batch["y_duration"],
-                "y_severity": batch["y_severity"],
                 "positive_mask": batch["positive_mask"],
                 "duration_mask": batch["duration_mask"],
                 "occurrence_probability": torch.sigmoid(outputs["occurrence_logit"]),
@@ -275,7 +274,6 @@ def _evaluate_loader(
                 "type_predictions": outputs["type_logits"].argmax(dim=-1),
                 "time_to_start": outputs["time_to_start"],
                 "duration": outputs["duration"],
-                "severity": outputs["severity"],
             }
             for name, value in values.items():
                 collected.setdefault(name, []).append(value.detach().cpu().numpy())
@@ -363,8 +361,6 @@ def _prediction_rows(
                 "target_time_to_start_s": float(arrays["y_time_to_start"][position]),
                 "predicted_duration_s": float(arrays["duration"][position]),
                 "target_duration_s": float(arrays["y_duration"][position]),
-                "predicted_severity": float(arrays["severity"][position]),
-                "target_severity": float(arrays["y_severity"][position]),
             }
         )
     return rows
@@ -401,8 +397,6 @@ def _write_evaluation_artifacts(
         "target_time_to_start_s",
         "predicted_duration_s",
         "target_duration_s",
-        "predicted_severity",
-        "target_severity",
     ]
     _write_csv(
         output_dir / f"predictions_{split_name}.csv",
