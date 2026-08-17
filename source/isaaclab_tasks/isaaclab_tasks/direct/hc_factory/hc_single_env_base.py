@@ -130,19 +130,15 @@ class HcSingleEnvBase():
         self.env_state_action_dict["time_step"] += 1
         self.perception_manager.step(self.env_state_action_dict)
 
-        # Freeze / manual dump → output/debug_env_state/*.json
-        try:
-            import importlib
-
-            from .src import debug_env_dump
-
-            importlib.reload(debug_env_dump)
-            debug_env_dump.maybe_dump_freeze(
-                self.env_state_action_dict,
-                getattr(self.machine_manager, "num07_gantry_group", None),
-            )
-        except Exception as exc:  # noqa: BLE001 — never break sim for debug I/O
-            print(f"[debug_env_dump] skipped: {exc!r}")
+        # Debug freeze dump (disabled for long training runs — re-enable when diagnosing deadlocks):
+        # try:
+        #     from .src import debug_env_dump
+        #     debug_env_dump.maybe_dump_freeze(
+        #         self.env_state_action_dict,
+        #         getattr(self.machine_manager, "num07_gantry_group", None),
+        #     )
+        # except Exception as exc:
+        #     print(f"[debug_env_dump] skipped: {exc!r}")
 
         # Episode end: ENV resets here. Snapshot ``rl`` so callers can still read
         # this step's reward/done after reset (DQN bootstrap uses done flag).
