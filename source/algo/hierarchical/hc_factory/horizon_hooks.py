@@ -53,6 +53,7 @@ class HorizonHooks:
         self.ep_stalled: list[bool] = []
         self.env_list = None
         self.stall_counts = {"L1": 0, "L2": 0, "L3": 0}
+        self.last_restore_info: dict[int, dict] = {}
         mode_dir = "collect" if self.explore else "train"
         self.stall_root = Path("env_checkpoints") / "stagnation" / mode_dir
         self.stall_root.mkdir(parents=True, exist_ok=True)
@@ -117,8 +118,14 @@ class HorizonHooks:
             self.ep_stalled[env_id] = True
             self.stall_counts["L2"] += 1
             self._dump_stagnation(env_id, env, "L2")
+            cur_t = int(env.get("time_step", 0) or 0)
             if self._restore_ring(env_id):
-                print(f"[Hier] stagnation L2 restore env={env_id} stall_counts={self.stall_counts_str()}")
+                info = self.last_restore_info.get(env_id) or {}
+                to_t = int(info.get("to_t", -1))
+                print(
+                    f"[Hier] stagnation L2 restore env={env_id} "
+                    f"from ep_t={cur_t} to ep_t={to_t} stall_counts={self.stall_counts_str()}"
+                )
             else:
                 print(f"[Hier] stagnation L2 no-restore env={env_id} stall_counts={self.stall_counts_str()}")
             return "L2"
@@ -170,6 +177,12 @@ class HorizonHooks:
             return False
         det.tried_keys.add(chosen["key"])
         self.env_list[env_id].restore_checkpoint(chosen["ckpt"])
+        self.last_restore_info[env_id] = {
+            "kind": "ring",
+            "key": chosen["key"],
+            "to_t": int(chosen.get("t", 0) or 0),
+            "n_finished": int(chosen.get("n_finished", 0) or 0),
+        }
         det.reset()
         det.tried_keys.add(chosen["key"])
         return True

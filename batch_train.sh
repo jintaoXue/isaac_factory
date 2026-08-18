@@ -20,6 +20,7 @@ if [ $# -eq 0 ]; then
     echo "  24: hier 全量硬训对照 (K=${HC_MULTI_K}, max_episodic_steps=45000, wandb)"
     echo "  25: hier masked-random 采集库 (--explore, N=16, T_max=25000, ε=1)"
     echo "  26: hier 课程训练 (--curriculum, 1→16 件, wandb)"
+    echo "  27: 采集 debug（可视化+warmstart，不录视频不启wandb）"
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
     echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 25/26 的 --warmstart"
     exit 1
@@ -297,6 +298,30 @@ run_test_26() {
         ${DEVICE_ARG}
 }
 
+run_test_27() {
+    # 采集 debug：不开 --headless（可视化UI），读取本地阻塞点 pkl 并手动断点调试
+    # 不开 wandb，不录视频
+    #
+    # 你需要设置：
+    #   export HC_WARMSTART=/abs/path/to/env_checkpoints/stagnation/collect/.../stalled_state.pkl
+    if [ -z "${HC_WARMSTART}" ]; then
+        echo "错误: run_test_27 需要先设置 HC_WARMSTART 为阻塞点 stalled_state.pkl"
+        echo "示例：HC_WARMSTART=env_checkpoints/stagnation/collect/L2_env00_.../stalled_state.pkl ./batch_train.sh 27 cuda:0"
+        exit 1
+    fi
+    echo "运行 27: explore debug (visual+warmstart, no wandb/no video)"
+    python train.py \
+        --task "${HC_TASK}" \
+        --algo hier \
+        --num_envs 1 \
+        --explore \
+        --seed 42 \
+        $(hc_warmstart_args) \
+        +t_max_anchor=14000 \
+        +decision_ring_k=20 \
+        ${DEVICE_ARG}
+}
+
 # 调度：按序号 / A / B / C 调用上面的 run_test_*
 run_one_job() {
     local id=$1
@@ -327,6 +352,7 @@ run_one_job() {
         24) run_test_24 ;;
         25) run_test_25 ;;
         26) run_test_26 ;;
+        27) run_test_27 ;;
         A)
             echo "=== 运行A组训练 (1-5) ==="
             run_test_1; run_test_2; run_test_3; run_test_4; run_test_5; run_test_6
