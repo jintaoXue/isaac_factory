@@ -14,6 +14,16 @@ import torch
 from .hier_utils import compute_team_reward, read_rl_done
 
 
+def _count_finished(env_dict: dict) -> int:
+    fin = env_dict.get("progress", {}).get("finished", {})
+    if not isinstance(fin, dict):
+        return 0
+    return sum(
+        len(v) if hasattr(v, "__len__") and not isinstance(v, (str, bytes)) else int(v or 0)
+        for v in fin.values()
+    )
+
+
 @dataclass
 class EpisodeResult:
     seed: int
@@ -22,6 +32,7 @@ class EpisodeResult:
     success: bool
     truncated: bool
     ep_return: float
+    n_finished: int = 0
 
 
 def set_global_seed(seed: int) -> None:
@@ -116,6 +127,7 @@ def run_eval_episodes(
                 ep_return += compute_team_reward(obs[env_id], next_obs[env_id])
                 done, truncated, success = read_rl_done(next_obs[env_id])
                 ep_len += 1
+                n_finished = max(_count_finished(obs[env_id]), _count_finished(next_obs[env_id]))
                 obs = next_obs
                 if done:
                     results.append(
@@ -126,6 +138,7 @@ def run_eval_episodes(
                             success=success,
                             truncated=truncated,
                             ep_return=ep_return,
+                            n_finished=n_finished,
                         )
                     )
                     ep_counter += 1
@@ -139,6 +152,7 @@ def run_eval_episodes(
                         success=False,
                         truncated=True,
                         ep_return=ep_return,
+                        n_finished=_count_finished(obs[env_id]),
                     )
                 )
                 ep_counter += 1

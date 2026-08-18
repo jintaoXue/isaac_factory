@@ -17,6 +17,14 @@ from .flat_action_space import FlatJointActionSpace
 from .flat_obs import FlatObsEncoder
 from .flat_rl_agent import RLFlatAgent
 from .hier_utils import compute_team_reward, crossed_interval, env_steps, read_rl_done
+from .wandb_metrics import (
+    axis_payload,
+    define_shared_metrics,
+    episode_metrics,
+    log_eval_episodes,
+    reward_parts_metrics,
+    shop_metrics,
+)
 
 
 def _clear_rl(env_dict: dict) -> None:
@@ -83,7 +91,7 @@ class FlatTPA:
         self.save_interval = config.get("save_interval", 1000)
         self.log_interval = config.get("log_interval", 100)
         self.global_step = 0
-        self.max_episodic_steps = int(config.get("max_episodic_steps", 45000))
+        self.max_episodic_steps = int(config.get("max_episodic_steps", 25000))
 
         dqn_kwargs = {
             "hidden_dim": config.get("hidden_dim", 128),
@@ -113,32 +121,10 @@ class FlatTPA:
         self._loss_window = deque(maxlen=200)
         self.makespan_success = deque(maxlen=int(config.get("makespan_window", 50)))
         self.makespan_all = deque(maxlen=int(config.get("makespan_window", 50)))
-        if self.use_wandb:
-            self.init_wandb_logger()
+        self.episodes_done = 0
 
     def init_wandb_logger(self) -> None:
-        wandb.define_metric("Train/step")
-        wandb.define_metric("Train/epsilon", step_metric="Train/step")
-        wandb.define_metric("Train/ep_reward0", step_metric="Train/step")
-        wandb.define_metric("Train/finished0", step_metric="Train/step")
-        wandb.define_metric("Train/episode0", step_metric="Train/step")
-        wandb.define_metric("Train/ep_t0", step_metric="Train/step")
-        wandb.define_metric("Train/step_reward0", step_metric="Train/step")
-        wandb.define_metric("Train/r_step0", step_metric="Train/step")
-        wandb.define_metric("Train/r_finish0", step_metric="Train/step")
-        wandb.define_metric("Train/r_task0", step_metric="Train/step")
-        wandb.define_metric("Train/r_success0", step_metric="Train/step")
-        wandb.define_metric("Train/buffer_flat", step_metric="Train/step")
-        wandb.define_metric("Train/joint_valid0", step_metric="Train/step")
-        wandb.define_metric("Loss/critic_flat", step_metric="Train/step")
-        wandb.define_metric("Metrics/MeanMakespan", step_metric="Train/step")
-        wandb.define_metric("Metrics/MeanMakespan_success", step_metric="Train/step")
-        wandb.define_metric("Metrics/step_episode", step_metric="Train/step")
-        wandb.define_metric("Metrics/EpRet", step_metric="Metrics/step_episode")
-        wandb.define_metric("Metrics/EpLen", step_metric="Metrics/step_episode")
-        wandb.define_metric("Metrics/EpMakespan", step_metric="Metrics/step_episode")
-        wandb.define_metric("Metrics/EpSuccess", step_metric="Metrics/step_episode")
-        wandb.define_metric("Metrics/EpTruncated", step_metric="Metrics/step_episode")
+        define_shared_metrics(rl=True, curriculum=False)
 
     def get_epsilon(self) -> float:
         ratio = min(1.0, self.global_step / max(1, self.epsilon_decay_steps))
@@ -191,6 +177,9 @@ class FlatTPA:
         )
         json_path, summary_path = save_eval_results(output_dir, payload)
         print_eval_summary(payload["summary"], "flat")
+        if self.use_wandb:
+            self.init_wandb_logger()
+            log_eval_episodes(results, t_budget=self.max_episodic_steps, algo_name="flat")
         print(f"[Flat] eval saved: {json_path}\n[Flat] summary: {summary_path}")
         return payload
 
@@ -244,9 +233,12 @@ class FlatTPA:
         if self.config.get("test"):
             return self.test()
         assert self.vec_env is not None, "vec_env required for train()"
+        if self.use_wandb:
+            self.init_wandb_logger()
         obs: list[dict] = self.vec_env.reset()
         episode_reward = [0.0 for _ in range(len(obs))]
         episode_len = [0 for _ in range(len(obs))]
+        ep_start_nfin = [_count_finished(o) for o in obs]
         prev_pre_list = [self.obs_encoder.preprocess(o) for o in obs]
         last_saved_env_steps = 0
         last_logged_env_steps = 0
@@ -281,8 +273,10 @@ class FlatTPA:
                 )
                 prev_pre_list[env_id] = next_pre
                 if done:
+                    self.episodes_done += 1
                     completed_ep = int(next_obs[env_id].get("episode_num", 0) or 0)
                     ep_len = episode_len[env_id]
+                    n_fin = max(0, _count_finished(obs[env_id]) - ep_start_nfin[env_id])
                     if success:
                         self.makespan_success.append(ep_len)
                         self.makespan_all.append(ep_len)
@@ -297,23 +291,26 @@ class FlatTPA:
                         else None
                     )
                     if self.use_wandb:
-                        payload = {
-                            "Train/step": env_steps(self.global_step, self.num_actors),
-                            "Metrics/step_episode": completed_ep,
-                            "Metrics/EpRet": episode_reward[env_id],
-                            "Metrics/EpLen": ep_len,
-                            "Metrics/EpMakespan": ep_len,
-                            "Metrics/EpSuccess": float(success),
-                            "Metrics/EpTruncated": float(truncated),
-                        }
-                        if mean_ms is not None:
-                            payload["Metrics/MeanMakespan"] = mean_ms
-                        if mean_ms_ok is not None:
-                            payload["Metrics/MeanMakespan_success"] = mean_ms_ok
+                        payload = axis_payload(env_steps(self.global_step, self.num_actors), 0.0)
+                        payload.update(
+                            episode_metrics(
+                                episode=self.episodes_done,
+                                success=success,
+                                truncated=truncated,
+                                makespan=ep_len,
+                                n_finished=n_fin,
+                                ep_return=episode_reward[env_id],
+                                t_budget=self.max_episodic_steps,
+                                mean_makespan=mean_ms,
+                                mean_makespan_success=mean_ms_ok,
+                            )
+                        )
                         wandb.log(payload)
                     episode_reward[env_id] = 0.0
                     episode_len[env_id] = 0
+                    ep_start_nfin[env_id] = _count_finished(next_obs[env_id])
                     _clear_rl(next_obs[env_id])
+                    del completed_ep
 
             obs = next_obs
 
@@ -323,7 +320,6 @@ class FlatTPA:
                 rl0 = next_obs[0].get("rl", {})
                 ep0 = int(next_obs[0].get("episode_num", 0) or 0)
                 t0 = int(next_obs[0].get("time_step", 0) or 0)
-                step_r0 = float((rl0 or {}).get("reward", 0.0) or 0.0)
                 mean_ms_str = (
                     f"{sum(self.makespan_all)/len(self.makespan_all):.1f}"
                     if self.makespan_all
@@ -339,36 +335,22 @@ class FlatTPA:
                     parts = (rl0 or {}).get("reward_parts") or {}
                     loss_mean = sum(self._loss_window) / len(self._loss_window) if self._loss_window else None
                     buf_len = len(self.agent.dqn.buffer) if self.agent.dqn is not None else 0
-                    mean_ms = (
-                        sum(self.makespan_all) / len(self.makespan_all) if self.makespan_all else None
+                    payload = axis_payload(env_steps(self.global_step, self.num_actors), 0.0)
+                    payload.update(
+                        shop_metrics(
+                            finished=finished,
+                            ep_t=t0,
+                            ep_reward=episode_reward[0],
+                        )
                     )
-                    mean_ms_ok = (
-                        sum(self.makespan_success) / len(self.makespan_success)
-                        if self.makespan_success
-                        else None
-                    )
-                    payload = {
-                        "Train/step": env_steps(self.global_step, self.num_actors),
-                        "Train/epsilon": epsilon,
-                        "Train/ep_reward0": episode_reward[0],
-                        "Train/finished0": finished,
-                        "Train/episode0": ep0,
-                        "Train/ep_t0": t0,
-                        "Train/step_reward0": step_r0,
-                        "Train/r_step0": float(parts.get("step", 0.0) or 0.0),
-                        "Train/r_finish0": float(parts.get("finish", 0.0) or 0.0),
-                        "Train/r_task0": float(parts.get("task", 0.0) or 0.0),
-                        "Train/r_success0": float(parts.get("success", 0.0) or 0.0),
-                        "Train/buffer_flat": buf_len,
-                        "Train/joint_valid0": float(joint_valid),
-                    }
+                    payload.update(reward_parts_metrics(rl0, ep_reward0=episode_reward[0]))
+                    payload["Train/epsilon"] = epsilon
+                    payload["Train/buffer_flat"] = buf_len
+                    payload["Train/joint_valid0"] = float(joint_valid)
                     if loss_mean is not None:
                         payload["Loss/critic_flat"] = loss_mean
-                    if mean_ms is not None:
-                        payload["Metrics/MeanMakespan"] = mean_ms
-                    if mean_ms_ok is not None:
-                        payload["Metrics/MeanMakespan_success"] = mean_ms_ok
                     wandb.log(payload)
+                    del parts
 
             if crossed_interval(last_saved_env_steps, env_step, self.save_interval):
                 self.save_checkpoint(env_step)

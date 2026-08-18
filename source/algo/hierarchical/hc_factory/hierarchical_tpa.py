@@ -25,6 +25,14 @@ from .hier_rl_agents import (
 )
 from .hier_utils import compute_team_reward, count_busy_agents, crossed_interval, env_steps, read_rl_done, steps_per_min
 from .horizon_hooks import HorizonHooks
+from .wandb_metrics import (
+    axis_payload,
+    define_shared_metrics,
+    episode_metrics,
+    log_eval_episodes,
+    reward_parts_metrics,
+    shop_metrics,
+)
 
 
 def _clear_rl(env_dict: dict) -> None:
@@ -105,7 +113,7 @@ class HierarchicalTPA:
         self.save_interval = config.get("save_interval", 1000)
         self.log_interval = config.get("log_interval", 100)
         self.global_step = 0
-        self.max_episodic_steps = int(config.get("max_episodic_steps", 45000))
+        self.max_episodic_steps = int(config.get("max_episodic_steps", 25000))
 
         dqn_kwargs = {
             "hidden_dim": config.get("hidden_dim", 128),
@@ -161,8 +169,6 @@ class HierarchicalTPA:
         }
         self.makespan_success = deque(maxlen=int(config.get("makespan_window", 50)))
         self.makespan_all = deque(maxlen=int(config.get("makespan_window", 50)))
-        if self.use_wandb:
-            self.init_wandb_logger()
 
         self.horizon = HorizonHooks(config)
         if self.horizon.explore:
@@ -170,46 +176,7 @@ class HierarchicalTPA:
             print("[Hier] explore catalog mode: epsilon=1, no DQN backward")
 
     def init_wandb_logger(self):
-        """Mirror rl_filter / rainbow metric namespace for live training charts."""
-        wandb.define_metric("Train/step")
-        wandb.define_metric("Train/wall_time_sec", step_metric="Train/step")
-        wandb.define_metric("Train/wall_time_min", step_metric="Train/step")
-        wandb.define_metric("Train/steps_per_min", step_metric="Train/step")
-        wandb.define_metric("Train/epsilon", step_metric="Train/step")
-        wandb.define_metric("Train/ep_reward0", step_metric="Train/step")
-        wandb.define_metric("Train/finished0", step_metric="Train/step")
-        wandb.define_metric("Train/episode0", step_metric="Train/step")
-        wandb.define_metric("Train/ep_t0", step_metric="Train/step")
-        wandb.define_metric("Train/step_reward0", step_metric="Train/step")
-        wandb.define_metric("Train/r_step0", step_metric="Train/step")
-        wandb.define_metric("Train/r_finish0", step_metric="Train/step")
-        wandb.define_metric("Train/r_task0", step_metric="Train/step")
-        wandb.define_metric("Train/r_success0", step_metric="Train/step")
-        wandb.define_metric("Train/buffer_A", step_metric="Train/step")
-        wandb.define_metric("Train/buffer_B", step_metric="Train/step")
-        wandb.define_metric("Train/buffer_C", step_metric="Train/step")
-        wandb.define_metric("Train/buffer_D_human", step_metric="Train/step")
-        wandb.define_metric("Train/buffer_D_robot", step_metric="Train/step")
-        wandb.define_metric("Train/producing0", step_metric="Train/step")
-        wandb.define_metric("Train/ongoing0", step_metric="Train/step")
-        wandb.define_metric("Train/peak_producing", step_metric="Train/step")
-        wandb.define_metric("Train/peak_ongoing", step_metric="Train/step")
-        wandb.define_metric("Train/peak_ongoing_human", step_metric="Train/step")
-        wandb.define_metric("Train/peak_ongoing_robot", step_metric="Train/step")
-        for name in ("A", "B", "C", "D_human", "D_robot"):
-            wandb.define_metric(f"Loss/critic_{name}", step_metric="Train/step")
-        wandb.define_metric("Loss/critic_mean", step_metric="Train/step")
-        wandb.define_metric("Curriculum/stage", step_metric="Train/step")
-        wandb.define_metric("Curriculum/delta_N", step_metric="Train/step")
-        wandb.define_metric("Curriculum/start_nfin", step_metric="Train/step")
-        wandb.define_metric("Curriculum/target_nfin", step_metric="Train/step")
-        wandb.define_metric("Metrics/step_episode", step_metric="Train/step")
-        wandb.define_metric("Metrics/segment_success", step_metric="Train/step")
-        wandb.define_metric("Metrics/delta_finished", step_metric="Train/step")
-        wandb.define_metric("Metrics/delta_time", step_metric="Train/step")
-        wandb.define_metric("Metrics/per_makespan", step_metric="Train/step")
-        wandb.define_metric("Metrics/normalized_delta_makespan", step_metric="Train/step")
-        wandb.define_metric("Stagnation/resets_per_episode", step_metric="Train/step")
+        define_shared_metrics(rl=True, curriculum=True)
 
     def _wall_time_sec(self) -> float:
         if self._train_t0 is None:
@@ -299,6 +266,9 @@ class HierarchicalTPA:
         )
         json_path, summary_path = save_eval_results(output_dir, payload)
         print_eval_summary(payload["summary"], "hier")
+        if self.use_wandb:
+            self.init_wandb_logger()
+            log_eval_episodes(results, t_budget=eval_horizon, algo_name="hier")
         print(f"[Hier] eval saved: {json_path}\n[Hier] summary: {summary_path}")
         return payload
 
@@ -463,6 +433,8 @@ class HierarchicalTPA:
         if self.config.get("test"):
             return self.test()
         assert self.vec_env is not None, "vec_env required for train()"
+        if self.use_wandb:
+            self.init_wandb_logger()
         obs: list[dict] = self.vec_env.reset()
         self.horizon.bind(self.vec_env, len(obs))
         episode_reward = [0.0 for _ in range(len(obs))]
@@ -528,32 +500,62 @@ class HierarchicalTPA:
                     start_n = int(ep_start_nfin[env_id])
                     end_n = _count_finished(obs[env_id])
                     delta_fin = max(0, end_n - start_n)
-                    per_ms = ep_len / max(1, delta_fin) if success else None
-                    ndm = ep_len / max(1, spec.t_max)
+                    t_budget = (
+                        spec.t_max
+                        if self.horizon.curriculum.enabled
+                        else self.max_episodic_steps
+                    )
                     wall = self._wall_time_sec()
                     if success:
                         self.makespan_success.append(ep_len)
                         self.makespan_all.append(ep_len)
                     elif truncated:
                         self.makespan_all.append(ep_len)
+                    mean_ms = (
+                        sum(self.makespan_all) / len(self.makespan_all) if self.makespan_all else None
+                    )
+                    mean_ms_ok = (
+                        sum(self.makespan_success) / len(self.makespan_success)
+                        if self.makespan_success
+                        else None
+                    )
                     if self.use_wandb:
-                        payload = {
-                            "Train/step": env_steps(self.global_step, self.num_actors),
-                            "Train/wall_time_sec": wall,
-                            "Train/wall_time_min": wall / 60.0,
-                            "Metrics/step_episode": self.episodes_done,
-                            "Metrics/segment_success": float(success),
-                            "Metrics/delta_finished": delta_fin,
-                            "Metrics/delta_time": ep_len,
-                            "Metrics/normalized_delta_makespan": ndm,
-                            "Curriculum/stage": spec.stage,
-                            "Curriculum/delta_N": spec.delta_n,
-                            "Curriculum/start_nfin": spec.start_nfin,
-                            "Curriculum/target_nfin": spec.target_nfin,
-                            "Stagnation/resets_per_episode": float(self.horizon.ep_stalled[env_id]),
-                        }
-                        if per_ms is not None:
-                            payload["Metrics/per_makespan"] = per_ms
+                        payload = axis_payload(
+                            env_steps(self.global_step, self.num_actors), wall
+                        )
+                        payload.update(
+                            episode_metrics(
+                                episode=self.episodes_done,
+                                success=success,
+                                truncated=truncated,
+                                makespan=ep_len,
+                                n_finished=delta_fin,
+                                ep_return=episode_reward[env_id],
+                                t_budget=t_budget,
+                                mean_makespan=mean_ms,
+                                mean_makespan_success=mean_ms_ok,
+                            )
+                        )
+                        payload.update(
+                            shop_metrics(
+                                peak_producing=self.peak_producing,
+                                peak_ongoing=self.peak_ongoing,
+                                peak_ongoing_human=self.peak_ongoing_human,
+                                peak_ongoing_robot=self.peak_ongoing_robot,
+                            )
+                        )
+                        if self.horizon.curriculum.enabled:
+                            payload.update(
+                                {
+                                    "Curriculum/stage": spec.stage,
+                                    "Curriculum/delta_N": spec.delta_n,
+                                    "Curriculum/start_nfin": spec.start_nfin,
+                                    "Curriculum/target_nfin": spec.target_nfin,
+                                }
+                            )
+                        payload["Stagnation/resets_per_episode"] = float(
+                            self.horizon.ep_stalled[env_id]
+                        )
                         wandb.log(payload)
                     episode_reward[env_id] = 0.0
                     episode_len[env_id] = 0
@@ -581,7 +583,6 @@ class HierarchicalTPA:
                 ongoing0 = len(progress0.get("ongoing_task_records") or {})
                 ep0 = int(next_obs[0].get("episode_num", 0) or 0)
                 t0 = int(next_obs[0].get("time_step", 0) or 0)
-                step_r0 = float((rl0 or {}).get("reward", 0.0) or 0.0)
                 wall = self._wall_time_sec()
                 spm = steps_per_min(self.global_step, wall, self.num_actors)
                 spm_str = f"{spm:.1f}" if spm is not None else "n/a"
@@ -610,7 +611,6 @@ class HierarchicalTPA:
                         if self.agent_D.robot_dqn is not None
                         else 0
                     )
-                    parts = (rl0 or {}).get("reward_parts") or {}
                     loss_payload = {}
                     critic_vals = []
                     for name, window in self._loss_window.items():
@@ -620,31 +620,30 @@ class HierarchicalTPA:
                             critic_vals.append(m)
                     if critic_vals:
                         loss_payload["Loss/critic_mean"] = sum(critic_vals) / len(critic_vals)
-                    payload = {
-                        "Train/step": env_steps(self.global_step, self.num_actors),
-                        "Train/wall_time_sec": wall,
-                        "Train/wall_time_min": wall / 60.0,
-                        "Train/epsilon": epsilon,
-                        "Train/ep_reward0": episode_reward[0],
-                        "Train/finished0": finished,
-                        "Train/episode0": ep0,
-                        "Train/ep_t0": t0,
-                        "Train/step_reward0": step_r0,
-                        "Train/r_step0": float(parts.get("step", 0.0) or 0.0),
-                        "Train/r_finish0": float(parts.get("finish", 0.0) or 0.0),
-                        "Train/r_task0": float(parts.get("task", 0.0) or 0.0),
-                        "Train/r_success0": float(parts.get("success", 0.0) or 0.0),
-                        "Train/buffer_A": _buffer_len(self.agent_A),
-                        "Train/buffer_B": _buffer_len(self.agent_B),
-                        "Train/buffer_C": _buffer_len(self.agent_C),
-                        "Train/buffer_D_human": buf_d_h,
-                        "Train/buffer_D_robot": buf_d_r,
-                        "Train/producing0": producing0,
-                        "Train/ongoing0": ongoing0,
-                    }
+                    payload = axis_payload(
+                        env_steps(self.global_step, self.num_actors), wall, spm
+                    )
+                    payload.update(
+                        shop_metrics(
+                            finished=finished,
+                            producing=producing0,
+                            ongoing=ongoing0,
+                            peak_producing=self.peak_producing,
+                            peak_ongoing=self.peak_ongoing,
+                            peak_ongoing_human=self.peak_ongoing_human,
+                            peak_ongoing_robot=self.peak_ongoing_robot,
+                            ep_t=t0,
+                            ep_reward=episode_reward[0],
+                        )
+                    )
+                    payload.update(reward_parts_metrics(rl0, ep_reward0=episode_reward[0]))
+                    payload["Train/epsilon"] = epsilon
+                    payload["Train/buffer_A"] = _buffer_len(self.agent_A)
+                    payload["Train/buffer_B"] = _buffer_len(self.agent_B)
+                    payload["Train/buffer_C"] = _buffer_len(self.agent_C)
+                    payload["Train/buffer_D_human"] = buf_d_h
+                    payload["Train/buffer_D_robot"] = buf_d_r
                     payload.update(loss_payload)
-                    if spm is not None:
-                        payload["Train/steps_per_min"] = spm
                     wandb.log(payload)
 
             if crossed_interval(last_saved_env_steps, env_step, self.save_interval):
@@ -668,11 +667,7 @@ class HierarchicalTPA:
             f"stalls={self.horizon.stall_counts_str()}"
         )
         if self.use_wandb:
-            finish_payload = {
-                "Train/step": env_steps(self.global_step, self.num_actors),
-                "Train/wall_time_sec": wall,
-                "Train/wall_time_min": wall / 60.0,
-            }
-            if spm is not None:
-                finish_payload["Train/steps_per_min"] = spm
+            finish_payload = axis_payload(
+                env_steps(self.global_step, self.num_actors), wall, spm
+            )
             wandb.log(finish_payload)

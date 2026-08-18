@@ -16,7 +16,7 @@ params:
 
     # Overridden by train.py from --num_envs / env.num_envs
     num_actors: 1
-    max_episodic_steps: 45000
+    max_episodic_steps: 25000
     state_dim: 256
 
     gamma: 0.998

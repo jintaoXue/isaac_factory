@@ -17,7 +17,7 @@ if [ $# -eq 0 ]; then
     echo "  1-21: 旧 RL / Perception 序号"
     echo "  22: rule_based + 单产品决策 (K=1, 10 episodes, wandb)"
     echo "  23: rule_based + 多产品决策 (K=${HC_MULTI_K}, 10 episodes, wandb)"
-    echo "  24: hier 全量硬训对照 (K=${HC_MULTI_K}, max_episodic_steps=45000, wandb)"
+    echo "  24: hier 全量硬训对照 (K=${HC_MULTI_K}, max_episodic_steps=25000, wandb)"
     echo "  25: hier masked-random 采集库 (--explore, N=16, T_max=25000, ε=1, 10 episodes)"
     echo "  26: hier 增量课程 (--curriculum, ΔN=2,2,4,4,4 →16, wandb)"
     echo "  27: 采集 debug（可视化+warmstart，不录视频不启wandb）"
@@ -253,7 +253,7 @@ run_test_23() {
 }
 
 run_test_24() {
-    # hier 全量硬训对照（yaml max_episodic_steps=45000，无课程）
+    # hier 全量硬训对照（yaml max_episodic_steps=25000，无课程）
     echo "运行 24: hier 全量硬训对照 (K=${HC_MULTI_K}, wandb)"
     python train.py \
         --task "${HC_TASK}" \
