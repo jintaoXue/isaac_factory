@@ -7,6 +7,7 @@ from ..env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
 from ..env_asset_cfg.cfg_human import CfgHuman
 from ..env_asset_cfg.cfg_robot import CfgRobot
 from ..env_asset_cfg.cfg_machine import CfgMachine
+from .env_checkpoint import wip_cap
 import torch
 
 
@@ -157,11 +158,13 @@ class ProductSequencerAgentMasker:
         not_started : dict = env_state_action_dict["progress"]["not_started"]
         next_product : str = env_state_action_dict["progress"]["next_product"]
         
+        producing = env_state_action_dict["progress"].get("producing") or []
+        cap = wip_cap(env_state_action_dict.get("progress"))
         mask = torch.zeros(self.num_product_types, dtype=torch.int32, device=self.cuda_device)
-        if next_product is None and len(not_started.keys()) > 0:
-            #can select the product in not_started
-            for product_type in not_started.keys():
-                mask[self.product_types[product_type]] = 1
+        if next_product is None and len(producing) < cap:
+            for product_type, n in (not_started or {}).items():
+                if int(n or 0) > 0 and product_type in self.product_types:
+                    mask[self.product_types[product_type]] = 1
         env_state_action_dict["agent_action_mask"]["agent_A_product_sequencer"] = mask
 
 class ProductSelectorAgentMasker:
@@ -186,7 +189,8 @@ class ProductSelectorAgentMasker:
         # The last position in the mask is for selecting the next product to be produced, 
         # which can only be selected when there are available slots for producing 
         # and there is a next product to be produced.
-        if next_product is not None and len(producing) < self.parallel_producing_limit:
+        cap = wip_cap(env_state_action_dict.get("progress"), self.parallel_producing_limit)
+        if next_product is not None and len(producing) < cap:
             mask[self.parallel_producing_limit] = 1 # can select the next product to be produced
     
         env_state_action_dict["agent_action_mask"]["agent_B_product_selector"] = mask

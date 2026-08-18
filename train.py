@@ -37,6 +37,24 @@ parser.add_argument(
     help="Max C/D dispatches per step (1=single-product, >1=multi-product).",
 )
 parser.add_argument(
+    "--explore",
+    action="store_true",
+    default=False,
+    help="Masked-random catalog collection (hier, epsilon=1, no DQN backward).",
+)
+parser.add_argument(
+    "--warmstart",
+    type=str,
+    default=None,
+    help="Path to an env checkpoint pkl (Tier-A).",
+)
+parser.add_argument(
+    "--curriculum",
+    action="store_true",
+    default=False,
+    help="Enable product-count curriculum (1→16, T_max scales with N).",
+)
+parser.add_argument(
     "--max_sim_episodes",
     type=int,
     default=None,
@@ -212,6 +230,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         algo_cfg["params"]["config"]["max_parallel_cd_dispatch"] = int(args_cli.max_parallel_cd_dispatch)
     if args_cli.max_sim_episodes is not None:
         algo_cfg["params"]["config"]["max_sim_episodes"] = int(args_cli.max_sim_episodes)
+    if getattr(args_cli, "explore", False):
+        algo_cfg["params"]["config"]["explore"] = True
+        algo_cfg["params"]["config"]["explore_catalog"] = True
+    if getattr(args_cli, "warmstart", None):
+        algo_cfg["params"]["config"]["warmstart"] = args_cli.warmstart
+    if getattr(args_cli, "curriculum", False):
+        algo_cfg["params"]["config"]["curriculum"] = True
     if args_cli.use_fatigue_mask:
         algo_cfg["params"]["config"]['use_fatigue_mask'] = args_cli.use_fatigue_mask
     if args_cli.other_filters:

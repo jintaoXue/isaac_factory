@@ -7,7 +7,7 @@ Each sample is fsync'd so the last line may survive a hard freeze.
 
 Usage:
   python tools/monitor_training.py
-  python tools/monitor_training.py --match "train.py.*hier" --interval 30
+  python tools/monitor_training.py --match "HcFactory-hier" --interval 30
   python tools/monitor_training.py --pid 12345 --interval 15 --output-dir output/train_monitor
 """
 
@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_MATCH = "train.py"
+DEFAULT_MATCH = "HcFactory-"
 DEFAULT_INTERVAL = 30.0
 DEFAULT_OUTPUT = "output/train_monitor"
 DEFAULT_STALL_INTERVALS = 10  # no CPU progress for N samples → flag stall
@@ -196,6 +196,11 @@ def _proc_rss_mb(pid: int) -> float:
     return 0.0
 
 
+def _is_monitor_proc(cmd: str) -> bool:
+    """Sidecar monitor scripts embed the match pattern in their own cmdline."""
+    return "monitor_training" in cmd
+
+
 def find_pids(match: str, explicit_pid: int | None) -> list[int]:
     if explicit_pid is not None:
         return [explicit_pid] if Path(f"/proc/{explicit_pid}").exists() else []
@@ -204,10 +209,15 @@ def find_pids(match: str, explicit_pid: int | None) -> list[int]:
         return []
     pids = []
     for token in proc.stdout.split():
-        if token.isdigit():
-            pids.append(int(token))
-    # Drop the monitor itself if pattern is too broad.
-    pids = [p for p in pids if p != os.getpid()]
+        if not token.isdigit():
+            continue
+        pid = int(token)
+        if pid == os.getpid():
+            continue
+        cmd = _proc_cmdline(pid)
+        if _is_monitor_proc(cmd):
+            continue
+        pids.append(pid)
     return sorted(set(pids))
 
 

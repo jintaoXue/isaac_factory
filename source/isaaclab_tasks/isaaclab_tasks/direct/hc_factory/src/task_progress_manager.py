@@ -88,6 +88,9 @@ class TaskManager:
         env_state_action_dict["progress"]["finished"] = {}
         env_state_action_dict["progress"]["ongoing_task_records"] = {}
         env_state_action_dict["progress"]["production_done"] = False
+        env_state_action_dict["progress"]["stage_wip_cap"] = env_state_action_dict["progress"].get(
+            "stage_wip_cap", int(HcVectorEnvCfg().single_env_parallel_producing_limit)
+        )
         env_state_action_dict["rl"] = {
             "reward": 0.0,
             "done": False,

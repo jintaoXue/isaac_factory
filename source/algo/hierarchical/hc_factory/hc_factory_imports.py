@@ -22,6 +22,7 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "find_free_gantry_index": ("src.task_progress_manager", "find_free_gantry_index"),
     "find_workstation_index_for_task": ("src.task_progress_manager", "find_workstation_index_for_task"),
     "staging_slot_index": ("src.task_progress_manager", "staging_slot_index"),
+    "wip_cap": ("src.env_checkpoint", "wip_cap"),
 }
 
 _cache: dict[str, object] = {}

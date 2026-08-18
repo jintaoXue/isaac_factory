@@ -74,11 +74,17 @@ def read_rl_done(env_dict: dict) -> tuple[bool, bool, bool]:
     return bool(rl.get("done")), bool(rl.get("truncated")), bool(rl.get("success"))
 
 
-def steps_per_min(global_step: int, wall_sec: float) -> float | None:
-    """Training throughput: env steps per wall-clock minute."""
-    if wall_sec <= 0 or global_step <= 0:
+def env_steps(global_step: int, n_envs: int = 1) -> int:
+    """Summed env-instance steps: vector ticks × num_envs."""
+    return int(global_step) * max(1, int(n_envs))
+
+
+def steps_per_min(global_step: int, wall_sec: float, n_envs: int = 1) -> float | None:
+    """Throughput: summed env-instance steps per wall-clock minute."""
+    total = env_steps(global_step, n_envs)
+    if wall_sec <= 0 or total <= 0:
         return None
-    return float(global_step) / (wall_sec / 60.0)
+    return float(total) / (wall_sec / 60.0)
 
 
 def count_busy_agents(agent_group: dict | None) -> int:

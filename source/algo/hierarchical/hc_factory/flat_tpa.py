@@ -16,7 +16,7 @@ from rl_games.common import vecenv
 from .flat_action_space import FlatJointActionSpace
 from .flat_obs import FlatObsEncoder
 from .flat_rl_agent import RLFlatAgent
-from .hier_utils import compute_team_reward, read_rl_done
+from .hier_utils import compute_team_reward, env_steps, read_rl_done
 
 
 def _clear_rl(env_dict: dict) -> None:
@@ -194,17 +194,25 @@ class FlatTPA:
         print(f"[Flat] eval saved: {json_path}\n[Flat] summary: {summary_path}")
         return payload
 
-    def act_one_env(self, env_state_action_dict: dict, epsilon: float) -> tuple[dict, dict, int | None]:
-        action, joint_idx = self.agent.act(env_state_action_dict, epsilon)
+    def act_one_env(
+        self, env_state_action_dict: dict, epsilon: float, pre: dict | None = None
+    ) -> tuple[dict, dict, int | None]:
+        action, joint_idx = self.agent.act(env_state_action_dict, epsilon, pre=pre)
         return action, {}, joint_idx
 
-    def act(self, obs: list[dict], epsilon: float | None = None) -> tuple[list[dict], list[dict], list[int | None]]:
+    def act(
+        self,
+        obs: list[dict],
+        epsilon: float | None = None,
+        prev_pre_list: list[dict] | None = None,
+    ) -> tuple[list[dict], list[dict], list[int | None]]:
         eps = self.get_epsilon() if epsilon is None else epsilon
         actions: list[dict] = []
         actions_extra: list[dict] = []
         joint_indices: list[int | None] = []
-        for env_state_action_dict in obs:
-            action, action_extra, joint_idx = self.act_one_env(env_state_action_dict, eps)
+        for i, env_state_action_dict in enumerate(obs):
+            pre_i = prev_pre_list[i] if prev_pre_list is not None else None
+            action, action_extra, joint_idx = self.act_one_env(env_state_action_dict, eps, pre=pre_i)
             actions.append(action)
             actions_extra.append(action_extra)
             joint_indices.append(joint_idx)
@@ -218,9 +226,10 @@ class FlatTPA:
         next_obs: dict,
         done: bool,
     ) -> float | None:
-        if self.global_step % self.learn_interval != 0:
-            return None
-        loss = self.agent.observe_step(prev_obs, joint_idx, reward, next_obs, done)
+        should_learn = self.global_step % self.learn_interval == 0
+        loss = self.agent.observe_step(
+            prev_obs, joint_idx, reward, next_obs, done, learn=should_learn
+        )
         if loss is not None:
             self._loss_window.append(float(loss))
         return loss
@@ -238,10 +247,11 @@ class FlatTPA:
         obs: list[dict] = self.vec_env.reset()
         episode_reward = [0.0 for _ in range(len(obs))]
         episode_len = [0 for _ in range(len(obs))]
+        prev_pre_list = [self.obs_encoder.preprocess(o) for o in obs]
 
         while True:
             epsilon = self.get_epsilon()
-            actions, actions_extra, joint_indices = self.act(obs)
+            actions, actions_extra, joint_indices = self.act(obs, prev_pre_list=prev_pre_list)
             for i, action in enumerate(actions):
                 obs[i]["action"] = action
 
@@ -252,13 +262,15 @@ class FlatTPA:
                 done, truncated, success = read_rl_done(next_obs[env_id])
                 episode_reward[env_id] += reward
                 episode_len[env_id] += 1
+                next_pre = self.obs_encoder.preprocess(next_obs[env_id])
                 self.observe_one_env(
-                    obs[env_id],
+                    prev_pre_list[env_id],
                     joint_indices[env_id],
                     reward,
-                    next_obs[env_id],
+                    next_pre,
                     done=done,
                 )
+                prev_pre_list[env_id] = next_pre
                 if done:
                     completed_ep = int(next_obs[env_id].get("episode_num", 0) or 0)
                     ep_len = episode_len[env_id]
@@ -277,7 +289,7 @@ class FlatTPA:
                     )
                     if self.use_wandb:
                         payload = {
-                            "Train/step": self.global_step,
+                            "Train/step": env_steps(self.global_step, self.num_actors),
                             "Metrics/step_episode": completed_ep,
                             "Metrics/EpRet": episode_reward[env_id],
                             "Metrics/EpLen": ep_len,
@@ -310,7 +322,7 @@ class FlatTPA:
                 )
                 joint_valid = self.action_space.num_valid_actions(next_obs[0]) if self.action_space._ready else -1
                 print(
-                    f"[Flat] step={self.global_step} episode={ep0} ep_t={t0} eps={epsilon:.3f} "
+                    f"[Flat] step={env_steps(self.global_step, self.num_actors)} episode={ep0} ep_t={t0} eps={epsilon:.3f} "
                     f"ep_reward0={episode_reward[0]:.2f} finished={finished} "
                     f"mean_ms={mean_ms_str} joint_valid={joint_valid} rl={rl0} n_envs={len(obs)}"
                 )
@@ -327,7 +339,7 @@ class FlatTPA:
                         else None
                     )
                     payload = {
-                        "Train/step": self.global_step,
+                        "Train/step": env_steps(self.global_step, self.num_actors),
                         "Train/epsilon": epsilon,
                         "Train/ep_reward0": episode_reward[0],
                         "Train/finished0": finished,

@@ -106,6 +106,11 @@ class HcSingleEnvBase():
         self.perception_manager.reset(self.env_state_action_dict)
         return self.env_state_action_dict
 
+    def restore_checkpoint(self, ckpt: dict) -> dict:
+        from .src.env_checkpoint import restore
+
+        return restore(self, ckpt)
+
     def apply_data_to_sim(self) -> None:
         #articulations
         articulations : dict = self.env_state_action_dict["articulations"]

@@ -29,7 +29,6 @@ import time
 
 from .hc_single_env import HcSingleEnv
 
-from .env_asset_cfg.perception.cfg_camera import has_registered_cameras
 from .env_asset_cfg.cfg_hc_env import HcRenderCfg
 from .hc_render import apply_hc_render_settings
 
@@ -42,7 +41,8 @@ class HcVectorEnvBase(DirectRLEnv):
         self.cuda_device = torch.device(self.cfg_vector_env.cuda_device_str)
         self.env_list : list[type[HcSingleEnv]] = []
         super().__init__(cfg, render_mode, **kwargs)
-        if has_registered_cameras() or render_mode == "rgb_array":
+        # Only apply RTX render settings when RTX sensors exist (requires --enable_cameras).
+        if self.sim.has_rtx_sensors() or render_mode == "rgb_array":
             apply_hc_render_settings(HcRenderCfg())
         self.reward_buf = torch.zeros(self.num_envs, dtype=torch.float32, device=self.sim.device)
         self._setup_rendering_resolution()
@@ -91,7 +91,7 @@ class HcVectorEnvBase(DirectRLEnv):
         obs: list[dict] = []
         for env in self.env_list:
             obs.append(env.reset_env())
-        if self.sim.has_rtx_sensors() or has_registered_cameras():
+        if self.sim.has_rtx_sensors():
             if self.cfg.rerender_on_reset:
                 self.sim.render()
             if self.cfg.wait_for_textures:

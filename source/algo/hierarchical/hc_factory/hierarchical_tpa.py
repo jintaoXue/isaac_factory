@@ -2,7 +2,7 @@
 """HierarchicalTPA: env orchestration for hierarchical A→B→C→D agents.
 
 Online: raw ``env_state_action_dict`` ↔ env.
-Learning: preprocess once per step (no full-env deepcopy), then Hierarchical agents.
+Learning: one preprocess per env step (cached s_t); act reuses it; s_{t+1} becomes next step's cache.
 ``rl.reward/done`` are written by env ``TaskManager.update_rl_signals``.
 """
 from __future__ import division
@@ -23,7 +23,8 @@ from .hier_rl_agents import (
     RLProductSelectionAgent,
     RLProductSequencingAgent,
 )
-from .hier_utils import compute_team_reward, count_busy_agents, read_rl_done, steps_per_min
+from .hier_utils import compute_team_reward, count_busy_agents, env_steps, read_rl_done, steps_per_min
+from .horizon_hooks import HorizonHooks
 
 
 def _clear_rl(env_dict: dict) -> None:
@@ -163,6 +164,11 @@ class HierarchicalTPA:
         if self.use_wandb:
             self.init_wandb_logger()
 
+        self.horizon = HorizonHooks(config)
+        if self.horizon.explore:
+            self.max_episodic_steps = int(config.get("t_max_anchor", 25000))
+            print("[Hier] explore catalog mode: epsilon=1, no DQN backward")
+
     def init_wandb_logger(self):
         """Mirror rl_filter / rainbow metric namespace for live training charts."""
         wandb.define_metric("Train/step")
@@ -240,6 +246,8 @@ class HierarchicalTPA:
         return n_producing, n_ongoing, n_human, n_robot
 
     def get_epsilon(self) -> float:
+        if getattr(self, "horizon", None) is not None and self.horizon.explore:
+            return 1.0
         ratio = min(1.0, self.global_step / max(1, self.epsilon_decay_steps))
         return self.epsilon_start + (self.epsilon_end - self.epsilon_start) * ratio
 
@@ -293,7 +301,9 @@ class HierarchicalTPA:
         print(f"[Hier] eval saved: {json_path}\n[Hier] summary: {summary_path}")
         return payload
 
-    def act_one_env(self, env_state_action_dict: dict, epsilon: float) -> tuple[dict, dict]:
+    def act_one_env(
+        self, env_state_action_dict: dict, epsilon: float, pre: dict | None = None
+    ) -> tuple[dict, dict]:
         from .hierarchical_dispatch import build_hier_rl_action
 
         action = build_hier_rl_action(
@@ -302,15 +312,22 @@ class HierarchicalTPA:
             self,
             epsilon,
             max_parallel_cd_dispatch=self.max_parallel_cd_dispatch,
+            pre=pre,
         )
         return action, {}
 
-    def act(self, obs: list[dict], epsilon: float | None = None) -> tuple[list[dict], list[dict]]:
+    def act(
+        self,
+        obs: list[dict],
+        epsilon: float | None = None,
+        prev_pre_list: list[dict] | None = None,
+    ) -> tuple[list[dict], list[dict]]:
         eps = self.get_epsilon() if epsilon is None else epsilon
         actions: list[dict] = []
         actions_extra: list[dict] = []
-        for env_state_action_dict in obs:
-            action, action_extra = self.act_one_env(env_state_action_dict, eps)
+        for i, env_state_action_dict in enumerate(obs):
+            pre_i = prev_pre_list[i] if prev_pre_list is not None else None
+            action, action_extra = self.act_one_env(env_state_action_dict, eps, pre=pre_i)
             actions.append(action)
             actions_extra.append(action_extra)
         return actions, actions_extra
@@ -356,17 +373,19 @@ class HierarchicalTPA:
         done: bool,
         epsilon: float,
     ) -> dict[str, float]:
-        """Store transitions and learn. Returns per-agent DQN (critic) losses."""
+        """Store transitions on every meaningful decision; learn every ``learn_interval`` steps."""
         losses: dict[str, float] = {}
-        if self.global_step % self.learn_interval != 0:
-            return losses
         if not self._had_meaningful_decision(action):
             return losses
 
+        should_learn = (
+            not (getattr(self, "horizon", None) is not None and self.horizon.explore)
+            and self.global_step % self.learn_interval == 0
+        )
         pending: list[tuple[str, torch.Tensor, object | None]] = []
 
         loss_a = self.agent_A.observe_step(
-            prev_obs, action["product_sequencing"], reward, next_obs, done, epsilon
+            prev_obs, action["product_sequencing"], reward, next_obs, done, epsilon, learn=should_learn
         )
         if loss_a is not None:
             pending.append(("A", loss_a, self.agent_A.dqn))
@@ -379,6 +398,7 @@ class HierarchicalTPA:
             next_obs,
             done,
             epsilon,
+            learn=should_learn,
         )
         if loss_b is not None:
             pending.append(("B", loss_b, self.agent_B.dqn))
@@ -391,6 +411,7 @@ class HierarchicalTPA:
             next_obs,
             done,
             epsilon,
+            learn=should_learn,
         )
         if loss_c is not None:
             pending.append(("C", loss_c, self.agent_C.dqn))
@@ -403,11 +424,15 @@ class HierarchicalTPA:
             next_obs,
             done,
             epsilon,
+            learn=should_learn,
         )
         if loss_d_h is not None:
             pending.append(("D_human", loss_d_h, self.agent_D.human_dqn))
         if loss_d_r is not None:
             pending.append(("D_robot", loss_d_r, self.agent_D.robot_dqn))
+
+        if not should_learn:
+            return losses
 
         losses = self._joint_learn(pending)
         for key, value in losses.items():
@@ -437,21 +462,20 @@ class HierarchicalTPA:
             return self.test()
         assert self.vec_env is not None, "vec_env required for train()"
         obs: list[dict] = self.vec_env.reset()
+        self.horizon.bind(self.vec_env, len(obs))
         episode_reward = [0.0 for _ in range(len(obs))]
         episode_len = [0 for _ in range(len(obs))]
         self._ep_peak_producing = [0 for _ in range(len(obs))]
         self._ep_peak_ongoing = [0 for _ in range(len(obs))]
         self._ep_peak_ongoing_human = [0 for _ in range(len(obs))]
         self._ep_peak_ongoing_robot = [0 for _ in range(len(obs))]
+        prev_pre_list = [self.obs_encoder.preprocess(o) for o in obs]
         self._train_t0 = time.time()
         stop = False
 
         while not stop:
             epsilon = self.get_epsilon()
-            # Fixed-shape tensor snapshot (no articulations / route lists deepcopy)
-            prev_pre_list = [self.obs_encoder.preprocess(o) for o in obs]
-
-            actions, actions_extra = self.act(obs)
+            actions, actions_extra = self.act(obs, prev_pre_list=prev_pre_list)
             for i, a in enumerate(actions):
                 obs[i]["action"] = a
 
@@ -460,8 +484,16 @@ class HierarchicalTPA:
 
             for env_id in range(len(obs)):
                 self._update_concurrency_peaks(env_id, next_obs[env_id])
+                self.horizon.on_decision(env_id, actions[env_id], next_obs[env_id])
+                stall = self.horizon.after_step(env_id, next_obs[env_id])
                 reward = compute_team_reward(obs[env_id], next_obs[env_id])
+                if stall in ("L2", "L3"):
+                    reward -= 0.05
                 done, truncated, success = read_rl_done(next_obs[env_id])
+                if stall in ("L2", "L3"):
+                    done = False
+                    truncated = False
+                    success = False
                 episode_reward[env_id] += reward
                 episode_len[env_id] += 1
                 next_pre = self.obs_encoder.preprocess(next_obs[env_id])
@@ -473,6 +505,7 @@ class HierarchicalTPA:
                     done=done,
                     epsilon=epsilon,
                 )
+                prev_pre_list[env_id] = next_pre
                 if done:
                     self.episodes_done += 1
                     # env already reset: episode_num in next_obs is the *new* episode index
@@ -500,7 +533,7 @@ class HierarchicalTPA:
                     )
                     if self.use_wandb:
                         payload = {
-                            "Train/step": self.global_step,
+                            "Train/step": env_steps(self.global_step, self.num_actors),
                             "Train/wall_time_sec": wall,
                             "Train/wall_time_min": wall / 60.0,
                             "Train/peak_producing": self.peak_producing,
@@ -531,7 +564,20 @@ class HierarchicalTPA:
                     self._ep_peak_ongoing[env_id] = 0
                     self._ep_peak_ongoing_human[env_id] = 0
                     self._ep_peak_ongoing_robot[env_id] = 0
+                    stalled = self.horizon.ep_stalled[env_id]
+                    spec = self.horizon.curriculum.spec
                     _clear_rl(next_obs[env_id])
+                    self.horizon.on_episode_end(env_id, success=success, ep_len=ep_len)
+                    if self.use_wandb:
+                        wandb.log(
+                            {
+                                "Train/step": env_steps(self.global_step, self.num_actors),
+                                "Curriculum/stage": spec.stage,
+                                "Metrics/completion_rate": float(success),
+                                "Metrics/normalized_makespan": ep_len / max(1, spec.t_max),
+                                "Stagnation/resets_per_episode": float(stalled),
+                            }
+                        )
                     if (
                         self.max_sim_episodes is not None
                         and self.episodes_done >= self.max_sim_episodes
@@ -551,7 +597,7 @@ class HierarchicalTPA:
                 t0 = int(next_obs[0].get("time_step", 0) or 0)
                 step_r0 = float((rl0 or {}).get("reward", 0.0) or 0.0)
                 wall = self._wall_time_sec()
-                spm = steps_per_min(self.global_step, wall)
+                spm = steps_per_min(self.global_step, wall, self.num_actors)
                 spm_str = f"{spm:.1f}" if spm is not None else "n/a"
                 mean_ms_str = (
                     f"{sum(self.makespan_all)/len(self.makespan_all):.1f}"
@@ -559,7 +605,7 @@ class HierarchicalTPA:
                     else "n/a"
                 )
                 print(
-                    f"[Hier] step={self.global_step} episode={ep0} ep_t={t0} eps={epsilon:.3f} "
+                    f"[Hier] step={env_steps(self.global_step, self.num_actors)} episode={ep0} ep_t={t0} eps={epsilon:.3f} "
                     f"ep_reward0={episode_reward[0]:.2f} finished={finished} "
                     f"producing={producing0} ongoing={ongoing0} "
                     f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing} "
@@ -596,7 +642,7 @@ class HierarchicalTPA:
                         else None
                     )
                     payload = {
-                        "Train/step": self.global_step,
+                        "Train/step": env_steps(self.global_step, self.num_actors),
                         "Train/wall_time_sec": wall,
                         "Train/wall_time_min": wall / 60.0,
                         "Train/epsilon": epsilon,
@@ -635,17 +681,17 @@ class HierarchicalTPA:
                 print(f"[Hier] checkpoint saved at step {self.global_step}")
 
         wall = self._wall_time_sec()
-        spm = steps_per_min(self.global_step, wall)
+        spm = steps_per_min(self.global_step, wall, self.num_actors)
         spm_str = f"{spm:.1f}" if spm is not None else "n/a"
         print(
             f"[Hier] train finished episodes_done={self.episodes_done} "
-            f"steps={self.global_step} steps/min={spm_str} "
+            f"steps={env_steps(self.global_step, self.num_actors)} steps/min={spm_str} "
             f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing} "
             f"peak_human={self.peak_ongoing_human} peak_robot={self.peak_ongoing_robot}"
         )
         if self.use_wandb:
             finish_payload = {
-                "Train/step": self.global_step,
+                "Train/step": env_steps(self.global_step, self.num_actors),
                 "Train/wall_time_sec": wall,
                 "Train/wall_time_min": wall / 60.0,
                 "Train/peak_producing": self.peak_producing,

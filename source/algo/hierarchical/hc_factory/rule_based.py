@@ -12,7 +12,7 @@ from .agent_B_product_priority import ProductPriorityAgent
 from .agent_C_process_task_planner import ProcessTaskPlanningAgent
 from .agent_D_human_robot_allocator import HumanRobotMachineAllocationAgent
 from .hierarchical_dispatch import build_rule_based_action
-from .hier_utils import compute_team_reward, count_busy_agents, read_rl_done, steps_per_min
+from .hier_utils import compute_team_reward, count_busy_agents, env_steps, read_rl_done, steps_per_min
 
 
 def _count_finished(env_dict: dict) -> int:
@@ -253,7 +253,7 @@ class RuleBasedHierarchical():
                     )
                     mean_ms_str = f"{mean_ms:.1f}" if mean_ms is not None else "n/a"
                     mean_ok_str = f"{mean_ms_ok:.1f}" if mean_ms_ok is not None else "n/a"
-                    spm = steps_per_min(self.global_step, wall)
+                    spm = steps_per_min(self.global_step, wall, self.num_actors)
                     spm_str = f"{spm:.1f}" if spm is not None else "n/a"
                     print(
                         f"[Rule] EP_DONE env={env_id} episode={completed_ep} "
@@ -270,7 +270,7 @@ class RuleBasedHierarchical():
                     )
                     if self.use_wandb:
                         payload = {
-                            "Train/step": self.global_step,
+                            "Train/step": env_steps(self.global_step, self.num_actors),
                             "Train/wall_time_sec": wall,
                             "Train/wall_time_min": wall / 60.0,
                             "Train/peak_producing": self.peak_producing,
@@ -331,10 +331,10 @@ class RuleBasedHierarchical():
                 )
                 mean_ms_str = f"{mean_ms:.1f}" if mean_ms is not None else "n/a"
                 wall = self._wall_time_sec()
-                spm = steps_per_min(self.global_step, wall)
+                spm = steps_per_min(self.global_step, wall, self.num_actors)
                 spm_str = f"{spm:.1f}" if spm is not None else "n/a"
                 print(
-                    f"[Rule] step={self.global_step} episode={ep0} ep_t={t0} "
+                    f"[Rule] step={env_steps(self.global_step, self.num_actors)} episode={ep0} ep_t={t0} "
                     f"ep_reward0={episode_reward[0]:.2f} finished={finished} "
                     f"producing={len(producing)} ongoing={len(ongoing)} "
                     f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing} "
@@ -349,7 +349,7 @@ class RuleBasedHierarchical():
                 )
                 if self.use_wandb:
                     payload = {
-                        "Train/step": self.global_step,
+                        "Train/step": env_steps(self.global_step, self.num_actors),
                         "Train/wall_time_sec": wall,
                         "Train/wall_time_min": wall / 60.0,
                         "Train/ep_reward0": episode_reward[0],
@@ -373,17 +373,17 @@ class RuleBasedHierarchical():
             obs = next_obs
 
         wall = self._wall_time_sec()
-        spm = steps_per_min(self.global_step, wall)
+        spm = steps_per_min(self.global_step, wall, self.num_actors)
         spm_str = f"{spm:.1f}" if spm is not None else "n/a"
         print(
             f"[Rule] train finished episodes_done={self.episodes_done} "
-            f"steps={self.global_step} steps/min={spm_str} "
+            f"steps={env_steps(self.global_step, self.num_actors)} steps/min={spm_str} "
             f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing} "
             f"peak_human={self.peak_ongoing_human} peak_robot={self.peak_ongoing_robot}"
         )
         if self.use_wandb:
             finish_payload = {
-                "Train/step": self.global_step,
+                "Train/step": env_steps(self.global_step, self.num_actors),
                 "Train/wall_time_sec": wall,
                 "Train/wall_time_min": wall / 60.0,
                 "Train/peak_producing": self.peak_producing,

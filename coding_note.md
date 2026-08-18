@@ -394,3 +394,11 @@ have_AGV 是跨区任务
 only_have_gantry是同区任务
 
 AGV数量我增加到4个
+
+
+#8.18 启动 25 号（explore 采集数据）
+命令：`./batch_train.sh 25 cuda:0`
+W&B 本地目录：`/home/xue/work/isaac_factory/wandb/run-20260818_152934-06o2jzkc`
+W&B run：`explore_N16_T25000`
+项目页：https://wandb.ai/rl-driving/HcFactory_TPA
+run 页：https://wandb.ai/rl-driving/HcFactory_TPA/runs/06o2jzkc

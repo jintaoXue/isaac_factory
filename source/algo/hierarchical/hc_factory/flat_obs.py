@@ -10,9 +10,9 @@ from .hier_obs import HierObsEncoder
 class FlatObsEncoder(HierObsEncoder):
     """StateEncoder output concatenated with flattened hierarchical masks."""
 
-    def encode_flat(self, env_state_action_dict: dict) -> torch.Tensor:
-        z = self.encode_state(env_state_action_dict)
-        pre = self.preprocess(env_state_action_dict)
+    def encode_flat(self, env_or_pre: dict, *, pre: dict | None = None) -> torch.Tensor:
+        pre = self._resolve_pre(env_or_pre, pre)
+        z = self.state_encoder(pre)
         aam = pre["agent_action_mask"]
         return torch.cat(
             [

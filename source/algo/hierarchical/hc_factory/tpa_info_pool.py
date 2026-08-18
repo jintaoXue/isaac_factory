@@ -18,6 +18,7 @@ from .hc_factory_imports import (
     find_free_gantry_index,
     find_workstation_index_for_task,
     staging_slot_index,
+    wip_cap,
 )
 
 
@@ -90,7 +91,7 @@ class TpaInfoPool:
         producing = self.progress["producing"]
         if (
             self.progress.get("next_product") is not None
-            and len(producing) < self.parallel_producing_limit
+            and len(producing) < wip_cap(self.progress, self.parallel_producing_limit)
             and self.staging_slot not in self.served_slots
         ):
             mask[self.staging_slot] = 1

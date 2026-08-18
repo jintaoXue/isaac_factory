@@ -4,18 +4,24 @@
 #   ./batch_train.sh 22 cuda:0
 #   ./batch_train.sh 22 23 24 cuda:0     # 依次跑多个序号
 #   ./batch_train.sh C cuda:0            # HcFactory TPA 三连：rule K=1 / rule K=5 / hier
+#   ./batch_train.sh D cuda:0            # 长 horizon 主路径：explore 采库 → curriculum 训练
 #   ./batch_train.sh A cuda:0
 #   ./batch_train.sh B
+#   HC_WARMSTART=/path/to/ckpt.pkl ./batch_train.sh 25   # 可选：explore/curriculum 从 pkl 续跑
 if [ $# -eq 0 ]; then
-    echo "用法: $0 <A|B|C|序号...> [cuda:N]"
+    echo "用法: $0 <A|B|C|D|序号...> [cuda:N]"
     echo "  A: 运行A组训练 (1-5)"
     echo "  B: 运行B组训练 (6-10)"
-    echo "  C: HcFactory TPA (22 rule单产品 / 23 rule多产品 / 24 hier训练)"
+    echo "  C: HcFactory TPA (22 rule单产品 / 23 rule多产品 / 24 hier全量硬训)"
+    echo "  D: 长 horizon 主路径 (25 explore采库 → 26 curriculum训练)"
     echo "  1-21: 旧 RL / Perception 序号"
     echo "  22: rule_based + 单产品决策 (K=1, 10 episodes, wandb)"
-    echo "  23: rule_based + 多产品决策 (K=5, 10 episodes, wandb)"
-    echo "  24: hier 开始训练 (K=${HC_MULTI_K}, wandb)"
+    echo "  23: rule_based + 多产品决策 (K=${HC_MULTI_K}, 10 episodes, wandb)"
+    echo "  24: hier 全量硬训对照 (K=${HC_MULTI_K}, max_episodic_steps=45000, wandb)"
+    echo "  25: hier masked-random 采集库 (--explore, N=16, T_max=25000, ε=1)"
+    echo "  26: hier 课程训练 (--curriculum, 1→16 件, wandb)"
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
+    echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 25/26 的 --warmstart"
     exit 1
 fi
 
@@ -24,7 +30,7 @@ JOBS=()
 for arg in "$@"; do
     if [[ "$arg" =~ ^cuda:[0-9]+$ ]]; then
         DEVICE="$arg"
-    elif [[ "$arg" =~ ^([1-9]|1[0-9]|2[0-4])$ ]] || [ "$arg" = "A" ] || [ "$arg" = "B" ] || [ "$arg" = "C" ]; then
+    elif [[ "$arg" =~ ^([1-9]|1[0-9]|2[0-7])$ ]] || [ "$arg" = "A" ] || [ "$arg" = "B" ] || [ "$arg" = "C" ] || [ "$arg" = "D" ]; then
         JOBS+=("$arg")
     else
         echo "错误: 无法识别参数 '$arg'"
@@ -48,6 +54,14 @@ HC_WANDB_PROJECT="HcFactory_TPA"
 HC_NUM_ENVS=1
 HC_RULE_EPISODES=10
 HC_MULTI_K=10
+HC_WARMSTART="${HC_WARMSTART:-}"
+
+# 可选 --warmstart（25/26）
+hc_warmstart_args() {
+    if [ -n "${HC_WARMSTART}" ]; then
+        echo "--warmstart ${HC_WARMSTART}"
+    fi
+}
 
 # 定义训练函数（run_one_job 在文件末尾调用）
 
@@ -236,8 +250,8 @@ run_test_23() {
 }
 
 run_test_24() {
-    # hier 训练（与 rule K=10 公平对照）
-    echo "运行 24: hier train start (K=${HC_MULTI_K}, wandb)"
+    # hier 全量硬训对照（yaml max_episodic_steps=45000，无课程）
+    echo "运行 24: hier 全量硬训对照 (K=${HC_MULTI_K}, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -245,8 +259,41 @@ run_test_24() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "hier_K${HC_MULTI_K}_train" \
+        --wandb_name "hier_K${HC_MULTI_K}_hard45k" \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
+        ${DEVICE_ARG}
+}
+
+run_test_25() {
+    # N=16 masked random 采集库：ε=1，无 DQN backward；L2/L3 死锁回退 + progress key 去重
+    echo "运行 25: explore catalog (N=16, T_max=25000, epsilon=1)"
+    python train.py \
+        --task "${HC_TASK}" \
+        --algo hier \
+        --num_envs "${HC_NUM_ENVS}" \
+        --headless \
+        --explore \
+        --wandb_activate \
+        --wandb_project "${HC_WANDB_PROJECT}" \
+        --wandb_name "explore_N16_T25000" \
+        $(hc_warmstart_args) \
+        ${DEVICE_ARG}
+}
+
+run_test_26() {
+    # 课程训练：件数 1→16，T_max(N)=25000*N/16；stage>0 从 catalog 按 n_finished 切片 warmstart
+    echo "运行 26: hier curriculum (1→16 products, wandb)"
+    python train.py \
+        --task "${HC_TASK}" \
+        --algo hier \
+        --num_envs "${HC_NUM_ENVS}" \
+        --headless \
+        --curriculum \
+        --wandb_activate \
+        --wandb_project "${HC_WANDB_PROJECT}" \
+        --wandb_name "hier_curriculum_K${HC_MULTI_K}" \
+        --max_parallel_cd_dispatch "${HC_MULTI_K}" \
+        $(hc_warmstart_args) \
         ${DEVICE_ARG}
 }
 
@@ -278,6 +325,8 @@ run_one_job() {
         22) run_test_22 ;;
         23) run_test_23 ;;
         24) run_test_24 ;;
+        25) run_test_25 ;;
+        26) run_test_26 ;;
         A)
             echo "=== 运行A组训练 (1-5) ==="
             run_test_1; run_test_2; run_test_3; run_test_4; run_test_5; run_test_6
@@ -294,6 +343,12 @@ run_one_job() {
             run_test_23
             run_test_24
             echo "C组训练完成！"
+            ;;
+        D)
+            echo "=== 运行D组: 长 horizon 主路径 (25 explore → 26 curriculum) ==="
+            run_test_25
+            run_test_26
+            echo "D组训练完成！"
             ;;
         *) echo "错误: 无效的训练序号 $id"; return 1 ;;
     esac
