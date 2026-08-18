@@ -610,7 +610,8 @@ class HierarchicalTPA:
                     f"producing={producing0} ongoing={ongoing0} "
                     f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing} "
                     f"peak_human={self.peak_ongoing_human} peak_robot={self.peak_ongoing_robot} "
-                    f"mean_ms={mean_ms_str} steps/min={spm_str} n_envs={len(obs)}"
+                    f"mean_ms={mean_ms_str} steps/min={spm_str} n_envs={len(obs)} "
+                    f"stalls={self.horizon.stall_counts_str()}"
                 )
                 if self.use_wandb:
                     buf_d_h = (
@@ -687,7 +688,8 @@ class HierarchicalTPA:
             f"[Hier] train finished episodes_done={self.episodes_done} "
             f"steps={env_steps(self.global_step, self.num_actors)} steps/min={spm_str} "
             f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing} "
-            f"peak_human={self.peak_ongoing_human} peak_robot={self.peak_ongoing_robot}"
+            f"peak_human={self.peak_ongoing_human} peak_robot={self.peak_ongoing_robot} "
+            f"stalls={self.horizon.stall_counts_str()}"
         )
         if self.use_wandb:
             finish_payload = {

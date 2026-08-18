@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 from collections import deque
+from datetime import datetime
+import json
 from pathlib import Path
+import pickle
 
 from .hc_factory_imports import import_hc_module
 
@@ -10,6 +13,7 @@ _env_ckpt = import_hc_module("src.env_checkpoint")
 _stag = import_hc_module("src.stagnation")
 _catalog = import_hc_module("src.explore_catalog")
 _curr = import_hc_module("src.curriculum")
+_dbg = import_hc_module("src.debug_env_dump")
 
 
 def hc_env_list(vec_env):
@@ -48,6 +52,10 @@ class HorizonHooks:
         self.detectors: list = []
         self.ep_stalled: list[bool] = []
         self.env_list = None
+        self.stall_counts = {"L1": 0, "L2": 0, "L3": 0}
+        mode_dir = "collect" if self.explore else "train"
+        self.stall_root = Path("env_checkpoints") / "stagnation" / mode_dir
+        self.stall_root.mkdir(parents=True, exist_ok=True)
         if self.explore:
             self.catalog.write_round_meta(epsilon=1.0, t_max=t_max, n_products=n_products)
 
@@ -98,26 +106,37 @@ class HorizonHooks:
     def after_step(self, env_id: int, env: dict) -> str | None:
         level = self.detectors[env_id].update(env)
         if level == "L1":
-            print(f"[Hier] stagnation L1 env={env_id} n={self.detectors[env_id].n}")
+            self.stall_counts["L1"] += 1
+            self._dump_stagnation(env_id, env, "L1")
+            print(
+                f"[Hier] stagnation L1 env={env_id} n={self.detectors[env_id].n} "
+                f"stall_counts={self.stall_counts_str()}"
+            )
             return "L1"
         if level == "L2":
             self.ep_stalled[env_id] = True
+            self.stall_counts["L2"] += 1
+            self._dump_stagnation(env_id, env, "L2")
             if self._restore_ring(env_id):
-                print(f"[Hier] stagnation L2 restore env={env_id}")
+                print(f"[Hier] stagnation L2 restore env={env_id} stall_counts={self.stall_counts_str()}")
+            else:
+                print(f"[Hier] stagnation L2 no-restore env={env_id} stall_counts={self.stall_counts_str()}")
             return "L2"
         if level == "L3":
             self.ep_stalled[env_id] = True
+            self.stall_counts["L3"] += 1
+            self._dump_stagnation(env_id, env, "L3")
             nfin = _env_ckpt.n_finished(env)
             path = self.catalog.pick_by_nfin(nfin)
             if path is not None:
                 self._restore_path(env_id, path, overlay=True)
-                print(f"[Hier] stagnation L3 catalog restore env={env_id} {path}")
+                print(f"[Hier] stagnation L3 catalog restore env={env_id} {path} stall_counts={self.stall_counts_str()}")
             elif self._restore_ring(env_id, oldest=True):
-                print(f"[Hier] stagnation L3 ring restore env={env_id}")
+                print(f"[Hier] stagnation L3 ring restore env={env_id} stall_counts={self.stall_counts_str()}")
             else:
                 self.env_list[env_id].reset_env()
                 self.maybe_warmstart_new_episode(env_id)
-                print(f"[Hier] stagnation L3 full reset env={env_id}")
+                print(f"[Hier] stagnation L3 full reset env={env_id} stall_counts={self.stall_counts_str()}")
             self.detectors[env_id].reset()
             return "L3"
         return None
@@ -160,3 +179,64 @@ class HorizonHooks:
         self.env_list[env_id].restore_checkpoint(ckpt)
         if overlay:
             self.curriculum.apply(self.env_list[env_id], overlay_existing=True)
+
+    def stall_counts_str(self) -> str:
+        return f"L1={self.stall_counts['L1']} L2={self.stall_counts['L2']} L3={self.stall_counts['L3']}"
+
+    def _nearest_ring_item(self, env_id: int, env: dict):
+        det = self.detectors[env_id]
+        cur = _env_ckpt.progress_key(env)
+        for item in reversed(list(self.rings[env_id])):
+            if item["key"] != cur and item["key"] not in det.tried_keys:
+                return item
+        items = list(self.rings[env_id])
+        return items[-1] if items else None
+
+    def _dump_stagnation(self, env_id: int, env: dict, level: str) -> None:
+        det = self.detectors[env_id]
+        ep = int(env.get("episode_num", 0) or 0)
+        t = int(env.get("time_step", 0) or 0)
+        key = _env_ckpt.progress_key(env)
+        fp = getattr(det, "fp", None)
+        name = f"{level}_env{env_id:02d}_ep{ep:06d}_t{t:06d}_{key}"
+        out_dir = self.stall_root / name
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        stalled_ckpt = _env_ckpt.capture(env)
+        stalled_path = out_dir / "stalled_state.pkl"
+        nearest = self._nearest_ring_item(env_id, env)
+
+        meta = {
+            "ts": datetime.now().isoformat(timespec="seconds"),
+            "mode": "collect" if self.explore else "train",
+            "level": level,
+            "env_id": env_id,
+            "episode_num": ep,
+            "time_step": t,
+            "progress_key": key,
+            "ongoing_fingerprint": fp,
+            "stall_streak_steps": int(det.n),
+            "stall_counts": dict(self.stall_counts),
+            "catalog_round": getattr(self.catalog, "round_id", None),
+            "nearest_effective_decision": None,
+        }
+
+        with stalled_path.open("wb") as f:
+            pickle.dump(stalled_ckpt, f, protocol=pickle.HIGHEST_PROTOCOL)
+        slim_state = _dbg.to_jsonable(stalled_ckpt)
+        (out_dir / "stalled_state.json").write_text(
+            json.dumps(slim_state, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        if nearest is not None:
+            nearest_meta = {
+                "key": nearest["key"],
+                "n_finished": int(nearest.get("n_finished", 0)),
+                "time_step": int(nearest.get("t", 0)),
+            }
+            meta["nearest_effective_decision"] = nearest_meta
+            with (out_dir / "nearest_decision.pkl").open("wb") as f:
+                pickle.dump(nearest["ckpt"], f, protocol=pickle.HIGHEST_PROTOCOL)
+
+        (out_dir / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
