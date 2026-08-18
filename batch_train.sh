@@ -18,7 +18,7 @@ if [ $# -eq 0 ]; then
     echo "  22: rule_based + 单产品决策 (K=1, 10 episodes, wandb)"
     echo "  23: rule_based + 多产品决策 (K=${HC_MULTI_K}, 10 episodes, wandb)"
     echo "  24: hier 全量硬训对照 (K=${HC_MULTI_K}, max_episodic_steps=45000, wandb)"
-    echo "  25: hier masked-random 采集库 (--explore, N=16, T_max=25000, ε=1)"
+    echo "  25: hier masked-random 采集库 (--explore, N=16, T_max=25000, ε=1, 10 episodes)"
     echo "  26: hier 课程训练 (--curriculum, 1→16 件, wandb)"
     echo "  27: 采集 debug（可视化+warmstart，不录视频不启wandb）"
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
@@ -267,13 +267,14 @@ run_test_24() {
 
 run_test_25() {
     # N=16 masked random 采集库：ε=1，无 DQN backward；L2/L3 死锁回退 + progress key 去重
-    echo "运行 25: explore catalog (N=16, T_max=25000, epsilon=1)"
+    echo "运行 25: explore catalog (N=16, T_max=25000, epsilon=1, 10 episodes)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
         --num_envs "${HC_NUM_ENVS}" \
         --headless \
         --explore \
+        --max_sim_episodes 10 \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
         --wandb_name "explore_N16_T25000" \
