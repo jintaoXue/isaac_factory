@@ -79,6 +79,12 @@ def env_steps(global_step: int, n_envs: int = 1) -> int:
     return int(global_step) * max(1, int(n_envs))
 
 
+def crossed_interval(prev_steps: int, cur_steps: int, interval: int) -> bool:
+    """True when summed env-steps advanced by at least ``interval`` since last fire."""
+    interval = max(1, int(interval))
+    return int(cur_steps) - int(prev_steps) >= interval
+
+
 def steps_per_min(global_step: int, wall_sec: float, n_envs: int = 1) -> float | None:
     """Throughput: summed env-instance steps per wall-clock minute."""
     total = env_steps(global_step, n_envs)

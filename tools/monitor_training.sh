@@ -19,4 +19,4 @@ INTERVAL="${2:-30}"
 python tools/monitor_training.py \
   --match "$MATCH" \
   --interval "$INTERVAL" \
-  --output-dir output/train_monitor
+  --output-dir outputs/train_monitor

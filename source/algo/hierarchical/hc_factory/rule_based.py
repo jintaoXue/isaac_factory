@@ -12,7 +12,7 @@ from .agent_B_product_priority import ProductPriorityAgent
 from .agent_C_process_task_planner import ProcessTaskPlanningAgent
 from .agent_D_human_robot_allocator import HumanRobotMachineAllocationAgent
 from .hierarchical_dispatch import build_rule_based_action
-from .hier_utils import compute_team_reward, count_busy_agents, env_steps, read_rl_done, steps_per_min
+from .hier_utils import compute_team_reward, count_busy_agents, crossed_interval, env_steps, read_rl_done, steps_per_min
 
 
 def _count_finished(env_dict: dict) -> int:
@@ -208,6 +208,7 @@ class RuleBasedHierarchical():
         self._ep_peak_ongoing_robot = [0 for _ in range(n_envs)]
         self._train_t0 = time.time()
         stop = False
+        last_logged_env_steps = 0
 
         print(
             f"[Rule] train start n_envs={n_envs} "
@@ -312,8 +313,10 @@ class RuleBasedHierarchical():
                         stop = True
 
             self.global_step += 1
+            env_step = env_steps(self.global_step, self.num_actors)
 
-            if self.global_step % self.log_interval == 0:
+            if crossed_interval(last_logged_env_steps, env_step, self.log_interval):
+                last_logged_env_steps = env_step
                 env0 = next_obs[0]
                 progress = env0.get("progress") or {}
                 rl0 = env0.get("rl") or {}

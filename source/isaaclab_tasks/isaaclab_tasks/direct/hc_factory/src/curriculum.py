@@ -1,4 +1,8 @@
-"""Product-count curriculum. Encoder dim stays 10; only order / T_max / wip cap change."""
+"""Incremental-ΔN curriculum. Encoder dim and WIP cap stay 10; order stays 16.
+
+Each stage is a *segment*: start from ``start_nfin`` (catalog warmstart), finish
+``delta_N`` more products within ``T_budget = delta_N * per_T_max``.
+"""
 from __future__ import annotations
 
 from collections import deque
@@ -6,33 +10,53 @@ from dataclasses import dataclass
 
 T_MAX_ANCHOR = 25000
 N_ANCHOR = 16
+WIP_CAP = 10  # same as HcVectorEnvCfg.single_env_parallel_producing_limit
 
-# (stage, n_products, wip_cap) — T_max derived from n_products
+# (stage, start_nfin, delta_N) — target_nfin = start + delta; T_budget = delta * per_T_max
 STAGES: tuple[tuple[int, int, int], ...] = (
-    (0, 1, 2),
-    (1, 2, 3),
+    (0, 0, 2),
+    (1, 2, 2),
     (2, 4, 4),
-    (3, 8, 6),
-    (4, 16, 10),
+    (3, 8, 4),
+    (4, 12, 4),
 )
 
 
+def per_t_max(anchor: int = T_MAX_ANCHOR) -> int:
+    return max(1, int(round(anchor / N_ANCHOR)))
+
+
 def t_max_for(n_products: int, anchor: int = T_MAX_ANCHOR) -> int:
+    """Legacy full-horizon helper (explore catalog / 25)."""
     return max(1, int(round(anchor * n_products / N_ANCHOR)))
 
 
 @dataclass
 class StageSpec:
     stage: int
-    n_products: int
+    start_nfin: int
+    delta_n: int
+    target_nfin: int
+    n_products: int  # full order size (always 16)
     wip_cap: int
-    t_max: int
+    t_max: int  # segment budget = delta_n * per_T_max
+    per_t_max: int
 
 
 def spec_for(stage: int, anchor: int = T_MAX_ANCHOR) -> StageSpec:
     stage = max(0, min(int(stage), len(STAGES) - 1))
-    s, n, cap = STAGES[stage]
-    return StageSpec(stage=s, n_products=n, wip_cap=cap, t_max=t_max_for(n, anchor))
+    s, start, delta = STAGES[stage]
+    pt = per_t_max(anchor)
+    return StageSpec(
+        stage=s,
+        start_nfin=start,
+        delta_n=delta,
+        target_nfin=min(N_ANCHOR, start + delta),
+        n_products=N_ANCHOR,
+        wip_cap=WIP_CAP,
+        t_max=max(1, delta * pt),
+        per_t_max=pt,
+    )
 
 
 class CurriculumScheduler:
@@ -45,7 +69,7 @@ class CurriculumScheduler:
         window: int = 20,
         success_th: float = 0.7,
         stagnation_th: float = 0.2,
-        makespan_th: float = 1.2,
+        makespan_th: float = 1.0,
         product_type: str = "ProductWaterPipe",
     ) -> None:
         self.enabled = bool(enabled)
@@ -65,7 +89,7 @@ class CurriculumScheduler:
         return spec_for(self.stage if self.enabled else len(STAGES) - 1, self.anchor)
 
     def apply(self, single_env, *, overlay_existing: bool = False) -> StageSpec:
-        """Write stage N / T_max / wip_cap onto a live env (after reset or restore)."""
+        """Write segment target / T_budget onto a live env. Full order stays 16; WIP cap 10."""
         spec = self.spec
         env = single_env.env_state_action_dict
         progress = env.setdefault("progress", {})
@@ -76,6 +100,9 @@ class CurriculumScheduler:
         tm.max_episodic_steps = spec.t_max
         progress["stage_wip_cap"] = spec.wip_cap
         progress["curriculum_stage"] = spec.stage
+        progress["segment_start_nfin"] = spec.start_nfin
+        progress["segment_delta_n"] = spec.delta_n
+        progress["segment_target_nfin"] = spec.target_nfin
         progress["product_order"] = {self.product_type: spec.n_products}
         if not overlay_existing:
             progress["not_started"] = {self.product_type: spec.n_products}

@@ -95,12 +95,15 @@ def run_eval_episodes(
     max_episodic_steps: int,
     epsilon: float = 0.0,
     env_id: int = 0,
+    on_reset=None,
 ) -> list[EpisodeResult]:
     """Roll out evaluation episodes on ``env_id`` of the vec env."""
     results: list[EpisodeResult] = []
     for seed in seeds:
         set_global_seed(seed)
         obs: list[dict] = vec_env.reset()
+        if on_reset is not None:
+            on_reset()
         ep_counter = 0
         while ep_counter < episodes_per_seed:
             ep_return = 0.0

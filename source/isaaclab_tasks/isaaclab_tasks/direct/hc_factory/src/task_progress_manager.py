@@ -144,8 +144,9 @@ class TaskManager:
             ``-step_penalty``
             ``+ finish_bonus * Δfinished_products``
             ``+ task_bonus * Δcompleted_process_tasks``
-            ``+ success_bonus * (1 - t/T_max)`` on success
-        Terminal: ``production_done`` → success; ``time_step+1 >= max_episodic_steps`` → truncated.
+            ``+ success_bonus * (1 - t/T_budget)`` on segment success
+        Terminal: ``n_finished >= segment_target_nfin`` → success;
+        ``time_step+1 >= max_episodic_steps`` (segment T_budget) → truncated.
         """
         if "rl" not in env_state_action_dict or not isinstance(env_state_action_dict["rl"], dict):
             env_state_action_dict["rl"] = {
@@ -175,7 +176,7 @@ class TaskManager:
         if bool(progress.get("production_done")):
             done = True
             success = True
-            # earlier finish → larger bonus (makespan-aligned)
+            # earlier finish → larger bonus (segment T_budget = max_episodic_steps)
             remain = max(0.0, 1.0 - float(t_after) / float(max(1, self.max_episodic_steps)))
             part_success = self.success_bonus * remain
         elif t_after >= self.max_episodic_steps:
@@ -196,24 +197,26 @@ class TaskManager:
         return env_state_action_dict
 
     def check_done_production(self, env_state_action_dict: dict) -> bool:
-        """True when every product in the order is finished and nothing is still in progress."""
+        """True when the current segment target (or full order) is reached."""
         progress = env_state_action_dict["progress"]
-        product_order = progress["product_order"]
         finished = progress.get("finished", {})
+        n_fin = 0
+        for v in finished.values():
+            n_fin += len(v) if hasattr(v, "__len__") and not isinstance(v, (str, bytes)) else int(v or 0)
 
+        target = progress.get("segment_target_nfin")
+        if target is not None:
+            if n_fin >= int(target):
+                progress["production_done"] = True
+                return True
+            progress["production_done"] = False
+            return False
+
+        product_order = progress["product_order"]
         for product_type, required in product_order.items():
             if len(finished.get(product_type, [])) < required:
                 progress["production_done"] = False
                 return False
-
-        # not_started = progress.get("not_started", {})
-        # if any(count > 0 for count in not_started.values()):
-        #     progress["production_done"] = False
-        #     return False
-        # if progress.get("producing") or progress.get("ongoing_task_records"):
-        #     progress["production_done"] = False
-        #     return False
-
         progress["production_done"] = True
         return True
 

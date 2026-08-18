@@ -23,7 +23,7 @@ from .hier_rl_agents import (
     RLProductSelectionAgent,
     RLProductSequencingAgent,
 )
-from .hier_utils import compute_team_reward, count_busy_agents, env_steps, read_rl_done, steps_per_min
+from .hier_utils import compute_team_reward, count_busy_agents, crossed_interval, env_steps, read_rl_done, steps_per_min
 from .horizon_hooks import HorizonHooks
 
 
@@ -196,28 +196,20 @@ class HierarchicalTPA:
         wandb.define_metric("Train/peak_ongoing", step_metric="Train/step")
         wandb.define_metric("Train/peak_ongoing_human", step_metric="Train/step")
         wandb.define_metric("Train/peak_ongoing_robot", step_metric="Train/step")
-        # DQN TD loss ≈ critic loss (no separate actor head in current Hierarchical)
         for name in ("A", "B", "C", "D_human", "D_robot"):
             wandb.define_metric(f"Loss/critic_{name}", step_metric="Train/step")
         wandb.define_metric("Loss/critic_mean", step_metric="Train/step")
-        wandb.define_metric("Metrics/MeanMakespan", step_metric="Train/step")
-        wandb.define_metric("Metrics/MeanMakespan_success", step_metric="Train/step")
-
-        wandb.define_metric("Metrics/wall_time_sec")
+        wandb.define_metric("Curriculum/stage", step_metric="Train/step")
+        wandb.define_metric("Curriculum/delta_N", step_metric="Train/step")
+        wandb.define_metric("Curriculum/start_nfin", step_metric="Train/step")
+        wandb.define_metric("Curriculum/target_nfin", step_metric="Train/step")
         wandb.define_metric("Metrics/step_episode", step_metric="Train/step")
-        for key in (
-            "Metrics/EpRet",
-            "Metrics/EpLen",
-            "Metrics/EpMakespan",
-            "Metrics/EpSuccess",
-            "Metrics/EpTruncated",
-            "Metrics/EpWallTimeSec",
-            "Metrics/EpMaxProducing",
-            "Metrics/EpMaxOngoing",
-            "Metrics/EpMaxOngoingHuman",
-            "Metrics/EpMaxOngoingRobot",
-        ):
-            wandb.define_metric(key, step_metric="Metrics/wall_time_sec")
+        wandb.define_metric("Metrics/segment_success", step_metric="Train/step")
+        wandb.define_metric("Metrics/delta_finished", step_metric="Train/step")
+        wandb.define_metric("Metrics/delta_time", step_metric="Train/step")
+        wandb.define_metric("Metrics/per_makespan", step_metric="Train/step")
+        wandb.define_metric("Metrics/normalized_delta_makespan", step_metric="Train/step")
+        wandb.define_metric("Stagnation/resets_per_episode", step_metric="Train/step")
 
     def _wall_time_sec(self) -> float:
         if self._train_t0 is None:
@@ -269,8 +261,12 @@ class HierarchicalTPA:
         episodes_per_seed = int(self.config.get("test_times", 1))
         eval_epsilon = float(self.config.get("test_epsilon", 0.0))
         output_dir = os.path.join(self.experiment_dir, "eval")
+        # Full-order eval: 16 products, T_max=anchor (not incremental curriculum segments).
+        eval_horizon = int(self.config.get("t_max_anchor", 25000))
 
         obs: list[dict] = self.vec_env.reset()
+        self.horizon.bind(self.vec_env, len(obs))
+        eval_horizon = self.horizon.apply_full_order_eval(eval_horizon)
         self._maybe_load_checkpoint(obs[0])
 
         from .tpa_eval import (
@@ -280,13 +276,18 @@ class HierarchicalTPA:
             save_eval_results,
         )
 
+        print(
+            f"[Hier] test full-order N=16 T_max={eval_horizon} "
+            f"eps={eval_epsilon} seeds={seeds} n={episodes_per_seed}"
+        )
         results = run_eval_episodes(
             self.vec_env,
             lambda o, eps: self.act(o, epsilon=eps)[0:2],
             seeds=seeds,
             episodes_per_seed=episodes_per_seed,
-            max_episodic_steps=self.max_episodic_steps,
+            max_episodic_steps=eval_horizon,
             epsilon=eval_epsilon,
+            on_reset=lambda: self.horizon.apply_full_order_eval(eval_horizon),
         )
         payload = build_eval_payload(
             algo_name="hier",
@@ -372,16 +373,16 @@ class HierarchicalTPA:
         next_obs: dict,
         done: bool,
         epsilon: float,
+        *,
+        learn: bool = False,
     ) -> dict[str, float]:
-        """Store transitions on every meaningful decision; learn every ``learn_interval`` steps."""
+        """Store transitions on every meaningful decision; learn when ``learn`` is True."""
         losses: dict[str, float] = {}
         if not self._had_meaningful_decision(action):
             return losses
 
-        should_learn = (
-            not (getattr(self, "horizon", None) is not None and self.horizon.explore)
-            and self.global_step % self.learn_interval == 0
-        )
+        explore = getattr(self, "horizon", None) is not None and self.horizon.explore
+        should_learn = bool(learn) and not explore
         pending: list[tuple[str, torch.Tensor, object | None]] = []
 
         loss_a = self.agent_A.observe_step(
@@ -440,6 +441,7 @@ class HierarchicalTPA:
         return losses
 
     def save_checkpoint(self, step: int) -> None:
+        """``step`` is summed env-instance steps (global_step × num_envs)."""
         enc_path = os.path.join(self.nn_dir, f"state_encoder_step_{step}.pth")
         import torch
 
@@ -469,9 +471,13 @@ class HierarchicalTPA:
         self._ep_peak_ongoing = [0 for _ in range(len(obs))]
         self._ep_peak_ongoing_human = [0 for _ in range(len(obs))]
         self._ep_peak_ongoing_robot = [0 for _ in range(len(obs))]
+        ep_start_nfin = [_count_finished(o) for o in obs]
         prev_pre_list = [self.obs_encoder.preprocess(o) for o in obs]
         self._train_t0 = time.time()
         stop = False
+        last_saved_env_steps = 0
+        last_logged_env_steps = 0
+        last_learned_env_steps = 0
 
         while not stop:
             epsilon = self.get_epsilon()
@@ -481,6 +487,11 @@ class HierarchicalTPA:
 
             # Env writes rl and resets itself when done
             next_obs = self.vec_env.step(actions, actions_extra)
+            self.global_step += 1
+            env_step = env_steps(self.global_step, self.num_actors)
+            do_learn = crossed_interval(last_learned_env_steps, env_step, self.learn_interval)
+            if do_learn:
+                last_learned_env_steps = env_step
 
             for env_id in range(len(obs)):
                 self._update_concurrency_peaks(env_id, next_obs[env_id])
@@ -504,6 +515,7 @@ class HierarchicalTPA:
                     next_pre,
                     done=done,
                     epsilon=epsilon,
+                    learn=do_learn,
                 )
                 prev_pre_list[env_id] = next_pre
                 if done:
@@ -512,51 +524,36 @@ class HierarchicalTPA:
                     completed_ep = int(next_obs[env_id].get("episode_num", 0) or 0)
                     del completed_ep
                     ep_len = episode_len[env_id]
-                    ep_max_prod = self._ep_peak_producing[env_id]
-                    ep_max_ong = self._ep_peak_ongoing[env_id]
-                    ep_max_human = self._ep_peak_ongoing_human[env_id]
-                    ep_max_robot = self._ep_peak_ongoing_robot[env_id]
+                    spec = self.horizon.curriculum.spec
+                    start_n = int(ep_start_nfin[env_id])
+                    end_n = _count_finished(obs[env_id])
+                    delta_fin = max(0, end_n - start_n)
+                    per_ms = ep_len / max(1, delta_fin) if success else None
+                    ndm = ep_len / max(1, spec.t_max)
                     wall = self._wall_time_sec()
-                    # makespan: success → actual length; truncated → count as horizon
                     if success:
                         self.makespan_success.append(ep_len)
                         self.makespan_all.append(ep_len)
                     elif truncated:
                         self.makespan_all.append(ep_len)
-                    mean_ms = (
-                        sum(self.makespan_all) / len(self.makespan_all) if self.makespan_all else None
-                    )
-                    mean_ms_ok = (
-                        sum(self.makespan_success) / len(self.makespan_success)
-                        if self.makespan_success
-                        else None
-                    )
                     if self.use_wandb:
                         payload = {
                             "Train/step": env_steps(self.global_step, self.num_actors),
                             "Train/wall_time_sec": wall,
                             "Train/wall_time_min": wall / 60.0,
-                            "Train/peak_producing": self.peak_producing,
-                            "Train/peak_ongoing": self.peak_ongoing,
-                            "Train/peak_ongoing_human": self.peak_ongoing_human,
-                            "Train/peak_ongoing_robot": self.peak_ongoing_robot,
-                            "Metrics/wall_time_sec": wall,
                             "Metrics/step_episode": self.episodes_done,
-                            "Metrics/EpRet": episode_reward[env_id],
-                            "Metrics/EpLen": ep_len,
-                            "Metrics/EpMakespan": ep_len,
-                            "Metrics/EpSuccess": float(success),
-                            "Metrics/EpTruncated": float(truncated),
-                            "Metrics/EpWallTimeSec": wall,
-                            "Metrics/EpMaxProducing": ep_max_prod,
-                            "Metrics/EpMaxOngoing": ep_max_ong,
-                            "Metrics/EpMaxOngoingHuman": ep_max_human,
-                            "Metrics/EpMaxOngoingRobot": ep_max_robot,
+                            "Metrics/segment_success": float(success),
+                            "Metrics/delta_finished": delta_fin,
+                            "Metrics/delta_time": ep_len,
+                            "Metrics/normalized_delta_makespan": ndm,
+                            "Curriculum/stage": spec.stage,
+                            "Curriculum/delta_N": spec.delta_n,
+                            "Curriculum/start_nfin": spec.start_nfin,
+                            "Curriculum/target_nfin": spec.target_nfin,
+                            "Stagnation/resets_per_episode": float(self.horizon.ep_stalled[env_id]),
                         }
-                        if mean_ms is not None:
-                            payload["Metrics/MeanMakespan"] = mean_ms
-                        if mean_ms_ok is not None:
-                            payload["Metrics/MeanMakespan_success"] = mean_ms_ok
+                        if per_ms is not None:
+                            payload["Metrics/per_makespan"] = per_ms
                         wandb.log(payload)
                     episode_reward[env_id] = 0.0
                     episode_len[env_id] = 0
@@ -564,20 +561,9 @@ class HierarchicalTPA:
                     self._ep_peak_ongoing[env_id] = 0
                     self._ep_peak_ongoing_human[env_id] = 0
                     self._ep_peak_ongoing_robot[env_id] = 0
-                    stalled = self.horizon.ep_stalled[env_id]
-                    spec = self.horizon.curriculum.spec
                     _clear_rl(next_obs[env_id])
                     self.horizon.on_episode_end(env_id, success=success, ep_len=ep_len)
-                    if self.use_wandb:
-                        wandb.log(
-                            {
-                                "Train/step": env_steps(self.global_step, self.num_actors),
-                                "Curriculum/stage": spec.stage,
-                                "Metrics/completion_rate": float(success),
-                                "Metrics/normalized_makespan": ep_len / max(1, spec.t_max),
-                                "Stagnation/resets_per_episode": float(stalled),
-                            }
-                        )
+                    ep_start_nfin[env_id] = _count_finished(next_obs[env_id])
                     if (
                         self.max_sim_episodes is not None
                         and self.episodes_done >= self.max_sim_episodes
@@ -585,9 +571,9 @@ class HierarchicalTPA:
                         stop = True
 
             obs = next_obs
-            self.global_step += 1
 
-            if self.global_step % self.log_interval == 0:
+            if crossed_interval(last_logged_env_steps, env_step, self.log_interval):
+                last_logged_env_steps = env_step
                 finished = _count_finished(next_obs[0])
                 rl0 = next_obs[0].get("rl", {})
                 progress0 = next_obs[0].get("progress") or {}
@@ -634,14 +620,6 @@ class HierarchicalTPA:
                             critic_vals.append(m)
                     if critic_vals:
                         loss_payload["Loss/critic_mean"] = sum(critic_vals) / len(critic_vals)
-                    mean_ms = (
-                        sum(self.makespan_all) / len(self.makespan_all) if self.makespan_all else None
-                    )
-                    mean_ms_ok = (
-                        sum(self.makespan_success) / len(self.makespan_success)
-                        if self.makespan_success
-                        else None
-                    )
                     payload = {
                         "Train/step": env_steps(self.global_step, self.num_actors),
                         "Train/wall_time_sec": wall,
@@ -663,23 +641,21 @@ class HierarchicalTPA:
                         "Train/buffer_D_robot": buf_d_r,
                         "Train/producing0": producing0,
                         "Train/ongoing0": ongoing0,
-                        "Train/peak_producing": self.peak_producing,
-                        "Train/peak_ongoing": self.peak_ongoing,
-                        "Train/peak_ongoing_human": self.peak_ongoing_human,
-                        "Train/peak_ongoing_robot": self.peak_ongoing_robot,
                     }
                     payload.update(loss_payload)
-                    if mean_ms is not None:
-                        payload["Metrics/MeanMakespan"] = mean_ms
-                    if mean_ms_ok is not None:
-                        payload["Metrics/MeanMakespan_success"] = mean_ms_ok
                     if spm is not None:
                         payload["Train/steps_per_min"] = spm
                     wandb.log(payload)
 
-            if self.global_step % self.save_interval == 0:
-                self.save_checkpoint(self.global_step)
-                print(f"[Hier] checkpoint saved at step {self.global_step}")
+            if crossed_interval(last_saved_env_steps, env_step, self.save_interval):
+                self.save_checkpoint(env_step)
+                last_saved_env_steps = env_step
+                print(f"[Hier] checkpoint saved at step {env_step}")
+
+        env_step = env_steps(self.global_step, self.num_actors)
+        if env_step > last_saved_env_steps:
+            self.save_checkpoint(env_step)
+            print(f"[Hier] checkpoint saved at step {env_step} (final)")
 
         wall = self._wall_time_sec()
         spm = steps_per_min(self.global_step, wall, self.num_actors)
@@ -696,11 +672,6 @@ class HierarchicalTPA:
                 "Train/step": env_steps(self.global_step, self.num_actors),
                 "Train/wall_time_sec": wall,
                 "Train/wall_time_min": wall / 60.0,
-                "Train/peak_producing": self.peak_producing,
-                "Train/peak_ongoing": self.peak_ongoing,
-                "Train/peak_ongoing_human": self.peak_ongoing_human,
-                "Train/peak_ongoing_robot": self.peak_ongoing_robot,
-                "Metrics/wall_time_sec": wall,
             }
             if spm is not None:
                 finish_payload["Train/steps_per_min"] = spm

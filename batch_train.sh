@@ -19,10 +19,12 @@ if [ $# -eq 0 ]; then
     echo "  23: rule_based + 多产品决策 (K=${HC_MULTI_K}, 10 episodes, wandb)"
     echo "  24: hier 全量硬训对照 (K=${HC_MULTI_K}, max_episodic_steps=45000, wandb)"
     echo "  25: hier masked-random 采集库 (--explore, N=16, T_max=25000, ε=1, 10 episodes)"
-    echo "  26: hier 课程训练 (--curriculum, 1→16 件, wandb)"
+    echo "  26: hier 增量课程 (--curriculum, ΔN=2,2,4,4,4 →16, wandb)"
     echo "  27: 采集 debug（可视化+warmstart，不录视频不启wandb）"
+    echo "  28: hier 评测（加载模型，全量 16 件, T_max=25000）"
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
     echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 25/26 的 --warmstart"
+    echo "  环境变量 HC_LOAD_DIR: 28 号评测的实验目录（含 nn/）"
     exit 1
 fi
 
@@ -31,7 +33,7 @@ JOBS=()
 for arg in "$@"; do
     if [[ "$arg" =~ ^cuda:[0-9]+$ ]]; then
         DEVICE="$arg"
-    elif [[ "$arg" =~ ^([1-9]|1[0-9]|2[0-7])$ ]] || [ "$arg" = "A" ] || [ "$arg" = "B" ] || [ "$arg" = "C" ] || [ "$arg" = "D" ]; then
+    elif [[ "$arg" =~ ^([1-9]|1[0-9]|2[0-8])$ ]] || [ "$arg" = "A" ] || [ "$arg" = "B" ] || [ "$arg" = "C" ] || [ "$arg" = "D" ]; then
         JOBS+=("$arg")
     else
         echo "错误: 无法识别参数 '$arg'"
@@ -283,8 +285,8 @@ run_test_25() {
 }
 
 run_test_26() {
-    # 课程训练：件数 1→16，T_max(N)=25000*N/16；stage>0 从 catalog 按 n_finished 切片 warmstart
-    echo "运行 26: hier curriculum (1→16 products, wandb)"
+    # 增量课程：ΔN=2,2,4,4,4；T_budget=ΔN×per_T_max；catalog 按 start_nfin 切片
+    echo "运行 26: hier curriculum (ΔN 2/2/4/4/4 →16, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -323,6 +325,26 @@ run_test_27() {
         ${DEVICE_ARG}
 }
 
+run_test_28() {
+    # 全量 16 件评测：加载 26 训练的 nn/，不用 --curriculum
+    if [ -z "${HC_LOAD_DIR}" ]; then
+        echo "错误: run_test_28 需要 HC_LOAD_DIR 指向训练实验目录（含 nn/）"
+        echo "示例：HC_LOAD_DIR=logs/rl_games/HcFactory/hier_2026-08-18_22-00-00 ./batch_train.sh 28 cuda:0"
+        exit 1
+    fi
+    echo "运行 28: hier test full-order N=16 T_max=25000 load=${HC_LOAD_DIR}"
+    python train.py \
+        --task "${HC_TASK}" \
+        --algo hier \
+        --num_envs 1 \
+        --headless \
+        --test \
+        --test_times "${HC_TEST_TIMES:-1}" \
+        --load_dir "${HC_LOAD_DIR}" \
+        +t_max_anchor=25000 \
+        ${DEVICE_ARG}
+}
+
 # 调度：按序号 / A / B / C 调用上面的 run_test_*
 run_one_job() {
     local id=$1
@@ -354,6 +376,7 @@ run_one_job() {
         25) run_test_25 ;;
         26) run_test_26 ;;
         27) run_test_27 ;;
+        28) run_test_28 ;;
         A)
             echo "=== 运行A组训练 (1-5) ==="
             run_test_1; run_test_2; run_test_3; run_test_4; run_test_5; run_test_6

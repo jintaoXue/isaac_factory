@@ -39,11 +39,13 @@ class HorizonHooks:
             start_stage=int(config.get("curriculum_start_stage", 0)),
             t_max_anchor=anchor,
         )
-        n_products = 16 if self.explore else self.curriculum.spec.n_products
-        t_max = _curr.t_max_for(n_products, anchor) if self.explore else self.curriculum.spec.t_max
+        # Catalog is always the full-horizon explore library (N=16, T=anchor).
         catalog_root = config.get("explore_catalog_dir") or None
         self.catalog = _catalog.ExploreCatalog(
-            catalog_root, n_products=n_products, t_max=t_max, create_round=self.explore
+            catalog_root,
+            n_products=16,
+            t_max=_curr.t_max_for(16, anchor),
+            create_round=self.explore,
         )
         self.l1 = int(config.get("stagnation_l1", 400))
         self.l2 = int(config.get("stagnation_l2", 600))
@@ -58,21 +60,39 @@ class HorizonHooks:
         self.stall_root = Path("env_checkpoints") / "stagnation" / mode_dir
         self.stall_root.mkdir(parents=True, exist_ok=True)
         if self.explore:
-            self.catalog.write_round_meta(epsilon=1.0, t_max=t_max, n_products=n_products)
+            self.catalog.write_round_meta(
+                epsilon=1.0, t_max=_curr.t_max_for(16, anchor), n_products=16
+            )
+
+    def apply_full_order_eval(self, horizon: int | None = None) -> int:
+        """Disable segment curriculum: 16 products, T_max=anchor, no catalog warmstart."""
+        t_max = int(horizon if horizon is not None else _curr.t_max_for(16, self.curriculum.anchor))
+        if self.env_list is None:
+            return t_max
+        self.curriculum.enabled = False
+        for env in self.env_list:
+            env.task_manager.max_episodic_steps = t_max
+            progress = env.env_state_action_dict.setdefault("progress", {})
+            progress.pop("segment_target_nfin", None)
+            progress.pop("segment_start_nfin", None)
+            progress.pop("segment_delta_n", None)
+            progress["stage_wip_cap"] = 10
+        return t_max
 
     def bind(self, vec_env, n_envs: int) -> None:
         self.env_list = hc_env_list(vec_env)
         self.rings = [deque(maxlen=self.ring_k) for _ in range(n_envs)]
         self.detectors = [_stag.StagnationDetector(self.l1, self.l2, self.l3) for _ in range(n_envs)]
         self.ep_stalled = [False] * n_envs
-        for env in self.env_list:
+        for i, env in enumerate(self.env_list):
             if self.explore:
                 env.task_manager.max_episodic_steps = _curr.t_max_for(16, self.curriculum.anchor)
                 env.env_state_action_dict.setdefault("progress", {})["stage_wip_cap"] = 10
             else:
-                self.curriculum.apply(env, overlay_existing=False)
+                self.maybe_warmstart_new_episode(i)
         if self.warmstart_path:
-            self._restore_path(0, self.warmstart_path, overlay=bool(self.curriculum.enabled))
+            overlay = bool(self.curriculum.enabled)
+            self._restore_path(0, self.warmstart_path, overlay=overlay)
             env = self.env_list[0].env_state_action_dict
             print(
                 f"[Hier] warmstart env=0 path={self.warmstart_path} "
@@ -87,17 +107,15 @@ class HorizonHooks:
             env.task_manager.max_episodic_steps = _curr.t_max_for(16, self.curriculum.anchor)
             env.env_state_action_dict.setdefault("progress", {})["stage_wip_cap"] = 10
             return
-        self.curriculum.apply(env, overlay_existing=False)
         if not self.curriculum.enabled:
+            self.curriculum.apply(env, overlay_existing=False)
             return
         spec = self.curriculum.spec
-        if spec.stage == 0:
-            return
-        start_nfin = max(0, spec.n_products // 2)
-        path = self.catalog.pick_by_nfin(start_nfin)
+        path = self.catalog.pick_by_nfin(spec.start_nfin) if spec.start_nfin > 0 else None
         if path is not None:
             self._restore_path(env_id, path, overlay=True)
-            self.curriculum.apply(env, overlay_existing=True)
+        else:
+            self.curriculum.apply(env, overlay_existing=False)
 
     def on_decision(self, env_id: int, action: dict, env: dict) -> None:
         if not action.get("dispatch_list"):
@@ -141,9 +159,11 @@ class HorizonHooks:
             self.stall_counts["L3"] += 1
             self._dump_stagnation(env_id, env, "L3")
             nfin = _env_ckpt.n_finished(env)
+            cur_t = int(env.get("time_step", 0) or 0)
             path = self.catalog.pick_by_nfin(nfin)
             if path is not None:
-                self._restore_path(env_id, path, overlay=True)
+                self._restore_path(env_id, path, overlay=True, reset_clock=False)
+                self.env_list[env_id].env_state_action_dict["time_step"] = cur_t
                 print(f"[Hier] stagnation L3 catalog restore env={env_id} {path} stall_counts={self.stall_counts_str()}")
             elif self._restore_ring(env_id, oldest=True):
                 print(f"[Hier] stagnation L3 ring restore env={env_id} stall_counts={self.stall_counts_str()}")
@@ -165,7 +185,11 @@ class HorizonHooks:
         self.maybe_warmstart_new_episode(env_id)
         if advanced:
             spec = self.curriculum.spec
-            print(f"[Hier] curriculum -> stage {spec.stage} N={spec.n_products} T_max={spec.t_max}")
+            print(
+                f"[Hier] curriculum -> stage {spec.stage} "
+                f"start={spec.start_nfin} ΔN={spec.delta_n} target={spec.target_nfin} "
+                f"T_budget={spec.t_max}"
+            )
 
     def _restore_ring(self, env_id: int, oldest: bool = False) -> bool:
         det = self.detectors[env_id]
@@ -183,7 +207,12 @@ class HorizonHooks:
         if chosen is None:
             return False
         det.tried_keys.add(chosen["key"])
-        self.env_list[env_id].restore_checkpoint(chosen["ckpt"])
+        env = self.env_list[env_id]
+        cur_t = int(env.env_state_action_dict.get("time_step", 0) or 0)
+        env.restore_checkpoint(chosen["ckpt"])
+        env.env_state_action_dict["time_step"] = cur_t
+        if self.curriculum.enabled:
+            self.curriculum.apply(env, overlay_existing=True)
         self.last_restore_info[env_id] = {
             "kind": "ring",
             "key": chosen["key"],
@@ -194,10 +223,13 @@ class HorizonHooks:
         det.tried_keys.add(chosen["key"])
         return True
 
-    def _restore_path(self, env_id: int, path: str | Path, overlay: bool) -> None:
+    def _restore_path(self, env_id: int, path: str | Path, overlay: bool, reset_clock: bool = True) -> None:
         ckpt = _catalog.ExploreCatalog.load_pkl(path)
         self.env_list[env_id].restore_checkpoint(ckpt)
         if overlay:
+            env = self.env_list[env_id].env_state_action_dict
+            if reset_clock:
+                env["time_step"] = 0
             self.curriculum.apply(self.env_list[env_id], overlay_existing=True)
 
     def stall_counts_str(self) -> str:

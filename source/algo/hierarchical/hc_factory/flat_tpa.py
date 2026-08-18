@@ -16,7 +16,7 @@ from rl_games.common import vecenv
 from .flat_action_space import FlatJointActionSpace
 from .flat_obs import FlatObsEncoder
 from .flat_rl_agent import RLFlatAgent
-from .hier_utils import compute_team_reward, env_steps, read_rl_done
+from .hier_utils import compute_team_reward, crossed_interval, env_steps, read_rl_done
 
 
 def _clear_rl(env_dict: dict) -> None:
@@ -225,8 +225,8 @@ class FlatTPA:
         reward: float,
         next_obs: dict,
         done: bool,
+        should_learn: bool = False,
     ) -> float | None:
-        should_learn = self.global_step % self.learn_interval == 0
         loss = self.agent.observe_step(
             prev_obs, joint_idx, reward, next_obs, done, learn=should_learn
         )
@@ -248,6 +248,9 @@ class FlatTPA:
         episode_reward = [0.0 for _ in range(len(obs))]
         episode_len = [0 for _ in range(len(obs))]
         prev_pre_list = [self.obs_encoder.preprocess(o) for o in obs]
+        last_saved_env_steps = 0
+        last_logged_env_steps = 0
+        last_learned_env_steps = 0
 
         while True:
             epsilon = self.get_epsilon()
@@ -256,6 +259,11 @@ class FlatTPA:
                 obs[i]["action"] = action
 
             next_obs = self.vec_env.step(actions, actions_extra)
+            self.global_step += 1
+            env_step = env_steps(self.global_step, self.num_actors)
+            do_learn = crossed_interval(last_learned_env_steps, env_step, self.learn_interval)
+            if do_learn:
+                last_learned_env_steps = env_step
 
             for env_id in range(len(obs)):
                 reward = compute_team_reward(obs[env_id], next_obs[env_id])
@@ -269,6 +277,7 @@ class FlatTPA:
                     reward,
                     next_pre,
                     done=done,
+                    should_learn=do_learn,
                 )
                 prev_pre_list[env_id] = next_pre
                 if done:
@@ -307,9 +316,9 @@ class FlatTPA:
                     _clear_rl(next_obs[env_id])
 
             obs = next_obs
-            self.global_step += 1
 
-            if self.global_step % self.log_interval == 0:
+            if crossed_interval(last_logged_env_steps, env_step, self.log_interval):
+                last_logged_env_steps = env_step
                 finished = _count_finished(next_obs[0])
                 rl0 = next_obs[0].get("rl", {})
                 ep0 = int(next_obs[0].get("episode_num", 0) or 0)
@@ -361,6 +370,7 @@ class FlatTPA:
                         payload["Metrics/MeanMakespan_success"] = mean_ms_ok
                     wandb.log(payload)
 
-            if self.global_step % self.save_interval == 0:
-                self.save_checkpoint(self.global_step)
-                print(f"[Flat] checkpoint saved at step {self.global_step}")
+            if crossed_interval(last_saved_env_steps, env_step, self.save_interval):
+                self.save_checkpoint(env_step)
+                last_saved_env_steps = env_step
+                print(f"[Flat] checkpoint saved at step {env_step}")

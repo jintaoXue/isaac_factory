@@ -8,7 +8,7 @@ Each sample is fsync'd so the last line may survive a hard freeze.
 Usage:
   python tools/monitor_training.py
   python tools/monitor_training.py --match "HcFactory-hier" --interval 30
-  python tools/monitor_training.py --pid 12345 --interval 15 --output-dir output/train_monitor
+  python tools/monitor_training.py --pid 12345 --interval 15 --output-dir outputs/train_monitor
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from typing import Any
 
 DEFAULT_MATCH = "HcFactory-"
 DEFAULT_INTERVAL = 30.0
-DEFAULT_OUTPUT = "output/train_monitor"
+DEFAULT_OUTPUT = "outputs/train_monitor"
 DEFAULT_STALL_INTERVALS = 10  # no CPU progress for N samples → flag stall
 
 KERNEL_PATTERNS = re.compile(
@@ -403,7 +403,7 @@ def parse_args() -> argparse.Namespace:
         "--output-dir",
         type=str,
         default=DEFAULT_OUTPUT,
-        help="Directory for monitor logs (default: output/train_monitor).",
+        help="Directory for monitor logs (default: outputs/train_monitor).",
     )
     p.add_argument(
         "--stall-intervals",
