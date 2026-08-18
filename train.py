@@ -233,8 +233,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     if getattr(args_cli, "explore", False):
         algo_cfg["params"]["config"]["explore"] = True
         algo_cfg["params"]["config"]["explore_catalog"] = True
-    if getattr(args_cli, "warmstart", None):
-        algo_cfg["params"]["config"]["warmstart"] = args_cli.warmstart
+    warmstart = (getattr(args_cli, "warmstart", None) or "").strip() or os.environ.get("HC_WARMSTART", "").strip()
+    if warmstart:
+        algo_cfg["params"]["config"]["warmstart"] = warmstart
     if getattr(args_cli, "curriculum", False):
         algo_cfg["params"]["config"]["curriculum"] = True
     if args_cli.use_fatigue_mask:

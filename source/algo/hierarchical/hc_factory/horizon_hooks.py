@@ -73,6 +73,13 @@ class HorizonHooks:
                 self.curriculum.apply(env, overlay_existing=False)
         if self.warmstart_path:
             self._restore_path(0, self.warmstart_path, overlay=bool(self.curriculum.enabled))
+            env = self.env_list[0].env_state_action_dict
+            print(
+                f"[Hier] warmstart env=0 path={self.warmstart_path} "
+                f"ep_t={int(env.get('time_step', 0) or 0)} "
+                f"n_finished={_env_ckpt.n_finished(env)} "
+                f"key={_env_ckpt.progress_key(env)}"
+            )
 
     def maybe_warmstart_new_episode(self, env_id: int) -> None:
         env = self.env_list[env_id]

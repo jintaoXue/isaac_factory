@@ -571,16 +571,16 @@ class TaskManager:
                     task_record,
                 )
                 if task_record["is_final_task"] == True:
-                    # Remove only one occurrence of product_type from the producing list, even if there are duplicates
+                    # Remove this batch by product_index (not product_type — duplicates share the same type).
                     producing_list = env_state_action_dict["progress"]["producing"]
                     producing_indexs = env_state_action_dict["progress"]["producing_indexs"]
                     assert len(producing_list) == len(producing_indexs), (
                         "The length of producing list and producing indexs should be the same"
                     )
-                    assert product_type in producing_list, (
-                        f"Product type {product_type} not found in producing list"
+                    assert product_index in producing_indexs, (
+                        f"Product index {product_index} not found in producing_indexs"
                     )
-                    i = producing_list.index(product_type)
+                    i = producing_indexs.index(product_index)
                     del producing_list[i]
                     del producing_indexs[i]
                     finished = env_state_action_dict["progress"]["finished"]
