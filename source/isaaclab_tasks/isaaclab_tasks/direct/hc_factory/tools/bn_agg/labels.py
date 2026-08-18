@@ -15,7 +15,13 @@ def _map_disturbance_resource_type(resource_id: str, raw_type: str) -> str:
     """Map disturbance_log target type onto feature-table resource_type."""
     rid = (resource_id or "").strip()
     rt = (raw_type or "").strip().lower()
-    if rid.startswith("gantry_") or rt in ("gantry", "logistics"):
+    if rid.startswith("gantry_") or rt == "gantry":
+        return "gantry"
+    if rid.startswith("robot_") or rid.startswith("agv_") or rt == "transport_robot":
+        return "transport_robot"
+    if rt == "logistics":
+        if rid.startswith("robot_") or rid.startswith("agv_"):
+            return "transport_robot"
         return "gantry"
     if rid.startswith("human_") or rt == "human":
         return "human"

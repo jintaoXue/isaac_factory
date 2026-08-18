@@ -185,6 +185,10 @@ class DisturbanceInjector:
             return f"{s['machine']}_ws{s['ws']}"
         if kind == "gantry":
             return f"gantry_{s['idx']}"
+        if kind == "agv":
+            idx = s.get("idx")
+            if idx is not None:
+                return f"robot_{idx}"
         if kind == "human":
             idx = s.get("idx")
             if idx is not None:
@@ -254,6 +258,8 @@ class DisturbanceInjector:
         if dim == "human":
             return self._activate_human_absent(env, target)
         if dim == "logistics":
+            if str(target or "").startswith("agv_") or str(target or "").startswith("robot_"):
+                return self._activate_agv_down(env, target)
             return self._activate_gantry_down(env, target)
         if dim == "material":
             return self._activate_material_shortage(env, target)
@@ -342,6 +348,38 @@ class DisturbanceInjector:
                 "prev": state[idx],
             }
             state[idx] = "invalid"
+            return True
+        return False
+
+    def _activate_agv_down(self, env: dict, target: str | None) -> bool:
+        """Only disable an idle AGV (same idea as human leave)."""
+        robots = env.get("robot") or {}
+        if not robots:
+            return False
+        idx = 0
+        raw = str(target or "")
+        if raw.startswith("agv_") or raw.startswith("robot_"):
+            try:
+                idx = int(raw.split("_", 1)[1])
+            except ValueError:
+                idx = 0
+        preferred = f"num_{idx:02d}_AGV"
+        candidates = []
+        if preferred in robots:
+            candidates.append(preferred)
+        candidates.extend(k for k in robots if k != preferred)
+        for key in candidates:
+            r = robots[key]
+            if r.get("state") != "free" or r.get("ongoing_task_record_index") is not None:
+                continue
+            kv = r.get("key_variables") or {}
+            self._saved_state = {
+                "kind": "agv",
+                "key": key,
+                "idx": kv.get("idx", idx),
+                "prev_state": r.get("state"),
+            }
+            r["state"] = "working_disturbance_absent"
             return True
         return False
 
@@ -447,6 +485,11 @@ class DisturbanceInjector:
                 idx = self._saved_state["idx"]
                 if g["state"][idx] == "invalid":
                     g["state"][idx] = "free"
+        elif kind == "agv":
+            r = env.get("robot", {}).get(self._saved_state["key"])
+            if r is not None and r.get("ongoing_task_record_index") is None:
+                if r.get("state") == "working_disturbance_absent":
+                    r["state"] = "free"
         elif kind == "material":
             self._restore_material_shortage(env)
         self._saved_state = None

@@ -63,6 +63,13 @@ def _jsonable_cfg(cfg: dict[str, Any], data_feature: dict[str, Any]) -> dict[str
     out["n_train"] = int(data_feature["n_train"])
     out["n_val"] = int(data_feature["n_val"])
     out["n_test"] = int(data_feature["n_test"])
+    out["split_by"] = str(data_feature.get("split_by") or "episode")
+    out["n_train_episodes"] = int(data_feature.get("n_train_episodes") or 0)
+    out["n_val_episodes"] = int(data_feature.get("n_val_episodes") or 0)
+    out["n_test_episodes"] = int(data_feature.get("n_test_episodes") or 0)
+    out["train_episodes_by_run"] = data_feature.get("train_episodes_by_run") or {}
+    out["val_episodes_by_run"] = data_feature.get("val_episodes_by_run") or {}
+    out["test_episodes_by_run"] = data_feature.get("test_episodes_by_run") or {}
     out["n_event_positive_train"] = int(data_feature.get("n_event_positive_train") or 0)
     out["n_event_surv_train"] = int(data_feature.get("n_event_surv_train") or 0)
     out["n_cause_labeled_train"] = int(data_feature.get("n_cause_labeled_train") or 0)
@@ -367,6 +374,9 @@ def train(cfg: dict[str, Any]) -> Path:
     print(
         f"[train] device={device} N={data_feature['num_nodes']} F={data_feature['feature_dim']} "
         f"train/val/test={data_feature['n_train']}/{data_feature['n_val']}/{data_feature['n_test']} "
+        f"episodes={data_feature.get('n_train_episodes', '?')}/"
+        f"{data_feature.get('n_val_episodes', '?')}/"
+        f"{data_feature.get('n_test_episodes', '?')} "
         f"event+train={data_feature.get('n_event_positive_train', 0)} "
         f"event_surv_train={data_feature.get('n_event_surv_train', 0)} "
         f"cause+train={data_feature.get('n_cause_labeled_train', 0)} "
@@ -374,6 +384,13 @@ def train(cfg: dict[str, Any]) -> Path:
         f"Kmax={data_feature.get('max_remain_windows', 512)} "
         f"ckpt={cfg.get('ckpt_metric', 'hot_f1')} pattern_keys={pattern_keys.shape}"
     )
+    if data_feature.get("split_by") == "episode":
+        print(
+            f"[train] split=episode "
+            f"train={data_feature.get('train_episodes_by_run')} "
+            f"val={data_feature.get('val_episodes_by_run')} "
+            f"test={data_feature.get('test_episodes_by_run')}"
+        )
     cause_majority = int(data_feature.get("cause_majority", -1))
     counts = data_feature.get("cause_train_counts")
     classes = data_feature.get("cause_classes") or []
@@ -486,6 +503,13 @@ def train(cfg: dict[str, Any]) -> Path:
                     "best_epoch": int(ckpt.get("epoch") or 0),
                     "test": te,
                     "n_train_windows_used": int(train_windows.shape[0]),
+                    "split_by": str(data_feature.get("split_by") or "episode"),
+                    "n_train_episodes": int(data_feature.get("n_train_episodes") or 0),
+                    "n_val_episodes": int(data_feature.get("n_val_episodes") or 0),
+                    "n_test_episodes": int(data_feature.get("n_test_episodes") or 0),
+                    "train_episodes_by_run": data_feature.get("train_episodes_by_run") or {},
+                    "val_episodes_by_run": data_feature.get("val_episodes_by_run") or {},
+                    "test_episodes_by_run": data_feature.get("test_episodes_by_run") or {},
                     "n_event_positive_train": int(data_feature.get("n_event_positive_train") or 0),
                     "n_event_surv_train": int(data_feature.get("n_event_surv_train") or 0),
                 },

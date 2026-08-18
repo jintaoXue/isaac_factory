@@ -129,10 +129,14 @@ class GantryGroupAnimation(PoseAnimation):
         return min(self.distance_traveled[gantry_index] / length, 1.0)
 
     def _sample_speed(self, loaded: bool) -> float:
-        speed = self.base_speed * (self.loaded_speed_scale if loaded else 1.0)
-        if self.move_speed_noise_std > 0.0:
-            speed = max(1e-6, speed + random.gauss(0.0, self.move_speed_noise_std))
-        return speed
+        nominal = self.base_speed * (self.loaded_speed_scale if loaded else 1.0)
+        if self.move_speed_noise_std <= 0.0:
+            return nominal
+        # Scale noise with this move's speed so a loaded carry cannot be
+        # sampled down to ~0 (std is stored in unloaded speed units).
+        rel = self.move_speed_noise_std / max(self.base_speed, 1e-6)
+        speed = nominal * (1.0 + random.gauss(0.0, rel))
+        return max(0.5 * nominal, speed)
 
     def step_next_pose(
         self,
@@ -190,24 +194,13 @@ class GantryGroupAnimation(PoseAnimation):
                         return True
                 return False
 
-            timeout = max(1, int(block_timeout))
             blocked = _blocked_at(safe_x_gap)
-            force = False
-            if blocked and self.blocked_steps[gantry_index] >= timeout:
-                blocked = _blocked_at(max(1e-6, safe_x_gap * relaxed_gap_scale))
-            if blocked and self.blocked_steps[gantry_index] >= 2 * timeout:
-                blocked = False
-                force = True
+            # Shared rail: if the other crane is in the way, wait. Do not ram.
 
             if blocked:
                 self.blocked_steps[gantry_index] += 1
                 next_pose[gantry_mask] = self._lerp_gantry_pose(gantry_index, self._progress_t(gantry_index))
             else:
-                if force:
-                    print(
-                        f"[GantryUnlock] force advance gantry_{gantry_index} "
-                        f"after {self.blocked_steps[gantry_index]} blocked steps"
-                    )
                 self.blocked_steps[gantry_index] = 0
                 self.distance_traveled[gantry_index] = dist_next
                 next_pose[gantry_mask] = proposed

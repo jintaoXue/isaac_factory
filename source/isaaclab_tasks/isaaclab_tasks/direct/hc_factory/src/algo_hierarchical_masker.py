@@ -8,6 +8,7 @@ from ..env_asset_cfg.cfg_human import CfgHuman
 from ..env_asset_cfg.cfg_robot import CfgRobot
 from ..env_asset_cfg.cfg_machine import CfgMachine
 from .material import task_required_materials_ready
+from .task_progress_manager import gantry_rail_has_worker
 import torch
 
 
@@ -86,10 +87,11 @@ class AlgoHierarchicalMasker:
     def update_machine_task_availability_mask(self, env_state_action_dict: dict) -> dict:
         mask = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
         mask[0] = 1  # "none" task is always available
+        gantry_states = env_state_action_dict["machine"]["num07_gantry_group"]["state"]
         have_free_gantry = any(
-            env_state_action_dict["machine"]["num07_gantry_group"]["state"][idx] == "free"
+            gantry_states[idx] == "free"
             for idx in CfgMachine["num07_gantry_group"]["active_gantry_indices"]
-        )
+        ) and not gantry_rail_has_worker(gantry_states)
         for machine_name, machine_cfg in CfgMachine.items():
             if machine_name == "num07_gantry_group":
                 continue

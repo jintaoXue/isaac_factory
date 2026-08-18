@@ -196,6 +196,16 @@ def sample_human_skill_scales(n: int, intensity: float) -> list[float]:
     return [round(lo + (hi - lo) * i / (n - 1), 4) for i in range(n)]
 
 
+def logistics_default_gantry_count(intensity: float) -> int:
+    """I=1.0 keep 2 cranes; I≥1.5 is one crane down for maintenance."""
+    return 2 if float(intensity) < 1.5 else 1
+
+
+def logistics_default_agv_count(intensity: float) -> int:
+    """I=1.0/2.0 keep 2 AGVs; I≥2.5 is fleet shortage."""
+    return 2 if float(intensity) < 2.5 else 1
+
+
 def disabled_workstations_for_intensity(intensity: float) -> list[tuple[str, int]]:
     """L0: I<1.5 close workbench ws1; otherwise also rotary-weld ws1."""
     if intensity < 1.5:
@@ -258,6 +268,7 @@ def sample_l2_schedule(
     *,
     human_count: int = 5,
     gantry_indices: list[int] | None = None,
+    agv_count: int = 2,
 ) -> list[dict[str, Any]]:
     """Draw a non-overlapping L2 queue for one episode.
 
@@ -296,7 +307,11 @@ def sample_l2_schedule(
         targets = [f"human_{i}" for i in range(max(1, int(human_count)))]
     elif dim == "logistics":
         idxs = list(gantry_indices or [0, 1])
-        targets = [f"gantry_{i}" for i in idxs] or ["gantry_0"]
+        targets = [f"gantry_{i}" for i in idxs]
+        n_agv = max(0, int(agv_count))
+        targets.extend(f"agv_{i}" for i in range(n_agv))
+        if not targets:
+            targets = ["gantry_0"]
     elif dim == "material":
         targets = list(L2_MATERIAL_TARGETS)
     else:
@@ -340,6 +355,7 @@ def episode_l2_schedule(dim: str, intensity: float, seed: int, env_id: int, epis
         rng,
         human_count=int(applied.get("human_count") or 5),
         gantry_indices=applied.get("active_gantry_indices"),
+        agv_count=int(applied.get("agv_count") or 2),
     )
 
 
@@ -555,7 +571,7 @@ def apply_disturbance_to_cfgs() -> dict[str, Any]:
         default_agv = int(_DEFAULT_SNAPSHOT["robot"].get("AGV", 2))
         n_agv = RuntimeDisturbanceCfg["agv_count"]
         if n_agv is None:
-            n_agv = max(1, int(round(default_agv - intensity)))
+            n_agv = logistics_default_agv_count(intensity)
         n_agv = max(1, min(int(n_agv), default_agv))
         CfgRobotRegistrationInfos["AGV"] = n_agv
         applied["agv_count"] = n_agv
@@ -563,9 +579,8 @@ def apply_disturbance_to_cfgs() -> dict[str, Any]:
         default_gantry = list(_DEFAULT_SNAPSHOT["active_gantry_indices"])
         n_g = RuntimeDisturbanceCfg["gantry_count"]
         if n_g is None:
-            # 1.0 → 2 gantries, 2.0 → 1, 3.0 → 1 (L2 + slower speed still scale 2→3)
-            n_g = 2 if intensity < 1.75 else 1
-        n_g = max(1, min(int(n_g), 4))
+            n_g = logistics_default_gantry_count(intensity)
+        n_g = max(1, min(int(n_g), max(len(default_gantry), 4)))
         gantry_indices = CfgMachine["num07_gantry_group"]["active_gantry_indices"]
         gantry_indices.clear()
         gantry_indices.extend(range(n_g))

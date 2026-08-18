@@ -110,6 +110,8 @@ def map_machine_state(raw_state: str) -> tuple[str, str | None]:
         return "STOP", "invalid_workstation"
     if raw_state.startswith("working_"):
         return "PROCESSING", f"task={raw_state.split('_', 1)[1]}"
+    if raw_state == "waiting_park":
+        return "IDLE", "parking_at_siding"
     if raw_state.startswith("waiting_"):
         return "BLOCKED", "downstream_not_ready"
     if raw_state.startswith("materialReadyFor_"):

@@ -47,7 +47,7 @@ class RuleBasedHierarchical():
 
         self.train_dir = config.get("train_dir", "runs")
         self.experiment_dir = os.path.join(self.train_dir, config.get("full_experiment_name", "rule_based"))
-        self.max_episodic_steps = int(config.get("max_episodic_steps", 45000))
+        self.max_episodic_steps = int(config.get("max_episodic_steps", 80000))
         self.max_sim_episodes = config.get("max_sim_episodes")
         if self.max_sim_episodes is not None:
             self.max_sim_episodes = int(self.max_sim_episodes)

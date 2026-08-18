@@ -105,6 +105,43 @@ def test_build_samples_remain_horizon() -> None:
     assert float(first["remain_mask"].sum()) == 6
     last_ok = [s for s in samples if s["jobs_remaining"] > 0]
     assert all(s["remain_len"] > 0 for s in last_ok)
+    assert samples[0]["episode_name"] == "toy"
+
+
+def test_split_episodes_by_name() -> None:
+    from factory_bn.dataset import split_episodes_by_name
+
+    names = [f"old_machine2.0__episode_{i:02d}" for i in range(50)]
+    names += [f"old_logistics2.0__episode_{i:02d}" for i in range(50)]
+    names += [f"new_machine1.0__episode_{i:02d}" for i in range(20)]
+    train, val, test = split_episodes_by_name(names, train_ratio=0.7, val_ratio=0.15, seed=42)
+    assert train.isdisjoint(val)
+    assert train.isdisjoint(test)
+    assert val.isdisjoint(test)
+    assert len(train) + len(val) + len(test) == 120
+    for prefix, n in (
+        ("old_machine2.0", 50),
+        ("old_logistics2.0", 50),
+        ("new_machine1.0", 20),
+    ):
+        nt = sum(1 for x in train if x.startswith(prefix))
+        nv = sum(1 for x in val if x.startswith(prefix))
+        ne = sum(1 for x in test if x.startswith(prefix))
+        assert nt + nv + ne == n
+        assert nt == int(n * 0.7)
+        assert nv >= 1 and ne >= 1
+
+    one_tr, one_va, one_te = split_episodes_by_name(["only"], train_ratio=0.7, val_ratio=0.15)
+    assert one_tr == {"only"}
+    assert one_va == {"only"}
+    assert one_te == {"only"}
+
+    two_tr, two_va, two_te = split_episodes_by_name(
+        ["run__0", "run__1"], train_ratio=0.7, val_ratio=0.15, seed=0
+    )
+    assert len(two_tr) == 1
+    assert two_tr.isdisjoint(two_va)
+    assert two_va == two_te
 
 
 if __name__ == "__main__":
@@ -112,4 +149,5 @@ if __name__ == "__main__":
     test_jobs_remaining_series()
     test_pack_remain_and_events()
     test_build_samples_remain_horizon()
+    test_split_episodes_by_name()
     print("ok")

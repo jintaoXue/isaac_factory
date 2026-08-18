@@ -16,7 +16,20 @@ def staging_slot_index(parallel_producing_limit: int | None = None) -> int:
     return int(parallel_producing_limit)
 
 
+def gantry_rail_has_worker(gantry_states: list, logistic_machine: str = "num07_gantry_group") -> bool:
+    """Shared rail: true if an active gantry is already on a task (not free/invalid)."""
+    active_indices = CfgMachine[logistic_machine]["active_gantry_indices"]
+    for gantry_index in active_indices:
+        state = gantry_states[gantry_index]
+        if state not in ("free", "invalid"):
+            return True
+    return False
+
+
 def find_free_gantry_index(gantry_states: list, logistic_machine: str = "num07_gantry_group") -> int | None:
+    """One worker on the shared rail. L2-invalid cranes do not count as workers."""
+    if gantry_rail_has_worker(gantry_states, logistic_machine):
+        return None
     active_indices = CfgMachine[logistic_machine]["active_gantry_indices"]
     for gantry_index in active_indices:
         if gantry_states[gantry_index] == "free":
@@ -45,7 +58,7 @@ class TaskManager:
     def __init__(
         self,
         cuda_device: torch.device,
-        max_episodic_steps: int = 45000,
+        max_episodic_steps: int = 80000,
         step_penalty: float = 0.01,
         finish_bonus: float = 2.0,
         task_bonus: float = 0.1,

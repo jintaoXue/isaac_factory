@@ -334,6 +334,7 @@ def _build_samples(
                 "tts": float(tts[label_idx]),
                 "duration": float(duration[label_idx]),
                 "episode_id": int(ep["episode_id"]),
+                "episode_name": str(ep.get("name") or ep["episode_id"]),
                 **padded,
                 "next_tau": next_tau,
                 "next_dur": next_dur,
@@ -349,6 +350,79 @@ def _build_samples(
                 sample["jobs_total"] = jobs_total
             samples.append(sample)
     return samples
+
+
+def _run_prefix(episode_name: str) -> str:
+    """``old_machine2.0__episode_00`` → ``old_machine2.0``; bare names stay as-is."""
+    text = str(episode_name)
+    return text.split("__", 1)[0] if text else ""
+
+
+def split_episodes_by_name(
+    episode_names: list[str],
+    *,
+    train_ratio: float = 0.7,
+    val_ratio: float = 0.15,
+    seed: int = 42,
+) -> tuple[set[str], set[str], set[str]]:
+    """Hold out whole episodes. Stratify by run prefix so each dim stays in all splits.
+
+    Ratios apply **per run** (``name.split('__')[0]``). Train is always disjoint
+    from val/test when a run has ≥2 episodes. Val and test are disjoint when a
+    run has ≥3 episodes; smaller runs reuse val as test.
+    """
+    uniq: list[str] = []
+    seen: set[str] = set()
+    for name in episode_names:
+        key = str(name)
+        if key not in seen:
+            seen.add(key)
+            uniq.append(key)
+    rng = np.random.default_rng(seed)
+    groups: dict[str, list[str]] = {}
+    for name in uniq:
+        groups.setdefault(_run_prefix(name), []).append(name)
+
+    train: list[str] = []
+    val: list[str] = []
+    test: list[str] = []
+    for run in sorted(groups):
+        group = list(groups[run])
+        rng.shuffle(group)
+        n = len(group)
+        if n == 0:
+            continue
+        if n == 1:
+            train.extend(group)
+            continue
+        n_train = max(1, int(n * train_ratio))
+        n_val = max(1, int(n * val_ratio)) if n >= 3 else 1
+        if n_train + n_val >= n and n > 2:
+            n_val = max(1, n - n_train - 1)
+        if n == 2:
+            n_train, n_val = 1, 1
+        n_train = min(n_train, n - 1)
+        train.extend(group[:n_train])
+        val.extend(group[n_train : n_train + n_val])
+        test.extend(group[n_train + n_val :])
+
+    if not test and val:
+        test = list(val)
+    elif not test and train:
+        test = list(train)
+    if not val and test:
+        val = list(test)
+    elif not val and train:
+        val = list(train)
+    return set(train), set(val), set(test)
+
+
+def _count_by_run(names: list[str] | set[str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for name in names:
+        key = _run_prefix(str(name))
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def build_infer_sample(
@@ -516,23 +590,22 @@ def build_dataloaders(
     if not samples:
         raise RuntimeError("No training samples; check episode length vs input_window")
 
-    rng = np.random.default_rng(seed)
-    indices = np.arange(len(samples))
-    rng.shuffle(indices)
-    n = len(indices)
-    n_train = max(1, int(n * train_ratio))
-    n_val = max(1, int(n * val_ratio))
-    if n_train + n_val >= n:
-        n_val = max(1, n - n_train - 1) if n > 2 else 0
-    train_idx = indices[:n_train]
-    val_idx = indices[n_train : n_train + n_val]
-    test_idx = indices[n_train + n_val :]
-    if len(test_idx) == 0:
-        test_idx = val_idx
-
-    train_samples = [samples[i] for i in train_idx]
-    val_samples = [samples[i] for i in val_idx]
-    test_samples = [samples[i] for i in test_idx]
+    episode_names = [str(ep.get("name") or ep["episode_id"]) for ep in bundle["episodes"]]
+    train_eps, val_eps, test_eps = split_episodes_by_name(
+        episode_names,
+        train_ratio=train_ratio,
+        val_ratio=val_ratio,
+        seed=seed,
+    )
+    train_samples = [s for s in samples if str(s.get("episode_name")) in train_eps]
+    val_samples = [s for s in samples if str(s.get("episode_name")) in val_eps]
+    test_samples = [s for s in samples if str(s.get("episode_name")) in test_eps]
+    if not train_samples:
+        raise RuntimeError("Episode split left train empty; check episode_name on samples")
+    if not val_samples:
+        val_samples = list(test_samples or train_samples)
+    if not test_samples:
+        test_samples = list(val_samples)
 
     x_cat = np.stack([s["x"] for s in train_samples], axis=0)
     if remain_to_jobs_done:
@@ -574,6 +647,16 @@ def build_dataloaders(
         "n_train": len(train_samples),
         "n_val": len(val_samples),
         "n_test": len(test_samples),
+        "split_by": "episode",
+        "n_train_episodes": len(train_eps),
+        "n_val_episodes": len(val_eps),
+        "n_test_episodes": len(test_eps),
+        "train_episodes": sorted(train_eps),
+        "val_episodes": sorted(val_eps),
+        "test_episodes": sorted(test_eps),
+        "train_episodes_by_run": _count_by_run(train_eps),
+        "val_episodes_by_run": _count_by_run(val_eps),
+        "test_episodes_by_run": _count_by_run(test_eps),
         "window_size_s": window_size,
         "horizon_windows": horizon_windows,
         "horizon_s": float(horizon_s),

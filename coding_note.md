@@ -353,7 +353,7 @@ flowchart LR
 
 #### （3）加工相关时长按工业场景加长
 - 上调 human 侧操作/加工计时（如 `control_machine`、上下料类 subtask 时间），使单段加工更接近真实节拍。
-- 副作用：整条工艺链 **总完工时间（makespan）明显变长**，已相应提高 episode horizon（如 `max_episodic_steps=45000`），否则易大量 truncation，训练信号失真。
+- 副作用：整条工艺链 **总完工时间（makespan）明显变长**，已相应提高 episode horizon（如 `max_episodic_steps=80000`），否则易大量 truncation，训练信号失真。
 
 #### （4）其他支撑（可略讲）
 - 修复龙门架间距约束下的移动死锁，保证长 episode 可跑通。

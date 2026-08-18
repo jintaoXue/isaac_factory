@@ -102,7 +102,7 @@ SCORE_PEAK_RATIO = 0.95
 # Config-only rows (machine_config / …) are ignored.
 DISTURBANCE_L2_TYPES = frozenset(
     {
-        "transport_delay",  # logistics: gantry down
+        "transport_delay",  # logistics: gantry or AGV down
         "machine_failure",  # machine: station invalid
         "human_unavailable",  # human: worker leave
         "material_shortage",  # material: hide idle warehouse stock

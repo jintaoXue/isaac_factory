@@ -196,9 +196,9 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     material_batch_upper_bound = 18
     # None = run until manually stopped; 1 = single episode then exit.
     max_episodes: int | None = None
-    # RL episode horizon. Scale with CfgSubtaskPredefinedTimeGallery
-    # (control_machine=200, material ops=50; WIP ≤ parallel limit).
-    max_episodic_steps = 45000
+    # RL episode horizon. Machine I=2.0 + real nav needs ~55k+ for 18 pipes
+    # (I=1.0 finishes ~28k); 45k truncated those runs. Leave headroom for I=3.0.
+    max_episodic_steps = 80000
     # Reward v2 (written by TaskManager.update_rl_signals)
     rl_step_penalty = 0.01
     rl_finish_bonus = 2.0
