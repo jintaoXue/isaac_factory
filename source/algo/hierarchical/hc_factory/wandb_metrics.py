@@ -1,9 +1,11 @@
 """Shared wandb groups for rule / hier / flat / eval.
 
-Metric1 — absolute episode outcome (same keys overlay across algos)
-Metric2 — relative efficiency (per product / vs T_budget)
-Metric3 — live shop-floor + throughput
-Train   — step clock + RL internals (epsilon, buffer, reward parts)
+Namespaces:
+  - MetricPeak: live shop-floor / concurrency state
+  - MetricCore: episode-level business KPIs
+  - MetricTrain: training-process health
+  - MetricLoss: optimization losses
+  - Curriculum: segment metadata
 """
 
 from __future__ import annotations
@@ -15,77 +17,75 @@ import wandb
 
 def define_shared_metrics(*, rl: bool = False, curriculum: bool = False) -> None:
     wandb.define_metric("Train/step")
-    wandb.define_metric("Metric1/episode")
+    wandb.define_metric("MetricCore/episode")
+    wandb.define_metric("MetricFullorderCore/episode")
 
     for key in (
-        "success",
-        "truncated",
-        "makespan",
-        "n_finished",
-        "ep_return",
+        "01_normalized_makespan",
+        "02_mean_per_product_span",
+        "03_success_rate",
+        "04_normalized_return",
+        "05_makespan",
+        "06_n_finished",
+        "07_finished_abs",
+        "08_ep_return",
+        "09_mean_makespan",
+        "10_mean_makespan_success",
     ):
-        wandb.define_metric(f"Metric1/{key}", step_metric="Metric1/episode")
+        wandb.define_metric(f"MetricCore/{key}", step_metric="MetricCore/episode")
+        wandb.define_metric(f"MetricFullorderCore/{key}", step_metric="MetricFullorderCore/episode")
 
     for key in (
-        "per_makespan",
-        "normalized_makespan",
-        "mean_makespan",
-        "mean_makespan_success",
+        "01_producing",
+        "02_ongoing_product",
+        "03_peak_producing",
+        "04_peak_ongoing_product",
+        "05_peak_ongoing_human",
+        "06_peak_ongoing_robot",
     ):
-        wandb.define_metric(f"Metric2/{key}", step_metric="Metric1/episode")
+        wandb.define_metric(f"MetricPeak/{key}", step_metric="Train/step")
+        wandb.define_metric(f"MetricFullorderPeak/{key}", step_metric="Train/step")
 
     for key in (
-        "finished",
-        "producing",
-        "ongoing",
-        "peak_producing",
-        "peak_ongoing",
-        "peak_ongoing_human",
-        "peak_ongoing_robot",
-        "ep_t",
-        "ep_reward",
-        "n_dispatch",
-        "wall_time_sec",
-        "wall_time_min",
-        "steps_per_min",
+        "01_epsilon",
+        "02_steps_per_min",
+        "03_wall_time_min",
+        "04_wall_time_hour",
+        "05_buffer_A",
+        "06_buffer_B",
+        "07_buffer_C",
+        "08_buffer_D_human",
+        "09_buffer_D_robot",
+        "10_buffer_flat",
     ):
-        wandb.define_metric(f"Metric3/{key}", step_metric="Train/step")
-
-    wandb.define_metric("Train/wall_time_sec", step_metric="Train/step")
-    wandb.define_metric("Train/wall_time_min", step_metric="Train/step")
-    wandb.define_metric("Train/steps_per_min", step_metric="Train/step")
-    wandb.define_metric("Train/ep_reward0", step_metric="Train/step")
-    wandb.define_metric("Train/step_reward0", step_metric="Train/step")
-    wandb.define_metric("Train/r_step0", step_metric="Train/step")
-    wandb.define_metric("Train/r_finish0", step_metric="Train/step")
-    wandb.define_metric("Train/r_task0", step_metric="Train/step")
-    wandb.define_metric("Train/r_success0", step_metric="Train/step")
+        wandb.define_metric(f"MetricTrain/{key}", step_metric="Train/step")
 
     if rl:
-        wandb.define_metric("Train/epsilon", step_metric="Train/step")
-        for name in ("A", "B", "C", "D_human", "D_robot", "flat"):
-            wandb.define_metric(f"Train/buffer_{name}", step_metric="Train/step")
-            wandb.define_metric(f"Loss/critic_{name}", step_metric="Train/step")
-        wandb.define_metric("Loss/critic_mean", step_metric="Train/step")
-        wandb.define_metric("Train/joint_valid0", step_metric="Train/step")
-        wandb.define_metric("Stagnation/resets_per_episode", step_metric="Metric1/episode")
+        for key in (
+            "01_critic_mean",
+            "02_critic_A",
+            "03_critic_B",
+            "04_critic_C",
+            "05_critic_D_human",
+            "06_critic_D_robot",
+            "07_critic_flat",
+        ):
+            wandb.define_metric(f"MetricLoss/{key}", step_metric="Train/step")
+        wandb.define_metric("Stagnation/resets_per_episode", step_metric="MetricCore/episode")
 
     if curriculum:
-        for key in ("stage", "delta_N", "start_nfin", "target_nfin"):
-            wandb.define_metric(f"Curriculum/{key}", step_metric="Metric1/episode")
+        for key in ("01_stage", "02_target_nfin", "03_start_nfin", "04_delta_n", "05_t_budget"):
+            wandb.define_metric(f"Curriculum/{key}", step_metric="MetricCore/episode")
 
 
 def axis_payload(env_step: int, wall_sec: float, steps_per_min: float | None = None) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "Train/step": int(env_step),
-        "Train/wall_time_sec": float(wall_sec),
-        "Train/wall_time_min": float(wall_sec) / 60.0,
-        "Metric3/wall_time_sec": float(wall_sec),
-        "Metric3/wall_time_min": float(wall_sec) / 60.0,
+        "MetricTrain/03_wall_time_min": float(wall_sec) / 60.0,
+        "MetricTrain/04_wall_time_hour": float(wall_sec) / 3600.0,
     }
     if steps_per_min is not None:
-        payload["Train/steps_per_min"] = float(steps_per_min)
-        payload["Metric3/steps_per_min"] = float(steps_per_min)
+        payload["MetricTrain/02_steps_per_min"] = float(steps_per_min)
     return payload
 
 
@@ -96,78 +96,101 @@ def episode_metrics(
     truncated: bool,
     makespan: int,
     n_finished: int,
+    finished_abs: int | None = None,
     ep_return: float,
     t_budget: int,
+    success_rate: float | None = None,
     mean_makespan: float | None = None,
     mean_makespan_success: float | None = None,
 ) -> dict[str, Any]:
-    """Absolute + relative KPIs. ``n_finished`` is work done *this episode* (delta)."""
+    """Episode-level business KPIs. ``n_finished`` is work done in this episode/segment."""
     t_budget = max(1, int(t_budget))
     n_finished = max(0, int(n_finished))
     makespan = int(makespan)
     payload: dict[str, Any] = {
-        "Metric1/episode": int(episode),
-        "Metric1/success": float(success),
-        "Metric1/truncated": float(truncated),
-        "Metric1/makespan": makespan,
-        "Metric1/n_finished": n_finished,
-        "Metric1/ep_return": float(ep_return),
-        "Metric2/normalized_makespan": float(makespan) / float(t_budget),
+        "MetricCore/episode": int(episode),
+        "MetricCore/01_normalized_makespan": float(makespan) / float(t_budget),
+        "MetricCore/02_mean_per_product_span": float(makespan) / float(max(1, n_finished)),
+        "MetricCore/04_normalized_return": float(ep_return) / float(max(1, makespan)),
+        "MetricCore/05_makespan": makespan,
+        "MetricCore/06_n_finished": n_finished,
+        "MetricCore/08_ep_return": float(ep_return),
     }
-    if n_finished > 0:
-        payload["Metric2/per_makespan"] = float(makespan) / float(n_finished)
+    if finished_abs is not None:
+        payload["MetricCore/07_finished_abs"] = int(finished_abs)
+    if success_rate is not None:
+        payload["MetricCore/03_success_rate"] = float(success_rate)
     if mean_makespan is not None:
-        payload["Metric2/mean_makespan"] = float(mean_makespan)
+        payload["MetricCore/09_mean_makespan"] = float(mean_makespan)
     if mean_makespan_success is not None:
-        payload["Metric2/mean_makespan_success"] = float(mean_makespan_success)
+        payload["MetricCore/10_mean_makespan_success"] = float(mean_makespan_success)
+    return payload
+
+
+def fullorder_core_metrics(base_payload: dict[str, Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    for key, value in base_payload.items():
+        if key.startswith("MetricCore/"):
+            payload[key.replace("MetricCore/", "MetricFullorderCore/", 1)] = value
     return payload
 
 
 def shop_metrics(
     *,
-    finished: int | None = None,
     producing: int | None = None,
     ongoing: int | None = None,
     peak_producing: int | None = None,
     peak_ongoing: int | None = None,
     peak_ongoing_human: int | None = None,
     peak_ongoing_robot: int | None = None,
-    ep_t: int | None = None,
-    ep_reward: float | None = None,
-    n_dispatch: int | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {}
     mapping = {
-        "finished": finished,
-        "producing": producing,
-        "ongoing": ongoing,
-        "peak_producing": peak_producing,
-        "peak_ongoing": peak_ongoing,
-        "peak_ongoing_human": peak_ongoing_human,
-        "peak_ongoing_robot": peak_ongoing_robot,
-        "ep_t": ep_t,
-        "n_dispatch": n_dispatch,
+        "01_producing": producing,
+        "02_ongoing_product": ongoing,
+        "03_peak_producing": peak_producing,
+        "04_peak_ongoing_product": peak_ongoing,
+        "05_peak_ongoing_human": peak_ongoing_human,
+        "06_peak_ongoing_robot": peak_ongoing_robot,
     }
     for key, value in mapping.items():
         if value is not None:
-            payload[f"Metric3/{key}"] = int(value)
-    if ep_reward is not None:
-        payload["Metric3/ep_reward"] = float(ep_reward)
+            payload[f"MetricPeak/{key}"] = int(value)
     return payload
 
 
-def reward_parts_metrics(rl0: dict | None, *, ep_reward0: float | None = None) -> dict[str, Any]:
-    rl0 = rl0 or {}
-    parts = rl0.get("reward_parts") or {}
-    payload: dict[str, Any] = {
-        "Train/step_reward0": float(rl0.get("reward", 0.0) or 0.0),
-        "Train/r_step0": float(parts.get("step", 0.0) or 0.0),
-        "Train/r_finish0": float(parts.get("finish", 0.0) or 0.0),
-        "Train/r_task0": float(parts.get("task", 0.0) or 0.0),
-        "Train/r_success0": float(parts.get("success", 0.0) or 0.0),
+def fullorder_peak_metrics(base_payload: dict[str, Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    for key, value in base_payload.items():
+        if key.startswith("MetricPeak/"):
+            payload[key.replace("MetricPeak/", "MetricFullorderPeak/", 1)] = value
+    return payload
+
+
+def train_metrics(
+    *,
+    epsilon: float | None = None,
+    buffer_A: int | None = None,
+    buffer_B: int | None = None,
+    buffer_C: int | None = None,
+    buffer_D_human: int | None = None,
+    buffer_D_robot: int | None = None,
+    buffer_flat: int | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    if epsilon is not None:
+        payload["MetricTrain/01_epsilon"] = float(epsilon)
+    mapping = {
+        "05_buffer_A": buffer_A,
+        "06_buffer_B": buffer_B,
+        "07_buffer_C": buffer_C,
+        "08_buffer_D_human": buffer_D_human,
+        "09_buffer_D_robot": buffer_D_robot,
+        "10_buffer_flat": buffer_flat,
     }
-    if ep_reward0 is not None:
-        payload["Train/ep_reward0"] = float(ep_reward0)
+    for key, value in mapping.items():
+        if value is not None:
+            payload[f"MetricTrain/{key}"] = int(value)
     return payload
 
 
@@ -177,7 +200,7 @@ def log_eval_episodes(
     t_budget: int,
     algo_name: str,
 ) -> None:
-    """Log eval episodes with the same Metric1/Metric2 keys as training."""
+    """Log eval episodes with the same MetricCore keys as training."""
     if wandb.run is None:
         return
     makespans: list[int] = []
@@ -197,11 +220,13 @@ def log_eval_episodes(
             truncated=bool(row.truncated),
             makespan=int(row.makespan),
             n_finished=n_fin,
+            finished_abs=n_fin,
             ep_return=float(row.ep_return),
             t_budget=t_budget,
             mean_makespan=mean_ms,
             mean_makespan_success=mean_ok,
         )
         payload["Train/step"] = i
+        payload.update(fullorder_core_metrics(payload))
         wandb.log(payload)
-    print(f"[Eval:{algo_name}] wandb logged {len(results)} episodes (Metric1/Metric2)")
+    print(f"[Eval:{algo_name}] wandb logged {len(results)} episodes (MetricCore)")

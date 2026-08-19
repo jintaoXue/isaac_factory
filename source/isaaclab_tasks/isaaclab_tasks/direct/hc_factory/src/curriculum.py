@@ -1,7 +1,10 @@
-"""Incremental-ΔN curriculum. Encoder dim and WIP cap stay 10; order stays 16.
+"""Reverse curriculum with fixed target=16.
 
-Each stage is a *segment*: start from ``start_nfin`` (catalog warmstart), finish
-``delta_N`` more products within ``T_budget = delta_N * per_T_max``.
+Each stage is a segment:
+    warmstart from ``start_nfin`` finished products,
+    aim for ``target_nfin`` (=16),
+    so the required progress is ``delta_n = target - start``,
+    with ``T_budget = delta_n * per_t_max``.
 """
 from __future__ import annotations
 
@@ -12,13 +15,13 @@ T_MAX_ANCHOR = 25000
 N_ANCHOR = 16
 WIP_CAP = 10  # same as HcVectorEnvCfg.single_env_parallel_producing_limit
 
-# (stage, start_nfin, delta_N) — target_nfin = start + delta; T_budget = delta * per_T_max
+# (stage, start_nfin, delta_n) with fixed target_nfin=16.
 STAGES: tuple[tuple[int, int, int], ...] = (
-    (0, 0, 2),
-    (1, 2, 2),
-    (2, 4, 4),
-    (3, 8, 4),
-    (4, 12, 4),
+    (0, 14, 2),
+    (1, 12, 4),
+    (2, 8, 8),
+    (3, 4, 12),
+    (4, 0, 16),
 )
 
 
@@ -51,7 +54,7 @@ def spec_for(stage: int, anchor: int = T_MAX_ANCHOR) -> StageSpec:
         stage=s,
         start_nfin=start,
         delta_n=delta,
-        target_nfin=min(N_ANCHOR, start + delta),
+        target_nfin=N_ANCHOR,
         n_products=N_ANCHOR,
         wip_cap=WIP_CAP,
         t_max=max(1, delta * pt),

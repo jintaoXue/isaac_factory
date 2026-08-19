@@ -7,6 +7,7 @@ action dict as hierarchical A→B→C→D. Joint validity uses the same mask sou
 from __future__ import division
 
 import os
+import time
 from collections import deque
 
 import torch
@@ -16,14 +17,16 @@ from rl_games.common import vecenv
 from .flat_action_space import FlatJointActionSpace
 from .flat_obs import FlatObsEncoder
 from .flat_rl_agent import RLFlatAgent
-from .hier_utils import compute_team_reward, crossed_interval, env_steps, read_rl_done
+from .hier_utils import compute_team_reward, crossed_interval, env_steps, read_rl_done, steps_per_min
 from .wandb_metrics import (
     axis_payload,
     define_shared_metrics,
     episode_metrics,
+    fullorder_core_metrics,
+    fullorder_peak_metrics,
     log_eval_episodes,
-    reward_parts_metrics,
     shop_metrics,
+    train_metrics,
 )
 
 
@@ -118,13 +121,20 @@ class FlatTPA:
         print("Flat experiment dir:", self.experiment_dir, "num_actors:", self.num_actors)
 
         self.use_wandb = config.get("wandb_activate", False)
+        self._train_t0 = None
         self._loss_window = deque(maxlen=200)
         self.makespan_success = deque(maxlen=int(config.get("makespan_window", 50)))
         self.makespan_all = deque(maxlen=int(config.get("makespan_window", 50)))
+        self.success_hist = deque(maxlen=int(config.get("makespan_window", 50)))
         self.episodes_done = 0
 
     def init_wandb_logger(self) -> None:
         define_shared_metrics(rl=True, curriculum=False)
+
+    def _wall_time_sec(self) -> float:
+        if self._train_t0 is None:
+            return 0.0
+        return float(time.time() - self._train_t0)
 
     def get_epsilon(self) -> float:
         ratio = min(1.0, self.global_step / max(1, self.epsilon_decay_steps))
@@ -236,9 +246,12 @@ class FlatTPA:
         if self.use_wandb:
             self.init_wandb_logger()
         obs: list[dict] = self.vec_env.reset()
+        self._train_t0 = time.time()
         episode_reward = [0.0 for _ in range(len(obs))]
         episode_len = [0 for _ in range(len(obs))]
-        ep_start_nfin = [_count_finished(o) for o in obs]
+        # Completed products count within the current episode.
+        # Env may reset on done, so accumulate per-step n_product_finished instead of reading progress.finished.
+        episode_n_finished = [0 for _ in range(len(obs))]
         prev_pre_list = [self.obs_encoder.preprocess(o) for o in obs]
         last_saved_env_steps = 0
         last_logged_env_steps = 0
@@ -262,6 +275,8 @@ class FlatTPA:
                 done, truncated, success = read_rl_done(next_obs[env_id])
                 episode_reward[env_id] += reward
                 episode_len[env_id] += 1
+                rl_step = next_obs[env_id].get("rl") or {}
+                episode_n_finished[env_id] += int(rl_step.get("n_product_finished", 0) or 0)
                 next_pre = self.obs_encoder.preprocess(next_obs[env_id])
                 self.observe_one_env(
                     prev_pre_list[env_id],
@@ -276,12 +291,13 @@ class FlatTPA:
                     self.episodes_done += 1
                     completed_ep = int(next_obs[env_id].get("episode_num", 0) or 0)
                     ep_len = episode_len[env_id]
-                    n_fin = max(0, _count_finished(obs[env_id]) - ep_start_nfin[env_id])
+                    n_fin = int(episode_n_finished[env_id])
                     if success:
                         self.makespan_success.append(ep_len)
                         self.makespan_all.append(ep_len)
                     elif truncated:
                         self.makespan_all.append(ep_len)
+                    self.success_hist.append(float(success))
                     mean_ms = (
                         sum(self.makespan_all) / len(self.makespan_all) if self.makespan_all else None
                     )
@@ -290,25 +306,31 @@ class FlatTPA:
                         if self.makespan_success
                         else None
                     )
+                    success_rate = (
+                        sum(self.success_hist) / len(self.success_hist) if self.success_hist else None
+                    )
                     if self.use_wandb:
-                        payload = axis_payload(env_steps(self.global_step, self.num_actors), 0.0)
-                        payload.update(
-                            episode_metrics(
-                                episode=self.episodes_done,
-                                success=success,
-                                truncated=truncated,
-                                makespan=ep_len,
-                                n_finished=n_fin,
-                                ep_return=episode_reward[env_id],
-                                t_budget=self.max_episodic_steps,
-                                mean_makespan=mean_ms,
-                                mean_makespan_success=mean_ms_ok,
-                            )
+                        wall = self._wall_time_sec()
+                        payload = axis_payload(env_steps(self.global_step, self.num_actors), wall)
+                        core_payload = episode_metrics(
+                            episode=self.episodes_done,
+                            success=success,
+                            truncated=truncated,
+                            makespan=ep_len,
+                            n_finished=n_fin,
+                            finished_abs=n_fin,
+                            ep_return=episode_reward[env_id],
+                            t_budget=self.max_episodic_steps,
+                            success_rate=success_rate,
+                            mean_makespan=mean_ms,
+                            mean_makespan_success=mean_ms_ok,
                         )
+                        payload.update(core_payload)
+                        payload.update(fullorder_core_metrics(core_payload))
                         wandb.log(payload)
                     episode_reward[env_id] = 0.0
                     episode_len[env_id] = 0
-                    ep_start_nfin[env_id] = _count_finished(next_obs[env_id])
+                    episode_n_finished[env_id] = 0
                     _clear_rl(next_obs[env_id])
                     del completed_ep
 
@@ -326,31 +348,24 @@ class FlatTPA:
                     else "n/a"
                 )
                 joint_valid = self.action_space.num_valid_actions(next_obs[0]) if self.action_space._ready else -1
+                wall = self._wall_time_sec()
+                spm = steps_per_min(self.global_step, wall, self.num_actors)
                 print(
                     f"[Flat] step={env_steps(self.global_step, self.num_actors)} episode={ep0} ep_t={t0} eps={epsilon:.3f} "
-                    f"ep_reward0={episode_reward[0]:.2f} finished={finished} "
+                    f"ep_reward0={episode_reward[0]:.2f} finished={finished} ep_done_finished={episode_n_finished[0]} "
                     f"mean_ms={mean_ms_str} joint_valid={joint_valid} rl={rl0} n_envs={len(obs)}"
                 )
                 if self.use_wandb:
-                    parts = (rl0 or {}).get("reward_parts") or {}
                     loss_mean = sum(self._loss_window) / len(self._loss_window) if self._loss_window else None
                     buf_len = len(self.agent.dqn.buffer) if self.agent.dqn is not None else 0
-                    payload = axis_payload(env_steps(self.global_step, self.num_actors), 0.0)
-                    payload.update(
-                        shop_metrics(
-                            finished=finished,
-                            ep_t=t0,
-                            ep_reward=episode_reward[0],
-                        )
-                    )
-                    payload.update(reward_parts_metrics(rl0, ep_reward0=episode_reward[0]))
-                    payload["Train/epsilon"] = epsilon
-                    payload["Train/buffer_flat"] = buf_len
-                    payload["Train/joint_valid0"] = float(joint_valid)
+                    payload = axis_payload(env_steps(self.global_step, self.num_actors), wall, spm)
+                    peak_payload = shop_metrics()
+                    payload.update(peak_payload)
+                    payload.update(fullorder_peak_metrics(peak_payload))
+                    payload.update(train_metrics(epsilon=epsilon, buffer_flat=buf_len))
                     if loss_mean is not None:
-                        payload["Loss/critic_flat"] = loss_mean
+                        payload["MetricLoss/07_critic_flat"] = loss_mean
                     wandb.log(payload)
-                    del parts
 
             if crossed_interval(last_saved_env_steps, env_step, self.save_interval):
                 self.save_checkpoint(env_step)

@@ -187,7 +187,7 @@ class HorizonHooks:
             spec = self.curriculum.spec
             print(
                 f"[Hier] curriculum -> stage {spec.stage} "
-                f"start={spec.start_nfin} ΔN={spec.delta_n} target={spec.target_nfin} "
+                f"target={spec.target_nfin} start={spec.start_nfin} delta={spec.delta_n} "
                 f"T_budget={spec.t_max}"
             )
 

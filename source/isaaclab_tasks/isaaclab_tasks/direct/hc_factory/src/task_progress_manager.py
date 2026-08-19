@@ -96,6 +96,9 @@ class TaskManager:
             "done": False,
             "truncated": False,
             "success": False,
+            # Per-step stats (filled in TaskManager.update_rl_signals)
+            "n_product_finished": 0,
+            "n_task_done": 0,
             "reward_parts": {
                 "step": 0.0,
                 "finish": 0.0,
@@ -154,6 +157,9 @@ class TaskManager:
                 "done": False,
                 "truncated": False,
                 "success": False,
+                # Per-step stats (filled below)
+                "n_product_finished": 0,
+                "n_task_done": 0,
                 "reward_parts": {},
             }
         rl = env_state_action_dict["rl"]
@@ -188,6 +194,8 @@ class TaskManager:
         rl["done"] = bool(done)
         rl["truncated"] = bool(truncated)
         rl["success"] = bool(success)
+        rl["n_product_finished"] = int(n_finished)
+        rl["n_task_done"] = int(n_task_done)
         rl["reward_parts"] = {
             "step": float(part_step),
             "finish": float(part_finish),
