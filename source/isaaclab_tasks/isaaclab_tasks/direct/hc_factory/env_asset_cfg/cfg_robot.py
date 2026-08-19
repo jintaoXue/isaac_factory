@@ -70,7 +70,7 @@ CfgRobot = {
 
 
 CfgRobotRegistrationInfos = {
-    "AGV": 4,  # idx: 00-03 (matches USD robot_AGV_00..03)
+    "AGV": 4,  # idx: 00-03 (HC_import.usd authors robot_AGV_00..03)
 }
 
 RobotIdAppearance = {

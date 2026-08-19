@@ -88,7 +88,6 @@ def process_env_dir(
         horizon,
         score_threshold,
         min_event_windows,
-        disturbance_rows=disturbance_rows,
         as_of_s=as_of_s,
     )
     job_kpi_rows, order_kpi = build_job_kpis(
@@ -145,6 +144,7 @@ def process_env_dir(
         "score_threshold": score_threshold,
         "min_event_windows": min_event_windows,
         "n_disturbance_l2": len(dist_intervals),
+        # Sanity: L2 is input context only; this must stay 0 after 2026-08-19.
         "n_events_from_disturbance": sum(
             1
             for e in event_rows

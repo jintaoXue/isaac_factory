@@ -23,8 +23,8 @@ _PRODUCT_PRIM_SPECS: tuple[tuple[str, str], ...] = (
 def ensure_product_water_pipe_prims(env_id: int) -> None:
     """Clone missing product material prims when order > USD-authored instances.
 
-    HC_import.usd ships with batch indices 00-04 only. Higher ``CfgRegistrationInfos``
-    values are satisfied by duplicating the 00 template at runtime.
+    HC_import.usd currently authors batch indices 00-15. Higher ``CfgRegistrationInfos``
+    values (16-17 for an 18-order run) are satisfied by duplicating the 00 template.
     """
     required = int(CfgRegistrationInfos.get("ProductWaterPipe", 0) or 0)
     if required <= 0:

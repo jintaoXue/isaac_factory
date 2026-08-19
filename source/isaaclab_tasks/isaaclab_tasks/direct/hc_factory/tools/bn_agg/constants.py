@@ -7,8 +7,10 @@ BLOCKED_STATES = frozenset({"BLOCKED"})
 STARVED_STATES = frozenset({"STARVED", "WAITING"})
 STOP_STATES = frozenset({"STOP"})
 
-# Spec §7.2 weights (sum=1). Dense PDFormer target = congestion, not mere busyness.
-# Stall/unavailable are already 0–1; queue/wait/duration are min-max within the window.
+# Dense PDFormer target = process congestion (queue / stall / coupling), not
+# injected downtime. STOP/unavailable stays an *input* feature; L2 pulses are
+# environment context via disturbance_active_s, not score y.
+# Stall/active/up/down are already 0–1; queue/wait/duration are min-max in-window.
 W_QUEUE = 0.15
 W_WAIT = 0.10
 W_STALL = 0.20
@@ -16,7 +18,7 @@ W_ACTIVE = 0.10
 W_ACTIVE_DUR = 0.05
 W_UPSTREAM = 0.10
 W_DOWNSTREAM = 0.10
-W_STOP = 0.20
+W_STOP = 0.0
 
 # Keep in sync with PDFormer/factory_bn/graph.py (serial flow; siblings are parallel).
 PROCESS_CHAIN: list[str] = [
@@ -96,9 +98,9 @@ HOT_ACTIVE_PCT = 0.70
 SCORE_PEAK_FLOOR = 0.20
 SCORE_PEAK_RATIO = 0.95
 
-# L2 rows that become bottleneck_event / will_bottleneck.
-# quality_hold is a planned window logged at episode start (not an actual
-# extra dwell) — keep it out of the event union until real hold rows exist.
+# L2 interval types that fill the *input* column disturbance_active_s.
+# They are environment configuration, not bottleneck events / will labels.
+# quality_hold is a planned window logged at episode start — not an L2 pulse.
 # Config-only rows (machine_config / …) are ignored.
 DISTURBANCE_L2_TYPES = frozenset(
     {

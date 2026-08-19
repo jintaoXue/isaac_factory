@@ -60,8 +60,8 @@ def row_is_hot(row: dict | None, score_threshold: float | None = None) -> bool:
     ---------------
     PDFormer (dense): every node/window keeps ``bottleneck_score_s``,
     ``is_window_peak``, ``is_momentary_bn``, occupancy, stall times, etc.
-    STGNPP (sparse): score-events are TPM turning-points; L2 disturbances
-    are a *separate* event source in ``labels.py`` (not merged onsets).
+    STGNPP (sparse): events are TPM turning-points only. Injected L2 is
+    environment context (``disturbance_active_s``), never an event onset.
 
     Inventory sitting in a warehouse, routine STARVED/BLOCKED, and "who is
     busiest" must not mint events — those are PDFormer features.
@@ -405,7 +405,7 @@ def add_bottleneck_scores(feature_rows: list[dict]) -> list[dict]:
                 + W_ACTIVE_DUR * d[i]
                 + W_UPSTREAM * r["upstream_blocked_ratio_s"]
                 + W_DOWNSTREAM * r["downstream_starved_ratio_s"]
-                + W_STOP * float(r.get("unavailable_pct_s") or 0.0)
+                + W_STOP * float(r.get("unavailable_pct_s") or 0.0)  # 0: downtime is X, not y
             )
             r["bottleneck_score_s"] = round(score, 6)
             r["norm_queue_length_s"] = round(q[i], 6)
