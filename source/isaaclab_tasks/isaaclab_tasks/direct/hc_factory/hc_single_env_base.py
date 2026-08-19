@@ -132,6 +132,11 @@ class HcSingleEnvBase():
         self.disturbance_injector.reset(self.env_state_action_dict)
         return self.env_state_action_dict
 
+    def restore_checkpoint(self, ckpt: dict) -> dict:
+        from .src.env_checkpoint import restore
+
+        return restore(self, ckpt)
+
     def apply_data_to_sim(self) -> None:
         #articulations
         articulations : dict = self.env_state_action_dict["articulations"]
@@ -273,6 +278,16 @@ class HcSingleEnvBase():
 
         if self._maybe_watchdog_reset():
             return
+
+        # Debug freeze dump (disabled for long training runs — re-enable when diagnosing deadlocks):
+        # try:
+        #     from .src import debug_env_dump
+        #     debug_env_dump.maybe_dump_freeze(
+        #         self.env_state_action_dict,
+        #         getattr(self.machine_manager, "num07_gantry_group", None),
+        #     )
+        # except Exception as exc:
+        #     print(f"[debug_env_dump] skipped: {exc!r}")
 
         # Episode end: ENV resets here. Snapshot ``rl`` so callers can still read
         # this step's reward/done after reset (DQN bootstrap uses done flag).

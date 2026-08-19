@@ -14,13 +14,14 @@ params:
     device_name: 'cuda:0'
     time_str: "None"
 
-    # Must match HcVectorEnvCfg.scene.num_envs
-    num_actors: 3
-    max_episodic_steps: 80000
+    # Overridden by train.py from --num_envs / env.num_envs
+    num_actors: 1
+    max_episodic_steps: 25000
     state_dim: 256
 
-    gamma: 0.99
+    gamma: 0.998
     learning_rate: 1.0e-4
+    encoder_learning_rate: 1.0e-4
     batch_size: 64
     replay_buffer_size: 50000
     hidden_dim: 128
@@ -31,15 +32,15 @@ params:
 
     # epsilon-greedy exploration
     epsilon_start: 1.0
-    epsilon_end: 0.05
-    epsilon_decay_steps: 100000
+    epsilon_end: 0.0
+    epsilon_decay_steps: 200000
 
-    # training loop
-    learn_interval: 1
+    # training loop (learn_interval: DQN backward every N env steps; buffer stores every decision step)
+    learn_interval: 8
     save_interval: 5000
     log_interval: 100
-    parallel_producing_limit: 5
-    max_parallel_cd_dispatch: 5
+    parallel_producing_limit: 10
+    max_parallel_cd_dispatch: 10
 
     test: False
     test_times: 1
@@ -52,3 +53,16 @@ params:
 
     load_dir: ''
     load_name: ''
+
+    # Horizon / catalog / curriculum (see 2026_Journal_Paper §5)
+    explore: False
+    explore_catalog: False
+    explore_catalog_dir: ''
+    warmstart: ''
+    curriculum: False
+    curriculum_start_stage: 0
+    t_max_anchor: 25000
+    stagnation_l1: 400
+    stagnation_l2: 600
+    stagnation_l3: 800
+    decision_ring_k: 20

@@ -30,7 +30,7 @@ def _empty_allocation(human_dim: int, robot_dim: int, device: torch.device) -> d
 def build_rule_based_action(
     env_state_action_dict: dict,
     cuda_device: torch.device,
-    max_parallel_cd_dispatch: int = 5,
+    max_parallel_cd_dispatch: int = 1,
     agent_a: ProductSequencingAgent | None = None,
     agent_b: ProductPriorityAgent | None = None,
     agent_c: ProcessTaskPlanningAgent | None = None,
@@ -117,15 +117,20 @@ def build_hier_rl_action(
     cuda_device: torch.device,
     agents,
     epsilon: float,
-    max_parallel_cd_dispatch: int = 5,
+    max_parallel_cd_dispatch: int = 1,
+    pre: dict | None = None,
 ) -> dict:
-    """RL variant: A/B/C/D agents with same info-pool CD loop."""
+    """RL variant: A/B/C/D agents with same info-pool CD loop (Phase 1: K=1 typical)."""
+    if pre is None:
+        pre = agents.obs_encoder.preprocess(env_state_action_dict)
     pool = TpaInfoPool(env_state_action_dict, cuda_device)
-    product_sequencing = agents.agent_A.act(env_state_action_dict, epsilon)
+    product_sequencing = agents.agent_A.act(env_state_action_dict, epsilon, pre=pre)
     pool.apply_product_sequencing(product_sequencing)
 
     eligible = pool.compute_b_eligible_mask()
-    slot_order = agents.agent_B.rank_slots(env_state_action_dict, eligible, epsilon)
+    slot_order = agents.agent_B.rank_slots(
+        env_state_action_dict, eligible, epsilon, product_sequencing, pre=pre
+    )
     b_dim = eligible.shape[0]
     human_dim = env_state_action_dict["agent_action_mask"]["human"]["self_availability_mask"].shape[0]
     robot_dim = env_state_action_dict["agent_action_mask"]["robot"]["self_availability_mask"].shape[0]
@@ -143,14 +148,14 @@ def build_hier_rl_action(
         c_mask = pool.get_c_mask_for_slot(slot_index)
         slot_one_hot = _slot_to_one_hot(slot_index, b_dim, cuda_device)
         process_task_planning = agents.agent_C.act_with_mask(
-            env_state_action_dict, slot_one_hot, c_mask, epsilon
+            env_state_action_dict, slot_one_hot, c_mask, epsilon, pre=pre
         )
         if process_task_planning[0] == 1 and c_mask.sum() <= 1:
             continue
 
         d_masks = pool.get_d_masks()
         human_robot_allocation = agents.agent_D.act_with_masks(
-            env_state_action_dict, process_task_planning, d_masks, epsilon
+            env_state_action_dict, process_task_planning, d_masks, epsilon, pre=pre
         )
         if process_task_planning[0] != 1 and human_robot_allocation["human"].sum() == 0:
             continue

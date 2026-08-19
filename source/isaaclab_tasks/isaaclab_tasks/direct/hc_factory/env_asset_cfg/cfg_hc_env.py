@@ -182,7 +182,7 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     #asset path, include machine, human, robot
     asset_path = os.path.expanduser("~") + "/work/Dataset/HC_data/final_for_isaac/HC_import.usd"
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=3, env_spacing=120.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=1, env_spacing=120.0, replicate_physics=True)
     # cuda decive
     cuda_device_str = "cuda:0"
     #train_cfg will be update when running train.py
@@ -190,20 +190,19 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     # rendering_resolution = (3840, 2160)
     rendering_resolution = (1920, 1080)
 
-    single_env_parallel_producing_limit = 5
+    single_env_parallel_producing_limit = 10
     human_number_upper_bound = 6
-    robot_upper_bound = 2
+    robot_upper_bound = 4
     material_batch_upper_bound = 18
     # None = run until manually stopped; 1 = single episode then exit.
     max_episodes: int | None = None
-    # RL episode horizon. Machine I=2.0 + real nav needs ~55k+ for 18 pipes
-    # (I=1.0 finishes ~28k); 45k truncated those runs. Leave headroom for I=3.0.
+    # Collect horizon for 18 pipes + real nav. RL yaml may override to 25000.
     max_episodic_steps = 80000
     # Reward v2 (written by TaskManager.update_rl_signals)
-    rl_step_penalty = 0.01
+    rl_step_penalty = 0.05
     rl_finish_bonus = 2.0
     rl_task_bonus = 0.1
-    rl_success_bonus = 20.0
+    rl_success_bonus = 50.0
 
 
 

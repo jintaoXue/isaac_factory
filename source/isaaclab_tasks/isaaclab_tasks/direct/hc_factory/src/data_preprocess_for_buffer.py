@@ -30,9 +30,9 @@ _SAMPLE_PY = (
 
 @dataclass(frozen=True)
 class BufferPreprocessCfg:
-    max_ongoing: int = 5  # = HcVectorEnvCfg.single_env_parallel_producing_limit
+    max_ongoing: int = 10  # = HcVectorEnvCfg.single_env_parallel_producing_limit
     max_human: int = 6  # HcVectorEnvCfg.human_number_upper_bound
-    max_robot: int = 2
+    max_robot: int = 4  # HcVectorEnvCfg.robot_upper_bound
     max_material: int = 16  # = HcVectorEnvCfg.material_batch_upper_bound
     max_machine: int = 16
     max_storage: int = 32
@@ -95,6 +95,7 @@ SUBTASK = Vocab(
         "done",
         "none",
         "carry_to_robot",
+        "go_to_goal_robot",
         "carry_to_goal_area",
         "move_to_goal_area",
         "finding_free_gantry",

@@ -4,7 +4,8 @@ from ..env_asset_cfg.cfg_material_product import CfgProductOrder, CfgProductProc
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskGalleryDetailedClassified, CfgSubtaskGallery, TaskRecordTemplate
 from ..env_asset_cfg.cfg_machine import CfgMachine
 from ..env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
-from .material import find_free_storage, reserve_storage_slot, task_required_materials_ready
+from ..env_asset_cfg.cfg_gantry_zone import get_gantry_zone
+from .material import find_free_storage, reserve_storage_slot, finalize_material_batch_task_done
 import torch
 import copy
 
@@ -16,24 +17,27 @@ def staging_slot_index(parallel_producing_limit: int | None = None) -> int:
     return int(parallel_producing_limit)
 
 
-def gantry_rail_has_worker(gantry_states: list, logistic_machine: str = "num07_gantry_group") -> bool:
-    """Shared rail: true if an active gantry is already on a task (not free/invalid)."""
+def find_free_gantry_index(
+    gantry_states: list,
+    logistic_machine: str = "num07_gantry_group",
+    preferred_zone: int | None = None,
+) -> int | None:
+    """Return a free active gantry. Prefer preferred_zone when it is active."""
     active_indices = CfgMachine[logistic_machine]["active_gantry_indices"]
-    for gantry_index in active_indices:
-        state = gantry_states[gantry_index]
-        if state not in ("free", "invalid"):
-            return True
-    return False
-
-
-def find_free_gantry_index(gantry_states: list, logistic_machine: str = "num07_gantry_group") -> int | None:
-    """One worker on the shared rail. L2-invalid cranes do not count as workers."""
-    if gantry_rail_has_worker(gantry_states, logistic_machine):
-        return None
-    active_indices = CfgMachine[logistic_machine]["active_gantry_indices"]
+    if preferred_zone is not None and preferred_zone in active_indices:
+        if gantry_states[preferred_zone] == "free":
+            return preferred_zone
+        return None  # wait for the preferred active crane
     for gantry_index in active_indices:
         if gantry_states[gantry_index] == "free":
             return gantry_index
+    return None
+
+
+def find_free_robot_name(env_state_action_dict: dict) -> str | None:
+    for robot_name, robot_state in env_state_action_dict["robot"].items():
+        if robot_state["state"] == "free":
+            return robot_name
     return None
 
 
@@ -58,7 +62,7 @@ class TaskManager:
     def __init__(
         self,
         cuda_device: torch.device,
-        max_episodic_steps: int = 80000,
+        max_episodic_steps: int = 25000,
         step_penalty: float = 0.01,
         finish_bonus: float = 2.0,
         task_bonus: float = 0.1,
@@ -84,6 +88,9 @@ class TaskManager:
         env_state_action_dict["progress"]["finished"] = {}
         env_state_action_dict["progress"]["ongoing_task_records"] = {}
         env_state_action_dict["progress"]["production_done"] = False
+        env_state_action_dict["progress"]["stage_wip_cap"] = env_state_action_dict["progress"].get(
+            "stage_wip_cap", int(HcVectorEnvCfg().single_env_parallel_producing_limit)
+        )
         env_state_action_dict["rl"] = {
             "reward": 0.0,
             "done": False,
@@ -114,16 +121,15 @@ class TaskManager:
                     self.decode_human_robot_allocation_dict(
                         item["human_robot_allocation"], env_state_action_dict, new_task_record
                     )
-                    if self._can_assign_new_task(env_state_action_dict, new_task_record):
-                        self.update_new_task_record(env_state_action_dict, new_task_record)
+                    # May return False (no AGV / preferred gantry busy) — skip, retry later.
+                    self.update_new_task_record(env_state_action_dict, new_task_record)
         else:
             new_task_record = copy.deepcopy(TaskRecordTemplate)
             if self.decode_action_product_selection(env_state_action_dict, new_task_record):
                 have_new_task = self.decode_action_process_task_planning(env_state_action_dict, new_task_record)
                 if have_new_task:
                     self.decode_action_human_robot_allocation(env_state_action_dict, new_task_record)
-                    if self._can_assign_new_task(env_state_action_dict, new_task_record):
-                        self.update_new_task_record(env_state_action_dict, new_task_record)
+                    self.update_new_task_record(env_state_action_dict, new_task_record)
 
         step_stats = self.step_task_records(env_state_action_dict)
         self.check_done_production(env_state_action_dict)
@@ -138,8 +144,9 @@ class TaskManager:
             ``-step_penalty``
             ``+ finish_bonus * Δfinished_products``
             ``+ task_bonus * Δcompleted_process_tasks``
-            ``+ success_bonus * (1 - t/T_max)`` on success
-        Terminal: ``production_done`` → success; ``time_step+1 >= max_episodic_steps`` → truncated.
+            ``+ success_bonus * (1 - t/T_budget)`` on segment success
+        Terminal: ``n_finished >= segment_target_nfin`` → success;
+        ``time_step+1 >= max_episodic_steps`` (segment T_budget) → truncated.
         """
         if "rl" not in env_state_action_dict or not isinstance(env_state_action_dict["rl"], dict):
             env_state_action_dict["rl"] = {
@@ -169,7 +176,7 @@ class TaskManager:
         if bool(progress.get("production_done")):
             done = True
             success = True
-            # earlier finish → larger bonus (makespan-aligned)
+            # earlier finish → larger bonus (segment T_budget = max_episodic_steps)
             remain = max(0.0, 1.0 - float(t_after) / float(max(1, self.max_episodic_steps)))
             part_success = self.success_bonus * remain
         elif t_after >= self.max_episodic_steps:
@@ -189,58 +196,27 @@ class TaskManager:
         }
         return env_state_action_dict
 
-    def _can_assign_new_task(self, env_state_action_dict: dict, new_task_record: dict) -> bool:
-        """Guard against stale actions when a workstation was marked invalid/DOWN."""
-        if new_task_record.get("human") is None:
-            return False
-        product_type = new_task_record["product"]
-        if not task_required_materials_ready(
-            env_state_action_dict,
-            product_type,
-            new_task_record["product_index"],
-            new_task_record["task"],
-        ):
-            return False
-        task_meta = CfgProcessTaskGalleryDetailedClassified[product_type][new_task_record["task"]]
-        target_machine = task_meta["target_machine"]
-        states = env_state_action_dict["machine"][target_machine]["state"]
-        task_type = task_meta["task_type"]
-        if task_type == "logistic":
-            if "free" not in states:
-                return False
-            if self._find_free_gantry(env_state_action_dict, {**new_task_record, **task_meta}) is None:
-                return False
-            return True
-        if task_type == "processing":
-            for state in states:
-                if state == "free" or state == "invalid":
-                    continue
-                pre_name = state.split("_")[0]
-                task_name = state.split("_", 1)[1]
-                if pre_name == "materialReadyFor" and task_name == new_task_record["task"]:
-                    return True
-            return False
-        return False
-
     def check_done_production(self, env_state_action_dict: dict) -> bool:
-        """True when every product in the order is finished and nothing is still in progress."""
+        """True when the current segment target (or full order) is reached."""
         progress = env_state_action_dict["progress"]
-        product_order = progress["product_order"]
         finished = progress.get("finished", {})
+        n_fin = 0
+        for v in finished.values():
+            n_fin += len(v) if hasattr(v, "__len__") and not isinstance(v, (str, bytes)) else int(v or 0)
 
+        target = progress.get("segment_target_nfin")
+        if target is not None:
+            if n_fin >= int(target):
+                progress["production_done"] = True
+                return True
+            progress["production_done"] = False
+            return False
+
+        product_order = progress["product_order"]
         for product_type, required in product_order.items():
             if len(finished.get(product_type, [])) < required:
                 progress["production_done"] = False
                 return False
-
-        # not_started = progress.get("not_started", {})
-        # if any(count > 0 for count in not_started.values()):
-        #     progress["production_done"] = False
-        #     return False
-        # if progress.get("producing") or progress.get("ongoing_task_records"):
-        #     progress["production_done"] = False
-        #     return False
-
         progress["production_done"] = True
         return True
 
@@ -361,17 +337,24 @@ class TaskManager:
             list(env_state_action_dict["machine"][new_task_record["target_machine"]]["key_variables"]["working_area_ids"].keys())[workstation_index]
         new_task_record["chosen_workstation_index"] = workstation_index
         new_task_record["task_start_time_step"] = int(env_state_action_dict["time_step"])
+        # Build subtasks first (sets preferred_gantry_zone / may drop AGV on same-zone).
+        subtasks = self.initialze_subtasks(env_state_action_dict, new_task_record)
+        if subtasks is None:
+            # Cross-zone logistic with no free AGV: skip start (wait for a later dispatch).
+            return False
+        new_task_record["subtasks_dict"] = subtasks
         if new_task_record["task_type"] == "logistic":
             chosen_gantry_index = self._find_free_gantry(env_state_action_dict, new_task_record)
-            assert chosen_gantry_index is not None, "Free gantry index should be found"
+            if chosen_gantry_index is None:
+                # Preferred-zone crane busy (mask only checks "any free gantry"). Wait.
+                return False
             new_task_record["chosen_gantry_index"] = chosen_gantry_index
-        #subtasks information
-        new_task_record["subtasks_dict"] : dict = copy.deepcopy(self.initialze_subtasks(env_state_action_dict, new_task_record))
-        
+
         env_state_action_dict["progress"]["ongoing_task_records"][new_task_record["product_index"]] = new_task_record
         self.apply_new_task_record_to_human_robot_machine_material(env_state_action_dict, new_task_record)
         if new_task_record.get("from_staging_slot"):
             self._commit_new_product_to_producing(env_state_action_dict, new_task_record)
+        return True
 
     def _commit_new_product_to_producing(self, env_state_action_dict: dict, task_record: dict) -> None:
         """5.2b: dispatch from staging slot immediately enters WIP."""
@@ -387,24 +370,52 @@ class TaskManager:
 
     def _find_free_gantry(self, env_state_action_dict, task_record):
         gantry_states: list[str] = env_state_action_dict["machine"][task_record["logistic_machine"]]["state"]
-        return find_free_gantry_index(gantry_states, task_record["logistic_machine"])
+        return find_free_gantry_index(
+            gantry_states,
+            task_record["logistic_machine"],
+            preferred_zone=task_record.get("preferred_gantry_zone"),
+        )
 
     def initialze_subtasks(self, env_state_action_dict, task_record):
         if task_record["task_type"] == "logistic":
-            if task_record["robot"] != None:
-                subtasks = copy.deepcopy(CfgSubtaskGallery[task_record["product"]][task_record["task"]]["have_AGV"])
-            else:
-                subtasks = copy.deepcopy(CfgSubtaskGallery[task_record["product"]][task_record["task"]]["only_have_gantry"])
-            #1. set the material start area for subtasks dict
             product_name = f"num_{task_record['product_index']:02d}_{task_record['product']}"
             required_logistic_material = task_record["logistic_submaterial"]
             state_material = env_state_action_dict["material"][product_name]["submaterials"][required_logistic_material]
             assert state_material["storage_name"] is not None, "The storage name should be initialized in material.py"
+            assert state_material["storage_name"] != "disappear", "The material still not appeared"
+            material_start_area = state_material["storage_name"]
+            gallery_task = CfgSubtaskGallery[task_record["product"]][task_record["task"]]
+            # Peek goal from template (before deepcopy) to choose same/cross template.
+            peek_goal = gallery_task["have_AGV"]["material_goal_area"]
+            machine_workstation_key = task_record["chosen_machine_workstation"]
+            start_zone = get_gantry_zone(material_start_area, None)
+            goal_zone = get_gantry_zone(peek_goal, machine_workstation_key)
+            same_zone = start_zone is not None and start_zone == goal_zone
+
+            # Hard rule: same-zone = gantry only; cross-zone = AGV required (never single-crane cross).
+            if same_zone:
+                subtasks = copy.deepcopy(gallery_task["only_have_gantry"])
+                task_record["robot"] = None
+                task_record["robot_index"] = None
+                task_record["goal_gantry_zone"] = None
+                task_record["preferred_gantry_zone"] = start_zone
+            else:
+                if task_record.get("robot") is None:
+                    # Grab a free AGV if Agent D did not assign one.
+                    robot_name = find_free_robot_name(env_state_action_dict)
+                    if robot_name is None:
+                        # Hard wait: do not start cross-zone logistic without AGV.
+                        return None
+                    robot_keys = list(env_state_action_dict["robot"].keys())
+                    task_record["robot"] = robot_name
+                    task_record["robot_index"] = robot_keys.index(robot_name)
+                subtasks = copy.deepcopy(gallery_task["have_AGV"])
+                task_record["preferred_gantry_zone"] = start_zone
+                task_record["goal_gantry_zone"] = goal_zone
+
             assert subtasks["material_start_area"] != subtasks["material_goal_area"], "The material start area and goal area should be different, \
                 otherwise dont need to logistic this material"
-            subtasks["material_start_area"] = state_material["storage_name"]
-            #2. update the working area ids by specifying the machine type and workstation key
-            # (1) update the start area ids
+            subtasks["material_start_area"] = material_start_area
             if subtasks["material_start_area"] in env_state_action_dict["machine"]:
                 chosen_machine_workstation_key = task_record["chosen_machine_workstation"]
                 subtasks["start_area_ids"] = env_state_action_dict["machine"][subtasks["material_start_area"]]["key_variables"]["working_area_ids"][chosen_machine_workstation_key]
@@ -412,22 +423,90 @@ class TaskManager:
                 subtasks["start_area_ids"] = env_state_action_dict["storage"][subtasks["material_start_area"]]["key_variables"]["working_area_ids"]
             else:
                 raise ValueError(f"Invalid material start area: {subtasks['material_start_area']}")
-            # (2) update the goal area ids
-            machine_workstation_key = task_record["chosen_machine_workstation"]
             subtasks["goal_area_ids"] = subtasks["goal_area_ids"][machine_workstation_key]
             subtasks["goal_area_workstation_key"] = machine_workstation_key
         elif task_record["task_type"] == "processing":
-            if task_record["robot"] != None:
-                subtasks = copy.deepcopy(CfgSubtaskGallery[task_record["product"]][task_record["task"]]["have_AGV"])
-            else:
-                subtasks = copy.deepcopy(CfgSubtaskGallery[task_record["product"]][task_record["task"]]["only_have_gantry"])
-            # only update the start area ids, the goal area ids is updated during the processing task
+            # Goal (machine/storage) is unknown until after process → start with prefix only.
+            # outbound_same_zone / outbound_cross_zone are appended in _attach_processing_outbound.
+            subtasks = copy.deepcopy(
+                CfgSubtaskGallery[task_record["product"]][task_record["task"]]["process_prefix"]
+            )
             assert subtasks["material_start_area"] in env_state_action_dict["machine"]
             machine_workstation_key = task_record["chosen_machine_workstation"]
             subtasks["start_area_ids"] = subtasks["start_area_ids"][machine_workstation_key]
+            task_record["preferred_gantry_zone"] = get_gantry_zone(
+                subtasks["material_start_area"], machine_workstation_key
+            )
+            task_record["goal_gantry_zone"] = None
+            subtasks["outbound_attached"] = False
         else:
             raise ValueError(f"Invalid task type: {task_record['task_type']}")
         return subtasks
+
+    def _release_task_robot(self, env_state_action_dict, task_record):
+        """Free a robot that was reserved but is not needed (same-zone outbound)."""
+        robot = task_record.get("robot")
+        if robot is None:
+            return
+        robot_state = env_state_action_dict["robot"][robot]
+        if robot_state.get("ongoing_task_record_index") == task_record["product_index"]:
+            robot_state["ongoing_task_record_index"] = None
+            robot_state["state"] = "free"
+        task_record["robot"] = None
+        task_record["robot_index"] = None
+
+    def _allocate_task_robot(self, env_state_action_dict, task_record) -> bool:
+        """Occupy a free AGV for cross-zone outbound. Returns False if none free."""
+        if task_record.get("robot") is not None:
+            return True
+        robot_name = find_free_robot_name(env_state_action_dict)
+        if robot_name is None:
+            return False
+        robot_keys = list(env_state_action_dict["robot"].keys())
+        task_record["robot"] = robot_name
+        task_record["robot_index"] = robot_keys.index(robot_name)
+        env_state_action_dict["robot"][robot_name]["ongoing_task_record_index"] = task_record["product_index"]
+        env_state_action_dict["robot"][robot_name]["state"] = "working_" + task_record["task"]
+        return True
+
+    def _attach_processing_outbound(self, env_state_action_dict, task_record):
+        """After goal is known, append same-zone or cross-zone outbound tail."""
+        subtasks = task_record["subtasks_dict"]
+        if subtasks.get("outbound_attached") or subtasks.get("goal_area_ids") is None:
+            return
+
+        gallery = CfgSubtaskGallery[task_record["product"]][task_record["task"]]
+        start_zone = get_gantry_zone(
+            subtasks["material_start_area"], task_record.get("chosen_machine_workstation")
+        )
+        goal_zone = get_gantry_zone(
+            subtasks["material_goal_area"], subtasks.get("goal_area_workstation_key")
+        )
+        same_zone = start_zone is not None and start_zone == goal_zone
+
+        if same_zone:
+            self._release_task_robot(env_state_action_dict, task_record)
+            tail = copy.deepcopy(gallery["outbound_same_zone"])
+            subtasks["outbound_mode"] = "same_zone"
+        else:
+            # Hard rule: cross-zone must use AGV; wait (do not attach) until one is free.
+            if not self._allocate_task_robot(env_state_action_dict, task_record):
+                return
+            tail = copy.deepcopy(gallery["outbound_cross_zone"])
+            subtasks["outbound_mode"] = "cross_zone"
+            # Next finding_free_gantry should take the goal-zone crane.
+            task_record["preferred_gantry_zone"] = goal_zone
+            task_record["goal_gantry_zone"] = goal_zone
+            # Do not expand finished[] yet — still on a 3-col prefix row; pad on advance.
+
+        subtasks["subtasks"].extend(tail["subtasks"])
+        for mat_name, mat_states in tail["material_states_in_subtasks"].items():
+            prefix_states = subtasks["material_states_in_subtasks"].setdefault(
+                mat_name, ["disappear"] * subtasks["num_subtasks"]
+            )
+            subtasks["material_states_in_subtasks"][mat_name] = list(prefix_states) + list(mat_states)
+        subtasks["num_subtasks"] = len(subtasks["subtasks"])
+        subtasks["outbound_attached"] = True
     
     def apply_new_task_record_to_human_robot_machine_material(self, env_state_action_dict, task_record):
         #apply the new task record to the human, robot, and machine
@@ -489,17 +568,20 @@ class TaskManager:
             product_type = task_record["product"]
             if self._check_subtask_and_task_done(env_state_action_dict, task_record):
                 n_task_done += 1
+                material_name = f"num_{product_index:02d}_{product_type}"
+                finalize_material_batch_task_done(
+                    env_state_action_dict["material"][material_name],
+                    task_record,
+                )
                 if task_record["is_final_task"] == True:
-                    # Drop the finished batch, not the first slot of this product type.
-                    # Same-type jobs share "ProductWaterPipe"; index(type) would orphan older WIP
-                    # when a later job completes first (overflow to BlackStorage_03).
+                    # Remove this batch by product_index (not product_type — duplicates share the same type).
                     producing_list = env_state_action_dict["progress"]["producing"]
                     producing_indexs = env_state_action_dict["progress"]["producing_indexs"]
                     assert len(producing_list) == len(producing_indexs), (
                         "The length of producing list and producing indexs should be the same"
                     )
                     assert product_index in producing_indexs, (
-                        f"Finished product_index {product_index} not found in producing_indexs {producing_indexs}"
+                        f"Product index {product_index} not found in producing_indexs"
                     )
                     i = producing_indexs.index(product_index)
                     del producing_list[i]
@@ -522,15 +604,40 @@ class TaskManager:
     def _check_subtask_and_task_done(self, env_state_action_dict, task_record):
         self._update_task_record_when_doing_subtask(env_state_action_dict, task_record)
         finished : list[bool] =  task_record["subtasks_dict"]["finished"]
+        subtasks = task_record["subtasks_dict"]
         if all(finished) == True:
-            if task_record["subtasks_dict"]["ongoing_index"] == task_record["subtasks_dict"]["num_subtasks"] - 1:
+            if subtasks["ongoing_index"] == subtasks["num_subtasks"] - 1:
+                # Processing: goal known but cross-zone AGV not ready → wait, never finish on prefix alone.
+                if (
+                    task_record["task_type"] == "processing"
+                    and subtasks.get("goal_area_ids") is not None
+                    and not subtasks.get("outbound_attached")
+                ):
+                    self._attach_processing_outbound(env_state_action_dict, task_record)
+                    if not subtasks.get("outbound_attached"):
+                        return False
+                    # Outbound just attached: advance into first outbound row.
+                    subtasks["ongoing_index"] += 1
+                    subtasks["ongoing"] = subtasks["subtasks"][subtasks["ongoing_index"]]
+                    ongoing = subtasks["ongoing"]
+                    while len(finished) < len(ongoing):
+                        finished.append(False)
+                    del finished[len(ongoing):]
+                    for sub_task_name, index in zip(ongoing, range(len(finished))):
+                        finished[index] = sub_task_name in ("done", "none")
+                    return False
                 ## all subtasks are done
                 task_record["task_done"] = True
                 return True
             else:
-                task_record["subtasks_dict"]["ongoing_index"] += 1
-                task_record["subtasks_dict"]["ongoing"] = task_record["subtasks_dict"]["subtasks"][task_record["subtasks_dict"]["ongoing_index"]]
-                for sub_task_name, index in zip(task_record["subtasks_dict"]["ongoing"], range(len(finished))):
+                subtasks["ongoing_index"] += 1
+                subtasks["ongoing"] = subtasks["subtasks"][subtasks["ongoing_index"]]
+                ongoing = subtasks["ongoing"]
+                # Pad/trim finished when switching 3-col prefix <-> 4-col cross outbound.
+                while len(finished) < len(ongoing):
+                    finished.append(False)
+                del finished[len(ongoing):]
+                for sub_task_name, index in zip(ongoing, range(len(finished))):
                     if sub_task_name == "done" or sub_task_name == "none":
                         finished[index] = True
                     else:
@@ -538,26 +645,41 @@ class TaskManager:
                 return False
 
     def _update_task_record_when_doing_subtask(self, env_state_action_dict, task_record):
-        if task_record["task_type"] != "processing":
-            return
-
         subtasks = task_record["subtasks_dict"]
         ongoing = subtasks["ongoing"]
         finished = subtasks["finished"]
 
-        # gantry: mid-task reservation (Agent D does not allocate gantry)
-        if ongoing[1] == "finding_free_gantry" and not finished[1]:
-            if task_record["chosen_gantry_index"] is None:
-                task_record["chosen_gantry_index"] = self._find_free_gantry(env_state_action_dict, task_record)
-            chosen_gantry_index = task_record["chosen_gantry_index"]
-            if chosen_gantry_index is not None:
-                if task_record.get("task_start_time_step") is None:
-                    task_record["task_start_time_step"] = int(env_state_action_dict["time_step"])
-                env_state_action_dict["machine"]["num07_gantry_group"]["ongoing_task_record_index"][chosen_gantry_index] = task_record["product_index"]
-                env_state_action_dict["machine"]["num07_gantry_group"]["state"][chosen_gantry_index] = "working_" + task_record["task"]
+        # Robot freed early (subtask "done") → later wait/done/none must not block.
+        if len(ongoing) > 3 and not finished[3] and ongoing[3] in ("wait", "done", "none"):
+            robot_name = task_record.get("robot")
+            unbound = robot_name is None
+            if not unbound:
+                r_idx = env_state_action_dict["robot"][robot_name].get("ongoing_task_record_index")
+                unbound = r_idx != task_record["product_index"]
+            if unbound:
+                finished[3] = True
+
+        # Mid-task gantry acquire/release (logistic cross-zone + processing).
+        if len(ongoing) > 1:
+            if ongoing[1] == "finding_free_gantry" and not finished[1]:
+                if task_record["chosen_gantry_index"] is None:
+                    task_record["chosen_gantry_index"] = self._find_free_gantry(env_state_action_dict, task_record)
+                chosen_gantry_index = task_record["chosen_gantry_index"]
+                if chosen_gantry_index is not None:
+                    if task_record.get("task_start_time_step") is None:
+                        task_record["task_start_time_step"] = int(env_state_action_dict["time_step"])
+                    env_state_action_dict["machine"]["num07_gantry_group"]["ongoing_task_record_index"][chosen_gantry_index] = task_record["product_index"]
+                    env_state_action_dict["machine"]["num07_gantry_group"]["state"][chosen_gantry_index] = "working_" + task_record["task"]
+                    finished[1] = True
+            elif (
+                task_record.get("chosen_gantry_index") is None
+                and ongoing[1] in ("wait", "none")
+                and not finished[1]
+            ):
                 finished[1] = True
 
-        # robot is fixed by action at task start — no mid-task finding_free_robot
+        if task_record["task_type"] != "processing":
+            return
 
         # where the processed material will be put on
         if (
@@ -603,3 +725,6 @@ class TaskManager:
                     )
                     subtasks["goal_area_ids"] = env_state_action_dict["storage"][goal_storage_name]["key_variables"]["working_area_ids"]
                     subtasks["material_goal_area"] = goal_storage_name
+
+        # Attach outbound as soon as goal is known (before prefix last step completes).
+        self._attach_processing_outbound(env_state_action_dict, task_record)

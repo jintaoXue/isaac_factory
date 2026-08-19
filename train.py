@@ -37,6 +37,24 @@ parser.add_argument(
     help="Max C/D dispatches per step (1=single-product, >1=multi-product).",
 )
 parser.add_argument(
+    "--explore",
+    action="store_true",
+    default=False,
+    help="Masked-random catalog collection (hier, epsilon=1, no DQN backward).",
+)
+parser.add_argument(
+    "--warmstart",
+    type=str,
+    default=None,
+    help="Path to an env checkpoint pkl (Tier-A).",
+)
+parser.add_argument(
+    "--curriculum",
+    action="store_true",
+    default=False,
+    help="Enable product-count curriculum (1→16, T_max scales with N).",
+)
+parser.add_argument(
     "--max_sim_episodes",
     type=int,
     default=None,
@@ -120,6 +138,16 @@ parser.add_argument(
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli, hydra_args = parser.parse_known_args()
+
+
+def _set_hc_process_title(algo: str | None = None, device: str | None = None) -> None:
+    """nvidia-smi / ps display: HcFactory-<algo>-xjt cuda:N"""
+    algo_tag = algo or args_cli.algo or "unknown"
+    device_tag = device or args_cli.device or "cuda:0"
+    setproctitle.setproctitle(f"HcFactory-{algo_tag}-xjt {device_tag}")
+
+
+_set_hc_process_title()
 
 
 def _has_registered_cameras() -> bool:
@@ -216,8 +244,8 @@ from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.hc_render import HcV
 @hydra_task_config(args_cli.task, args_cli.algo)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo_cfg: dict):
 
-    '''process name'''
-    setproctitle.setproctitle("HcFactory")
+    '''process name: HcFactory-<algo>-xjt cuda:N (visible in nvidia-smi)'''
+    _set_hc_process_title(args_cli.algo, args_cli.device)
     '''update args'''
     configure_disturbance_from_cli(
         dim=getattr(args_cli, "disturbance_dim", "none"),
@@ -251,6 +279,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         algo_cfg["params"]["config"]["max_parallel_cd_dispatch"] = int(args_cli.max_parallel_cd_dispatch)
     if args_cli.max_sim_episodes is not None:
         algo_cfg["params"]["config"]["max_sim_episodes"] = int(args_cli.max_sim_episodes)
+    if getattr(args_cli, "explore", False):
+        algo_cfg["params"]["config"]["explore"] = True
+        algo_cfg["params"]["config"]["explore_catalog"] = True
+    warmstart = (getattr(args_cli, "warmstart", None) or "").strip() or os.environ.get("HC_WARMSTART", "").strip()
+    if warmstart:
+        algo_cfg["params"]["config"]["warmstart"] = warmstart
+    if getattr(args_cli, "curriculum", False):
+        algo_cfg["params"]["config"]["curriculum"] = True
     if args_cli.use_fatigue_mask:
         algo_cfg["params"]["config"]['use_fatigue_mask'] = args_cli.use_fatigue_mask
     if args_cli.other_filters:
@@ -290,6 +326,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         algo_cfg["params"]["config"]["multi_gpu"] = True
         # update env config device
         env_cfg.sim.device = f"cuda:{app_launcher.local_rank}"
+        _set_hc_process_title(args_cli.algo, f"cuda:{app_launcher.local_rank}")
+    else:
+        _set_hc_process_title(
+            args_cli.algo,
+            algo_cfg["params"]["config"].get("device") or args_cli.device,
+        )
 
     # set the environment seed (after multi-gpu config for updated rank from agent seed)
     # note: certain randomizations occur in the environment initialization so we set the seed here

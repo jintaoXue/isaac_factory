@@ -28,6 +28,9 @@ TaskRecordTemplate = {
     "chosen_workstation_index": None,
     "logistic_machine": "num07_gantry_group",
     "chosen_gantry_index": None,
+    # Zone-aware gantry handoff (cross-zone logistics / processing outbound).
+    "preferred_gantry_zone": None,
+    "goal_gantry_zone": None,
     "task_start_time_step": None,
 
     "subtasks_dict": None,

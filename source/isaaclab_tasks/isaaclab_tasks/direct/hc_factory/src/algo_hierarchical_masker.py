@@ -7,8 +7,7 @@ from ..env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
 from ..env_asset_cfg.cfg_human import CfgHuman
 from ..env_asset_cfg.cfg_robot import CfgRobot
 from ..env_asset_cfg.cfg_machine import CfgMachine
-from .material import task_required_materials_ready
-from .task_progress_manager import gantry_rail_has_worker
+from .env_checkpoint import wip_cap
 import torch
 
 
@@ -87,11 +86,10 @@ class AlgoHierarchicalMasker:
     def update_machine_task_availability_mask(self, env_state_action_dict: dict) -> dict:
         mask = torch.zeros(len(CfgProcessTaskGalleryInAll), dtype=torch.int32, device=self.cuda_device)
         mask[0] = 1  # "none" task is always available
-        gantry_states = env_state_action_dict["machine"]["num07_gantry_group"]["state"]
         have_free_gantry = any(
-            gantry_states[idx] == "free"
+            env_state_action_dict["machine"]["num07_gantry_group"]["state"][idx] == "free"
             for idx in CfgMachine["num07_gantry_group"]["active_gantry_indices"]
-        ) and not gantry_rail_has_worker(gantry_states)
+        )
         for machine_name, machine_cfg in CfgMachine.items():
             if machine_name == "num07_gantry_group":
                 continue
@@ -133,19 +131,6 @@ class AlgoHierarchicalMasker:
             next_allowing_task_index = self._find_product_next_allowing_task_index(
                 finished_task, one_process_task_gallery
             )
-            if next_allowing_task_index == CfgProcessTaskGalleryInAll["none"]:
-                continue
-            next_task = None
-            for name, idx in CfgProcessTaskGalleryInAll.items():
-                if idx == next_allowing_task_index:
-                    next_task = name
-                    break
-            if next_task is None:
-                continue
-            if not task_required_materials_ready(
-                env_state_action_dict, product_type, material_batch_index, next_task
-            ):
-                continue
             mask[material_batch_index][next_allowing_task_index] = 1
         env_state_action_dict["agent_action_mask"]["material"]["task_availability_mask"] = mask
         return env_state_action_dict
@@ -173,11 +158,13 @@ class ProductSequencerAgentMasker:
         not_started : dict = env_state_action_dict["progress"]["not_started"]
         next_product : str = env_state_action_dict["progress"]["next_product"]
         
+        producing = env_state_action_dict["progress"].get("producing") or []
+        cap = wip_cap(env_state_action_dict.get("progress"))
         mask = torch.zeros(self.num_product_types, dtype=torch.int32, device=self.cuda_device)
-        if next_product is None and len(not_started.keys()) > 0:
-            #can select the product in not_started
-            for product_type in not_started.keys():
-                mask[self.product_types[product_type]] = 1
+        if next_product is None and len(producing) < cap:
+            for product_type, n in (not_started or {}).items():
+                if int(n or 0) > 0 and product_type in self.product_types:
+                    mask[self.product_types[product_type]] = 1
         env_state_action_dict["agent_action_mask"]["agent_A_product_sequencer"] = mask
 
 class ProductSelectorAgentMasker:
@@ -202,7 +189,8 @@ class ProductSelectorAgentMasker:
         # The last position in the mask is for selecting the next product to be produced, 
         # which can only be selected when there are available slots for producing 
         # and there is a next product to be produced.
-        if next_product is not None and len(producing) < self.parallel_producing_limit:
+        cap = wip_cap(env_state_action_dict.get("progress"), self.parallel_producing_limit)
+        if next_product is not None and len(producing) < cap:
             mask[self.parallel_producing_limit] = 1 # can select the next product to be produced
     
         env_state_action_dict["agent_action_mask"]["agent_B_product_selector"] = mask

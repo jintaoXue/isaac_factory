@@ -66,10 +66,13 @@ class HierObsEncoder(nn.Module):
             transformer_heads=4,
         ).to(cuda_device)
 
+    def is_preprocessed(self, env_or_pre: dict) -> bool:
+        prog = env_or_pre.get("progress")
+        return isinstance(prog, dict) and "ongoing_tasks" in prog
+
     def preprocess(self, env_state_action_dict: dict) -> dict:
         """Raw env dict → fixed-shape nested tensors on ``cuda_device``."""
-        prog = env_state_action_dict.get("progress")
-        if isinstance(prog, dict) and "ongoing_tasks" in prog:
+        if self.is_preprocessed(env_state_action_dict):
             return self._to_device(env_state_action_dict)
         return preprocess_for_buffer(env_state_action_dict, device=self.cuda_device)
 
@@ -84,34 +87,47 @@ class HierObsEncoder(nn.Module):
                 out[k] = v
         return out
 
-    def encode_state(self, env_or_pre: dict) -> torch.Tensor:
-        pre = self.preprocess(env_or_pre)
+    def _resolve_pre(self, env_or_pre: dict, pre: dict | None) -> dict:
+        if pre is not None:
+            return pre
+        return self.preprocess(env_or_pre)
+
+    def encode_state(self, env_or_pre: dict, *, pre: dict | None = None) -> torch.Tensor:
+        pre = self._resolve_pre(env_or_pre, pre)
         return self.state_encoder(pre)
 
-    def encode_A(self, env_state_action_dict: dict) -> torch.Tensor:
-        z = self.encode_state(env_state_action_dict)
-        pre = self.preprocess(env_state_action_dict)
+    def encode_A(self, env_or_pre: dict, *, pre: dict | None = None) -> torch.Tensor:
+        pre = self._resolve_pre(env_or_pre, pre)
+        z = self.state_encoder(pre)
         mask = pre["agent_action_mask"]["agent_A_product_sequencer"].float().flatten()
-        return torch.cat([z, mask]).detach()
+        return torch.cat([z, mask])
 
-    def encode_B(self, env_state_action_dict: dict, product_sequencing_action: torch.Tensor | None) -> torch.Tensor:
-        z = self.encode_state(env_state_action_dict)
-        pre = self.preprocess(env_state_action_dict)
+    def encode_B(
+        self,
+        env_or_pre: dict,
+        product_sequencing_action: torch.Tensor | None,
+        *,
+        pre: dict | None = None,
+    ) -> torch.Tensor:
+        pre = self._resolve_pre(env_or_pre, pre)
+        z = self.state_encoder(pre)
         a_dim = int(pre["agent_action_mask"]["agent_A_product_sequencer"].numel())
         if product_sequencing_action is not None:
             a_action = product_sequencing_action.float().flatten().to(self.cuda_device)
         else:
             a_action = torch.zeros(a_dim, dtype=torch.float32, device=self.cuda_device)
         mask = pre["agent_action_mask"]["agent_B_product_selector"].float().flatten()
-        return torch.cat([z, a_action, mask]).detach()
+        return torch.cat([z, a_action, mask])
 
     def encode_C(
         self,
-        env_state_action_dict: dict,
+        env_or_pre: dict,
         product_selection_action: torch.Tensor,
+        *,
+        pre: dict | None = None,
     ) -> torch.Tensor:
-        z = self.encode_state(env_state_action_dict)
-        pre = self.preprocess(env_state_action_dict)
+        pre = self._resolve_pre(env_or_pre, pre)
+        z = self.state_encoder(pre)
         aam = pre["agent_action_mask"]
         b_action = product_selection_action.float().flatten().to(self.cuda_device)
         return torch.cat(
@@ -122,15 +138,17 @@ class HierObsEncoder(nn.Module):
                 aam["human"]["task_availability_mask"].float().flatten(),
                 aam["machine"]["task_availability_mask"].float().flatten(),
             ]
-        ).detach()
+        )
 
     def encode_D(
         self,
-        env_state_action_dict: dict,
+        env_or_pre: dict,
         process_task_planning_action: torch.Tensor,
+        *,
+        pre: dict | None = None,
     ) -> torch.Tensor:
-        z = self.encode_state(env_state_action_dict)
-        pre = self.preprocess(env_state_action_dict)
+        pre = self._resolve_pre(env_or_pre, pre)
+        z = self.state_encoder(pre)
         aam = pre["agent_action_mask"]
         c_action = process_task_planning_action.float().flatten().to(self.cuda_device)
         return torch.cat(
@@ -140,16 +158,20 @@ class HierObsEncoder(nn.Module):
                 aam["human"]["self_availability_mask"].float().flatten(),
                 aam["robot"]["self_availability_mask"].float().flatten(),
             ]
-        ).detach()
+        )
 
     def get_obs_dim_A(self, env_state_action_dict: dict) -> int:
-        return int(self.encode_A(env_state_action_dict).shape[0])
+        with torch.no_grad():
+            return int(self.encode_A(env_state_action_dict).shape[0])
 
     def get_obs_dim_B(self, env_state_action_dict: dict) -> int:
-        return int(self.encode_B(env_state_action_dict, None).shape[0])
+        with torch.no_grad():
+            return int(self.encode_B(env_state_action_dict, None).shape[0])
 
     def get_obs_dim_C(self, env_state_action_dict: dict, product_selection_action: torch.Tensor) -> int:
-        return int(self.encode_C(env_state_action_dict, product_selection_action).shape[0])
+        with torch.no_grad():
+            return int(self.encode_C(env_state_action_dict, product_selection_action).shape[0])
 
     def get_obs_dim_D(self, env_state_action_dict: dict, process_task_planning_action: torch.Tensor) -> int:
-        return int(self.encode_D(env_state_action_dict, process_task_planning_action).shape[0])
+        with torch.no_grad():
+            return int(self.encode_D(env_state_action_dict, process_task_planning_action).shape[0])

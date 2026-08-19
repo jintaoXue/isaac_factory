@@ -22,8 +22,10 @@ CfgMachine = {
             "key_variables": {},
         },
         # 只有“工位/工作站（station）”这种可以处理物料的节点，才需要配置 working area ids。
-        # human_working_areas_ids 的编号来源：map_data/map_with_points_human.png（图中蓝色编号）
-        # agv/gantry 的停车区编号来源：map_data/map_with_points_robot.png（图中蓝色编号）
+        # human_working_areas_ids：map_points_human / map_with_points_human.png（蓝色编号）
+        # robot_parking_areas_ids：map_points_robot / map_with_points_robot.png（AGV 可通行点与占用图不同）
+        # gantry_parking_areas_ids：统一用 map_points_human（与 human 同一套点号；运行时由
+        #   RouteManagerVectorEnv._step_gantry → human_roadmap 解析 XY，不用 robot map）
         "working_area_ids": {
             "num00_rotaryPipeAutomaticWeldingMachine_part_01_station": {
                 "human_working_areas_ids": [56],
@@ -363,11 +365,11 @@ CfgMachine = {
             "logistic_for_paint_rust_proof",
         ],
         "num_workstations": 4,
-        "active_gantry_indices": [0, 1],
+        "active_gantry_indices": [0, 1, 2, 3],
         "num_registration_parts": 1,
         "state_gallery": {0: "free", 1: "moving_to_working", 2: "working", 3: "resetting", 4: "invalid"},
         "reset_state": {
-            "state": ["free", "free", "invalid", "invalid"],
+            "state": ["free", "free", "free", "free"],
             "ongoing_task_record_index": [None, None, None, None],
             "key_variables": {},
             "target_area_id": [None, None, None, None],
@@ -413,7 +415,7 @@ CfgMachine = {
                 "fixed_hook_height": 8.90808,
                 "safe_x_gap": 4.0,
                 # Discrete factory step: each env step advances dt * speed (world/joint xy units).
-                "move_speed": 0.5,
+                "move_speed": 1.0,
                 "move_dt": 1.0,
                 "loaded_speed_scale": 0.5,
                 "move_speed_noise_std": 0.0,
@@ -443,12 +445,12 @@ CfgMachine = {
             "num08_workbench_station_00": {
                 "human_working_areas_ids": [45],
                 "robot_parking_areas_ids": [40],
-                "gantry_parking_areas_ids": [47],
+                "gantry_parking_areas_ids": [46],
             },
             "num08_workbench_station_01": {
                 "human_working_areas_ids": [49],
                 "robot_parking_areas_ids": [41],
-                "gantry_parking_areas_ids": [47],
+                "gantry_parking_areas_ids": [50],
             },
         },
         "human_working_areas_ids_orientation": {

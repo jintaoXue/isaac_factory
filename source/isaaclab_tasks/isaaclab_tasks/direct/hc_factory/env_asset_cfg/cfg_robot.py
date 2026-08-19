@@ -62,15 +62,15 @@ CfgRobot = {
             _AGV_FOOTPRINT_LOCAL_BOUNDS
         ),
         # Route waypoints advanced per env step; loaded moves at half unloaded speed.
-        "waypoints_per_step_unloaded": 4,
-        "waypoints_per_step_loaded": 2,
+        "waypoints_per_step_unloaded": 8,
+        "waypoints_per_step_loaded": 4,
         "loaded_subtasks": ("carry_to_goal_area",),
     }
 }
 
 
 CfgRobotRegistrationInfos = {
-    "AGV": 2, #idx: 00-01
+    "AGV": 4,  # idx: 00-03 (matches USD robot_AGV_00..03)
 }
 
 RobotIdAppearance = {
@@ -84,6 +84,14 @@ RobotIdAppearance = {
         "num_01": {
             "color": "purple",
             "rgb_hint": (0.50, 0.10, 0.50),
+        },
+        "num_02": {
+            "color": "cyan",
+            "rgb_hint": (0.10, 0.75, 0.85),
+        },
+        "num_03": {
+            "color": "orange",
+            "rgb_hint": (0.95, 0.55, 0.10),
         },
     }
 }

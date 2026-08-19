@@ -72,3 +72,61 @@ def read_rl_done(env_dict: dict) -> tuple[bool, bool, bool]:
     """Return ``(done, truncated, success)`` from ``env_dict['rl']``."""
     rl = env_dict.get("rl") or {}
     return bool(rl.get("done")), bool(rl.get("truncated")), bool(rl.get("success"))
+
+
+def env_steps(global_step: int, n_envs: int = 1) -> int:
+    """Summed env-instance steps: vector ticks × num_envs."""
+    return int(global_step) * max(1, int(n_envs))
+
+
+def crossed_interval(prev_steps: int, cur_steps: int, interval: int) -> bool:
+    """True when summed env-steps advanced by at least ``interval`` since last fire."""
+    interval = max(1, int(interval))
+    return int(cur_steps) - int(prev_steps) >= interval
+
+
+def steps_per_min(global_step: int, wall_sec: float, n_envs: int = 1) -> float | None:
+    """Throughput: summed env-instance steps per wall-clock minute."""
+    total = env_steps(global_step, n_envs)
+    if wall_sec <= 0 or total <= 0:
+        return None
+    return float(total) / (wall_sec / 60.0)
+
+
+def count_busy_agents(agent_group: dict | None) -> int:
+    """Count humans/robots currently assigned to a task (state != free)."""
+    if not isinstance(agent_group, dict):
+        return 0
+    n = 0
+    for ent in agent_group.values():
+        if not isinstance(ent, dict):
+            continue
+        if ent.get("state", "free") != "free":
+            n += 1
+    return n
+
+
+def detach_pre_to_cpu(pre: dict) -> dict:
+    """Deep-copy preprocessed dict tensors to CPU without grad."""
+    out: dict = {}
+    for key, value in pre.items():
+        if isinstance(value, torch.Tensor):
+            out[key] = value.detach().cpu()
+        elif isinstance(value, dict):
+            out[key] = detach_pre_to_cpu(value)
+        else:
+            out[key] = value
+    return out
+
+
+def pre_to_device(pre: dict, device: torch.device) -> dict:
+    """Move nested tensor fields in a preprocessed dict to ``device``."""
+    out: dict = {}
+    for key, value in pre.items():
+        if isinstance(value, torch.Tensor):
+            out[key] = value.to(device)
+        elif isinstance(value, dict):
+            out[key] = pre_to_device(value, device)
+        else:
+            out[key] = value
+    return out

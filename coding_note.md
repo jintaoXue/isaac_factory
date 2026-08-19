@@ -380,3 +380,45 @@ flowchart LR
 1. 训练与测试的决策范围：单产品焦点 vs 全产品，是否必须一致？
 2. 主实验是否先做：**Rule vs Flat DQN vs Hier A–D DQN**（算法族统一）？
 3. LLM warm-start 本阶段做不做、做到哪一层（建议仅 A/B 或离线示范）？
+
+
+
+# 8.12 确认
+并行制造的task的瓶颈原因要探究，有可能是gantry造成的，
+
+grantry只负责起落，AGV负责空间来往调度
+加入相似度，实现计算
+
+
+have_AGV 是跨区任务
+only_have_gantry是同区任务
+
+AGV数量我增加到4个
+
+
+# 8.18 启动 25 号（explore 采集数据）
+命令：`./batch_train.sh 25 cuda:0`
+W&B 本地目录：`/home/xue/work/isaac_factory/wandb/run-20260818_152934-06o2jzkc`
+W&B run：`explore_N16_T25000`
+项目页：https://wandb.ai/rl-driving/HcFactory_TPA
+run 页：https://wandb.ai/rl-driving/HcFactory_TPA/runs/06o2jzkc
+
+
+## debug 可视化复现阻塞（手动断点调试版）
+运行（需要你先指定 warmstart 阻塞点 pkl）：
+```bash
+HC_WARMSTART=env_checkpoints/stagnation/collect/<某次L2或L3事件目录>/stalled_state.pkl \
+  ./batch_train.sh 27 cuda:0
+```
+
+目的：
+- `--explore` 采集模式 + 回跳逻辑保持一致
+- 不加 `--headless` 打开 Isaac Sim UI（visualization）
+- 不录视频（不加 `--video`）
+- 不启用 wandb（不加 `--wandb_activate`）
+
+默认参数：
+- `t_max_anchor=14000`（加快在你日志附近 ep_t 段复现）
+
+阻塞样本落盘目录（用来找 warmstart pkl）：
+- `env_checkpoints/stagnation/collect/`（按 L1/L2/L3 分目录，含 `meta.json` / `stalled_state.pkl` / `nearest_decision.pkl`）

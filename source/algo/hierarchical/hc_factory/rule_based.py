@@ -12,7 +12,15 @@ from .agent_B_product_priority import ProductPriorityAgent
 from .agent_C_process_task_planner import ProcessTaskPlanningAgent
 from .agent_D_human_robot_allocator import HumanRobotMachineAllocationAgent
 from .hierarchical_dispatch import build_rule_based_action
-from .hier_utils import compute_team_reward, read_rl_done
+from .hier_utils import compute_team_reward, count_busy_agents, crossed_interval, env_steps, read_rl_done, steps_per_min
+from .wandb_metrics import (
+    axis_payload,
+    define_shared_metrics,
+    episode_metrics,
+    log_eval_episodes,
+    reward_parts_metrics,
+    shop_metrics,
+)
 
 
 def _count_finished(env_dict: dict) -> int:
@@ -61,11 +69,12 @@ class RuleBasedHierarchical():
         self._train_t0 = None
         self.peak_producing = 0
         self.peak_ongoing = 0
+        self.peak_ongoing_human = 0
+        self.peak_ongoing_robot = 0
         self._ep_peak_producing = [0 for _ in range(max(1, self.num_actors))]
         self._ep_peak_ongoing = [0 for _ in range(max(1, self.num_actors))]
-
-        if self.use_wandb:
-            self.init_wandb_logger()
+        self._ep_peak_ongoing_human = [0 for _ in range(max(1, self.num_actors))]
+        self._ep_peak_ongoing_robot = [0 for _ in range(max(1, self.num_actors))]
 
         print(
             f"[Rule] max_parallel_cd_dispatch={self.max_parallel_cd_dispatch} "
@@ -75,54 +84,34 @@ class RuleBasedHierarchical():
         )
 
     def init_wandb_logger(self) -> None:
-        wandb.define_metric("Train/step")
-        wandb.define_metric("Train/wall_time_sec", step_metric="Train/step")
-        wandb.define_metric("Train/wall_time_min", step_metric="Train/step")
-        wandb.define_metric("Train/ep_reward0", step_metric="Train/step")
-        wandb.define_metric("Train/finished0", step_metric="Train/step")
-        wandb.define_metric("Train/episode0", step_metric="Train/step")
-        wandb.define_metric("Train/ep_t0", step_metric="Train/step")
-        wandb.define_metric("Train/n_dispatch0", step_metric="Train/step")
-        wandb.define_metric("Train/producing0", step_metric="Train/step")
-        wandb.define_metric("Train/ongoing0", step_metric="Train/step")
-        wandb.define_metric("Train/peak_producing", step_metric="Train/step")
-        wandb.define_metric("Train/peak_ongoing", step_metric="Train/step")
-        wandb.define_metric("Metrics/MeanMakespan", step_metric="Train/step")
-        wandb.define_metric("Metrics/MeanMakespan_success", step_metric="Train/step")
-
-        # wall-clock as alternate x-axis for episode metrics
-        wandb.define_metric("Metrics/wall_time_sec")
-        wandb.define_metric("Metrics/step_episode", step_metric="Train/step")
-        for key in (
-            "Metrics/EpRet",
-            "Metrics/EpLen",
-            "Metrics/EpMakespan",
-            "Metrics/EpSuccess",
-            "Metrics/EpTruncated",
-            "Metrics/EpNDispatch",
-            "Metrics/EpWallTimeSec",
-            "Metrics/EpMaxProducing",
-            "Metrics/EpMaxOngoing",
-        ):
-            wandb.define_metric(key, step_metric="Metrics/wall_time_sec")
+        define_shared_metrics(rl=False, curriculum=False)
 
     def _wall_time_sec(self) -> float:
         if self._train_t0 is None:
             return 0.0
         return float(time.time() - self._train_t0)
 
-    def _update_concurrency_peaks(self, env_id: int, env_dict: dict) -> tuple[int, int]:
+    def _update_concurrency_peaks(self, env_id: int, env_dict: dict) -> tuple[int, int, int, int]:
         progress = env_dict.get("progress") or {}
         n_producing = len(progress.get("producing") or [])
         n_ongoing = len(progress.get("ongoing_task_records") or {})
+        n_human = count_busy_agents(env_dict.get("human"))
+        n_robot = count_busy_agents(env_dict.get("robot"))
         if env_id >= len(self._ep_peak_producing):
-            self._ep_peak_producing.extend([0] * (env_id + 1 - len(self._ep_peak_producing)))
-            self._ep_peak_ongoing.extend([0] * (env_id + 1 - len(self._ep_peak_ongoing)))
+            pad = env_id + 1 - len(self._ep_peak_producing)
+            self._ep_peak_producing.extend([0] * pad)
+            self._ep_peak_ongoing.extend([0] * pad)
+            self._ep_peak_ongoing_human.extend([0] * pad)
+            self._ep_peak_ongoing_robot.extend([0] * pad)
         self._ep_peak_producing[env_id] = max(self._ep_peak_producing[env_id], n_producing)
         self._ep_peak_ongoing[env_id] = max(self._ep_peak_ongoing[env_id], n_ongoing)
+        self._ep_peak_ongoing_human[env_id] = max(self._ep_peak_ongoing_human[env_id], n_human)
+        self._ep_peak_ongoing_robot[env_id] = max(self._ep_peak_ongoing_robot[env_id], n_robot)
         self.peak_producing = max(self.peak_producing, n_producing)
         self.peak_ongoing = max(self.peak_ongoing, n_ongoing)
-        return n_producing, n_ongoing
+        self.peak_ongoing_human = max(self.peak_ongoing_human, n_human)
+        self.peak_ongoing_robot = max(self.peak_ongoing_robot, n_robot)
+        return n_producing, n_ongoing, n_human, n_robot
 
     def act(self, obs, epsilon: float | None = None):
         del epsilon
@@ -172,6 +161,9 @@ class RuleBasedHierarchical():
         )
         json_path, summary_path = save_eval_results(output_dir, payload)
         print_eval_summary(payload["summary"], "rule_based")
+        if self.use_wandb:
+            self.init_wandb_logger()
+            log_eval_episodes(results, t_budget=self.max_episodic_steps, algo_name="rule_based")
         print(f"[Rule] eval saved: {json_path}\n[Rule] summary: {summary_path}")
         return payload
 
@@ -179,15 +171,22 @@ class RuleBasedHierarchical():
         if self.config.get("test"):
             return self.test()
 
+        if self.use_wandb:
+            self.init_wandb_logger()
+
         obs: list[dict] = self.vec_env.reset()
         n_envs = len(obs)
         episode_reward = [0.0 for _ in range(n_envs)]
         episode_len = [0 for _ in range(n_envs)]
         episode_n_dispatch = [0 for _ in range(n_envs)]
+        ep_start_nfin = [_count_finished(o) for o in obs]
         self._ep_peak_producing = [0 for _ in range(n_envs)]
         self._ep_peak_ongoing = [0 for _ in range(n_envs)]
+        self._ep_peak_ongoing_human = [0 for _ in range(n_envs)]
+        self._ep_peak_ongoing_robot = [0 for _ in range(n_envs)]
         self._train_t0 = time.time()
         stop = False
+        last_logged_env_steps = 0
 
         print(
             f"[Rule] train start n_envs={n_envs} "
@@ -200,8 +199,8 @@ class RuleBasedHierarchical():
             wall = self._wall_time_sec()
 
             for env_id in range(n_envs):
-                n_producing, n_ongoing = self._update_concurrency_peaks(env_id, next_obs[env_id])
-                del n_producing, n_ongoing
+                n_producing, n_ongoing, n_human, n_robot = self._update_concurrency_peaks(env_id, next_obs[env_id])
+                del n_producing, n_ongoing, n_human, n_robot
                 reward = compute_team_reward(obs[env_id], next_obs[env_id])
                 done, truncated, success = read_rl_done(next_obs[env_id])
                 n_disp = len(actions[env_id].get("dispatch_list") or [])
@@ -215,6 +214,8 @@ class RuleBasedHierarchical():
                     ep_len = episode_len[env_id]
                     ep_max_prod = self._ep_peak_producing[env_id]
                     ep_max_ong = self._ep_peak_ongoing[env_id]
+                    ep_max_human = self._ep_peak_ongoing_human[env_id]
+                    ep_max_robot = self._ep_peak_ongoing_robot[env_id]
                     if success:
                         self.makespan_success.append(ep_len)
                         self.makespan_all.append(ep_len)
@@ -231,6 +232,8 @@ class RuleBasedHierarchical():
                     )
                     mean_ms_str = f"{mean_ms:.1f}" if mean_ms is not None else "n/a"
                     mean_ok_str = f"{mean_ms_ok:.1f}" if mean_ms_ok is not None else "n/a"
+                    spm = steps_per_min(self.global_step, wall, self.num_actors)
+                    spm_str = f"{spm:.1f}" if spm is not None else "n/a"
                     print(
                         f"[Rule] EP_DONE env={env_id} episode={completed_ep} "
                         f"done_count={self.episodes_done} "
@@ -238,40 +241,47 @@ class RuleBasedHierarchical():
                         f"success={int(success)} truncated={int(truncated)} "
                         f"n_dispatch={episode_n_dispatch[env_id]} "
                         f"ep_max_prod={ep_max_prod} ep_max_ong={ep_max_ong} "
+                        f"ep_max_human={ep_max_human} ep_max_robot={ep_max_robot} "
                         f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing} "
+                        f"peak_human={self.peak_ongoing_human} peak_robot={self.peak_ongoing_robot} "
                         f"finished={_count_finished(next_obs[env_id])} "
-                        f"wall={wall:.1f}s mean_ms={mean_ms_str} mean_ms_ok={mean_ok_str}"
+                        f"steps/min={spm_str} mean_ms={mean_ms_str} mean_ms_ok={mean_ok_str}"
                     )
                     if self.use_wandb:
-                        payload = {
-                            "Train/step": self.global_step,
-                            "Train/wall_time_sec": wall,
-                            "Train/wall_time_min": wall / 60.0,
-                            "Train/peak_producing": self.peak_producing,
-                            "Train/peak_ongoing": self.peak_ongoing,
-                            "Metrics/wall_time_sec": wall,
-                            "Metrics/step_episode": self.episodes_done,
-                            "Metrics/EpRet": episode_reward[env_id],
-                            "Metrics/EpLen": ep_len,
-                            "Metrics/EpMakespan": ep_len,
-                            "Metrics/EpSuccess": float(success),
-                            "Metrics/EpTruncated": float(truncated),
-                            "Metrics/EpNDispatch": episode_n_dispatch[env_id],
-                            "Metrics/EpWallTimeSec": wall,
-                            "Metrics/EpMaxProducing": ep_max_prod,
-                            "Metrics/EpMaxOngoing": ep_max_ong,
-                        }
-                        if mean_ms is not None:
-                            payload["Metrics/MeanMakespan"] = mean_ms
-                        if mean_ms_ok is not None:
-                            payload["Metrics/MeanMakespan_success"] = mean_ms_ok
+                        n_fin = max(0, _count_finished(obs[env_id]) - ep_start_nfin[env_id])
+                        payload = axis_payload(env_steps(self.global_step, self.num_actors), wall, spm)
+                        payload.update(
+                            episode_metrics(
+                                episode=self.episodes_done,
+                                success=success,
+                                truncated=truncated,
+                                makespan=ep_len,
+                                n_finished=n_fin,
+                                ep_return=episode_reward[env_id],
+                                t_budget=self.max_episodic_steps,
+                                mean_makespan=mean_ms,
+                                mean_makespan_success=mean_ms_ok,
+                            )
+                        )
+                        payload.update(
+                            shop_metrics(
+                                peak_producing=self.peak_producing,
+                                peak_ongoing=self.peak_ongoing,
+                                peak_ongoing_human=self.peak_ongoing_human,
+                                peak_ongoing_robot=self.peak_ongoing_robot,
+                                n_dispatch=episode_n_dispatch[env_id],
+                            )
+                        )
                         wandb.log(payload)
 
                     episode_reward[env_id] = 0.0
                     episode_len[env_id] = 0
                     episode_n_dispatch[env_id] = 0
+                    ep_start_nfin[env_id] = _count_finished(next_obs[env_id])
                     self._ep_peak_producing[env_id] = 0
                     self._ep_peak_ongoing[env_id] = 0
+                    self._ep_peak_ongoing_human[env_id] = 0
+                    self._ep_peak_ongoing_robot[env_id] = 0
 
                     if (
                         self.max_sim_episodes is not None
@@ -280,8 +290,10 @@ class RuleBasedHierarchical():
                         stop = True
 
             self.global_step += 1
+            env_step = env_steps(self.global_step, self.num_actors)
 
-            if self.global_step % self.log_interval == 0:
+            if crossed_interval(last_logged_env_steps, env_step, self.log_interval):
+                last_logged_env_steps = env_step
                 env0 = next_obs[0]
                 progress = env0.get("progress") or {}
                 rl0 = env0.get("rl") or {}
@@ -299,55 +311,61 @@ class RuleBasedHierarchical():
                 )
                 mean_ms_str = f"{mean_ms:.1f}" if mean_ms is not None else "n/a"
                 wall = self._wall_time_sec()
+                spm = steps_per_min(self.global_step, wall, self.num_actors)
+                spm_str = f"{spm:.1f}" if spm is not None else "n/a"
                 print(
-                    f"[Rule] step={self.global_step} episode={ep0} ep_t={t0} "
+                    f"[Rule] step={env_steps(self.global_step, self.num_actors)} episode={ep0} ep_t={t0} "
                     f"ep_reward0={episode_reward[0]:.2f} finished={finished} "
                     f"producing={len(producing)} ongoing={len(ongoing)} "
                     f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing} "
+                    f"peak_human={self.peak_ongoing_human} peak_robot={self.peak_ongoing_robot} "
                     f"not_started={n_not_started} next={next_p} "
                     f"r={float(rl0.get('reward', 0.0) or 0.0):.3f} "
                     f"(step={float(parts.get('step', 0.0) or 0.0):.3f} "
                     f"finish={float(parts.get('finish', 0.0) or 0.0):.3f} "
                     f"task={float(parts.get('task', 0.0) or 0.0):.3f} "
                     f"success={float(parts.get('success', 0.0) or 0.0):.3f}) "
-                    f"wall={wall:.1f}s mean_ms={mean_ms_str} n_envs={n_envs}"
+                    f"steps/min={spm_str} mean_ms={mean_ms_str} n_envs={n_envs}"
                 )
                 if self.use_wandb:
-                    payload = {
-                        "Train/step": self.global_step,
-                        "Train/wall_time_sec": wall,
-                        "Train/wall_time_min": wall / 60.0,
-                        "Train/ep_reward0": episode_reward[0],
-                        "Train/finished0": finished,
-                        "Train/episode0": ep0,
-                        "Train/ep_t0": t0,
-                        "Train/n_dispatch0": len(actions[0].get("dispatch_list") or []),
-                        "Train/producing0": len(producing),
-                        "Train/ongoing0": len(ongoing),
-                        "Train/peak_producing": self.peak_producing,
-                        "Train/peak_ongoing": self.peak_ongoing,
-                    }
-                    if mean_ms is not None:
-                        payload["Metrics/MeanMakespan"] = mean_ms
+                    payload = axis_payload(env_steps(self.global_step, self.num_actors), wall, spm)
+                    payload.update(
+                        shop_metrics(
+                            finished=finished,
+                            producing=len(producing),
+                            ongoing=len(ongoing),
+                            peak_producing=self.peak_producing,
+                            peak_ongoing=self.peak_ongoing,
+                            peak_ongoing_human=self.peak_ongoing_human,
+                            peak_ongoing_robot=self.peak_ongoing_robot,
+                            ep_t=t0,
+                            ep_reward=episode_reward[0],
+                            n_dispatch=len(actions[0].get("dispatch_list") or []),
+                        )
+                    )
+                    payload.update(reward_parts_metrics(rl0, ep_reward0=episode_reward[0]))
                     wandb.log(payload)
 
             obs = next_obs
 
         wall = self._wall_time_sec()
+        spm = steps_per_min(self.global_step, wall, self.num_actors)
+        spm_str = f"{spm:.1f}" if spm is not None else "n/a"
         print(
             f"[Rule] train finished episodes_done={self.episodes_done} "
-            f"steps={self.global_step} wall={wall:.1f}s ({wall/60.0:.2f} min) "
-            f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing}"
+            f"steps={env_steps(self.global_step, self.num_actors)} steps/min={spm_str} "
+            f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing} "
+            f"peak_human={self.peak_ongoing_human} peak_robot={self.peak_ongoing_robot}"
         )
         if self.use_wandb:
-            wandb.log(
-                {
-                    "Train/step": self.global_step,
-                    "Train/wall_time_sec": wall,
-                    "Train/wall_time_min": wall / 60.0,
-                    "Train/peak_producing": self.peak_producing,
-                    "Train/peak_ongoing": self.peak_ongoing,
-                    "Metrics/wall_time_sec": wall,
-                }
+            finish_payload = axis_payload(env_steps(self.global_step, self.num_actors), wall, spm)
+            finish_payload.update(
+                shop_metrics(
+                    peak_producing=self.peak_producing,
+                    peak_ongoing=self.peak_ongoing,
+                    peak_ongoing_human=self.peak_ongoing_human,
+                    peak_ongoing_robot=self.peak_ongoing_robot,
+                )
             )
+            wandb.log(finish_payload)
             wandb.finish()

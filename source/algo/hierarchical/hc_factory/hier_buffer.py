@@ -3,19 +3,24 @@ from __future__ import annotations
 import random
 from collections import deque
 from dataclasses import dataclass
+from typing import Callable
 
 import torch
 
 
 @dataclass
 class Transition:
-    obs: torch.Tensor
+    """Replay entry: either preprocessed env dict (hier) or flat obs tensor (legacy)."""
+
     action: int
     reward: float
-    next_obs: torch.Tensor
     mask: torch.Tensor
     next_mask: torch.Tensor
     done: bool
+    pre: dict | None = None
+    next_pre: dict | None = None
+    obs: torch.Tensor | None = None
+    next_obs: torch.Tensor | None = None
 
 
 class ReplayBuffer:

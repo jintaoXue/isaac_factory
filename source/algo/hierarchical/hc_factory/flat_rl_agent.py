@@ -32,9 +32,15 @@ class RLFlatAgent:
         action_dim = self.action_space.joint_dim
         self.dqn = MaskedDQNAgent("flat_joint", obs_dim, action_dim, self.device, **self.dqn_kwargs)
 
-    def act(self, env_state_action_dict: dict, epsilon: float) -> tuple[dict, int | None]:
+    def act(
+        self,
+        env_state_action_dict: dict,
+        epsilon: float,
+        *,
+        pre: dict | None = None,
+    ) -> tuple[dict, int | None]:
         self._ensure_dqn(env_state_action_dict)
-        obs = self.obs_encoder.encode_flat(env_state_action_dict)
+        obs = self.obs_encoder.encode_flat(env_state_action_dict, pre=pre)
         joint_mask = self.action_space.build_joint_mask(env_state_action_dict)
         joint_idx = self.dqn.select_action(obs, joint_mask, epsilon)
         if joint_idx is None:
@@ -50,6 +56,8 @@ class RLFlatAgent:
         reward: float,
         next_env_state_action_dict: dict,
         done: bool,
+        *,
+        learn=True,
     ) -> float | None:
         if joint_idx is None:
             return None
@@ -59,4 +67,6 @@ class RLFlatAgent:
         mask = self.action_space.build_joint_mask(env_state_action_dict)
         next_mask = self.action_space.build_joint_mask(next_env_state_action_dict)
         self.dqn.store(obs, int(joint_idx), reward, next_obs, mask, next_mask, done)
+        if not learn:
+            return None
         return self.dqn.learn()
