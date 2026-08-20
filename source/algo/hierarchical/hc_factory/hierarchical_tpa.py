@@ -66,6 +66,48 @@ def _count_finished(env_dict: dict) -> int:
     )
 
 
+def _segment_fields(
+    progress: dict,
+    spec,
+    *,
+    curriculum_enabled: bool,
+    explore: bool,
+    finished: int,
+    episode_n_finished: int = 0,
+) -> tuple[int, int, int]:
+    """Terminal start/target/remain for step logs."""
+    if curriculum_enabled:
+        start_n = int(progress.get("segment_start_nfin", spec.start_nfin))
+        target_n = int(progress.get("segment_target_nfin", spec.target_nfin))
+        n_done = int(episode_n_finished)
+        finished_abs = start_n + n_done
+        remain_n = max(0, target_n - finished_abs)
+        return start_n, target_n, remain_n
+    if explore:
+        start_n = 0
+        target_n = _curr.N_FULL_ORDER
+        remain_n = max(0, target_n - int(finished))
+        return start_n, target_n, remain_n
+    start_n = 0
+    order = progress.get("product_order") or {}
+    if isinstance(order, dict) and order:
+        target_n = sum(int(v or 0) for v in order.values())
+    else:
+        target_n = int(spec.n_products)
+    remain_n = max(0, target_n - int(finished))
+    return start_n, target_n, remain_n
+
+
+def _mean_per_product_span_str(ep_t: int, *, episode_n_finished: int, finished: int) -> str:
+    """makespan / n_finished; show n/a when nothing completed yet."""
+    n_done = int(episode_n_finished)
+    if n_done <= 0:
+        n_done = int(finished)
+    if n_done <= 0:
+        return "n/a"
+    return f"{float(ep_t + 1) / float(n_done):.1f}"
+
+
 def _buffer_len(agent) -> int:
     dqn = getattr(agent, "dqn", None)
     if dqn is None or getattr(dqn, "buffer", None) is None:
@@ -542,11 +584,15 @@ class HierarchicalTPA:
                     )
                     success_rate_str = f"{success_rate:.2f}" if success_rate is not None else "n/a"
                     nmk = float(ep_len) / float(max(1, t_budget))
-                    mpps = float(ep_len) / float(max(1, n_fin))
+                    mpps_str = _mean_per_product_span_str(
+                        ep_len - 1,
+                        episode_n_finished=n_fin,
+                        finished=n_fin,
+                    )
                     print(
                         f"[Hier] EP_DONE episode={self.episodes_done} "
                         f"len={ep_len} finished={finished_abs} ep_done_finished={n_fin} "
-                        f"success_rate={success_rate_str} nmk={nmk:.3f} mpps={mpps:.1f} "
+                        f"success_rate={success_rate_str} nmk={nmk:.3f} mpps={mpps_str} "
                         f"stalls={self.horizon.stall_counts_str()}"
                     )
                     if self.use_wandb:
@@ -628,14 +674,23 @@ class HierarchicalTPA:
                     spec_now.t_max if self.horizon.curriculum.enabled else self.max_episodic_steps
                 )
                 nmk = float(t0 + 1) / float(max(1, t_budget))
-                mpps = float(t0 + 1) / float(max(1, episode_n_finished[0]))
-                start_n = int(spec_now.start_nfin) if self.horizon.curriculum.enabled else 0
-                target_n = int(spec_now.target_nfin) if self.horizon.curriculum.enabled else finished
-                remain_n = max(0, target_n - finished)
+                mpps_str = _mean_per_product_span_str(
+                    t0,
+                    episode_n_finished=int(episode_n_finished[0]),
+                    finished=finished,
+                )
+                start_n, target_n, remain_n = _segment_fields(
+                    progress0,
+                    spec_now,
+                    curriculum_enabled=self.horizon.curriculum.enabled,
+                    explore=self.horizon.explore,
+                    finished=finished,
+                    episode_n_finished=int(episode_n_finished[0]),
+                )
                 print(
                     f"[Hier] step={env_steps(self.global_step, self.num_actors)} episode={ep0} ep_t={t0} "
                     f"start={start_n} target={target_n} remain={remain_n} "
-                    f"nmk={nmk:.3f} mpps={mpps:.1f} "
+                    f"nmk={nmk:.3f} mpps={mpps_str} "
                     f"steps/min={spm_str} n_envs={len(obs)} "
                     f"stalls={self.horizon.stall_counts_str()}"
                 )
