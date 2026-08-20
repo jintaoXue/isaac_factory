@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 
-def default_root(n_products: int = 16, t_max: int = 25000) -> Path:
+def default_root(n_products: int = 16, t_max: int = 16000) -> Path:
     return Path("env_checkpoints") / "random_explore" / f"N{n_products}_T{t_max}"
 
 
@@ -18,7 +18,7 @@ class ExploreCatalog:
         self,
         root: str | Path | None = None,
         n_products: int = 16,
-        t_max: int = 25000,
+        t_max: int = 16000,
         *,
         create_round: bool = True,
     ) -> None:

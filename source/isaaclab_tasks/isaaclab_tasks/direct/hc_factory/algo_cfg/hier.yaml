@@ -16,7 +16,7 @@ params:
 
     # Overridden by train.py from --num_envs / env.num_envs
     num_actors: 1
-    max_episodic_steps: 25000
+    max_episodic_steps: 16000
     state_dim: 256
 
     gamma: 0.998
@@ -61,7 +61,7 @@ params:
     warmstart: ''
     curriculum: False
     curriculum_start_stage: 0
-    t_max_anchor: 25000
+    t_max_anchor: 16000
     stagnation_l1: 400
     stagnation_l2: 600
     stagnation_l3: 800

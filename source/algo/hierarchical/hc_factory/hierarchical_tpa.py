@@ -16,6 +16,7 @@ import torch.optim as optim
 import wandb
 from rl_games.common import vecenv
 
+from .hc_factory_imports import import_hc_module
 from .hier_obs import HierObsEncoder
 from .hier_rl_agents import (
     RLHumanRobotAllocatorAgent,
@@ -35,6 +36,8 @@ from .wandb_metrics import (
     shop_metrics,
     train_metrics,
 )
+
+_curr = import_hc_module("src.curriculum")
 
 
 def _clear_rl(env_dict: dict) -> None:
@@ -115,7 +118,7 @@ class HierarchicalTPA:
         self.save_interval = config.get("save_interval", 1000)
         self.log_interval = config.get("log_interval", 100)
         self.global_step = 0
-        self.max_episodic_steps = int(config.get("max_episodic_steps", 25000))
+        self.max_episodic_steps = int(config.get("max_episodic_steps", 16000))
 
         dqn_kwargs = {
             "hidden_dim": config.get("hidden_dim", 128),
@@ -175,11 +178,15 @@ class HierarchicalTPA:
 
         self.horizon = HorizonHooks(config)
         if self.horizon.explore:
-            self.max_episodic_steps = int(config.get("t_max_anchor", 25000))
+            self.max_episodic_steps = int(config.get("t_max_anchor", 16000))
             print("[Hier] explore catalog mode: epsilon=1, no DQN backward")
 
     def init_wandb_logger(self):
-        define_shared_metrics(rl=True, curriculum=True)
+        define_shared_metrics(
+            rl=True,
+            curriculum=True,
+            test=bool(self.config.get("test")),
+        )
 
     def _wall_time_sec(self) -> float:
         if self._train_t0 is None:
@@ -232,7 +239,7 @@ class HierarchicalTPA:
         eval_epsilon = float(self.config.get("test_epsilon", 0.0))
         output_dir = os.path.join(self.experiment_dir, "eval")
         # Full-order eval: 16 products, T_max=anchor (not incremental curriculum segments).
-        eval_horizon = int(self.config.get("t_max_anchor", 25000))
+        eval_horizon = int(self.config.get("t_max_anchor", 16000))
 
         obs: list[dict] = self.vec_env.reset()
         self.horizon.bind(self.vec_env, len(obs))
@@ -247,7 +254,7 @@ class HierarchicalTPA:
         )
 
         print(
-            f"[Hier] test full-order N=16 T_max={eval_horizon} "
+            f"[Hier] test full-order N={_curr.N_FULL_ORDER} T_max={eval_horizon} "
             f"eps={eval_epsilon} seeds={seeds} n={episodes_per_seed}"
         )
         results = run_eval_episodes(

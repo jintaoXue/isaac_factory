@@ -52,7 +52,7 @@ parser.add_argument(
     "--curriculum",
     action="store_true",
     default=False,
-    help="Enable product-count curriculum (1→16, T_max scales with N).",
+    help="Enable product-count curriculum (reverse stages, training target=10).",
 )
 parser.add_argument(
     "--max_sim_episodes",

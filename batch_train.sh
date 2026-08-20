@@ -15,13 +15,13 @@ if [ $# -eq 0 ]; then
     echo "  C: HcFactory TPA (22 rule单产品 / 23 rule多产品 / 24 hier全量硬训)"
     echo "  D: 长 horizon 主路径 (25 explore采库 → 26 curriculum训练)"
     echo "  1-21: 旧 RL / Perception 序号"
-    echo "  22: rule_based + 单产品决策 (K=1, 10 episodes, wandb)"
-    echo "  23: rule_based + 多产品决策 (K=${HC_MULTI_K}, 10 episodes, wandb)"
-    echo "  24: hier 全量硬训对照 (K=${HC_MULTI_K}, max_episodic_steps=25000, wandb)"
-    echo "  25: hier masked-random 采集库 (--explore, N=16, T_max=25000, ε=1, 10 episodes)"
-    echo "  26: hier 增量课程 (--curriculum, ΔN=2,2,4,4,4 →16, wandb)"
+    echo "  22: rule_based + 单产品决策 (K=1, N=10, 10 episodes, wandb)"
+    echo "  23: rule_based + 多产品决策 (K=${HC_MULTI_K}, N=10, 10 episodes, wandb)"
+    echo "  24: hier 全量硬训对照 (K=${HC_MULTI_K}, max_episodic_steps=16000, wandb)"
+    echo "  25: hier masked-random 采集库 (--explore, N=16, T_max=16000, ε=1, 10 episodes)"
+    echo "  26: hier 倒序课程 (--curriculum, reverse ΔN →10, wandb)"
     echo "  27: 采集 debug（可视化+warmstart，不录视频不启wandb）"
-    echo "  28: hier 评测（加载模型，全量 16 件, T_max=25000）"
+    echo "  28: hier 评测（加载模型，全量 16 件, T_max=16000）"
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
     echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 25/26 的 --warmstart"
     echo "  环境变量 HC_LOAD_DIR: 28 号评测的实验目录（含 nn/）"
@@ -221,8 +221,8 @@ run_test_21() {
 
 ##### HcFactory Hierarchical TPA #####
 run_test_22() {
-    # rule_based + 单产品决策（max_parallel_cd_dispatch=1），跑 10 个 episode
-    echo "运行 22: rule_based single-product (K=1, ${HC_RULE_EPISODES} episodes, wandb)"
+    # rule_based + 单产品决策（max_parallel_cd_dispatch=1），N=10，跑 10 个 episode
+    echo "运行 22: rule_based single-product (K=1, N=10, ${HC_RULE_EPISODES} episodes, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo rule_based \
@@ -237,8 +237,8 @@ run_test_22() {
 }
 
 run_test_23() {
-    # rule_based + 多产品并行决策（K=5），跑 10 个 episode
-    echo "运行 23: rule_based multi-product (K=${HC_MULTI_K}, ${HC_RULE_EPISODES} episodes, wandb)"
+    # rule_based + 多产品并行决策（K=5），N=10，跑 10 个 episode
+    echo "运行 23: rule_based multi-product (K=${HC_MULTI_K}, N=10, ${HC_RULE_EPISODES} episodes, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo rule_based \
@@ -253,7 +253,7 @@ run_test_23() {
 }
 
 run_test_24() {
-    # hier 全量硬训对照（yaml max_episodic_steps=25000，无课程）
+    # hier 全量硬训对照（yaml max_episodic_steps=16000，无课程）
     echo "运行 24: hier 全量硬训对照 (K=${HC_MULTI_K}, wandb)"
     python train.py \
         --task "${HC_TASK}" \
@@ -269,7 +269,7 @@ run_test_24() {
 
 run_test_25() {
     # N=16 masked random 采集库：ε=1，无 DQN backward；L2/L3 死锁回退 + progress key 去重
-    echo "运行 25: explore catalog (N=16, T_max=25000, epsilon=1, 10 episodes)"
+    echo "运行 25: explore catalog (N=16, T_max=16000, epsilon=1, 10 episodes)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -279,14 +279,14 @@ run_test_25() {
         --max_sim_episodes 10 \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "explore_N16_T25000" \
+        --wandb_name "explore_N16_T16000" \
         $(hc_warmstart_args) \
         ${DEVICE_ARG}
 }
 
 run_test_26() {
-    # 增量课程：ΔN=2,2,4,4,4；T_budget=ΔN×per_T_max；catalog 按 start_nfin 切片
-    echo "运行 26: hier curriculum (ΔN 2/2/4/4/4 →16, wandb)"
+    # 倒序课程：target=10；T_budget=ΔN×per_T_max；catalog 按 start_nfin 切片
+    echo "运行 26: hier curriculum (reverse ΔN →10, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -332,7 +332,7 @@ run_test_28() {
         echo "示例：HC_LOAD_DIR=logs/rl_games/HcFactory/hier_2026-08-18_22-00-00 ./batch_train.sh 28 cuda:0"
         exit 1
     fi
-    echo "运行 28: hier test full-order N=16 T_max=25000 load=${HC_LOAD_DIR}"
+    echo "运行 28: hier test full-order N=16 T_max=16000 load=${HC_LOAD_DIR}"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -341,7 +341,7 @@ run_test_28() {
         --test \
         --test_times "${HC_TEST_TIMES:-1}" \
         --load_dir "${HC_LOAD_DIR}" \
-        +t_max_anchor=25000 \
+        +t_max_anchor=16000 \
         ${DEVICE_ARG}
 }
 

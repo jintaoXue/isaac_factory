@@ -12,7 +12,9 @@ from .agent_B_product_priority import ProductPriorityAgent
 from .agent_C_process_task_planner import ProcessTaskPlanningAgent
 from .agent_D_human_robot_allocator import HumanRobotMachineAllocationAgent
 from .hierarchical_dispatch import build_rule_based_action
+from .hc_factory_imports import import_hc_module
 from .hier_utils import compute_team_reward, count_busy_agents, crossed_interval, env_steps, read_rl_done, steps_per_min
+from .horizon_hooks import hc_env_list
 from .wandb_metrics import (
     axis_payload,
     define_shared_metrics,
@@ -23,6 +25,8 @@ from .wandb_metrics import (
     shop_metrics,
     train_metrics,
 )
+
+_curr = import_hc_module("src.curriculum")
 
 
 def _count_finished(env_dict: dict) -> int:
@@ -57,7 +61,17 @@ class RuleBasedHierarchical():
 
         self.train_dir = config.get("train_dir", "runs")
         self.experiment_dir = os.path.join(self.train_dir, config.get("full_experiment_name", "rule_based"))
-        self.max_episodic_steps = int(config.get("max_episodic_steps", 25000))
+        self.t_max_anchor = int(config.get("t_max_anchor", _curr.T_MAX_ANCHOR))
+        self.product_type = str(config.get("product_type", "ProductWaterPipe"))
+        if config.get("test"):
+            self.train_n_products = _curr.N_FULL_ORDER
+            self.max_episodic_steps = int(
+                config.get("max_episodic_steps", _curr.t_max_for(_curr.N_FULL_ORDER, self.t_max_anchor))
+            )
+        else:
+            self.train_n_products = int(config.get("train_n_products", _curr.N_TRAIN_TARGET))
+            self.max_episodic_steps = _curr.t_max_for(self.train_n_products, self.t_max_anchor)
+        self._hc_env_list = None
         self.max_sim_episodes = config.get("max_sim_episodes")
         if self.max_sim_episodes is not None:
             self.max_sim_episodes = int(self.max_sim_episodes)
@@ -82,12 +96,41 @@ class RuleBasedHierarchical():
         print(
             f"[Rule] max_parallel_cd_dispatch={self.max_parallel_cd_dispatch} "
             f"max_sim_episodes={self.max_sim_episodes} "
-            f"log_interval={self.log_interval} max_episodic_steps={self.max_episodic_steps} "
-            f"wandb={self.use_wandb}"
+            f"log_interval={self.log_interval} N={self.train_n_products} "
+            f"T_max={self.max_episodic_steps} wandb={self.use_wandb}"
         )
 
+    def _env_list(self):
+        if self._hc_env_list is None:
+            self._hc_env_list = hc_env_list(self.vec_env)
+        return self._hc_env_list
+
+    def _apply_train_order(self, env_id: int) -> None:
+        _curr.apply_train_order(
+            self._env_list()[env_id],
+            n_products=self.train_n_products,
+            product_type=self.product_type,
+            anchor=self.t_max_anchor,
+        )
+
+    def _apply_eval_order_all(self) -> int:
+        t_max = _curr.t_max_for(_curr.N_FULL_ORDER, self.t_max_anchor)
+        for env in self._env_list():
+            t_max = _curr.apply_eval_order(env, product_type=self.product_type, anchor=self.t_max_anchor)
+        self.max_episodic_steps = t_max
+        return t_max
+
+    def _bind_train_horizon(self) -> None:
+        self._hc_env_list = hc_env_list(self.vec_env)
+        for env_id in range(len(self._hc_env_list)):
+            self._apply_train_order(env_id)
+
     def init_wandb_logger(self) -> None:
-        define_shared_metrics(rl=False, curriculum=False)
+        define_shared_metrics(
+            rl=False,
+            curriculum=False,
+            test=bool(self.config.get("test")),
+        )
 
     def _wall_time_sec(self) -> float:
         if self._train_t0 is None:
@@ -146,6 +189,9 @@ class RuleBasedHierarchical():
         episodes_per_seed = int(self.config.get("test_times", 1))
         output_dir = os.path.join(self.experiment_dir, "eval")
 
+        self.vec_env.reset()
+        self._apply_eval_order_all()
+
         results = run_eval_episodes(
             self.vec_env,
             lambda o, eps: self.act(o),
@@ -153,6 +199,7 @@ class RuleBasedHierarchical():
             episodes_per_seed=episodes_per_seed,
             max_episodic_steps=self.max_episodic_steps,
             epsilon=0.0,
+            on_reset=lambda: self._apply_eval_order_all(),
         )
         payload = build_eval_payload(
             algo_name="rule_based",
@@ -178,6 +225,7 @@ class RuleBasedHierarchical():
             self.init_wandb_logger()
 
         obs: list[dict] = self.vec_env.reset()
+        self._bind_train_horizon()
         n_envs = len(obs)
         episode_reward = [0.0 for _ in range(n_envs)]
         episode_len = [0 for _ in range(n_envs)]
@@ -194,8 +242,9 @@ class RuleBasedHierarchical():
         last_logged_env_steps = 0
 
         print(
-            f"[Rule] train start n_envs={n_envs} "
-            f"K={self.max_parallel_cd_dispatch} max_eps={self.max_sim_episodes}"
+            f"[Rule] train start n_envs={n_envs} N={self.train_n_products} "
+            f"T_max={self.max_episodic_steps} K={self.max_parallel_cd_dispatch} "
+            f"max_eps={self.max_sim_episodes}"
         )
 
         while not stop:
@@ -281,9 +330,11 @@ class RuleBasedHierarchical():
                             peak_ongoing_robot=self.peak_ongoing_robot,
                         )
                         payload.update(core_payload)
-                        payload.update(fullorder_core_metrics(core_payload))
+                        if self.train_n_products >= _curr.N_FULL_ORDER:
+                            payload.update(fullorder_core_metrics(core_payload))
                         payload.update(peak_payload)
-                        payload.update(fullorder_peak_metrics(peak_payload))
+                        if self.train_n_products >= _curr.N_FULL_ORDER:
+                            payload.update(fullorder_peak_metrics(peak_payload))
                         wandb.log(payload)
 
                     episode_reward[env_id] = 0.0
@@ -294,6 +345,7 @@ class RuleBasedHierarchical():
                     self._ep_peak_ongoing[env_id] = 0
                     self._ep_peak_ongoing_human[env_id] = 0
                     self._ep_peak_ongoing_robot[env_id] = 0
+                    self._apply_train_order(env_id)
 
                     if (
                         self.max_sim_episodes is not None
@@ -350,7 +402,8 @@ class RuleBasedHierarchical():
                         peak_ongoing_robot=self.peak_ongoing_robot,
                     )
                     payload.update(peak_payload)
-                    payload.update(fullorder_peak_metrics(peak_payload))
+                    if self.train_n_products >= _curr.N_FULL_ORDER:
+                        payload.update(fullorder_peak_metrics(peak_payload))
                     payload.update(train_metrics())
                     wandb.log(payload)
 
@@ -374,6 +427,7 @@ class RuleBasedHierarchical():
                 peak_ongoing_robot=self.peak_ongoing_robot,
             )
             finish_payload.update(peak_payload)
-            finish_payload.update(fullorder_peak_metrics(peak_payload))
+            if self.train_n_products >= _curr.N_FULL_ORDER:
+                finish_payload.update(fullorder_peak_metrics(peak_payload))
             wandb.log(finish_payload)
             wandb.finish()

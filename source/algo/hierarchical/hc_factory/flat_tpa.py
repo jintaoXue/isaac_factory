@@ -94,7 +94,7 @@ class FlatTPA:
         self.save_interval = config.get("save_interval", 1000)
         self.log_interval = config.get("log_interval", 100)
         self.global_step = 0
-        self.max_episodic_steps = int(config.get("max_episodic_steps", 25000))
+        self.max_episodic_steps = int(config.get("max_episodic_steps", 16000))
 
         dqn_kwargs = {
             "hidden_dim": config.get("hidden_dim", 128),
@@ -129,7 +129,11 @@ class FlatTPA:
         self.episodes_done = 0
 
     def init_wandb_logger(self) -> None:
-        define_shared_metrics(rl=True, curriculum=False)
+        define_shared_metrics(
+            rl=True,
+            curriculum=False,
+            test=bool(self.config.get("test")),
+        )
 
     def _wall_time_sec(self) -> float:
         if self._train_t0 is None:

@@ -2,38 +2,47 @@
 
 Namespaces:
   - MetricPeak: live shop-floor / concurrency state
-  - MetricCore: episode-level business KPIs
+  - MetricCore: episode-level business KPIs (training)
+  - MetricTest: episode-level KPIs for --test / eval only
   - MetricTrain: training-process health
   - MetricLoss: optimization losses
   - Curriculum: segment metadata
 """
-
 from __future__ import annotations
 
 from typing import Any
 
 import wandb
 
+from .hc_factory_imports import import_hc_module
 
-def define_shared_metrics(*, rl: bool = False, curriculum: bool = False) -> None:
+_curr = import_hc_module("src.curriculum")
+
+_CORE_KEYS = (
+    "01_normalized_makespan",
+    "02_mean_per_product_span",
+    "03_success_rate",
+    "04_normalized_return",
+    "05_makespan",
+    "06_n_finished",
+    "07_finished_abs",
+    "08_ep_return",
+    "09_mean_makespan",
+    "10_mean_makespan_success",
+)
+
+
+def define_shared_metrics(*, rl: bool = False, curriculum: bool = False, test: bool = False) -> None:
     wandb.define_metric("Train/step")
     wandb.define_metric("MetricCore/episode")
     wandb.define_metric("MetricFullorderCore/episode")
+    wandb.define_metric("MetricTest/episode")
 
-    for key in (
-        "01_normalized_makespan",
-        "02_mean_per_product_span",
-        "03_success_rate",
-        "04_normalized_return",
-        "05_makespan",
-        "06_n_finished",
-        "07_finished_abs",
-        "08_ep_return",
-        "09_mean_makespan",
-        "10_mean_makespan_success",
-    ):
+    for key in _CORE_KEYS:
         wandb.define_metric(f"MetricCore/{key}", step_metric="MetricCore/episode")
         wandb.define_metric(f"MetricFullorderCore/{key}", step_metric="MetricFullorderCore/episode")
+        if test:
+            wandb.define_metric(f"MetricTest/{key}", step_metric="MetricTest/episode")
 
     for key in (
         "01_producing",
@@ -102,28 +111,29 @@ def episode_metrics(
     success_rate: float | None = None,
     mean_makespan: float | None = None,
     mean_makespan_success: float | None = None,
+    prefix: str = "MetricCore",
 ) -> dict[str, Any]:
     """Episode-level business KPIs. ``n_finished`` is work done in this episode/segment."""
     t_budget = max(1, int(t_budget))
     n_finished = max(0, int(n_finished))
     makespan = int(makespan)
     payload: dict[str, Any] = {
-        "MetricCore/episode": int(episode),
-        "MetricCore/01_normalized_makespan": float(makespan) / float(t_budget),
-        "MetricCore/02_mean_per_product_span": float(makespan) / float(max(1, n_finished)),
-        "MetricCore/04_normalized_return": float(ep_return) / float(max(1, makespan)),
-        "MetricCore/05_makespan": makespan,
-        "MetricCore/06_n_finished": n_finished,
-        "MetricCore/08_ep_return": float(ep_return),
+        f"{prefix}/episode": int(episode),
+        f"{prefix}/01_normalized_makespan": float(makespan) / float(t_budget),
+        f"{prefix}/02_mean_per_product_span": float(makespan) / float(max(1, n_finished)),
+        f"{prefix}/04_normalized_return": float(ep_return) / float(max(1, makespan)),
+        f"{prefix}/05_makespan": makespan,
+        f"{prefix}/06_n_finished": n_finished,
+        f"{prefix}/08_ep_return": float(ep_return),
     }
     if finished_abs is not None:
-        payload["MetricCore/07_finished_abs"] = int(finished_abs)
+        payload[f"{prefix}/07_finished_abs"] = int(finished_abs)
     if success_rate is not None:
-        payload["MetricCore/03_success_rate"] = float(success_rate)
+        payload[f"{prefix}/03_success_rate"] = float(success_rate)
     if mean_makespan is not None:
-        payload["MetricCore/09_mean_makespan"] = float(mean_makespan)
+        payload[f"{prefix}/09_mean_makespan"] = float(mean_makespan)
     if mean_makespan_success is not None:
-        payload["MetricCore/10_mean_makespan_success"] = float(mean_makespan_success)
+        payload[f"{prefix}/10_mean_makespan_success"] = float(mean_makespan_success)
     return payload
 
 
@@ -200,16 +210,18 @@ def log_eval_episodes(
     t_budget: int,
     algo_name: str,
 ) -> None:
-    """Log eval episodes with the same MetricCore keys as training."""
+    """Log eval episodes under MetricTest/* (separate from training MetricCore)."""
     if wandb.run is None:
         return
     makespans: list[int] = []
     success_ms: list[int] = []
+    n_success = 0
     for i, row in enumerate(results, start=1):
         n_fin = int(getattr(row, "n_finished", 0) or 0)
         if n_fin <= 0 and bool(row.success):
-            n_fin = 16
+            n_fin = _curr.N_FULL_ORDER
         if row.success:
+            n_success += 1
             success_ms.append(int(row.makespan))
         makespans.append(int(row.makespan))
         mean_ms = sum(makespans) / len(makespans)
@@ -223,10 +235,10 @@ def log_eval_episodes(
             finished_abs=n_fin,
             ep_return=float(row.ep_return),
             t_budget=t_budget,
+            success_rate=float(n_success) / float(i),
             mean_makespan=mean_ms,
             mean_makespan_success=mean_ok,
+            prefix="MetricTest",
         )
-        payload["Train/step"] = i
-        payload.update(fullorder_core_metrics(payload))
         wandb.log(payload)
-    print(f"[Eval:{algo_name}] wandb logged {len(results)} episodes (MetricCore)")
+    print(f"[Eval:{algo_name}] wandb logged {len(results)} episodes (MetricTest)")

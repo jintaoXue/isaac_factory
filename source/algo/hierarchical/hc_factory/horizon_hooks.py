@@ -39,12 +39,12 @@ class HorizonHooks:
             start_stage=int(config.get("curriculum_start_stage", 0)),
             t_max_anchor=anchor,
         )
-        # Catalog is always the full-horizon explore library (N=16, T=anchor).
+        # Catalog is always the full-horizon explore library (N=N_FULL_ORDER, T=anchor).
         catalog_root = config.get("explore_catalog_dir") or None
         self.catalog = _catalog.ExploreCatalog(
             catalog_root,
-            n_products=16,
-            t_max=_curr.t_max_for(16, anchor),
+            n_products=_curr.N_FULL_ORDER,
+            t_max=_curr.t_max_for(_curr.N_FULL_ORDER, anchor),
             create_round=self.explore,
         )
         self.l1 = int(config.get("stagnation_l1", 400))
@@ -61,15 +61,18 @@ class HorizonHooks:
         self.stall_root.mkdir(parents=True, exist_ok=True)
         if self.explore:
             self.catalog.write_round_meta(
-                epsilon=1.0, t_max=_curr.t_max_for(16, anchor), n_products=16
+                epsilon=1.0, t_max=_curr.t_max_for(_curr.N_FULL_ORDER, anchor), n_products=_curr.N_FULL_ORDER
             )
 
     def apply_full_order_eval(self, horizon: int | None = None) -> int:
-        """Disable segment curriculum: 16 products, T_max=anchor, no catalog warmstart."""
-        t_max = int(horizon if horizon is not None else _curr.t_max_for(16, self.curriculum.anchor))
+        """Disable segment curriculum: N_FULL_ORDER products, T_max=anchor, no catalog warmstart."""
+        t_max = int(
+            horizon if horizon is not None else _curr.t_max_for(_curr.N_FULL_ORDER, self.curriculum.anchor)
+        )
         if self.env_list is None:
             return t_max
         self.curriculum.enabled = False
+        product_type = self.curriculum.product_type
         for env in self.env_list:
             env.task_manager.max_episodic_steps = t_max
             progress = env.env_state_action_dict.setdefault("progress", {})
@@ -77,6 +80,8 @@ class HorizonHooks:
             progress.pop("segment_start_nfin", None)
             progress.pop("segment_delta_n", None)
             progress["stage_wip_cap"] = 10
+            progress["product_order"] = {product_type: _curr.N_FULL_ORDER}
+            progress["not_started"] = {product_type: _curr.N_FULL_ORDER}
         return t_max
 
     def bind(self, vec_env, n_envs: int) -> None:
@@ -86,7 +91,7 @@ class HorizonHooks:
         self.ep_stalled = [False] * n_envs
         for i, env in enumerate(self.env_list):
             if self.explore:
-                env.task_manager.max_episodic_steps = _curr.t_max_for(16, self.curriculum.anchor)
+                env.task_manager.max_episodic_steps = _curr.t_max_for(_curr.N_FULL_ORDER, self.curriculum.anchor)
                 env.env_state_action_dict.setdefault("progress", {})["stage_wip_cap"] = 10
             else:
                 self.maybe_warmstart_new_episode(i)
@@ -104,7 +109,7 @@ class HorizonHooks:
     def maybe_warmstart_new_episode(self, env_id: int) -> None:
         env = self.env_list[env_id]
         if self.explore:
-            env.task_manager.max_episodic_steps = _curr.t_max_for(16, self.curriculum.anchor)
+            env.task_manager.max_episodic_steps = _curr.t_max_for(_curr.N_FULL_ORDER, self.curriculum.anchor)
             env.env_state_action_dict.setdefault("progress", {})["stage_wip_cap"] = 10
             return
         if not self.curriculum.enabled:

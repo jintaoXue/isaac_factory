@@ -50,7 +50,9 @@ params:
     test: False
     test_times: 1
     test_seeds: [42, 43, 44, 45, 46]
-    max_episodic_steps: 25000
+    train_n_products: 10
+    t_max_anchor: 16000
+    max_episodic_steps: 16000
     parallel_producing_limit: 10
     max_parallel_cd_dispatch: 1
     log_interval: 100

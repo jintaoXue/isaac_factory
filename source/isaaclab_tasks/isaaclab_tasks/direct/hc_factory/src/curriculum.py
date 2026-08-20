@@ -1,8 +1,8 @@
-"""Reverse curriculum with fixed target=16.
+"""Reverse curriculum with fixed training target=10; eval/explore use 16.
 
 Each stage is a segment:
     warmstart from ``start_nfin`` finished products,
-    aim for ``target_nfin`` (=16),
+    aim for ``target_nfin`` (= ``N_TRAIN_TARGET``),
     so the required progress is ``delta_n = target - start``,
     with ``T_budget = delta_n * per_t_max``.
 """
@@ -11,27 +11,69 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 
-T_MAX_ANCHOR = 25000
-N_ANCHOR = 16
+T_MAX_ANCHOR = 16000  # 16 products × per_T_max=1000
+N_FULL_ORDER = 16  # eval / explore catalog full horizon
+N_TRAIN_TARGET = 10  # curriculum training cap
+N_ANCHOR = N_FULL_ORDER  # legacy alias for per-product time scaling
+PER_T_MAX = 1000  # steps budget per finished product
 WIP_CAP = 10  # same as HcVectorEnvCfg.single_env_parallel_producing_limit
 
-# (stage, start_nfin, delta_n) with fixed target_nfin=16.
+# (stage, start_nfin, delta_n) with fixed target_nfin=N_TRAIN_TARGET.
 STAGES: tuple[tuple[int, int, int], ...] = (
-    (0, 14, 2),
-    (1, 12, 4),
-    (2, 8, 8),
-    (3, 4, 12),
-    (4, 0, 16),
+    (0, 8, 2),
+    (1, 6, 4),
+    (2, 4, 6),
+    (3, 2, 8),
+    (4, 0, 10),
 )
 
 
 def per_t_max(anchor: int = T_MAX_ANCHOR) -> int:
-    return max(1, int(round(anchor / N_ANCHOR)))
+    return max(1, int(round(int(anchor) / N_FULL_ORDER)))
 
 
 def t_max_for(n_products: int, anchor: int = T_MAX_ANCHOR) -> int:
-    """Legacy full-horizon helper (explore catalog / 25)."""
-    return max(1, int(round(anchor * n_products / N_ANCHOR)))
+    """Full-horizon helper (explore catalog / eval)."""
+    return max(1, int(n_products) * per_t_max(anchor))
+
+
+def _clear_segment_fields(progress: dict) -> None:
+    progress.pop("segment_target_nfin", None)
+    progress.pop("segment_start_nfin", None)
+    progress.pop("segment_delta_n", None)
+
+
+def apply_train_order(
+    single_env,
+    *,
+    n_products: int = N_TRAIN_TARGET,
+    product_type: str = "ProductWaterPipe",
+    anchor: int = T_MAX_ANCHOR,
+) -> int:
+    """Set training order size and matching T_max on a live env."""
+    t_max = t_max_for(n_products, anchor)
+    single_env.task_manager.max_episodic_steps = t_max
+    progress = single_env.env_state_action_dict.setdefault("progress", {})
+    progress["product_order"] = {product_type: int(n_products)}
+    progress["not_started"] = {product_type: int(n_products)}
+    _clear_segment_fields(progress)
+    return t_max
+
+
+def apply_eval_order(
+    single_env,
+    *,
+    product_type: str = "ProductWaterPipe",
+    anchor: int = T_MAX_ANCHOR,
+) -> int:
+    """Set full-order eval (N_FULL_ORDER) and T_max on a live env."""
+    t_max = t_max_for(N_FULL_ORDER, anchor)
+    single_env.task_manager.max_episodic_steps = t_max
+    progress = single_env.env_state_action_dict.setdefault("progress", {})
+    progress["product_order"] = {product_type: N_FULL_ORDER}
+    progress["not_started"] = {product_type: N_FULL_ORDER}
+    _clear_segment_fields(progress)
+    return t_max
 
 
 @dataclass
@@ -40,7 +82,7 @@ class StageSpec:
     start_nfin: int
     delta_n: int
     target_nfin: int
-    n_products: int  # full order size (always 16)
+    n_products: int  # training order size (N_TRAIN_TARGET)
     wip_cap: int
     t_max: int  # segment budget = delta_n * per_T_max
     per_t_max: int
@@ -54,8 +96,8 @@ def spec_for(stage: int, anchor: int = T_MAX_ANCHOR) -> StageSpec:
         stage=s,
         start_nfin=start,
         delta_n=delta,
-        target_nfin=N_ANCHOR,
-        n_products=N_ANCHOR,
+        target_nfin=N_TRAIN_TARGET,
+        n_products=N_TRAIN_TARGET,
         wip_cap=WIP_CAP,
         t_max=max(1, delta * pt),
         per_t_max=pt,
@@ -92,11 +134,17 @@ class CurriculumScheduler:
         return spec_for(self.stage if self.enabled else len(STAGES) - 1, self.anchor)
 
     def apply(self, single_env, *, overlay_existing: bool = False) -> StageSpec:
-        """Write segment target / T_budget onto a live env. Full order stays 16; WIP cap 10."""
+        """Write segment target / T_budget onto a live env. Training order = N_TRAIN_TARGET."""
         spec = self.spec
         env = single_env.env_state_action_dict
         progress = env.setdefault("progress", {})
         if not self.enabled:
+            apply_train_order(
+                single_env,
+                n_products=N_TRAIN_TARGET,
+                product_type=self.product_type,
+                anchor=self.anchor,
+            )
             progress.setdefault("stage_wip_cap", spec.wip_cap)
             return spec
         tm = single_env.task_manager
