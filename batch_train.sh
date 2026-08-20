@@ -15,8 +15,8 @@ if [ $# -eq 0 ]; then
     echo "  C: HcFactory TPA (22 rule单产品 / 23 rule多产品 / 24 hier全量硬训)"
     echo "  D: 长 horizon 主路径 (25 explore采库 → 26 curriculum训练)"
     echo "  1-21: 旧 RL / Perception 序号"
-    echo "  22: rule_based + 单产品决策 (K=1, N=10, 10 episodes, wandb)"
-    echo "  23: rule_based + 多产品决策 (K=${HC_MULTI_K}, N=10, 10 episodes, wandb)"
+    echo "  22: rule_based + 单产品决策 (K=1, N=10, 20 episodes, wandb)"
+    echo "  23: rule_based + 多产品决策 (K=${HC_MULTI_K}, N=10, 20 episodes, wandb)"
     echo "  24: hier 全量硬训对照 (K=${HC_MULTI_K}, max_episodic_steps=16000, wandb)"
     echo "  25: hier masked-random 采集库 (--explore, N=16, T_max=16000, ε=1, 10 episodes)"
     echo "  26: hier 倒序课程 (--curriculum, reverse ΔN →10, wandb)"
@@ -55,7 +55,7 @@ echo "任务列表: ${JOBS[*]}"
 HC_TASK="HRTPaHC-v1"
 HC_WANDB_PROJECT="HcFactory_TPA"
 HC_NUM_ENVS=1
-HC_RULE_EPISODES=10
+HC_RULE_EPISODES=20
 HC_MULTI_K=10
 HC_WARMSTART="${HC_WARMSTART:-}"
 
@@ -221,7 +221,7 @@ run_test_21() {
 
 ##### HcFactory Hierarchical TPA #####
 run_test_22() {
-    # rule_based + 单产品决策（max_parallel_cd_dispatch=1），N=10，跑 10 个 episode
+    # rule_based + 单产品决策（max_parallel_cd_dispatch=1），N=10，跑 20 个 episode
     echo "运行 22: rule_based single-product (K=1, N=10, ${HC_RULE_EPISODES} episodes, wandb)"
     python train.py \
         --task "${HC_TASK}" \
@@ -237,7 +237,7 @@ run_test_22() {
 }
 
 run_test_23() {
-    # rule_based + 多产品并行决策（K=5），N=10，跑 10 个 episode
+    # rule_based + 多产品并行决策（K=5），N=10，跑 20 个 episode
     echo "运行 23: rule_based multi-product (K=${HC_MULTI_K}, N=10, ${HC_RULE_EPISODES} episodes, wandb)"
     python train.py \
         --task "${HC_TASK}" \
