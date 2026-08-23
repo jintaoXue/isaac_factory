@@ -233,7 +233,7 @@ class HierarchicalTPA:
             self.max_episodic_steps = self.horizon.explore_t_max()
             print(
                 f"[Hier] explore mode: epsilon=1, no DQN backward, "
-                f"N={self.horizon.explore_n_products()} T_max={self.max_episodic_steps}"
+                f"N={self.horizon.explore_n_products} T_max={self.max_episodic_steps}"
             )
 
     def init_wandb_logger(self):
