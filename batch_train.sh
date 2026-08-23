@@ -23,6 +23,10 @@ if [ $# -eq 0 ]; then
     echo "  27: 采集 debug（可视化+warmstart，不录视频不启wandb）"
     echo "  28: hier 评测（加载模型，全量 16 件, T_max=16000）"
     echo "  29: hier RL随机基线 (ε=1, N=10, T=10000, ${HC_RULE_EPISODES} episodes, wandb)"
+    echo "  30: rule_based 单产品 (K=1, N=16, T=16000, ${HC_RULE_EPISODES} episodes, wandb)"
+    echo "  31: rule_based 多产品 (K=${HC_MULTI_K}, N=16, T=16000, ${HC_RULE_EPISODES} episodes, wandb)"
+    echo "  32: hier RL随机基线 (ε=1, N=16, T=16000, ${HC_RULE_EPISODES} episodes, wandb)"
+    echo "  E: 基线矩阵六连 (22 23 29 30 31 32)"
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
     echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 25/26 的 --warmstart"
     echo "  环境变量 HC_LOAD_DIR: 28 号评测的实验目录（含 nn/）"
@@ -34,7 +38,7 @@ JOBS=()
 for arg in "$@"; do
     if [[ "$arg" =~ ^cuda:[0-9]+$ ]]; then
         DEVICE="$arg"
-    elif [[ "$arg" =~ ^([1-9]|1[0-9]|2[0-9])$ ]] || [ "$arg" = "A" ] || [ "$arg" = "B" ] || [ "$arg" = "C" ] || [ "$arg" = "D" ]; then
+    elif [[ "$arg" =~ ^([1-9]|1[0-9]|2[0-9]|3[0-2])$ ]] || [ "$arg" = "A" ] || [ "$arg" = "B" ] || [ "$arg" = "C" ] || [ "$arg" = "D" ] || [ "$arg" = "E" ]; then
         JOBS+=("$arg")
     else
         echo "错误: 无法识别参数 '$arg'"
@@ -231,14 +235,15 @@ run_test_22() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "rule_K1_single_${HC_RULE_EPISODES}ep" \
+        --wandb_name "rule_K1_single_N10_${HC_RULE_EPISODES}ep" \
+        --train_n_products 10 \
         --max_parallel_cd_dispatch 1 \
         --max_sim_episodes "${HC_RULE_EPISODES}" \
         ${DEVICE_ARG}
 }
 
 run_test_23() {
-    # rule_based + 多产品并行决策（K=5），N=10，跑 20 个 episode
+    # rule_based + 多产品并行决策（K=10），N=10，跑 20 个 episode
     echo "运行 23: rule_based multi-product (K=${HC_MULTI_K}, N=10, ${HC_RULE_EPISODES} episodes, wandb)"
     python train.py \
         --task "${HC_TASK}" \
@@ -247,7 +252,8 @@ run_test_23() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "rule_K${HC_MULTI_K}_multi_${HC_RULE_EPISODES}ep" \
+        --wandb_name "rule_K${HC_MULTI_K}_multi_N10_${HC_RULE_EPISODES}ep" \
+        --train_n_products 10 \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         --max_sim_episodes "${HC_RULE_EPISODES}" \
         ${DEVICE_ARG}
@@ -359,8 +365,61 @@ run_test_29() {
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "hier_random_N10_${HC_RULE_EPISODES}ep" \
+        --wandb_name "random_K${HC_MULTI_K}_N10_${HC_RULE_EPISODES}ep" \
         --explore_n_products 10 \
+        --no_explore_save_catalog \
+        ${DEVICE_ARG}
+}
+
+run_test_30() {
+    # rule_based + 单产品决策，N=16 全量订单
+    echo "运行 30: rule_based single-product (K=1, N=16, ${HC_RULE_EPISODES} episodes, wandb)"
+    python train.py \
+        --task "${HC_TASK}" \
+        --algo rule_based \
+        --num_envs "${HC_NUM_ENVS}" \
+        --headless \
+        --wandb_activate \
+        --wandb_project "${HC_WANDB_PROJECT}" \
+        --wandb_name "rule_K1_single_N16_${HC_RULE_EPISODES}ep" \
+        --train_n_products 16 \
+        --max_parallel_cd_dispatch 1 \
+        --max_sim_episodes "${HC_RULE_EPISODES}" \
+        ${DEVICE_ARG}
+}
+
+run_test_31() {
+    # rule_based + 多产品并行决策，N=16 全量订单
+    echo "运行 31: rule_based multi-product (K=${HC_MULTI_K}, N=16, ${HC_RULE_EPISODES} episodes, wandb)"
+    python train.py \
+        --task "${HC_TASK}" \
+        --algo rule_based \
+        --num_envs "${HC_NUM_ENVS}" \
+        --headless \
+        --wandb_activate \
+        --wandb_project "${HC_WANDB_PROJECT}" \
+        --wandb_name "rule_K${HC_MULTI_K}_multi_N16_${HC_RULE_EPISODES}ep" \
+        --train_n_products 16 \
+        --max_parallel_cd_dispatch "${HC_MULTI_K}" \
+        --max_sim_episodes "${HC_RULE_EPISODES}" \
+        ${DEVICE_ARG}
+}
+
+run_test_32() {
+    # hier masked-random makespan 基线：N=16, ε=1, 无 DQN 学习, 不写 catalog
+    echo "运行 32: hier RL random baseline (ε=1, N=16, T=16000, ${HC_RULE_EPISODES} episodes, wandb)"
+    python train.py \
+        --task "${HC_TASK}" \
+        --algo hier \
+        --num_envs "${HC_NUM_ENVS}" \
+        --headless \
+        --explore \
+        --max_sim_episodes "${HC_RULE_EPISODES}" \
+        --max_parallel_cd_dispatch "${HC_MULTI_K}" \
+        --wandb_activate \
+        --wandb_project "${HC_WANDB_PROJECT}" \
+        --wandb_name "random_K${HC_MULTI_K}_N16_${HC_RULE_EPISODES}ep" \
+        --explore_n_products 16 \
         --no_explore_save_catalog \
         ${DEVICE_ARG}
 }
@@ -398,6 +457,9 @@ run_one_job() {
         27) run_test_27 ;;
         28) run_test_28 ;;
         29) run_test_29 ;;
+        30) run_test_30 ;;
+        31) run_test_31 ;;
+        32) run_test_32 ;;
         A)
             echo "=== 运行A组训练 (1-5) ==="
             run_test_1; run_test_2; run_test_3; run_test_4; run_test_5; run_test_6
@@ -420,6 +482,16 @@ run_one_job() {
             run_test_25
             run_test_26
             echo "D组训练完成！"
+            ;;
+        E)
+            echo "=== 运行E组: 基线矩阵 (N=10: 22 23 29 → N=16: 30 31 32) ==="
+            run_test_22
+            run_test_23
+            run_test_29
+            run_test_30
+            run_test_31
+            run_test_32
+            echo "E组基线矩阵完成！"
             ;;
         *) echo "错误: 无效的训练序号 $id"; return 1 ;;
     esac

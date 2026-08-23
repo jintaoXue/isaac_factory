@@ -61,6 +61,12 @@ parser.add_argument(
     help="Max environment simulation episodes (stop after this many completed rounds; rule_based / hier).",
 )
 parser.add_argument(
+    "--train_n_products",
+    type=int,
+    default=None,
+    help="Rule train order size (10 or 16; default from yaml).",
+)
+parser.add_argument(
     "--explore_n_products",
     type=int,
     default=None,
@@ -245,6 +251,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     if getattr(args_cli, "explore", False):
         algo_cfg["params"]["config"]["explore"] = True
         algo_cfg["params"]["config"]["explore_catalog"] = True
+    if getattr(args_cli, "train_n_products", None) is not None:
+        algo_cfg["params"]["config"]["train_n_products"] = int(args_cli.train_n_products)
     if getattr(args_cli, "explore_n_products", None) is not None:
         algo_cfg["params"]["config"]["explore_n_products"] = int(args_cli.explore_n_products)
     if getattr(args_cli, "no_explore_save_catalog", False):
