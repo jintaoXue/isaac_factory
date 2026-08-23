@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# HcFactory TPA 默认（help 与 run 共用；可用环境变量覆盖）
+HC_RULE_EPISODES="${HC_RULE_EPISODES:-10}"
+HC_MULTI_K="${HC_MULTI_K:-10}"
+
 # 用法:
 #   ./batch_train.sh 22 cuda:0
 #   ./batch_train.sh 22 23 24 cuda:0     # 依次跑多个序号
@@ -15,8 +19,8 @@ if [ $# -eq 0 ]; then
     echo "  C: HcFactory TPA (22 rule单产品 / 23 rule多产品 / 24 hier全量硬训)"
     echo "  D: 长 horizon 主路径 (25 explore采库 → 26 curriculum训练)"
     echo "  1-21: 旧 RL / Perception 序号"
-    echo "  22: rule_based + 单产品决策 (K=1, N=10, 20 episodes, wandb)"
-    echo "  23: rule_based + 多产品决策 (K=${HC_MULTI_K}, N=10, 20 episodes, wandb)"
+    echo "  22: rule_based + 单产品决策 (K=1, N=10, ${HC_RULE_EPISODES} episodes, wandb)"
+    echo "  23: rule_based + 多产品决策 (K=${HC_MULTI_K}, N=10, ${HC_RULE_EPISODES} episodes, wandb)"
     echo "  24: hier 全量硬训对照 (K=${HC_MULTI_K}, max_episodic_steps=16000, wandb)"
     echo "  25: hier masked-random 采集库 (--explore, N=16, T_max=16000, ε=1, 10 episodes)"
     echo "  26: hier 倒序课程 (--curriculum, reverse ΔN →10, wandb)"
@@ -30,6 +34,7 @@ if [ $# -eq 0 ]; then
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
     echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 25/26 的 --warmstart"
     echo "  环境变量 HC_LOAD_DIR: 28 号评测的实验目录（含 nn/）"
+    echo "  环境变量 HC_RULE_EPISODES: 基线 episode 数（默认 ${HC_RULE_EPISODES}）"
     exit 1
 fi
 
@@ -60,8 +65,6 @@ echo "任务列表: ${JOBS[*]}"
 HC_TASK="HRTPaHC-v1"
 HC_WANDB_PROJECT="HcFactory_TPA"
 HC_NUM_ENVS=1
-HC_RULE_EPISODES=20
-HC_MULTI_K=10
 HC_WARMSTART="${HC_WARMSTART:-}"
 
 # 可选 --warmstart（25/26）
