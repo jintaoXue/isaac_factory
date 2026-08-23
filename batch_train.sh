@@ -360,8 +360,8 @@ run_test_29() {
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
         --wandb_name "hier_random_N10_${HC_RULE_EPISODES}ep" \
-        +explore_n_products=10 \
-        +explore_save_catalog=false \
+        --explore_n_products 10 \
+        --no_explore_save_catalog \
         ${DEVICE_ARG}
 }
 

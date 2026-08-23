@@ -60,6 +60,18 @@ parser.add_argument(
     default=None,
     help="Max environment simulation episodes (stop after this many completed rounds; rule_based / hier).",
 )
+parser.add_argument(
+    "--explore_n_products",
+    type=int,
+    default=None,
+    help="Explore / random baseline order size (10 or 16; default 16).",
+)
+parser.add_argument(
+    "--no_explore_save_catalog",
+    action="store_true",
+    default=False,
+    help="Explore mode: do not write env_checkpoints/random_explore catalog pkls.",
+)
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument(
     "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
@@ -233,6 +245,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     if getattr(args_cli, "explore", False):
         algo_cfg["params"]["config"]["explore"] = True
         algo_cfg["params"]["config"]["explore_catalog"] = True
+    if getattr(args_cli, "explore_n_products", None) is not None:
+        algo_cfg["params"]["config"]["explore_n_products"] = int(args_cli.explore_n_products)
+    if getattr(args_cli, "no_explore_save_catalog", False):
+        algo_cfg["params"]["config"]["explore_save_catalog"] = False
     warmstart = (getattr(args_cli, "warmstart", None) or "").strip() or os.environ.get("HC_WARMSTART", "").strip()
     if warmstart:
         algo_cfg["params"]["config"]["warmstart"] = warmstart

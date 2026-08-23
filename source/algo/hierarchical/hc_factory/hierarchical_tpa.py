@@ -74,6 +74,7 @@ def _segment_fields(
     explore: bool,
     finished: int,
     episode_n_finished: int = 0,
+    explore_n_target: int | None = None,
 ) -> tuple[int, int, int]:
     """Terminal start/target/remain for step logs."""
     if curriculum_enabled:
@@ -85,11 +86,7 @@ def _segment_fields(
         return start_n, target_n, remain_n
     if explore:
         start_n = 0
-        order = progress.get("product_order") or {}
-        if isinstance(order, dict) and order:
-            target_n = sum(int(v or 0) for v in order.values())
-        else:
-            target_n = _curr.N_FULL_ORDER
+        target_n = int(explore_n_target) if explore_n_target is not None else _curr.N_FULL_ORDER
         remain_n = max(0, target_n - int(finished))
         return start_n, target_n, remain_n
     start_n = 0
@@ -685,9 +682,13 @@ class HierarchicalTPA:
                 spm = steps_per_min(self.global_step, wall, self.num_actors)
                 spm_str = f"{spm:.1f}" if spm is not None else "n/a"
                 spec_now = self.horizon.curriculum.spec
-                t_budget = (
-                    spec_now.t_max if self.horizon.curriculum.enabled else self.max_episodic_steps
-                )
+                if self.horizon.explore:
+                    self.horizon.ensure_explore_episode(0)
+                    t_budget = self.horizon.explore_t_max()
+                else:
+                    t_budget = (
+                        spec_now.t_max if self.horizon.curriculum.enabled else self.max_episodic_steps
+                    )
                 nmk = float(t0 + 1) / float(max(1, t_budget))
                 mpps_str = _mean_per_product_span_str(
                     t0,
@@ -701,6 +702,9 @@ class HierarchicalTPA:
                     explore=self.horizon.explore,
                     finished=finished,
                     episode_n_finished=int(episode_n_finished[0]),
+                    explore_n_target=(
+                        self.horizon.explore_n_products if self.horizon.explore else None
+                    ),
                 )
                 print(
                     f"[Hier] step={env_steps(self.global_step, self.num_actors)} episode={ep0} ep_t={t0} "

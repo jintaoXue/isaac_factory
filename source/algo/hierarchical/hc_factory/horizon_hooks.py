@@ -37,6 +37,11 @@ class HorizonHooks:
         explore_n = int(config.get("explore_n_products") or 0)
         self.explore_n_products = explore_n if explore_n > 0 else _curr.N_FULL_ORDER
         self.explore_save_catalog = bool(config.get("explore_save_catalog", True))
+        print(
+            f"[Horizon] explore={self.explore} N={self.explore_n_products} "
+            f"T_max={_curr.t_max_for(self.explore_n_products, anchor)} "
+            f"save_catalog={self.explore_save_catalog}"
+        )
         self.curriculum = _curr.CurriculumScheduler(
             enabled=bool(config.get("curriculum")),
             start_stage=int(config.get("curriculum_start_stage", 0)),
@@ -83,6 +88,20 @@ class HorizonHooks:
             n_products=self.explore_n_products,
             anchor=self.curriculum.anchor,
         )
+
+    def ensure_explore_episode(self, env_id: int) -> None:
+        """Re-apply N/T if env reset left CfgProductOrder (16) instead of explore_n_products."""
+        if not self.explore or self.env_list is None:
+            return
+        env = self.env_list[env_id]
+        progress = env.env_state_action_dict.get("progress") or {}
+        order = progress.get("product_order") or {}
+        n_order = (
+            sum(int(v or 0) for v in order.values()) if isinstance(order, dict) and order else 0
+        )
+        want_t = self.explore_t_max()
+        if n_order != self.explore_n_products or int(env.task_manager.max_episodic_steps) != want_t:
+            self.apply_explore_episode(env)
 
     def apply_full_order_eval(self, horizon: int | None = None) -> int:
         """Disable segment curriculum: N_FULL_ORDER products, T_max=anchor, no catalog warmstart."""
