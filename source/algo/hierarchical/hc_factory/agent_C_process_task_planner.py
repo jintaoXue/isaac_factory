@@ -40,5 +40,5 @@ class ProcessTaskPlanningAgent(AgentBase):
             return self._none_task_action(c_dim)
         mask = mask.clone()
         mask[0] = 0
-        return self.keep_last_one(mask)
+        return self.keep_first_one(mask)
 
