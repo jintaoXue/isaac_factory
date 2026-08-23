@@ -19,21 +19,27 @@ params:
     max_episodic_steps: 16000
     state_dim: 256
 
-    gamma: 0.998
+    gamma: 0.995
     learning_rate: 1.0e-4
     encoder_learning_rate: 1.0e-4
     batch_size: 64
     replay_buffer_size: 50000
     hidden_dim: 128
-    target_update_interval: 500
+    target_update_interval: 2000
+    double_dqn: True
+    target_tau: 0.005
+    huber_delta: 1.0
+    grad_clip_norm: 10.0
+    reward_clip: 100.0
+    q_target_clip: 500.0
     # required by rl_games Runner.load (unused by HierarchicalTPA)
     reward_shaper:
       scale_value: 1.0
 
     # epsilon-greedy exploration
     epsilon_start: 1.0
-    epsilon_end: 0.0
-    epsilon_decay_steps: 200000
+    epsilon_end: 0.05
+    epsilon_decay_steps: 1500000
 
     # training loop (learn_interval: DQN backward every N env steps; buffer stores every decision step)
     learn_interval: 8
@@ -58,6 +64,8 @@ params:
     explore: False
     explore_catalog: False
     explore_catalog_dir: ''
+    explore_n_products: 0
+    explore_save_catalog: True
     warmstart: ''
     curriculum: False
     curriculum_start_stage: 0

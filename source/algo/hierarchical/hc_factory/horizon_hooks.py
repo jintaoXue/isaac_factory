@@ -34,18 +34,21 @@ class HorizonHooks:
         self.ring_k = int(config.get("decision_ring_k", 20))
         self.cosine_th = float(config.get("soft_cosine_th", 0.95))
         anchor = int(config.get("t_max_anchor", _curr.T_MAX_ANCHOR))
+        explore_n = int(config.get("explore_n_products") or 0)
+        self.explore_n_products = explore_n if explore_n > 0 else _curr.N_FULL_ORDER
+        self.explore_save_catalog = bool(config.get("explore_save_catalog", True))
         self.curriculum = _curr.CurriculumScheduler(
             enabled=bool(config.get("curriculum")),
             start_stage=int(config.get("curriculum_start_stage", 0)),
             t_max_anchor=anchor,
         )
-        # Catalog is always the full-horizon explore library (N=N_FULL_ORDER, T=anchor).
+        # Explore catalog root follows explore_n_products (N=16 collect vs N=10 baseline).
         catalog_root = config.get("explore_catalog_dir") or None
         self.catalog = _catalog.ExploreCatalog(
             catalog_root,
-            n_products=_curr.N_FULL_ORDER,
-            t_max=_curr.t_max_for(_curr.N_FULL_ORDER, anchor),
-            create_round=self.explore,
+            n_products=self.explore_n_products,
+            t_max=_curr.t_max_for(self.explore_n_products, anchor),
+            create_round=self.explore and self.explore_save_catalog,
         )
         self.l1 = int(config.get("stagnation_l1", 400))
         self.l2 = int(config.get("stagnation_l2", 600))
@@ -59,10 +62,27 @@ class HorizonHooks:
         mode_dir = "collect" if self.explore else "train"
         self.stall_root = Path("env_checkpoints") / "stagnation" / mode_dir
         self.stall_root.mkdir(parents=True, exist_ok=True)
-        if self.explore:
+        if self.explore and self.explore_save_catalog:
             self.catalog.write_round_meta(
-                epsilon=1.0, t_max=_curr.t_max_for(_curr.N_FULL_ORDER, anchor), n_products=_curr.N_FULL_ORDER
+                epsilon=1.0,
+                t_max=_curr.t_max_for(self.explore_n_products, anchor),
+                n_products=self.explore_n_products,
             )
+
+    def explore_t_max(self) -> int:
+        return _curr.t_max_for(self.explore_n_products, self.curriculum.anchor)
+
+    def apply_explore_episode(self, single_env) -> int:
+        """Set explore order size (N=16 catalog or N=10 baseline) and matching T_max."""
+        if self.explore_n_products >= _curr.N_FULL_ORDER:
+            return _curr.apply_eval_order(single_env, anchor=self.curriculum.anchor)
+        progress = single_env.env_state_action_dict.setdefault("progress", {})
+        progress["stage_wip_cap"] = _curr.WIP_CAP
+        return _curr.apply_train_order(
+            single_env,
+            n_products=self.explore_n_products,
+            anchor=self.curriculum.anchor,
+        )
 
     def apply_full_order_eval(self, horizon: int | None = None) -> int:
         """Disable segment curriculum: N_FULL_ORDER products, T_max=anchor, no catalog warmstart."""
@@ -91,8 +111,7 @@ class HorizonHooks:
         self.ep_stalled = [False] * n_envs
         for i, env in enumerate(self.env_list):
             if self.explore:
-                env.task_manager.max_episodic_steps = _curr.t_max_for(_curr.N_FULL_ORDER, self.curriculum.anchor)
-                env.env_state_action_dict.setdefault("progress", {})["stage_wip_cap"] = 10
+                self.apply_explore_episode(env)
             else:
                 self.maybe_warmstart_new_episode(i)
         if self.warmstart_path:
@@ -109,8 +128,7 @@ class HorizonHooks:
     def maybe_warmstart_new_episode(self, env_id: int) -> None:
         env = self.env_list[env_id]
         if self.explore:
-            env.task_manager.max_episodic_steps = _curr.t_max_for(_curr.N_FULL_ORDER, self.curriculum.anchor)
-            env.env_state_action_dict.setdefault("progress", {})["stage_wip_cap"] = 10
+            self.apply_explore_episode(env)
             return
         if not self.curriculum.enabled:
             self.curriculum.apply(env, overlay_existing=False)
@@ -131,7 +149,7 @@ class HorizonHooks:
         n_ong = len((env.get("progress") or {}).get("ongoing_task_records") or {})
         t = int(env.get("time_step", 0) or 0)
         self.rings[env_id].append({"key": key, "ckpt": ckpt, "n_finished": nfin, "t": t})
-        if self.explore:
+        if self.explore and self.explore_save_catalog:
             self.catalog.save_if_new(ckpt, key=key, n_finished=nfin, time_step=t, n_ongoing=n_ong)
 
     def after_step(self, env_id: int, env: dict) -> str | None:

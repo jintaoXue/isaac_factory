@@ -85,7 +85,11 @@ def _segment_fields(
         return start_n, target_n, remain_n
     if explore:
         start_n = 0
-        target_n = _curr.N_FULL_ORDER
+        order = progress.get("product_order") or {}
+        if isinstance(order, dict) and order:
+            target_n = sum(int(v or 0) for v in order.values())
+        else:
+            target_n = _curr.N_FULL_ORDER
         remain_n = max(0, target_n - int(finished))
         return start_n, target_n, remain_n
     start_n = 0
@@ -159,6 +163,7 @@ class HierarchicalTPA:
         self.learn_interval = config.get("learn_interval", 1)
         self.save_interval = config.get("save_interval", 1000)
         self.log_interval = config.get("log_interval", 100)
+        self.grad_clip_norm = float(config.get("grad_clip_norm", 10.0))
         self.global_step = 0
         self.max_episodic_steps = int(config.get("max_episodic_steps", 16000))
 
@@ -169,6 +174,11 @@ class HierarchicalTPA:
             "buffer_capacity": config.get("replay_buffer_size", 50000),
             "batch_size": config.get("batch_size", 64),
             "target_update_interval": config.get("target_update_interval", 500),
+            "double_dqn": bool(config.get("double_dqn", True)),
+            "target_tau": float(config.get("target_tau", 0.005)),
+            "huber_delta": float(config.get("huber_delta", 1.0)),
+            "reward_clip": config.get("reward_clip", 100.0),
+            "q_target_clip": config.get("q_target_clip", 500.0),
         }
 
         parallel_limit = config.get("parallel_producing_limit", 10)
@@ -220,8 +230,11 @@ class HierarchicalTPA:
 
         self.horizon = HorizonHooks(config)
         if self.horizon.explore:
-            self.max_episodic_steps = int(config.get("t_max_anchor", 16000))
-            print("[Hier] explore catalog mode: epsilon=1, no DQN backward")
+            self.max_episodic_steps = self.horizon.explore_t_max()
+            print(
+                f"[Hier] explore mode: epsilon=1, no DQN backward, "
+                f"N={self.horizon.explore_n_products()} T_max={self.max_episodic_steps}"
+            )
 
     def init_wandb_logger(self):
         define_shared_metrics(
@@ -378,7 +391,9 @@ class HierarchicalTPA:
         self.encoder_optimizer.zero_grad()
         total_loss = sum(loss for _name, loss, _dqn in entries)
         total_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.obs_encoder.parameters(), 1.0)
+        torch.nn.utils.clip_grad_norm_(self.obs_encoder.parameters(), self.grad_clip_norm)
+        for dqn in dqns:
+            torch.nn.utils.clip_grad_norm_(dqn.q_net.parameters(), self.grad_clip_norm)
         self.encoder_optimizer.step()
         for optimizer in q_optimizers:
             optimizer.step()

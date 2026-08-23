@@ -22,6 +22,7 @@ if [ $# -eq 0 ]; then
     echo "  26: hier 倒序课程 (--curriculum, reverse ΔN →10, wandb)"
     echo "  27: 采集 debug（可视化+warmstart，不录视频不启wandb）"
     echo "  28: hier 评测（加载模型，全量 16 件, T_max=16000）"
+    echo "  29: hier RL随机基线 (ε=1, N=10, T=10000, ${HC_RULE_EPISODES} episodes, wandb)"
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
     echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 25/26 的 --warmstart"
     echo "  环境变量 HC_LOAD_DIR: 28 号评测的实验目录（含 nn/）"
@@ -345,6 +346,25 @@ run_test_28() {
         ${DEVICE_ARG}
 }
 
+run_test_29() {
+    # hier masked-random makespan 基线：N=10, ε=1, 无 DQN 学习, 不写 catalog
+    echo "运行 29: hier RL random baseline (ε=1, N=10, T=10000, ${HC_RULE_EPISODES} episodes, wandb)"
+    python train.py \
+        --task "${HC_TASK}" \
+        --algo hier \
+        --num_envs "${HC_NUM_ENVS}" \
+        --headless \
+        --explore \
+        --max_sim_episodes "${HC_RULE_EPISODES}" \
+        --max_parallel_cd_dispatch "${HC_MULTI_K}" \
+        --wandb_activate \
+        --wandb_project "${HC_WANDB_PROJECT}" \
+        --wandb_name "hier_random_N10_${HC_RULE_EPISODES}ep" \
+        +explore_n_products=10 \
+        +explore_save_catalog=false \
+        ${DEVICE_ARG}
+}
+
 # 调度：按序号 / A / B / C 调用上面的 run_test_*
 run_one_job() {
     local id=$1
@@ -377,6 +397,7 @@ run_one_job() {
         26) run_test_26 ;;
         27) run_test_27 ;;
         28) run_test_28 ;;
+        29) run_test_29 ;;
         A)
             echo "=== 运行A组训练 (1-5) ==="
             run_test_1; run_test_2; run_test_3; run_test_4; run_test_5; run_test_6

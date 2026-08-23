@@ -197,7 +197,7 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     # (control_machine=200, material ops=50; up to 16 products, WIP ≤ parallel limit).
     max_episodic_steps = 16000
     # Reward v2 (written by TaskManager.update_rl_signals)
-    rl_step_penalty = 0.05
+    rl_step_penalty = 0.08
     rl_finish_bonus = 2.0
     rl_task_bonus = 0.1
     rl_success_bonus = 50.0

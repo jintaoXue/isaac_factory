@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import random
+from typing import Callable
 
 import torch
 import torch.nn as nn
@@ -27,6 +28,12 @@ class MaskedDQNAgent:
         buffer_capacity: int = 50000,
         batch_size: int = 64,
         target_update_interval: int = 500,
+        *,
+        double_dqn: bool = True,
+        target_tau: float = 0.005,
+        huber_delta: float = 1.0,
+        reward_clip: float | None = 100.0,
+        q_target_clip: float | None = 500.0,
     ):
         self.name = name
         self.obs_dim = obs_dim
@@ -34,7 +41,12 @@ class MaskedDQNAgent:
         self.device = device
         self.gamma = gamma
         self.batch_size = batch_size
-        self.target_update_interval = target_update_interval
+        self.target_update_interval = max(1, int(target_update_interval))
+        self.double_dqn = bool(double_dqn)
+        self.target_tau = float(target_tau)
+        self.huber_delta = float(huber_delta)
+        self.reward_clip = None if reward_clip is None else float(reward_clip)
+        self.q_target_clip = None if q_target_clip is None else float(q_target_clip)
         self.train_steps = 0
 
         self.q_net = QNetwork(obs_dim, action_dim, hidden_dim).to(device)
@@ -144,17 +156,35 @@ class MaskedDQNAgent:
         q_values = self.q_net(obs_batch).gather(1, action_batch.unsqueeze(1)).squeeze(1)
 
         with torch.no_grad():
-            next_q = self.target_net(next_obs_batch)
-            next_q[next_mask_batch == 0] = -float("inf")
-            max_next_q = next_q.max(dim=1).values
+            next_q_online = self.q_net(next_obs_batch)
+            next_q_online[next_mask_batch == 0] = -float("inf")
+            if self.double_dqn:
+                best_actions = next_q_online.argmax(dim=1, keepdim=True)
+                next_q_target = self.target_net(next_obs_batch)
+                next_q_target[next_mask_batch == 0] = -float("inf")
+                max_next_q = next_q_target.gather(1, best_actions).squeeze(1)
+            else:
+                next_q_target = self.target_net(next_obs_batch)
+                next_q_target[next_mask_batch == 0] = -float("inf")
+                max_next_q = next_q_target.max(dim=1).values
             max_next_q[torch.isinf(max_next_q)] = 0.0
-            target = reward_batch + self.gamma * max_next_q * (1.0 - done_batch)
+            rewards = reward_batch
+            if self.reward_clip is not None:
+                rewards = rewards.clamp(-self.reward_clip, self.reward_clip)
+            target = rewards + self.gamma * max_next_q * (1.0 - done_batch)
+            if self.q_target_clip is not None:
+                target = target.clamp(-self.q_target_clip, self.q_target_clip)
 
-        return nn.functional.mse_loss(q_values, target)
+        return nn.functional.smooth_l1_loss(q_values, target, beta=self.huber_delta)
 
     def register_train_step(self) -> None:
         self.train_steps += 1
-        if self.train_steps % self.target_update_interval == 0:
+        if self.target_tau > 0.0:
+            tau = self.target_tau
+            with torch.no_grad():
+                for target_param, param in zip(self.target_net.parameters(), self.q_net.parameters()):
+                    target_param.data.mul_(1.0 - tau).add_(param.data, alpha=tau)
+        elif self.train_steps % self.target_update_interval == 0:
             self.target_net.load_state_dict(self.q_net.state_dict())
 
     def step_optimizer(self) -> None:

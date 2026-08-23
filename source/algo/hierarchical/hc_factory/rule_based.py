@@ -330,11 +330,10 @@ class RuleBasedHierarchical():
                             peak_ongoing_robot=self.peak_ongoing_robot,
                         )
                         payload.update(core_payload)
-                        if self.train_n_products >= _curr.N_FULL_ORDER:
-                            payload.update(fullorder_core_metrics(core_payload))
+                        # Rule train is always a complete order (N=train_n_products), not a curriculum segment.
+                        payload.update(fullorder_core_metrics(core_payload))
                         payload.update(peak_payload)
-                        if self.train_n_products >= _curr.N_FULL_ORDER:
-                            payload.update(fullorder_peak_metrics(peak_payload))
+                        payload.update(fullorder_peak_metrics(peak_payload))
                         wandb.log(payload)
 
                     episode_reward[env_id] = 0.0
@@ -402,8 +401,7 @@ class RuleBasedHierarchical():
                         peak_ongoing_robot=self.peak_ongoing_robot,
                     )
                     payload.update(peak_payload)
-                    if self.train_n_products >= _curr.N_FULL_ORDER:
-                        payload.update(fullorder_peak_metrics(peak_payload))
+                    payload.update(fullorder_peak_metrics(peak_payload))
                     payload.update(train_metrics())
                     wandb.log(payload)
 
@@ -427,7 +425,6 @@ class RuleBasedHierarchical():
                 peak_ongoing_robot=self.peak_ongoing_robot,
             )
             finish_payload.update(peak_payload)
-            if self.train_n_products >= _curr.N_FULL_ORDER:
-                finish_payload.update(fullorder_peak_metrics(peak_payload))
+            finish_payload.update(fullorder_peak_metrics(peak_payload))
             wandb.log(finish_payload)
             wandb.finish()
