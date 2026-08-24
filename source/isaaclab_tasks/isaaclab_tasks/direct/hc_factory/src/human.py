@@ -1,7 +1,14 @@
 from isaacsim.core.prims import RigidPrim
 import omni.usd
 from pxr import Usd, UsdSkel, Gf, Sdf
-from ..env_asset_cfg.cfg_human import CfgHuman, CfgHumanRegistrationInfos
+import math
+from ..env_asset_cfg.cfg_human import (
+    CfgHuman,
+    CfgHumanRegistrationInfos,
+    human_efficiency,
+    human_effective_skill,
+    human_step_fatigue,
+)
 from ..env_asset_cfg.cfg_machine import CfgMachine
 from ..env_asset_cfg.route.cfg_route import RouteOptionalInitPointsInMap, OptionalInitPointIds
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
@@ -159,6 +166,16 @@ class Human:
     def step(self, env_state_action_dict: dict) -> dict:
         task_record_index : int = env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"]["ongoing_task_record_index"]
         if task_record_index is None:
+            # Free state: fatigue recovers over time.
+            fatigue_prev = float(self.state.get("fatigue", 0.0))
+            fatigue_next = human_step_fatigue(
+                self.idx,
+                fatigue_prev,
+                idle=True,
+                subtask_name=None,
+            )
+            self.state["fatigue"] = fatigue_next
+            self.state["efficiency"] = human_efficiency(fatigue_next)
             self.set_pose("idle")
             self._advance_animation()
             return env_state_action_dict
@@ -170,6 +187,24 @@ class Human:
         subtasks = task_record["subtasks_dict"]
         subtask = subtasks["ongoing"]
         human_subtask = subtask[0]
+        task_name = task_record.get("task")
+
+        # Human-factors dynamics: fatigue → efficiency, and skill affects work duration.
+        idle = human_subtask in ("wait", "done")
+        fatigue_prev = float(self.state.get("fatigue", 0.0))
+        fatigue_next = human_step_fatigue(
+            self.idx,
+            fatigue_prev,
+            idle=idle,
+            subtask_name=human_subtask,
+        )
+        self.state["fatigue"] = fatigue_next
+        self.state["efficiency"] = human_efficiency(fatigue_next)
+        self.state["skill_effective"] = human_effective_skill(
+            self.idx,
+            task_name=task_name,
+            subtask_name=human_subtask,
+        )
         #TODO: check change subtasks value can change task records value
         if human_subtask in ("go_to_material", "go_to_goal_area", "go_to_processing_machine"):
             self.set_pose("walk")
@@ -187,20 +222,20 @@ class Human:
         if human_subtask == "go_to_material":
             self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "start")
         elif human_subtask == "material_on_gantry":
-            self._time_counting_subtask(subtasks, human_subtask)
+            self._time_counting_subtask(subtasks, human_subtask, task_name=task_name)
         elif human_subtask == "control_gantry":
-            self._time_counting_subtask(subtasks, human_subtask)
+            self._time_counting_subtask(subtasks, human_subtask, task_name=task_name)
         elif human_subtask == "material_on_robot":
-            self._time_counting_subtask(subtasks, human_subtask)
+            self._time_counting_subtask(subtasks, human_subtask, task_name=task_name)
         elif human_subtask == "go_to_goal_area":
             self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "goal")
         elif human_subtask == "material_on_goal_area":
-            self._time_counting_subtask(subtasks, human_subtask)    
+            self._time_counting_subtask(subtasks, human_subtask, task_name=task_name)    
         elif human_subtask == "go_to_processing_machine":
             self._subtask_go_to_target(env_state_action_dict, task_record, subtasks, target_area_type = "start")
         elif human_subtask == "control_machine":
             self._let_human_face_to_machine(env_state_action_dict, task_record)
-            self._time_counting_subtask(subtasks, human_subtask)
+            self._time_counting_subtask(subtasks, human_subtask, task_name=task_name)
         elif human_subtask == "wait":
             subtasks["finished"][0] = True
         elif human_subtask == "done":
@@ -243,14 +278,27 @@ class Human:
         env_state_action_dict["rigid_prims"][human_name]["orientation"] = orientation.unsqueeze(0)
         return
 
-    def _time_counting_subtask(self, subtasks: dict, human_subtask: str) -> None:
+    def _time_counting_subtask(self, subtasks: dict, human_subtask: str, *, task_name: str | None) -> None:
         if subtasks["finished"][0] == True:
             return
         if self.state.get("_counting_subtask") != human_subtask:
             self.state["_counting_subtask"] = human_subtask
             self.state["subtask_time_counter"] = 0
             base = CfgSubtaskPredefinedTimeGallery[human_subtask]
-            self.state["subtask_time_target"] = sample_noisy_steps(base, SubtaskTimeNoiseStdSteps)
+            # Duration is stretched by (fatigue efficiency) × (effective skill).
+            # effective = η * skill ; if effective < 1, it takes longer.
+            base_noisy = float(sample_noisy_steps(base, SubtaskTimeNoiseStdSteps))
+            eta = float(self.state.get("efficiency", 1.0))
+            skill = float(
+                human_effective_skill(
+                    self.idx,
+                    task_name=task_name,
+                    subtask_name=human_subtask,
+                )
+            )
+            effective = max(0.10, eta * skill)
+            stretched = int(math.ceil(base_noisy / effective))
+            self.state["subtask_time_target"] = max(1, stretched)
         target = self.state["subtask_time_target"]
         if self.state["subtask_time_counter"] < target:
             self.state["subtask_time_counter"] += 1
@@ -262,8 +310,12 @@ class Human:
         subtasks["finished"][0] = True
         #TODO, check reset successfully
         current_area_id = self.state["current_area_id"]
+        fatigue_prev = float(self.state.get("fatigue", 0.0))
         self.state : str = copy.deepcopy(self.reset_state)
         self.state["current_area_id"] = current_area_id
+        # Keep fatigue across tasks; it changes work duration only when the human is re-assigned.
+        self.state["fatigue"] = fatigue_prev
+        self.state["efficiency"] = human_efficiency(fatigue_prev)
         env_state_action_dict["human"][f"num_{self.idx:02d}_{self.type_name}"] = self.state
         return env_state_action_dict
 

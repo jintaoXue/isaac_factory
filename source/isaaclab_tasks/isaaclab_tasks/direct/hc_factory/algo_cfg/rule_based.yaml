@@ -60,7 +60,6 @@ params:
     env_rule_based_exploration: False
     test_all_settings: False
     use_prediction_net: False
-    use_fatigue_mask: False
     other_filters: False
     max_num_worker: 3
     max_num_robot: 4

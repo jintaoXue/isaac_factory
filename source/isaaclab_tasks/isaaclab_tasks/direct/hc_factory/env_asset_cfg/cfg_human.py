@@ -167,6 +167,11 @@ CfgHuman = {
             "current_area_id": None,
             "target_area_id": None,
             "subtask_time_counter": 0,
+            # Human-factors state (episode-persistent; not reset on task_done).
+            "fatigue": 0.0,
+            "efficiency": 1.0,
+            "skill_effective": 1.0,
+            "subtask_work_done": 0.0,
             "generated_route": [],
             "route_index": 0,
             "route_length": 0,
@@ -194,3 +199,159 @@ CfgHuman = {
 CfgHumanRegistrationInfos = {
     "NormalHuman": 5, #idx 00-09
 }
+
+
+# ---------------------------------------------------------------------------
+# Human factors: fatigue → efficiency → duration / walk speed.
+# Makespan remains the sole RL objective; these dynamics enlarge the D-layer
+# assignment gap (specialist vs mismatched / exhausted worker).
+# ---------------------------------------------------------------------------
+
+# η = η_min + (1-η_min) * (1-F)^α ; F > F_crit further scales η.
+HUMAN_EFFICIENCY_ETA_MIN = 0.40
+HUMAN_EFFICIENCY_ALPHA = 1.4
+HUMAN_FATIGUE_CRIT = 0.80
+HUMAN_EFFICIENCY_CRIT_SCALE = 0.75
+
+# Per-worker (idx) accumulation / recovery per env step, before subtask load.
+# Welder (2) fatigues fastest; painter (3) recovers fastest.
+HUMAN_FATIGUE_RATES = (
+    (0.00045, 0.00018),  # 0 cutting
+    (0.00032, 0.00022),  # 1 grooving
+    (0.00055, 0.00012),  # 2 welding
+    (0.00028, 0.00025),  # 3 paint
+    (0.00038, 0.00020),  # 4 logistics
+)
+
+# Subtask metabolic load λ_s (multiplies work rate). Idle / wait recover.
+HUMAN_SUBTASK_FATIGUE_LOAD = {
+    "control_machine": 1.00,
+    "control_gantry": 0.55,
+    "material_on_gantry": 0.45,
+    "material_on_robot": 0.45,
+    "material_on_goal_area": 0.45,
+    "go_to_material": 0.22,
+    "go_to_goal_area": 0.22,
+    "go_to_processing_machine": 0.22,
+    "wait": 0.0,
+    "done": 0.0,
+}
+
+_HUMAN_TASK_NAMES = (
+    "logistic_for_pipe_cutting",
+    "pipe_cutting",
+    "logistic_for_pipe_grooving",
+    "pipe_grooving",
+    "logistic_for_batch_spot_welding",
+    "batch_spot_welding",
+    "logistic_for_arc_welding_root",
+    "arc_welding_root",
+    "logistic_for_MIG_welding_surface",
+    "MIG_welding_surface",
+    "logistic_for_paint_rust_proof",
+    "paint_rust_proof",
+)
+
+_SKILL_OFF_PROCESS = 0.58
+_SKILL_OFF_LOGISTIC = 0.82
+_SKILL_ON = 1.40
+
+
+def _skill_task_row(*specials: str) -> dict[str, float]:
+    row = {}
+    for name in _HUMAN_TASK_NAMES:
+        if name in specials:
+            row[name] = _SKILL_ON
+        elif name.startswith("logistic_"):
+            row[name] = _SKILL_OFF_LOGISTIC
+        else:
+            row[name] = _SKILL_OFF_PROCESS
+    return row
+
+
+# idx → process-task skill. Logistic specialist (4) is good on all haul tasks.
+HUMAN_SKILL_TASK = (
+    _skill_task_row("pipe_cutting", "logistic_for_pipe_cutting"),
+    _skill_task_row("pipe_grooving", "logistic_for_pipe_grooving"),
+    _skill_task_row(
+        "batch_spot_welding",
+        "arc_welding_root",
+        "MIG_welding_surface",
+        "logistic_for_batch_spot_welding",
+        "logistic_for_arc_welding_root",
+        "logistic_for_MIG_welding_surface",
+    ),
+    _skill_task_row("paint_rust_proof", "logistic_for_paint_rust_proof"),
+    {name: (1.35 if name.startswith("logistic_") else 0.70) for name in _HUMAN_TASK_NAMES},
+)
+
+_HUMAN_SUBTASK_NAMES = (
+    "go_to_material",
+    "material_on_gantry",
+    "control_gantry",
+    "material_on_robot",
+    "go_to_goal_area",
+    "material_on_goal_area",
+    "go_to_processing_machine",
+    "control_machine",
+)
+
+
+def _skill_sub_row(**overrides: float) -> dict[str, float]:
+    row = {name: 1.00 for name in _HUMAN_SUBTASK_NAMES}
+    row.update(overrides)
+    return row
+
+
+HUMAN_SKILL_SUBTASK = (
+    _skill_sub_row(control_machine=1.30, control_gantry=0.85),
+    _skill_sub_row(control_machine=1.25, control_gantry=0.90),
+    _skill_sub_row(control_machine=1.35, control_gantry=0.80),
+    _skill_sub_row(control_machine=1.28, control_gantry=0.88),
+    _skill_sub_row(
+        control_machine=0.72,
+        control_gantry=1.35,
+        material_on_gantry=1.30,
+        material_on_robot=1.30,
+        material_on_goal_area=1.30,
+        go_to_material=1.20,
+        go_to_goal_area=1.20,
+        go_to_processing_machine=1.20,
+    ),
+)
+
+
+def human_efficiency(fatigue: float) -> float:
+    """Map fatigue F∈[0,1] to speed multiplier η."""
+    f = min(1.0, max(0.0, float(fatigue)))
+    eta = HUMAN_EFFICIENCY_ETA_MIN + (1.0 - HUMAN_EFFICIENCY_ETA_MIN) * ((1.0 - f) ** HUMAN_EFFICIENCY_ALPHA)
+    if f >= HUMAN_FATIGUE_CRIT:
+        eta *= HUMAN_EFFICIENCY_CRIT_SCALE
+    return max(0.25, float(eta))
+
+
+def human_effective_skill(human_idx: int, task_name: str | None, subtask_name: str | None) -> float:
+    """skill_task[i,t] * skill_sub[i,s]; identity when names are missing."""
+    n_task = len(HUMAN_SKILL_TASK)
+    i = int(human_idx) % n_task if n_task else 0
+    s_t = 1.0
+    if task_name:
+        s_t = float(HUMAN_SKILL_TASK[i].get(task_name, 1.0))
+    s_s = 1.0
+    if subtask_name:
+        s_s = float(HUMAN_SKILL_SUBTASK[i].get(subtask_name, 1.0))
+    return min(1.80, max(0.35, s_t * s_s))
+
+
+def human_step_fatigue(human_idx: int, fatigue: float, *, idle: bool, subtask_name: str | None) -> float:
+    """One-step fatigue update. Idle / wait recover; work accumulates with λ_s * ρ_i."""
+    n_rate = len(HUMAN_FATIGUE_RATES)
+    i = int(human_idx) % n_rate if n_rate else 0
+    work_rate, rec_rate = HUMAN_FATIGUE_RATES[i]
+    f = float(fatigue)
+    if idle or not subtask_name or HUMAN_SUBTASK_FATIGUE_LOAD.get(subtask_name, 0.0) <= 0.0:
+        f -= rec_rate
+    else:
+        f += work_rate * float(HUMAN_SUBTASK_FATIGUE_LOAD.get(subtask_name, 1.0))
+    return min(1.0, max(0.0, f))
+

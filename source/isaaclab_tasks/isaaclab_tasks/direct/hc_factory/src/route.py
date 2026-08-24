@@ -416,7 +416,10 @@ class RouteManagerVectorEnv:
         agent_kind: str | None,
     ) -> int:
         if agent_kind == "human":
-            return _HUMAN_WP
+            # Human walking speed is affected by current fatigue-driven efficiency.
+            # efficiency η ∈ (0, 1]; more fatigue => smaller η => fewer waypoints per env step.
+            eta = float(agent_state.get("efficiency", 1.0) or 1.0)
+            return max(1, int(round(_HUMAN_WP * eta)))
         if agent_kind != "robot" or env_state_action_dict is None:
             return 1
         task_record_index = agent_state.get("ongoing_task_record_index")

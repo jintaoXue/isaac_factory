@@ -413,6 +413,8 @@ def _encode_movers(
     detour = _z((max_n,), torch.float32, device)
     yield_ = _z((max_n,), torch.float32, device)
     sub_t = _z((max_n,), torch.float32, device) if with_subtask_time else None
+    fatigue = _z((max_n,), torch.float32, device) if with_subtask_time else None
+    efficiency = _z((max_n,), torch.float32, device) if with_subtask_time else None
 
     for key, ent in (group or {}).items():
         if not isinstance(ent, dict):
@@ -433,6 +435,9 @@ def _encode_movers(
         yield_[idx] = float(bool(ent.get("yield_active")))
         if sub_t is not None:
             sub_t[idx] = float(_as_int(ent.get("subtask_time_counter"), 0))
+            # human-factors state (added for Hier4TPA human fatigue / efficiency)
+            fatigue[idx] = float(ent.get("fatigue", 0.0) or 0.0)
+            efficiency[idx] = float(ent.get("efficiency", 1.0) or 1.0)
 
     out = {
         "mask": mask,
@@ -450,6 +455,8 @@ def _encode_movers(
     }
     if sub_t is not None:
         out["subtask_time_counter"] = sub_t
+        out["fatigue"] = fatigue
+        out["efficiency"] = efficiency
     return out
 
 
