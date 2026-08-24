@@ -27,6 +27,7 @@ from .hier_rl_agents import (
 from .hier_utils import compute_team_reward, count_busy_agents, crossed_interval, env_steps, read_rl_done, steps_per_min
 from .horizon_hooks import HorizonHooks
 from .wandb_metrics import (
+    HumanFatigueMonitor,
     axis_payload,
     define_shared_metrics,
     episode_metrics,
@@ -193,6 +194,7 @@ class HierarchicalTPA:
         self._ep_peak_ongoing: list[int] = []
         self._ep_peak_ongoing_human: list[int] = []
         self._ep_peak_ongoing_robot: list[int] = []
+        self._fatigue = HumanFatigueMonitor(num_envs=max(1, self.num_actors))
         self.obs_encoder = HierObsEncoder(
             self.cuda_device,
             parallel_producing_limit=parallel_limit,
@@ -543,6 +545,8 @@ class HierarchicalTPA:
                     done = False
                     truncated = False
                     success = False
+                # When done, env has already reset next_obs; use pre-step obs for last fatigue frame.
+                self._fatigue.update(env_id, obs[env_id] if done else next_obs[env_id])
                 episode_reward[env_id] += reward
                 episode_len[env_id] += 1
                 rl_step = next_obs[env_id].get("rl") or {}
@@ -607,6 +611,7 @@ class HierarchicalTPA:
                         f"success_rate={success_rate_str} nmk={nmk:.3f} mpps={mpps_str} "
                         f"stalls={self.horizon.stall_counts_str()}"
                     )
+                    human_ep = self._fatigue.on_episode_done(env_id, episode=self.episodes_done)
                     if self.use_wandb:
                         payload = axis_payload(
                             env_steps(self.global_step, self.num_actors), wall
@@ -632,6 +637,7 @@ class HierarchicalTPA:
                         )
                         payload.update(core_payload)
                         payload.update(peak_payload)
+                        payload.update(human_ep)
                         is_fullorder = (not self.horizon.curriculum.enabled) or (
                             spec.start_nfin == 0 and spec.target_nfin == spec.n_products
                         )
@@ -757,6 +763,7 @@ class HierarchicalTPA:
                     )
                     if is_fullorder:
                         payload.update(fullorder_peak_metrics(peak_payload))
+                    payload.update(self._fatigue.step_payload(0))
                     payload.update(
                         train_metrics(
                             epsilon=epsilon,

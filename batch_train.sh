@@ -6,34 +6,39 @@ HC_MULTI_K="${HC_MULTI_K:-10}"
 
 # 用法:
 #   ./batch_train.sh 22 cuda:0
-#   ./batch_train.sh 22 23 24 cuda:0     # 依次跑多个序号
-#   ./batch_train.sh C cuda:0            # HcFactory TPA 三连：rule K=1 / rule K=5 / hier
-#   ./batch_train.sh D cuda:0            # 长 horizon 主路径：explore 采库 → curriculum 训练
+#   ./batch_train.sh 22 24 25 26 27 cuda:0   # N=10 推荐主路径
+#   ./batch_train.sh C cuda:0                # 同上：采库→rule→random→hier 课程
+#   ./batch_train.sh D cuda:0                # 采库 → curriculum
 #   ./batch_train.sh A cuda:0
 #   ./batch_train.sh B
-#   HC_WARMSTART=/path/to/ckpt.pkl ./batch_train.sh 25   # 可选：explore/curriculum 从 pkl 续跑
+#   HC_WARMSTART=/path/to/ckpt.pkl ./batch_train.sh 22   # 可选：explore/curriculum 从 pkl 续跑
+#
+# HcFactory 编号（按流水线，旧 1–21 不动）:
+#   22 采库 → 23 采库debug → 24/25 N10 rule → 26 N10 random
+#   → 27 hier课程 → 28 hier硬训 → 29 N16评测 → 30/31/32 N16 基线
 if [ $# -eq 0 ]; then
-    echo "用法: $0 <A|B|C|D|序号...> [cuda:N]"
+    echo "用法: $0 <A|B|C|D|E|序号...> [cuda:N]"
     echo "  A: 运行A组训练 (1-5)"
     echo "  B: 运行B组训练 (6-10)"
-    echo "  C: HcFactory TPA (22 rule单产品 / 23 rule多产品 / 24 hier全量硬训)"
-    echo "  D: 长 horizon 主路径 (25 explore采库 → 26 curriculum训练)"
+    echo "  C: N=10 主路径 (22采库 → 24/25 rule → 26 random → 27 curriculum)"
+    echo "  D: 采库+训练 (22 explore → 27 curriculum)"
+    echo "  E: 基线矩阵 (24 25 26 | 30 31 32)"
     echo "  1-21: 旧 RL / Perception 序号"
-    echo "  22: rule_based + 单产品决策 (K=1, N=10, ${HC_RULE_EPISODES} episodes, wandb)"
-    echo "  23: rule_based + 多产品决策 (K=${HC_MULTI_K}, N=10, ${HC_RULE_EPISODES} episodes, wandb)"
-    echo "  24: hier 全量硬训对照 (K=${HC_MULTI_K}, max_episodic_steps=16000, wandb)"
-    echo "  25: hier masked-random 采集库 (--explore, N=16, T_max=16000, ε=1, 10 episodes)"
-    echo "  26: hier 倒序课程 (--curriculum, reverse ΔN →10, wandb)"
-    echo "  27: 采集 debug（可视化+warmstart，不录视频不启wandb）"
-    echo "  28: hier 评测（加载模型，全量 16 件, T_max=16000）"
-    echo "  29: hier RL随机基线 (ε=1, N=10, T=10000, ${HC_RULE_EPISODES} episodes, wandb)"
-    echo "  30: rule_based 单产品 (K=1, N=16, T=16000, ${HC_RULE_EPISODES} episodes, wandb)"
-    echo "  31: rule_based 多产品 (K=${HC_MULTI_K}, N=16, T=16000, ${HC_RULE_EPISODES} episodes, wandb)"
-    echo "  32: hier RL随机基线 (ε=1, N=16, T=16000, ${HC_RULE_EPISODES} episodes, wandb)"
-    echo "  E: 基线矩阵六连 (22 23 29 30 31 32)"
+    echo "  ---- HcFactory Hierarchical TPA（按流程编号）----"
+    echo "  22: explore 采库 (--explore, N=16, T_max=16000, ε=1, 写 catalog)"
+    echo "  23: explore debug（可视化+warmstart，不录视频不启wandb）"
+    echo "  24: rule 单产品 (K=1, N=10, ${HC_RULE_EPISODES} ep)"
+    echo "  25: rule 多产品 (K=${HC_MULTI_K}, N=10, ${HC_RULE_EPISODES} ep)"
+    echo "  26: hier random 基线 (ε=1, N=10, 不写 catalog)"
+    echo "  27: hier 倒序课程 (--curriculum → target=10)"
+    echo "  28: hier 全量硬训对照 (无课程, T=16000)"
+    echo "  29: hier 评测 (加载 nn/, 全量 N=16)"
+    echo "  30: rule 单产品 (K=1, N=16)"
+    echo "  31: rule 多产品 (K=${HC_MULTI_K}, N=16)"
+    echo "  32: hier random 基线 (ε=1, N=16, 不写 catalog)"
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
-    echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 25/26 的 --warmstart"
-    echo "  环境变量 HC_LOAD_DIR: 28 号评测的实验目录（含 nn/）"
+    echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 22/23/27 的 --warmstart"
+    echo "  环境变量 HC_LOAD_DIR: 29 号评测的实验目录（含 nn/）"
     echo "  环境变量 HC_RULE_EPISODES: 基线 episode 数（默认 ${HC_RULE_EPISODES}）"
     exit 1
 fi
@@ -67,7 +72,7 @@ HC_WANDB_PROJECT="HcFactory_TPA"
 HC_NUM_ENVS=1
 HC_WARMSTART="${HC_WARMSTART:-}"
 
-# 可选 --warmstart（25/26）
+# 可选 --warmstart（22/23/27）
 hc_warmstart_args() {
     if [ -n "${HC_WARMSTART}" ]; then
         echo "--warmstart ${HC_WARMSTART}"
@@ -228,58 +233,12 @@ run_test_21() {
 }
 
 ##### HcFactory Hierarchical TPA #####
+# 编号按流水线：采库 → N10 基线 → N10 训练 → N16 评测/基线
+# 旧映射: 25→22, 27→23, 22→24, 23→25, 29→26, 26→27, 24→28, 28→29; 30–32 不变
+
 run_test_22() {
-    # rule_based + 单产品决策（max_parallel_cd_dispatch=1），N=10，跑 20 个 episode
-    echo "运行 22: rule_based single-product (K=1, N=10, ${HC_RULE_EPISODES} episodes, wandb)"
-    python train.py \
-        --task "${HC_TASK}" \
-        --algo rule_based \
-        --num_envs "${HC_NUM_ENVS}" \
-        --headless \
-        --wandb_activate \
-        --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "rule_K1_single_N10_${HC_RULE_EPISODES}ep" \
-        --train_n_products 10 \
-        --max_parallel_cd_dispatch 1 \
-        --max_sim_episodes "${HC_RULE_EPISODES}" \
-        ${DEVICE_ARG}
-}
-
-run_test_23() {
-    # rule_based + 多产品并行决策（K=10），N=10，跑 20 个 episode
-    echo "运行 23: rule_based multi-product (K=${HC_MULTI_K}, N=10, ${HC_RULE_EPISODES} episodes, wandb)"
-    python train.py \
-        --task "${HC_TASK}" \
-        --algo rule_based \
-        --num_envs "${HC_NUM_ENVS}" \
-        --headless \
-        --wandb_activate \
-        --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "rule_K${HC_MULTI_K}_multi_N10_${HC_RULE_EPISODES}ep" \
-        --train_n_products 10 \
-        --max_parallel_cd_dispatch "${HC_MULTI_K}" \
-        --max_sim_episodes "${HC_RULE_EPISODES}" \
-        ${DEVICE_ARG}
-}
-
-run_test_24() {
-    # hier 全量硬训对照（yaml max_episodic_steps=16000，无课程）
-    echo "运行 24: hier 全量硬训对照 (K=${HC_MULTI_K}, wandb)"
-    python train.py \
-        --task "${HC_TASK}" \
-        --algo hier \
-        --num_envs "${HC_NUM_ENVS}" \
-        --headless \
-        --wandb_activate \
-        --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "hier_K${HC_MULTI_K}_hard45k" \
-        --max_parallel_cd_dispatch "${HC_MULTI_K}" \
-        ${DEVICE_ARG}
-}
-
-run_test_25() {
     # N=16 masked random 采集库：ε=1，无 DQN backward；L2/L3 死锁回退 + progress key 去重
-    echo "运行 25: explore catalog (N=16, T_max=16000, epsilon=1, 10 episodes)"
+    echo "运行 22: explore catalog (N=16, T_max=16000, epsilon=1, 10 episodes)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -294,9 +253,86 @@ run_test_25() {
         ${DEVICE_ARG}
 }
 
+run_test_23() {
+    # 采集 debug：不开 --headless（可视化UI），读取本地阻塞点 pkl 并手动断点调试
+    # 不开 wandb，不录视频
+    #
+    # 你需要设置：
+    #   export HC_WARMSTART=/abs/path/to/env_checkpoints/stagnation/collect/.../stalled_state.pkl
+    if [ -z "${HC_WARMSTART}" ]; then
+        echo "错误: run_test_23 需要先设置 HC_WARMSTART 为阻塞点 stalled_state.pkl"
+        echo "示例：HC_WARMSTART=env_checkpoints/stagnation/collect/L2_env00_.../stalled_state.pkl ./batch_train.sh 23 cuda:0"
+        exit 1
+    fi
+    echo "运行 23: explore debug (visual+warmstart, no wandb/no video)"
+    python train.py \
+        --task "${HC_TASK}" \
+        --algo hier \
+        --num_envs 1 \
+        --explore \
+        --seed 42 \
+        $(hc_warmstart_args) \
+        +t_max_anchor=14000 \
+        +decision_ring_k=20 \
+        ${DEVICE_ARG}
+}
+
+run_test_24() {
+    # rule_based + 单产品决策（max_parallel_cd_dispatch=1），N=10
+    echo "运行 24: rule_based single-product (K=1, N=10, ${HC_RULE_EPISODES} episodes, wandb)"
+    python train.py \
+        --task "${HC_TASK}" \
+        --algo rule_based \
+        --num_envs "${HC_NUM_ENVS}" \
+        --headless \
+        --wandb_activate \
+        --wandb_project "${HC_WANDB_PROJECT}" \
+        --wandb_name "rule_K1_single_N10_${HC_RULE_EPISODES}ep" \
+        --train_n_products 10 \
+        --max_parallel_cd_dispatch 1 \
+        --max_sim_episodes "${HC_RULE_EPISODES}" \
+        ${DEVICE_ARG}
+}
+
+run_test_25() {
+    # rule_based + 多产品并行决策（K=10），N=10
+    echo "运行 25: rule_based multi-product (K=${HC_MULTI_K}, N=10, ${HC_RULE_EPISODES} episodes, wandb)"
+    python train.py \
+        --task "${HC_TASK}" \
+        --algo rule_based \
+        --num_envs "${HC_NUM_ENVS}" \
+        --headless \
+        --wandb_activate \
+        --wandb_project "${HC_WANDB_PROJECT}" \
+        --wandb_name "rule_K${HC_MULTI_K}_multi_N10_${HC_RULE_EPISODES}ep" \
+        --train_n_products 10 \
+        --max_parallel_cd_dispatch "${HC_MULTI_K}" \
+        --max_sim_episodes "${HC_RULE_EPISODES}" \
+        ${DEVICE_ARG}
+}
+
 run_test_26() {
+    # hier masked-random makespan 基线：N=10, ε=1, 无 DQN 学习, 不写 catalog
+    echo "运行 26: hier RL random baseline (ε=1, N=10, T=10000, ${HC_RULE_EPISODES} episodes, wandb)"
+    python train.py \
+        --task "${HC_TASK}" \
+        --algo hier \
+        --num_envs "${HC_NUM_ENVS}" \
+        --headless \
+        --explore \
+        --max_sim_episodes "${HC_RULE_EPISODES}" \
+        --max_parallel_cd_dispatch "${HC_MULTI_K}" \
+        --wandb_activate \
+        --wandb_project "${HC_WANDB_PROJECT}" \
+        --wandb_name "random_K${HC_MULTI_K}_N10_${HC_RULE_EPISODES}ep" \
+        --explore_n_products 10 \
+        --no_explore_save_catalog \
+        ${DEVICE_ARG}
+}
+
+run_test_27() {
     # 倒序课程：target=10；T_budget=ΔN×per_T_max；catalog 按 start_nfin 切片
-    echo "运行 26: hier curriculum (reverse ΔN →10, wandb)"
+    echo "运行 27: hier curriculum (reverse ΔN →10, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -311,38 +347,29 @@ run_test_26() {
         ${DEVICE_ARG}
 }
 
-run_test_27() {
-    # 采集 debug：不开 --headless（可视化UI），读取本地阻塞点 pkl 并手动断点调试
-    # 不开 wandb，不录视频
-    #
-    # 你需要设置：
-    #   export HC_WARMSTART=/abs/path/to/env_checkpoints/stagnation/collect/.../stalled_state.pkl
-    if [ -z "${HC_WARMSTART}" ]; then
-        echo "错误: run_test_27 需要先设置 HC_WARMSTART 为阻塞点 stalled_state.pkl"
-        echo "示例：HC_WARMSTART=env_checkpoints/stagnation/collect/L2_env00_.../stalled_state.pkl ./batch_train.sh 27 cuda:0"
-        exit 1
-    fi
-    echo "运行 27: explore debug (visual+warmstart, no wandb/no video)"
+run_test_28() {
+    # hier 全量硬训对照（yaml max_episodic_steps=16000，无课程）
+    echo "运行 28: hier 全量硬训对照 (K=${HC_MULTI_K}, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
-        --num_envs 1 \
-        --explore \
-        --seed 42 \
-        $(hc_warmstart_args) \
-        +t_max_anchor=14000 \
-        +decision_ring_k=20 \
+        --num_envs "${HC_NUM_ENVS}" \
+        --headless \
+        --wandb_activate \
+        --wandb_project "${HC_WANDB_PROJECT}" \
+        --wandb_name "hier_K${HC_MULTI_K}_hard45k" \
+        --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         ${DEVICE_ARG}
 }
 
-run_test_28() {
-    # 全量 16 件评测：加载 26 训练的 nn/，不用 --curriculum
+run_test_29() {
+    # 全量 16 件评测：加载 27 训练的 nn/，不用 --curriculum
     if [ -z "${HC_LOAD_DIR}" ]; then
-        echo "错误: run_test_28 需要 HC_LOAD_DIR 指向训练实验目录（含 nn/）"
-        echo "示例：HC_LOAD_DIR=logs/rl_games/HcFactory/hier_2026-08-18_22-00-00 ./batch_train.sh 28 cuda:0"
+        echo "错误: run_test_29 需要 HC_LOAD_DIR 指向训练实验目录（含 nn/）"
+        echo "示例：HC_LOAD_DIR=logs/rl_games/HcFactory/hier_2026-08-18_22-00-00 ./batch_train.sh 29 cuda:0"
         exit 1
     fi
-    echo "运行 28: hier test full-order N=16 T_max=16000 load=${HC_LOAD_DIR}"
+    echo "运行 29: hier test full-order N=16 T_max=16000 load=${HC_LOAD_DIR}"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -352,25 +379,6 @@ run_test_28() {
         --test_times "${HC_TEST_TIMES:-1}" \
         --load_dir "${HC_LOAD_DIR}" \
         +t_max_anchor=16000 \
-        ${DEVICE_ARG}
-}
-
-run_test_29() {
-    # hier masked-random makespan 基线：N=10, ε=1, 无 DQN 学习, 不写 catalog
-    echo "运行 29: hier RL random baseline (ε=1, N=10, T=10000, ${HC_RULE_EPISODES} episodes, wandb)"
-    python train.py \
-        --task "${HC_TASK}" \
-        --algo hier \
-        --num_envs "${HC_NUM_ENVS}" \
-        --headless \
-        --explore \
-        --max_sim_episodes "${HC_RULE_EPISODES}" \
-        --max_parallel_cd_dispatch "${HC_MULTI_K}" \
-        --wandb_activate \
-        --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "random_K${HC_MULTI_K}_N10_${HC_RULE_EPISODES}ep" \
-        --explore_n_products 10 \
-        --no_explore_save_catalog \
         ${DEVICE_ARG}
 }
 
@@ -474,23 +482,25 @@ run_one_job() {
             echo "B组训练完成！"
             ;;
         C)
-            echo "=== 运行C组: HcFactory TPA (22→23→24) ==="
+            echo "=== 运行C组: N=10 主路径 (22采库 → 24/25 rule → 26 random → 27 curriculum) ==="
             run_test_22
-            run_test_23
             run_test_24
+            run_test_25
+            run_test_26
+            run_test_27
             echo "C组训练完成！"
             ;;
         D)
-            echo "=== 运行D组: 长 horizon 主路径 (25 explore → 26 curriculum) ==="
-            run_test_25
-            run_test_26
+            echo "=== 运行D组: 采库+训练 (22 explore → 27 curriculum) ==="
+            run_test_22
+            run_test_27
             echo "D组训练完成！"
             ;;
         E)
-            echo "=== 运行E组: 基线矩阵 (N=10: 22 23 29 → N=16: 30 31 32) ==="
-            run_test_22
-            run_test_23
-            run_test_29
+            echo "=== 运行E组: 基线矩阵 (N=10: 24 25 26 → N=16: 30 31 32) ==="
+            run_test_24
+            run_test_25
+            run_test_26
             run_test_30
             run_test_31
             run_test_32

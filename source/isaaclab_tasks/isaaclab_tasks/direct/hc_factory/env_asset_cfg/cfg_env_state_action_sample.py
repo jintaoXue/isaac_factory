@@ -382,9 +382,9 @@ EnvStateActionSample: dict = {
         },
     },
     'human': {
-        'num_00_NormalHuman': {
+        'num_00_HeterogeneousHuman': {
             'key_variables': {
-                'type_name': 'NormalHuman',
+                'type_name': 'HeterogeneousHuman',
                 'idx': 0,
             },
             'state': 'working_logistic_for_pipe_cutting',
@@ -1002,9 +1002,9 @@ EnvStateActionSample: dict = {
             'yield_active': False,
             'yield_blocker_key': None,
         },
-        'num_01_NormalHuman': {
+        'num_01_HeterogeneousHuman': {
             'key_variables': {
-                'type_name': 'NormalHuman',
+                'type_name': 'HeterogeneousHuman',
                 'idx': 1,
             },
             'state': 'free',
@@ -1021,9 +1021,9 @@ EnvStateActionSample: dict = {
             'yield_active': False,
             'yield_blocker_key': None,
         },
-        'num_02_NormalHuman': {
+        'num_02_HeterogeneousHuman': {
             'key_variables': {
-                'type_name': 'NormalHuman',
+                'type_name': 'HeterogeneousHuman',
                 'idx': 2,
             },
             'state': 'free',
@@ -1040,9 +1040,9 @@ EnvStateActionSample: dict = {
             'yield_active': False,
             'yield_blocker_key': None,
         },
-        'num_03_NormalHuman': {
+        'num_03_HeterogeneousHuman': {
             'key_variables': {
-                'type_name': 'NormalHuman',
+                'type_name': 'HeterogeneousHuman',
                 'idx': 3,
             },
             'state': 'free',
@@ -1059,9 +1059,9 @@ EnvStateActionSample: dict = {
             'yield_active': False,
             'yield_blocker_key': None,
         },
-        'num_04_NormalHuman': {
+        'num_04_HeterogeneousHuman': {
             'key_variables': {
-                'type_name': 'NormalHuman',
+                'type_name': 'HeterogeneousHuman',
                 'idx': 4,
             },
             'state': 'free',
@@ -3537,7 +3537,7 @@ EnvStateActionSample: dict = {
                 [1.0, 0.0, 0.0, 0.0],
             ], dtype=torch.float32),
         },
-        'num_00_NormalHuman': {
+        'num_00_HeterogeneousHuman': {
             'position': torch.tensor([
                 [28.849273681640625, 3.419907569885254, 0.13394999504089355],
             ], dtype=torch.float32),
@@ -3545,7 +3545,7 @@ EnvStateActionSample: dict = {
                 [0.707099974155426, 0.0, 0.0, 0.707099974155426],
             ], dtype=torch.float32),
         },
-        'num_01_NormalHuman': {
+        'num_01_HeterogeneousHuman': {
             'position': torch.tensor([
                 [-2.5795578956604004, 8.669281959533691, 0.13394999504089355],
             ], dtype=torch.float32),
@@ -3553,7 +3553,7 @@ EnvStateActionSample: dict = {
                 [0.25746282935142517, 0.0, 0.0, 0.9662781953811646],
             ], dtype=torch.float32),
         },
-        'num_02_NormalHuman': {
+        'num_02_HeterogeneousHuman': {
             'position': torch.tensor([
                 [-2.272568702697754, 4.325856685638428, 0.13394999504089355],
             ], dtype=torch.float32),
@@ -3561,7 +3561,7 @@ EnvStateActionSample: dict = {
                 [0.9996333122253418, 0.0, 0.0, -0.026721596717834473],
             ], dtype=torch.float32),
         },
-        'num_03_NormalHuman': {
+        'num_03_HeterogeneousHuman': {
             'position': torch.tensor([
                 [0.4831497073173523, 4.1441330909729, 0.13394999504089355],
             ], dtype=torch.float32),
@@ -3569,7 +3569,7 @@ EnvStateActionSample: dict = {
                 [0.9996335506439209, 0.0, 0.0, -0.026712507009506226],
             ], dtype=torch.float32),
         },
-        'num_04_NormalHuman': {
+        'num_04_HeterogeneousHuman': {
             'position': torch.tensor([
                 [-0.08364272862672806, 4.325831890106201, 0.13394999504089355],
             ], dtype=torch.float32),
@@ -3637,7 +3637,7 @@ EnvStateActionSample: dict = {
                 'logistic_submaterial': 'product_00_pipe',
                 'processing_submaterials': None,
                 'processed_material': None,
-                'human': 'num_00_NormalHuman',
+                'human': 'num_00_HeterogeneousHuman',
                 'human_index': 0,
                 'robot': 'num_00_AGV',
                 'robot_index': 0,

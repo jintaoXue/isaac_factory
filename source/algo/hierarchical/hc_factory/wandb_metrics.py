@@ -3,6 +3,7 @@
 Namespaces:
   - MetricPeak: live shop-floor / concurrency state
   - MetricCore: episode-level business KPIs (training)
+  - MetricHuman: human-factors (fatigue EMA / episode stats)
   - MetricTest: episode-level KPIs for --test / eval only
   - MetricTrain: training-process health
   - MetricLoss: optimization losses
@@ -10,6 +11,7 @@ Namespaces:
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import wandb
@@ -31,12 +33,17 @@ _CORE_KEYS = (
     "10_mean_makespan_success",
 )
 
+# Registered HeterogeneousHuman count (cfg_human.CfgHumanRegistrationInfos).
+_DEFAULT_NUM_HUMAN = 5
+_DEFAULT_FATIGUE_EMA_ALPHA = 0.02
+
 
 def define_shared_metrics(*, rl: bool = False, curriculum: bool = False, test: bool = False) -> None:
     wandb.define_metric("Train/step")
     wandb.define_metric("MetricCore/episode")
     wandb.define_metric("MetricFullorderCore/episode")
     wandb.define_metric("MetricTest/episode")
+    wandb.define_metric("MetricHuman/episode")
 
     for key in _CORE_KEYS:
         wandb.define_metric(f"MetricCore/{key}", step_metric="MetricCore/episode")
@@ -54,6 +61,13 @@ def define_shared_metrics(*, rl: bool = False, curriculum: bool = False, test: b
     ):
         wandb.define_metric(f"MetricPeak/{key}", step_metric="Train/step")
         wandb.define_metric(f"MetricFullorderPeak/{key}", step_metric="Train/step")
+
+    # Per-worker rolling fatigue + aggregates (Train/step); episode KPIs use MetricHuman/episode.
+    for i in range(_DEFAULT_NUM_HUMAN):
+        wandb.define_metric(f"MetricHuman/{i:02d}_fatigue_ema", step_metric="Train/step")
+    for key in ("mean_fatigue_ema", "max_fatigue_ema", "ep_mean_fatigue", "ep_end_mean_fatigue"):
+        step = "MetricHuman/episode" if key.startswith("ep_") else "Train/step"
+        wandb.define_metric(f"MetricHuman/{key}", step_metric=step)
 
     for key in (
         "01_epsilon",
@@ -85,6 +99,122 @@ def define_shared_metrics(*, rl: bool = False, curriculum: bool = False, test: b
     if curriculum:
         for key in ("01_stage", "02_target_nfin", "03_start_nfin", "04_delta_n", "05_t_budget"):
             wandb.define_metric(f"Curriculum/{key}", step_metric="MetricCore/episode")
+
+
+def _human_idx_from_entity(key: str, ent: dict) -> int | None:
+    kv = ent.get("key_variables")
+    if isinstance(kv, dict) and kv.get("idx") is not None:
+        try:
+            return int(kv["idx"])
+        except (TypeError, ValueError):
+            pass
+    m = re.search(r"num_(\d+)_", str(key))
+    return int(m.group(1)) if m else None
+
+
+class HumanFatigueTracker:
+    """Per-env human fatigue EMA + episode accumulators for MetricHuman/*."""
+
+    def __init__(
+        self,
+        num_humans: int = _DEFAULT_NUM_HUMAN,
+        ema_alpha: float = _DEFAULT_FATIGUE_EMA_ALPHA,
+    ):
+        self.num_humans = int(num_humans)
+        self.alpha = float(ema_alpha)
+        self.ema = [0.0] * self.num_humans
+        self._ema_ready = [False] * self.num_humans
+        self._ep_sum = 0.0
+        self._ep_count = 0
+
+    def update(self, env_dict: dict) -> None:
+        """Ingest one env frame; skip empty / out-of-range human slots."""
+        humans = env_dict.get("human") or {}
+        if not isinstance(humans, dict):
+            return
+        for key, ent in humans.items():
+            if not isinstance(ent, dict):
+                continue
+            idx = _human_idx_from_entity(str(key), ent)
+            if idx is None or not (0 <= idx < self.num_humans):
+                continue
+            f = float(ent.get("fatigue", 0.0) or 0.0)
+            f = min(1.0, max(0.0, f))
+            if not self._ema_ready[idx]:
+                self.ema[idx] = f
+                self._ema_ready[idx] = True
+            else:
+                a = self.alpha
+                self.ema[idx] = (1.0 - a) * self.ema[idx] + a * f
+            self._ep_sum += f
+            self._ep_count += 1
+
+    def step_payload(self) -> dict[str, Any]:
+        """Train/step curves: per-worker EMA + mean/max over registered workers."""
+        payload: dict[str, Any] = {}
+        ready = [self.ema[i] for i in range(self.num_humans) if self._ema_ready[i]]
+        for i in range(self.num_humans):
+            if self._ema_ready[i]:
+                payload[f"MetricHuman/{i:02d}_fatigue_ema"] = float(self.ema[i])
+        if ready:
+            payload["MetricHuman/mean_fatigue_ema"] = float(sum(ready) / len(ready))
+            payload["MetricHuman/max_fatigue_ema"] = float(max(ready))
+        return payload
+
+    def episode_payload(self, *, episode: int) -> dict[str, Any]:
+        """Episode-end stats (aligned with MetricCore/episode via MetricHuman/episode)."""
+        payload: dict[str, Any] = {"MetricHuman/episode": int(episode)}
+        if self._ep_count > 0:
+            payload["MetricHuman/ep_mean_fatigue"] = float(self._ep_sum / self._ep_count)
+        ready = [self.ema[i] for i in range(self.num_humans) if self._ema_ready[i]]
+        if ready:
+            # End-of-episode proxy: last EMA (env may already have reset next_obs).
+            payload["MetricHuman/ep_end_mean_fatigue"] = float(sum(ready) / len(ready))
+        return payload
+
+    def reset_episode(self) -> None:
+        """Clear episode accumulators and EMA so the next episode starts clean."""
+        self.ema = [0.0] * self.num_humans
+        self._ema_ready = [False] * self.num_humans
+        self._ep_sum = 0.0
+        self._ep_count = 0
+
+
+class HumanFatigueMonitor:
+    """Multi-env wrapper; step logs use env 0 (matches existing Peak logging)."""
+
+    def __init__(
+        self,
+        num_envs: int = 1,
+        num_humans: int = _DEFAULT_NUM_HUMAN,
+        ema_alpha: float = _DEFAULT_FATIGUE_EMA_ALPHA,
+    ):
+        n = max(1, int(num_envs))
+        self.trackers = [
+            HumanFatigueTracker(num_humans=num_humans, ema_alpha=ema_alpha) for _ in range(n)
+        ]
+
+    def ensure(self, env_id: int) -> HumanFatigueTracker:
+        while env_id >= len(self.trackers):
+            self.trackers.append(
+                HumanFatigueTracker(
+                    num_humans=self.trackers[0].num_humans if self.trackers else _DEFAULT_NUM_HUMAN,
+                    ema_alpha=self.trackers[0].alpha if self.trackers else _DEFAULT_FATIGUE_EMA_ALPHA,
+                )
+            )
+        return self.trackers[env_id]
+
+    def update(self, env_id: int, env_dict: dict) -> None:
+        self.ensure(env_id).update(env_dict)
+
+    def step_payload(self, env_id: int = 0) -> dict[str, Any]:
+        return self.ensure(env_id).step_payload()
+
+    def on_episode_done(self, env_id: int, *, episode: int) -> dict[str, Any]:
+        tr = self.ensure(env_id)
+        payload = tr.episode_payload(episode=episode)
+        tr.reset_episode()
+        return payload
 
 
 def axis_payload(env_step: int, wall_sec: float, steps_per_min: float | None = None) -> dict[str, Any]:

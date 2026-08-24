@@ -192,7 +192,7 @@ PerceptionSampleTemplate = {
     "human_subtask_recognition": {
         "input": {
             "images": ImageSampleTemplate,
-            "human_keys": ["num_00_NormalHuman"],
+            "human_keys": ["num_00_HeterogeneousHuman"],
             "human_task": ["logistic_for_pipe_cutting"],
             "human_task_id": [1],
         },

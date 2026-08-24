@@ -16,6 +16,7 @@ from .hc_factory_imports import import_hc_module
 from .hier_utils import compute_team_reward, count_busy_agents, crossed_interval, env_steps, read_rl_done, steps_per_min
 from .horizon_hooks import hc_env_list
 from .wandb_metrics import (
+    HumanFatigueMonitor,
     axis_payload,
     define_shared_metrics,
     episode_metrics,
@@ -92,6 +93,7 @@ class RuleBasedHierarchical():
         self._ep_peak_ongoing = [0 for _ in range(max(1, self.num_actors))]
         self._ep_peak_ongoing_human = [0 for _ in range(max(1, self.num_actors))]
         self._ep_peak_ongoing_robot = [0 for _ in range(max(1, self.num_actors))]
+        self._fatigue = HumanFatigueMonitor(num_envs=max(1, self.num_actors))
 
         print(
             f"[Rule] max_parallel_cd_dispatch={self.max_parallel_cd_dispatch} "
@@ -257,6 +259,7 @@ class RuleBasedHierarchical():
                 del n_producing, n_ongoing, n_human, n_robot
                 reward = compute_team_reward(obs[env_id], next_obs[env_id])
                 done, truncated, success = read_rl_done(next_obs[env_id])
+                self._fatigue.update(env_id, obs[env_id] if done else next_obs[env_id])
                 n_disp = len(actions[env_id].get("dispatch_list") or [])
                 episode_reward[env_id] += reward
                 episode_len[env_id] += 1
@@ -307,6 +310,7 @@ class RuleBasedHierarchical():
                         f"finished={_count_finished(next_obs[env_id])} ep_done_finished={episode_n_finished[env_id]} "
                         f"steps/min={spm_str} mean_ms={mean_ms_str} mean_ms_ok={mean_ok_str}"
                     )
+                    human_ep = self._fatigue.on_episode_done(env_id, episode=self.episodes_done)
                     if self.use_wandb:
                         n_fin = int(episode_n_finished[env_id])
                         payload = axis_payload(env_steps(self.global_step, self.num_actors), wall, spm)
@@ -334,6 +338,7 @@ class RuleBasedHierarchical():
                         payload.update(fullorder_core_metrics(core_payload))
                         payload.update(peak_payload)
                         payload.update(fullorder_peak_metrics(peak_payload))
+                        payload.update(human_ep)
                         wandb.log(payload)
 
                     episode_reward[env_id] = 0.0
@@ -402,6 +407,7 @@ class RuleBasedHierarchical():
                     )
                     payload.update(peak_payload)
                     payload.update(fullorder_peak_metrics(peak_payload))
+                    payload.update(self._fatigue.step_payload(0))
                     payload.update(train_metrics())
                     wandb.log(payload)
 

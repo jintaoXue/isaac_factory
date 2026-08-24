@@ -11,7 +11,7 @@ from ..env_asset_cfg.cfg_machine import CfgMachine
 from ..env_asset_cfg.cfg_robot import CfgRobot
 
 _CPU_DEVICE = torch.device("cpu")
-_HUMAN_WP = int(CfgHuman["NormalHuman"]["waypoints_per_step"])
+_HUMAN_WP = int(CfgHuman["HeterogeneousHuman"]["waypoints_per_step"])
 _ROBOT_WP_UNLOADED = int(CfgRobot["AGV"]["waypoints_per_step_unloaded"])
 _ROBOT_WP_LOADED = int(CfgRobot["AGV"]["waypoints_per_step_loaded"])
 _ROBOT_LOADED_SUBTASKS = tuple(CfgRobot["AGV"]["loaded_subtasks"])
@@ -298,7 +298,7 @@ class RouteManagerVectorEnv:
         self.cuda_device = cuda_device
         self.cfg_route = CfgRoute
         self.collision_cfg = self.cfg_route["collision_avoidance"]
-        self.human_route_orientation_offset = CfgHuman["NormalHuman"]["human_route_orientation_offset"]["orientation"].to(_CPU_DEVICE)
+        self.human_route_orientation_offset = CfgHuman["HeterogeneousHuman"]["human_route_orientation_offset"]["orientation"].to(_CPU_DEVICE)
         routes_human = json.load(Path(self.cfg_route["routes_path_human"]).expanduser().open("r", encoding="utf-8"))
         routes_robot = json.load(Path(self.cfg_route["routes_path_robot"]).expanduser().open("r", encoding="utf-8"))
 

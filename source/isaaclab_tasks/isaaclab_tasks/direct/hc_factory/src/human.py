@@ -378,6 +378,12 @@ class Human:
             self._current_pose_name = pose_name
         return True
 
-class NormalHuman(Human):
+class HeterogeneousHuman(Human):
+    """Worker with idx-wise fatigue rates and task/subtask skills (see cfg_human tables)."""
+
     def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
         super().__init__(idx, cfg, env_id, cuda_device)
+
+
+# Backward-compat alias for old checkpoints / sample dumps that still say NormalHuman.
+NormalHuman = HeterogeneousHuman

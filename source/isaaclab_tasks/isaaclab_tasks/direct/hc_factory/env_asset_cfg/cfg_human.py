@@ -116,7 +116,7 @@ HumanIdVocab = ["00", "01", "02", "03", "04"]
 
 HumanIdAppearance = {
     "type_id": 00,
-    "type_name": "NormalHuman",
+    "type_name": "HeterogeneousHuman",
     "appearance": {
         "num_00": {
             "helmet_color": "red",
@@ -146,58 +146,65 @@ HumanIdAppearance = {
     }
 }
 
+# HeterogeneousHuman: one USD template, but idx-wise fatigue/skill tables below.
+# Entity keys become num_{idx:02d}_HeterogeneousHuman.
+_HETERO_HUMAN_CFG = {
+    "type_id": 00,
+    "type_name": "HeterogeneousHuman",
+    "meta_registeration_info": {
+        "rigid_prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/human_robot_group/human_{idx}",
+        "skeleton_prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/human_robot_group/human_{idx}/ManRoot/male_adult_construction_01/male_adult_construction_01/male_adult_construction_01",
+        "name": "human_00_{idx}",
+    },
+    "reset_state": {
+        "key_variables": {
+            "type_name": None,
+            "idx": None,
+        },
+        #states: free, working_task gallery
+        "state": "free",
+        "ongoing_task_record_index": None,
+        "current_area_id": None,
+        "target_area_id": None,
+        "subtask_time_counter": 0,
+        # Human-factors state (episode-persistent; not reset on task_done).
+        # Initial F/η are identical; per-idx heterogeneity is in the tables below.
+        "fatigue": 0.0,
+        "efficiency": 1.0,
+        "skill_effective": 1.0,
+        "subtask_work_done": 0.0,
+        "generated_route": [],
+        "route_index": 0,
+        "route_length": 0,
+        "detour_active": False,
+        "detour_blocker_key": None,
+        "detour_until_route_index": None,
+        "yield_active": False,
+        "yield_blocker_key": None,
+    },
+    "human_route_orientation_offset": {
+        "orientation": torch.tensor([0.7071, 0, 0, 0.7071]),
+    },
+    # Route waypoints advanced per env step (4x baseline map sampling).
+    "waypoints_per_step": 8,
+    "animation_cfg": {
+        "joints": _HUMAN_JOINTS,
+        "animations": _HUMAN_ANIMATIONS,
+        "walk_params": _WALK_PARAMS,
+    },
+}
+
 CfgHuman = {
     "NumUpperBound": HcVectorEnvCfg().human_number_upper_bound,
-    "NormalHuman": {
-        "type_id": 00,
-        "type_name": "NormalHuman",
-        "meta_registeration_info": {
-            "rigid_prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/human_robot_group/human_{idx}",
-            "skeleton_prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/human_robot_group/human_{idx}/ManRoot/male_adult_construction_01/male_adult_construction_01/male_adult_construction_01",
-            "name": "human_00_{idx}",
-        },
-        "reset_state": {
-            "key_variables": {
-                "type_name": None,
-                "idx": None,
-            },
-            #states: free, working_task gallery
-            "state": "free",
-            "ongoing_task_record_index": None,
-            "current_area_id": None,
-            "target_area_id": None,
-            "subtask_time_counter": 0,
-            # Human-factors state (episode-persistent; not reset on task_done).
-            "fatigue": 0.0,
-            "efficiency": 1.0,
-            "skill_effective": 1.0,
-            "subtask_work_done": 0.0,
-            "generated_route": [],
-            "route_index": 0,
-            "route_length": 0,
-            "detour_active": False,
-            "detour_blocker_key": None,
-            "detour_until_route_index": None,
-            "yield_active": False,
-            "yield_blocker_key": None,
-        },
-        "human_route_orientation_offset": {
-            "orientation": torch.tensor([0.7071, 0, 0, 0.7071]),
-        },
-        # Route waypoints advanced per env step (4x baseline map sampling).
-        "waypoints_per_step": 8,
-        "animation_cfg": {
-            "joints": _HUMAN_JOINTS,
-            "animations": _HUMAN_ANIMATIONS,
-            "walk_params": _WALK_PARAMS,
-        },
-    }
+    "HeterogeneousHuman": _HETERO_HUMAN_CFG,
+    # Backward-compat alias for old dumps / route lookups.
+    "NormalHuman": _HETERO_HUMAN_CFG,
 }
 
 
 
 CfgHumanRegistrationInfos = {
-    "NormalHuman": 5, #idx 00-09
+    "HeterogeneousHuman": 5,  # idx 00-04; per-idx fatigue/skill tables below
 }
 
 
@@ -213,14 +220,17 @@ HUMAN_EFFICIENCY_ALPHA = 1.4
 HUMAN_FATIGUE_CRIT = 0.80
 HUMAN_EFFICIENCY_CRIT_SCALE = 0.75
 
-# Per-worker (idx) accumulation / recovery per env step, before subtask load.
+# Per-worker (idx) person traits: (work_rate, recover_rate) per env step.
+# Rates follow the worker, not the current process-task name; task intensity is
+# HUMAN_SUBTASK_FATIGUE_LOAD (λ_s) multiplied onto work_rate.
+# Role labels align with HUMAN_SKILL_TASK specialists.
 # Welder (2) fatigues fastest; painter (3) recovers fastest.
 HUMAN_FATIGUE_RATES = (
-    (0.00045, 0.00018),  # 0 cutting
-    (0.00032, 0.00022),  # 1 grooving
-    (0.00055, 0.00012),  # 2 welding
-    (0.00028, 0.00025),  # 3 paint
-    (0.00038, 0.00020),  # 4 logistics
+    (0.00045, 0.00018),  # 0 cutting specialist
+    (0.00032, 0.00022),  # 1 grooving specialist
+    (0.00055, 0.00012),  # 2 welding specialist
+    (0.00028, 0.00025),  # 3 paint specialist
+    (0.00038, 0.00020),  # 4 logistics specialist
 )
 
 # Subtask metabolic load λ_s (multiplies work rate). Idle / wait recover.

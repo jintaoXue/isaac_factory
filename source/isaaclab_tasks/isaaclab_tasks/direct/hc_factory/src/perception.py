@@ -134,9 +134,13 @@ def human_xy_by_id(env: dict) -> dict[str, tuple[float, float]]:
     """Map human id '00'.. from rigid_prims."""
     out: dict[str, tuple[float, float]] = {}
     for key, prim in env.get("rigid_prims", {}).items():
-        if "NormalHuman" not in key and "human" not in key.lower():
+        if (
+            "HeterogeneousHuman" not in key
+            and "NormalHuman" not in key
+            and "human" not in key.lower()
+        ):
             continue
-        # num_00_NormalHuman -> 00
+        # num_00_HeterogeneousHuman / num_00_NormalHuman -> 00
         parts = key.split("_")
         hid = None
         for p in parts:
