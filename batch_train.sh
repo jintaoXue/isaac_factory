@@ -26,16 +26,16 @@ if [ $# -eq 0 ]; then
     echo "  1-21: 旧 RL / Perception 序号"
     echo "  ---- HcFactory Hierarchical TPA（按流程编号）----"
     echo "  22: explore 采库 (--explore, N=10, T_max=10000, ε=1, 写 catalog)"
-    echo "  23: explore debug（可视化+warmstart，不录视频不启wandb）"
-    echo "  24: rule 单产品 (K=1, N=10, ${HC_RULE_EPISODES} ep)"
-    echo "  25: rule 多产品 (K=${HC_MULTI_K}, N=10, ${HC_RULE_EPISODES} ep)"
-    echo "  26: hier random 基线 (ε=1, N=10, 不写 catalog)"
+    echo "  23: explore debug（N=10, T_max=10000, 可视化+warmstart，不录视频不启wandb）"
+    echo "  24: rule 单产品 (K=1, N=10, T_max=10000, ${HC_RULE_EPISODES} ep)"
+    echo "  25: rule 多产品 (K=${HC_MULTI_K}, N=10, T_max=10000, ${HC_RULE_EPISODES} ep)"
+    echo "  26: hier random 基线 (ε=1, N=10, T_max=10000, 不写 catalog)"
     echo "  27: hier 倒序课程 (--curriculum → target=10)"
-    echo "  28: hier 全量硬训对照 (无课程, T=16000)"
-    echo "  29: hier 评测 (加载 nn/, 全量 N=16)"
-    echo "  30: rule 单产品 (K=1, N=16)"
-    echo "  31: rule 多产品 (K=${HC_MULTI_K}, N=16)"
-    echo "  32: hier random 基线 (ε=1, N=16, 不写 catalog)"
+    echo "  28: hier 全量硬训对照 (无课程, N=16, T_max=16000)"
+    echo "  29: hier 评测 (加载 nn/, 全量 N=16, T_max=16000)"
+    echo "  30: rule 单产品 (K=1, N=16, T_max=16000)"
+    echo "  31: rule 多产品 (K=${HC_MULTI_K}, N=16, T_max=16000)"
+    echo "  32: hier random 基线 (ε=1, N=16, T_max=16000, 不写 catalog)"
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
     echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 22/23/27 的 --warmstart"
     echo "  环境变量 HC_LOAD_DIR: 29 号评测的实验目录（含 nn/）"
@@ -256,7 +256,7 @@ run_test_22() {
 
 run_test_23() {
     # 采集 debug：不开 --headless（可视化UI），读取本地阻塞点 pkl 并手动断点调试
-    # 不开 wandb，不录视频
+    # 不开 wandb，不录视频；与 22 对齐 N=10 / T_max=10000
     #
     # 你需要设置：
     #   export HC_WARMSTART=/abs/path/to/env_checkpoints/stagnation/collect/.../stalled_state.pkl
@@ -265,15 +265,15 @@ run_test_23() {
         echo "示例：HC_WARMSTART=env_checkpoints/stagnation/collect/L2_env00_.../stalled_state.pkl ./batch_train.sh 23 cuda:0"
         exit 1
     fi
-    echo "运行 23: explore debug (visual+warmstart, no wandb/no video)"
+    echo "运行 23: explore debug (N=10, T_max=10000, visual+warmstart, no wandb/no video)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
         --num_envs 1 \
         --explore \
+        --explore_n_products 10 \
         --seed 42 \
         $(hc_warmstart_args) \
-        +t_max_anchor=14000 \
         +decision_ring_k=20 \
         ${DEVICE_ARG}
 }
@@ -350,7 +350,7 @@ run_test_27() {
 
 run_test_28() {
     # hier 全量硬训对照（yaml max_episodic_steps=16000，无课程）
-    echo "运行 28: hier 全量硬训对照 (K=${HC_MULTI_K}, wandb)"
+    echo "运行 28: hier 全量硬训对照 (K=${HC_MULTI_K}, N=16, T_max=16000, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -358,7 +358,7 @@ run_test_28() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "hier_K${HC_MULTI_K}_hard45k" \
+        --wandb_name "hier_K${HC_MULTI_K}_hard_N16_T16000" \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         ${DEVICE_ARG}
 }

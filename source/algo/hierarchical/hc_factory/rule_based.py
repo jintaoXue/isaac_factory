@@ -297,6 +297,7 @@ class RuleBasedHierarchical():
                     mean_ok_str = f"{mean_ms_ok:.1f}" if mean_ms_ok is not None else "n/a"
                     spm = steps_per_min(self.global_step, wall, self.num_actors)
                     spm_str = f"{spm:.1f}" if spm is not None else "n/a"
+                    nmk = float(ep_len) / float(max(1, self.max_episodic_steps))
                     print(
                         f"[Rule] EP_DONE env={env_id} episode={completed_ep} "
                         f"done_count={self.episodes_done} "
@@ -308,6 +309,7 @@ class RuleBasedHierarchical():
                         f"peak_prod={self.peak_producing} peak_ong={self.peak_ongoing} "
                         f"peak_human={self.peak_ongoing_human} peak_robot={self.peak_ongoing_robot} "
                         f"finished={_count_finished(next_obs[env_id])} ep_done_finished={episode_n_finished[env_id]} "
+                        f"nmk={nmk:.3f} "
                         f"steps/min={spm_str} mean_ms={mean_ms_str} mean_ms_ok={mean_ok_str}"
                     )
                     human_ep = self._fatigue.on_episode_done(env_id, episode=self.episodes_done)
