@@ -25,7 +25,7 @@ if [ $# -eq 0 ]; then
     echo "  E: 基线矩阵 (24 25 26 | 30 31 32)"
     echo "  1-21: 旧 RL / Perception 序号"
     echo "  ---- HcFactory Hierarchical TPA（按流程编号）----"
-    echo "  22: explore 采库 (--explore, N=16, T_max=16000, ε=1, 写 catalog)"
+    echo "  22: explore 采库 (--explore, N=10, T_max=10000, ε=1, 写 catalog)"
     echo "  23: explore debug（可视化+warmstart，不录视频不启wandb）"
     echo "  24: rule 单产品 (K=1, N=10, ${HC_RULE_EPISODES} ep)"
     echo "  25: rule 多产品 (K=${HC_MULTI_K}, N=10, ${HC_RULE_EPISODES} ep)"
@@ -237,18 +237,19 @@ run_test_21() {
 # 旧映射: 25→22, 27→23, 22→24, 23→25, 29→26, 26→27, 24→28, 28→29; 30–32 不变
 
 run_test_22() {
-    # N=16 masked random 采集库：ε=1，无 DQN backward；L2/L3 死锁回退 + progress key 去重
-    echo "运行 22: explore catalog (N=16, T_max=16000, epsilon=1, 10 episodes)"
+    # N=10 masked random 采集库：ε=1，无 DQN backward；L2/L3 死锁回退 + progress key 去重
+    echo "运行 22: explore catalog (N=10, T_max=10000, epsilon=1, 10 episodes)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
         --num_envs "${HC_NUM_ENVS}" \
         --headless \
         --explore \
+        --explore_n_products 10 \
         --max_sim_episodes 10 \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "explore_N16_T16000" \
+        --wandb_name "explore_N10_T10000" \
         $(hc_warmstart_args) \
         ${DEVICE_ARG}
 }
