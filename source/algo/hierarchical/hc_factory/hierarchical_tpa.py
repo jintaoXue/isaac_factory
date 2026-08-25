@@ -163,7 +163,7 @@ class HierarchicalTPA:
         self.log_interval = config.get("log_interval", 100)
         self.grad_clip_norm = float(config.get("grad_clip_norm", 10.0))
         self.global_step = 0
-        self.max_episodic_steps = int(config.get("max_episodic_steps", 16000))
+        self.max_episodic_steps = int(config.get("max_episodic_steps", _curr.T_MAX_ANCHOR))
 
         dqn_kwargs = {
             "hidden_dim": config.get("hidden_dim", 128),
@@ -293,7 +293,7 @@ class HierarchicalTPA:
         eval_epsilon = float(self.config.get("test_epsilon", 0.0))
         output_dir = os.path.join(self.experiment_dir, "eval")
         # Full-order eval: 16 products, T_max=anchor (not incremental curriculum segments).
-        eval_horizon = int(self.config.get("t_max_anchor", 16000))
+        eval_horizon = int(self.config.get("t_max_anchor", _curr.T_MAX_ANCHOR))
 
         obs: list[dict] = self.vec_env.reset()
         self.horizon.bind(self.vec_env, len(obs))

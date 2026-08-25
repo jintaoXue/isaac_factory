@@ -11,11 +11,13 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 
-T_MAX_ANCHOR = 16000  # 16 products × per_T_max=1000
+# Full-order anchor (N=16 budget). With human fatigue, ~4× pre-fatigue horizon.
+# N=10 budget = round(anchor/16)*10  (64000 → 40000).
+T_MAX_ANCHOR = 64000
 N_FULL_ORDER = 16  # eval / explore catalog full horizon
 N_TRAIN_TARGET = 10  # curriculum training cap
 N_ANCHOR = N_FULL_ORDER  # legacy alias for per-product time scaling
-PER_T_MAX = 1000  # steps budget per finished product
+PER_T_MAX = 4000  # round(T_MAX_ANCHOR / N_FULL_ORDER); use per_t_max() in code
 WIP_CAP = 10  # same as HcVectorEnvCfg.single_env_parallel_producing_limit
 
 # (stage, start_nfin, delta_n) with fixed target_nfin=N_TRAIN_TARGET.

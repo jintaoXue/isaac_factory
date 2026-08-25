@@ -40,7 +40,7 @@ class BufferPreprocessCfg:
     max_subtasks: int = 16
     max_product_types: int = 4
     num_agents: int = 4  # subtask 行: human / gantry / machine / robot
-    time_norm: float = 10000.0
+    time_norm: float = 40000.0  # t_max_for(N_TRAIN_TARGET=10, T_MAX_ANCHOR=64000)
 
 
 CFG = BufferPreprocessCfg()

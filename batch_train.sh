@@ -3,6 +3,11 @@
 # HcFactory TPA 默认（help 与 run 共用；可用环境变量覆盖）
 HC_RULE_EPISODES="${HC_RULE_EPISODES:-10}"
 HC_MULTI_K="${HC_MULTI_K:-10}"
+# 全订单 anchor：N=16 的 T_max；N=10 = round(anchor/16)*10（fatigue 后默认 4× 旧 16000/10000）
+HC_T_MAX_ANCHOR="${HC_T_MAX_ANCHOR:-64000}"
+HC_PER_T_MAX=$(( (HC_T_MAX_ANCHOR + 8) / 16 ))
+HC_T_MAX_N10=$(( HC_PER_T_MAX * 10 ))
+HC_T_MAX_N16="${HC_T_MAX_ANCHOR}"
 
 # 用法:
 #   ./batch_train.sh 22 cuda:0
@@ -25,21 +30,22 @@ if [ $# -eq 0 ]; then
     echo "  E: 基线矩阵 (24 25 26 | 30 31 32)"
     echo "  1-21: 旧 RL / Perception 序号"
     echo "  ---- HcFactory Hierarchical TPA（按流程编号）----"
-    echo "  22: explore 采库 (--explore, N=10, T_max=10000, ε=1, 写 catalog)"
-    echo "  23: explore debug（N=10, T_max=10000, 可视化+warmstart，不录视频不启wandb）"
-    echo "  24: rule 单产品 (K=1, N=10, T_max=10000, ${HC_RULE_EPISODES} ep)"
-    echo "  25: rule 多产品 (K=${HC_MULTI_K}, N=10, T_max=10000, ${HC_RULE_EPISODES} ep)"
-    echo "  26: hier random 基线 (ε=1, N=10, T_max=10000, 不写 catalog)"
+    echo "  22: explore 采库 (--explore, N=10, T_max=${HC_T_MAX_N10}, ε=1, 写 catalog)"
+    echo "  23: explore debug（N=10, T_max=${HC_T_MAX_N10}, 可视化+warmstart，不录视频不启wandb）"
+    echo "  24: rule 单产品 (K=1, N=10, T_max=${HC_T_MAX_N10}, ${HC_RULE_EPISODES} ep)"
+    echo "  25: rule 多产品 (K=${HC_MULTI_K}, N=10, T_max=${HC_T_MAX_N10}, ${HC_RULE_EPISODES} ep)"
+    echo "  26: hier random 基线 (ε=1, N=10, T_max=${HC_T_MAX_N10}, 不写 catalog)"
     echo "  27: hier 倒序课程 (--curriculum → target=10)"
-    echo "  28: hier 全量硬训对照 (无课程, N=16, T_max=16000)"
-    echo "  29: hier 评测 (加载 nn/, 全量 N=16, T_max=16000)"
-    echo "  30: rule 单产品 (K=1, N=16, T_max=16000)"
-    echo "  31: rule 多产品 (K=${HC_MULTI_K}, N=16, T_max=16000)"
-    echo "  32: hier random 基线 (ε=1, N=16, T_max=16000, 不写 catalog)"
+    echo "  28: hier 全量硬训对照 (无课程, N=16, T_max=${HC_T_MAX_N16})"
+    echo "  29: hier 评测 (加载 nn/, 全量 N=16, T_max=${HC_T_MAX_N16})"
+    echo "  30: rule 单产品 (K=1, N=16, T_max=${HC_T_MAX_N16})"
+    echo "  31: rule 多产品 (K=${HC_MULTI_K}, N=16, T_max=${HC_T_MAX_N16})"
+    echo "  32: hier random 基线 (ε=1, N=16, T_max=${HC_T_MAX_N16}, 不写 catalog)"
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
     echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 22/23/27 的 --warmstart"
     echo "  环境变量 HC_LOAD_DIR: 29 号评测的实验目录（含 nn/）"
     echo "  环境变量 HC_RULE_EPISODES: 基线 episode 数（默认 ${HC_RULE_EPISODES}）"
+    echo "  环境变量 HC_T_MAX_ANCHOR: 全订单 T_max anchor（默认 ${HC_T_MAX_ANCHOR} → N10=${HC_T_MAX_N10}）"
     exit 1
 fi
 
@@ -77,6 +83,11 @@ hc_warmstart_args() {
     if [ -n "${HC_WARMSTART}" ]; then
         echo "--warmstart ${HC_WARMSTART}"
     fi
+}
+
+# 统一 T_max anchor（22–32 共用；可用 HC_T_MAX_ANCHOR 覆盖做极限探测）
+hc_t_max_args() {
+    echo "+t_max_anchor=${HC_T_MAX_ANCHOR}"
 }
 
 # 定义训练函数（run_one_job 在文件末尾调用）
@@ -238,7 +249,7 @@ run_test_21() {
 
 run_test_22() {
     # N=10 masked random 采集库：ε=1，无 DQN backward；L2/L3 死锁回退 + progress key 去重
-    echo "运行 22: explore catalog (N=10, T_max=10000, epsilon=1, 10 episodes)"
+    echo "运行 22: explore catalog (N=10, T_max=${HC_T_MAX_N10}, epsilon=1, 10 episodes)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -249,14 +260,15 @@ run_test_22() {
         --max_sim_episodes 10 \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "explore_N10_T10000" \
+        --wandb_name "explore_N10_T${HC_T_MAX_N10}" \
+        $(hc_t_max_args) \
         $(hc_warmstart_args) \
         ${DEVICE_ARG}
 }
 
 run_test_23() {
     # 采集 debug：不开 --headless（可视化UI），读取本地阻塞点 pkl 并手动断点调试
-    # 不开 wandb，不录视频；与 22 对齐 N=10 / T_max=10000
+    # 不开 wandb，不录视频；与 22 对齐 N=10 / T_max=${HC_T_MAX_N10}
     #
     # 你需要设置：
     #   export HC_WARMSTART=/abs/path/to/env_checkpoints/stagnation/collect/.../stalled_state.pkl
@@ -265,7 +277,7 @@ run_test_23() {
         echo "示例：HC_WARMSTART=env_checkpoints/stagnation/collect/L2_env00_.../stalled_state.pkl ./batch_train.sh 23 cuda:0"
         exit 1
     fi
-    echo "运行 23: explore debug (N=10, T_max=10000, visual+warmstart, no wandb/no video)"
+    echo "运行 23: explore debug (N=10, T_max=${HC_T_MAX_N10}, visual+warmstart, no wandb/no video)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -273,6 +285,7 @@ run_test_23() {
         --explore \
         --explore_n_products 10 \
         --seed 42 \
+        $(hc_t_max_args) \
         $(hc_warmstart_args) \
         +decision_ring_k=20 \
         ${DEVICE_ARG}
@@ -280,7 +293,7 @@ run_test_23() {
 
 run_test_24() {
     # rule_based + 单产品决策（max_parallel_cd_dispatch=1），N=10
-    echo "运行 24: rule_based single-product (K=1, N=10, ${HC_RULE_EPISODES} episodes, wandb)"
+    echo "运行 24: rule_based single-product (K=1, N=10, T_max=${HC_T_MAX_N10}, ${HC_RULE_EPISODES} episodes, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo rule_based \
@@ -288,16 +301,17 @@ run_test_24() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "rule_K1_single_N10_${HC_RULE_EPISODES}ep" \
+        --wandb_name "rule_K1_single_N10_T${HC_T_MAX_N10}_${HC_RULE_EPISODES}ep" \
         --train_n_products 10 \
         --max_parallel_cd_dispatch 1 \
         --max_sim_episodes "${HC_RULE_EPISODES}" \
+        $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
 
 run_test_25() {
     # rule_based + 多产品并行决策（K=10），N=10
-    echo "运行 25: rule_based multi-product (K=${HC_MULTI_K}, N=10, ${HC_RULE_EPISODES} episodes, wandb)"
+    echo "运行 25: rule_based multi-product (K=${HC_MULTI_K}, N=10, T_max=${HC_T_MAX_N10}, ${HC_RULE_EPISODES} episodes, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo rule_based \
@@ -305,16 +319,17 @@ run_test_25() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "rule_K${HC_MULTI_K}_multi_N10_${HC_RULE_EPISODES}ep" \
+        --wandb_name "rule_K${HC_MULTI_K}_multi_N10_T${HC_T_MAX_N10}_${HC_RULE_EPISODES}ep" \
         --train_n_products 10 \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         --max_sim_episodes "${HC_RULE_EPISODES}" \
+        $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
 
 run_test_26() {
     # hier masked-random makespan 基线：N=10, ε=1, 无 DQN 学习, 不写 catalog
-    echo "运行 26: hier RL random baseline (ε=1, N=10, T=10000, ${HC_RULE_EPISODES} episodes, wandb)"
+    echo "运行 26: hier RL random baseline (ε=1, N=10, T=${HC_T_MAX_N10}, ${HC_RULE_EPISODES} episodes, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -325,15 +340,16 @@ run_test_26() {
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "random_K${HC_MULTI_K}_N10_${HC_RULE_EPISODES}ep" \
+        --wandb_name "random_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}_${HC_RULE_EPISODES}ep" \
         --explore_n_products 10 \
         --no_explore_save_catalog \
+        $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
 
 run_test_27() {
     # 倒序课程：target=10；T_budget=ΔN×per_T_max；catalog 按 start_nfin 切片
-    echo "运行 27: hier curriculum (reverse ΔN →10, wandb)"
+    echo "运行 27: hier curriculum (reverse ΔN →10, per_T=${HC_PER_T_MAX}, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -342,15 +358,16 @@ run_test_27() {
         --curriculum \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "hier_curriculum_K${HC_MULTI_K}" \
+        --wandb_name "hier_curriculum_K${HC_MULTI_K}_T${HC_T_MAX_N10}" \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
+        $(hc_t_max_args) \
         $(hc_warmstart_args) \
         ${DEVICE_ARG}
 }
 
 run_test_28() {
-    # hier 全量硬训对照（yaml max_episodic_steps=16000，无课程）
-    echo "运行 28: hier 全量硬训对照 (K=${HC_MULTI_K}, N=16, T_max=16000, wandb)"
+    # hier 全量硬训对照（无课程）
+    echo "运行 28: hier 全量硬训对照 (K=${HC_MULTI_K}, N=16, T_max=${HC_T_MAX_N16}, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -358,8 +375,9 @@ run_test_28() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "hier_K${HC_MULTI_K}_hard_N16_T16000" \
+        --wandb_name "hier_K${HC_MULTI_K}_hard_N16_T${HC_T_MAX_N16}" \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
+        $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
 
@@ -370,7 +388,7 @@ run_test_29() {
         echo "示例：HC_LOAD_DIR=logs/rl_games/HcFactory/hier_2026-08-18_22-00-00 ./batch_train.sh 29 cuda:0"
         exit 1
     fi
-    echo "运行 29: hier test full-order N=16 T_max=16000 load=${HC_LOAD_DIR}"
+    echo "运行 29: hier test full-order N=16 T_max=${HC_T_MAX_N16} load=${HC_LOAD_DIR}"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -379,13 +397,13 @@ run_test_29() {
         --test \
         --test_times "${HC_TEST_TIMES:-1}" \
         --load_dir "${HC_LOAD_DIR}" \
-        +t_max_anchor=16000 \
+        $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
 
 run_test_30() {
     # rule_based + 单产品决策，N=16 全量订单
-    echo "运行 30: rule_based single-product (K=1, N=16, ${HC_RULE_EPISODES} episodes, wandb)"
+    echo "运行 30: rule_based single-product (K=1, N=16, T_max=${HC_T_MAX_N16}, ${HC_RULE_EPISODES} episodes, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo rule_based \
@@ -393,16 +411,17 @@ run_test_30() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "rule_K1_single_N16_${HC_RULE_EPISODES}ep" \
+        --wandb_name "rule_K1_single_N16_T${HC_T_MAX_N16}_${HC_RULE_EPISODES}ep" \
         --train_n_products 16 \
         --max_parallel_cd_dispatch 1 \
         --max_sim_episodes "${HC_RULE_EPISODES}" \
+        $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
 
 run_test_31() {
     # rule_based + 多产品并行决策，N=16 全量订单
-    echo "运行 31: rule_based multi-product (K=${HC_MULTI_K}, N=16, ${HC_RULE_EPISODES} episodes, wandb)"
+    echo "运行 31: rule_based multi-product (K=${HC_MULTI_K}, N=16, T_max=${HC_T_MAX_N16}, ${HC_RULE_EPISODES} episodes, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo rule_based \
@@ -410,16 +429,17 @@ run_test_31() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "rule_K${HC_MULTI_K}_multi_N16_${HC_RULE_EPISODES}ep" \
+        --wandb_name "rule_K${HC_MULTI_K}_multi_N16_T${HC_T_MAX_N16}_${HC_RULE_EPISODES}ep" \
         --train_n_products 16 \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         --max_sim_episodes "${HC_RULE_EPISODES}" \
+        $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
 
 run_test_32() {
     # hier masked-random makespan 基线：N=16, ε=1, 无 DQN 学习, 不写 catalog
-    echo "运行 32: hier RL random baseline (ε=1, N=16, T=16000, ${HC_RULE_EPISODES} episodes, wandb)"
+    echo "运行 32: hier RL random baseline (ε=1, N=16, T=${HC_T_MAX_N16}, ${HC_RULE_EPISODES} episodes, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -430,9 +450,10 @@ run_test_32() {
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "random_K${HC_MULTI_K}_N16_${HC_RULE_EPISODES}ep" \
+        --wandb_name "random_K${HC_MULTI_K}_N16_T${HC_T_MAX_N16}_${HC_RULE_EPISODES}ep" \
         --explore_n_products 16 \
         --no_explore_save_catalog \
+        $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
 
