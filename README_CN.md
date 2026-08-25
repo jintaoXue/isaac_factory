@@ -14,6 +14,8 @@
 - [安装步骤](#安装步骤)
 - [数据资产](#数据资产)
 - [快速运行](#快速运行)
+- [批量训练（batch_train.sh）](#批量训练batch_trainsh)
+- [日志与 Weights & Biases](#日志与-weights--biases)
 - [命令行参数](#命令行参数)
 - [远程可视化（Livestream）](#远程可视化livestream)
 - [框架架构（hc_factory）](#框架架构hc_factory)
