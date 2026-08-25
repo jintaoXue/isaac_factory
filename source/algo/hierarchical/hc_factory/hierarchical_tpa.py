@@ -28,12 +28,14 @@ from .hier_utils import compute_team_reward, count_busy_agents, crossed_interval
 from .horizon_hooks import HorizonHooks
 from .wandb_metrics import (
     HumanFatigueMonitor,
+    LocalMetricsWriter,
     axis_payload,
     define_shared_metrics,
     episode_metrics,
     fullorder_core_metrics,
     fullorder_peak_metrics,
     log_eval_episodes,
+    log_metrics,
     shop_metrics,
     train_metrics,
 )
@@ -212,6 +214,7 @@ class HierarchicalTPA:
         self.experiment_dir = os.path.join(self.train_dir, config["full_experiment_name"])
         self.nn_dir = os.path.join(self.experiment_dir, "nn")
         os.makedirs(self.nn_dir, exist_ok=True)
+        self.local_metrics = LocalMetricsWriter(self.experiment_dir)
         print("Hierarchical experiment dir:", self.experiment_dir, "num_actors:", self.num_actors)
 
         self.use_wandb = config.get("wandb_activate", False)
@@ -241,6 +244,9 @@ class HierarchicalTPA:
             curriculum=True,
             test=bool(self.config.get("test")),
         )
+
+    def _log_metrics(self, payload: dict) -> None:
+        log_metrics(payload, local=self.local_metrics, use_wandb=self.use_wandb)
 
     def _wall_time_sec(self) -> float:
         if self._train_t0 is None:
@@ -332,7 +338,14 @@ class HierarchicalTPA:
         print_eval_summary(payload["summary"], "hier")
         if self.use_wandb:
             self.init_wandb_logger()
-            log_eval_episodes(results, t_budget=eval_horizon, algo_name="hier")
+        log_eval_episodes(
+            results,
+            t_budget=eval_horizon,
+            algo_name="hier",
+            local=self.local_metrics,
+            use_wandb=self.use_wandb,
+        )
+        self.local_metrics.close()
         print(f"[Hier] eval saved: {json_path}\n[Hier] summary: {summary_path}")
         return payload
 
@@ -612,52 +625,51 @@ class HierarchicalTPA:
                         f"stalls={self.horizon.stall_counts_str()}"
                     )
                     human_ep = self._fatigue.on_episode_done(env_id, episode=self.episodes_done)
-                    if self.use_wandb:
-                        payload = axis_payload(
-                            env_steps(self.global_step, self.num_actors), wall
+                    payload = axis_payload(
+                        env_steps(self.global_step, self.num_actors), wall
+                    )
+                    core_payload = episode_metrics(
+                        episode=self.episodes_done,
+                        success=success,
+                        truncated=truncated,
+                        makespan=ep_len,
+                        n_finished=n_fin,
+                        finished_abs=finished_abs,
+                        ep_return=episode_reward[env_id],
+                        t_budget=t_budget,
+                        success_rate=success_rate,
+                        mean_makespan=mean_ms,
+                        mean_makespan_success=mean_ms_ok,
+                    )
+                    peak_payload = shop_metrics(
+                        peak_producing=self.peak_producing,
+                        peak_ongoing=self.peak_ongoing,
+                        peak_ongoing_human=self.peak_ongoing_human,
+                        peak_ongoing_robot=self.peak_ongoing_robot,
+                    )
+                    payload.update(core_payload)
+                    payload.update(peak_payload)
+                    payload.update(human_ep)
+                    is_fullorder = (not self.horizon.curriculum.enabled) or (
+                        spec.start_nfin == 0 and spec.target_nfin == spec.n_products
+                    )
+                    if is_fullorder:
+                        payload.update(fullorder_core_metrics(core_payload))
+                        payload.update(fullorder_peak_metrics(peak_payload))
+                    if self.horizon.curriculum.enabled:
+                        payload.update(
+                            {
+                                "Curriculum/01_stage": spec.stage,
+                                "Curriculum/02_target_nfin": spec.target_nfin,
+                                "Curriculum/03_start_nfin": spec.start_nfin,
+                                "Curriculum/04_delta_n": spec.delta_n,
+                                "Curriculum/05_t_budget": spec.t_max,
+                            }
                         )
-                        core_payload = episode_metrics(
-                            episode=self.episodes_done,
-                            success=success,
-                            truncated=truncated,
-                            makespan=ep_len,
-                            n_finished=n_fin,
-                            finished_abs=finished_abs,
-                            ep_return=episode_reward[env_id],
-                            t_budget=t_budget,
-                            success_rate=success_rate,
-                            mean_makespan=mean_ms,
-                            mean_makespan_success=mean_ms_ok,
-                        )
-                        peak_payload = shop_metrics(
-                            peak_producing=self.peak_producing,
-                            peak_ongoing=self.peak_ongoing,
-                            peak_ongoing_human=self.peak_ongoing_human,
-                            peak_ongoing_robot=self.peak_ongoing_robot,
-                        )
-                        payload.update(core_payload)
-                        payload.update(peak_payload)
-                        payload.update(human_ep)
-                        is_fullorder = (not self.horizon.curriculum.enabled) or (
-                            spec.start_nfin == 0 and spec.target_nfin == spec.n_products
-                        )
-                        if is_fullorder:
-                            payload.update(fullorder_core_metrics(core_payload))
-                            payload.update(fullorder_peak_metrics(peak_payload))
-                        if self.horizon.curriculum.enabled:
-                            payload.update(
-                                {
-                                    "Curriculum/01_stage": spec.stage,
-                                    "Curriculum/02_target_nfin": spec.target_nfin,
-                                    "Curriculum/03_start_nfin": spec.start_nfin,
-                                    "Curriculum/04_delta_n": spec.delta_n,
-                                    "Curriculum/05_t_budget": spec.t_max,
-                                }
-                            )
-                        payload["Stagnation/resets_per_episode"] = float(
-                            self.horizon.ep_stalled[env_id]
-                        )
-                        wandb.log(payload)
+                    payload["Stagnation/resets_per_episode"] = float(
+                        self.horizon.ep_stalled[env_id]
+                    )
+                    self._log_metrics(payload)
                     episode_reward[env_id] = 0.0
                     episode_len[env_id] = 0
                     self._ep_peak_producing[env_id] = 0
@@ -719,63 +731,62 @@ class HierarchicalTPA:
                     f"steps/min={spm_str} n_envs={len(obs)} "
                     f"stalls={self.horizon.stall_counts_str()}"
                 )
-                if self.use_wandb:
-                    buf_d_h = (
-                        len(self.agent_D.human_dqn.buffer)
-                        if self.agent_D.human_dqn is not None
-                        else 0
+                buf_d_h = (
+                    len(self.agent_D.human_dqn.buffer)
+                    if self.agent_D.human_dqn is not None
+                    else 0
+                )
+                buf_d_r = (
+                    len(self.agent_D.robot_dqn.buffer)
+                    if self.agent_D.robot_dqn is not None
+                    else 0
+                )
+                loss_payload = {}
+                critic_vals = []
+                for name, window in self._loss_window.items():
+                    if window:
+                        m = sum(window) / len(window)
+                        loss_key = {
+                            "A": "MetricLoss/02_critic_A",
+                            "B": "MetricLoss/03_critic_B",
+                            "C": "MetricLoss/04_critic_C",
+                            "D_human": "MetricLoss/05_critic_D_human",
+                            "D_robot": "MetricLoss/06_critic_D_robot",
+                        }[name]
+                        loss_payload[loss_key] = m
+                        critic_vals.append(m)
+                if critic_vals:
+                    loss_payload["MetricLoss/01_critic_mean"] = sum(critic_vals) / len(critic_vals)
+                payload = axis_payload(
+                    env_steps(self.global_step, self.num_actors), wall, spm
+                )
+                peak_payload = shop_metrics(
+                    producing=producing0,
+                    ongoing=ongoing0,
+                    peak_producing=self.peak_producing,
+                    peak_ongoing=self.peak_ongoing,
+                    peak_ongoing_human=self.peak_ongoing_human,
+                    peak_ongoing_robot=self.peak_ongoing_robot,
+                )
+                payload.update(peak_payload)
+                is_fullorder = (not self.horizon.curriculum.enabled) or (
+                    spec_now.start_nfin == 0 and spec_now.target_nfin == spec_now.n_products
+                )
+                if is_fullorder:
+                    payload.update(fullorder_peak_metrics(peak_payload))
+                payload.update(self._fatigue.step_payload(0))
+                payload.update(
+                    train_metrics(
+                        epsilon=epsilon,
+                        buffer_A=_buffer_len(self.agent_A),
+                        buffer_B=_buffer_len(self.agent_B),
+                        buffer_C=_buffer_len(self.agent_C),
+                        buffer_D_human=buf_d_h,
+                        buffer_D_robot=buf_d_r,
                     )
-                    buf_d_r = (
-                        len(self.agent_D.robot_dqn.buffer)
-                        if self.agent_D.robot_dqn is not None
-                        else 0
-                    )
-                    loss_payload = {}
-                    critic_vals = []
-                    for name, window in self._loss_window.items():
-                        if window:
-                            m = sum(window) / len(window)
-                            loss_key = {
-                                "A": "MetricLoss/02_critic_A",
-                                "B": "MetricLoss/03_critic_B",
-                                "C": "MetricLoss/04_critic_C",
-                                "D_human": "MetricLoss/05_critic_D_human",
-                                "D_robot": "MetricLoss/06_critic_D_robot",
-                            }[name]
-                            loss_payload[loss_key] = m
-                            critic_vals.append(m)
-                    if critic_vals:
-                        loss_payload["MetricLoss/01_critic_mean"] = sum(critic_vals) / len(critic_vals)
-                    payload = axis_payload(
-                        env_steps(self.global_step, self.num_actors), wall, spm
-                    )
-                    peak_payload = shop_metrics(
-                        producing=producing0,
-                        ongoing=ongoing0,
-                        peak_producing=self.peak_producing,
-                        peak_ongoing=self.peak_ongoing,
-                        peak_ongoing_human=self.peak_ongoing_human,
-                        peak_ongoing_robot=self.peak_ongoing_robot,
-                    )
-                    payload.update(peak_payload)
-                    is_fullorder = (not self.horizon.curriculum.enabled) or (
-                        spec_now.start_nfin == 0 and spec_now.target_nfin == spec_now.n_products
-                    )
-                    if is_fullorder:
-                        payload.update(fullorder_peak_metrics(peak_payload))
-                    payload.update(self._fatigue.step_payload(0))
-                    payload.update(
-                        train_metrics(
-                            epsilon=epsilon,
-                            buffer_A=_buffer_len(self.agent_A),
-                            buffer_B=_buffer_len(self.agent_B),
-                            buffer_C=_buffer_len(self.agent_C),
-                            buffer_D_human=buf_d_h,
-                            buffer_D_robot=buf_d_r,
-                        )
-                    )
-                    payload.update(loss_payload)
-                    wandb.log(payload)
+                )
+                payload.update(loss_payload)
+                self._log_metrics(payload)
 
             if crossed_interval(last_saved_env_steps, env_step, self.save_interval):
                 self.save_checkpoint(env_step)
@@ -797,8 +808,10 @@ class HierarchicalTPA:
             f"peak_human={self.peak_ongoing_human} peak_robot={self.peak_ongoing_robot} "
             f"stalls={self.horizon.stall_counts_str()}"
         )
+        finish_payload = axis_payload(
+            env_steps(self.global_step, self.num_actors), wall, spm
+        )
+        self._log_metrics(finish_payload)
+        self.local_metrics.close()
         if self.use_wandb:
-            finish_payload = axis_payload(
-                env_steps(self.global_step, self.num_actors), wall, spm
-            )
-            wandb.log(finish_payload)
+            wandb.finish()

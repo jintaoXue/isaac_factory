@@ -412,14 +412,32 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         )
         wandb_cfg["max_sim_episodes"] = algo_cfg["params"]["config"].get("max_sim_episodes")
 
-        wandb.init(
+        # WANDB_MODE / HC_WANDB_MODE: online | offline | disabled
+        # offline = no network during train (avoids ReadTimeout); sync later with `wandb sync`.
+        wandb_mode = (
+            os.environ.get("HC_WANDB_MODE")
+            or os.environ.get("WANDB_MODE")
+            or "online"
+        ).strip().lower()
+        if wandb_mode not in ("online", "offline", "disabled", "shared"):
+            wandb_mode = "online"
+        init_kwargs = dict(
             project=algo_cfg["params"]["config"]['wandb_project'],
             group='',
             config=wandb_cfg,
             sync_tensorboard=False,
             name=run_name,
             resume="allow",
+            mode=wandb_mode,
         )
+        try:
+            init_kwargs["settings"] = wandb.Settings(
+                init_timeout=float(os.environ.get("WANDB_INIT_TIMEOUT", "120")),
+            )
+        except Exception:
+            pass
+        print(f"[wandb] init mode={wandb_mode} project={init_kwargs['project']} name={run_name}")
+        wandb.init(**init_kwargs)
 
     # train the agent
     if args_cli.checkpoint is not None:

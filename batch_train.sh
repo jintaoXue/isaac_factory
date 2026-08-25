@@ -46,6 +46,8 @@ if [ $# -eq 0 ]; then
     echo "  环境变量 HC_LOAD_DIR: 29 号评测的实验目录（含 nn/）"
     echo "  环境变量 HC_RULE_EPISODES: 基线 episode 数（默认 ${HC_RULE_EPISODES}）"
     echo "  环境变量 HC_T_MAX_ANCHOR: 全订单 T_max anchor（默认 ${HC_T_MAX_ANCHOR} → N10=${HC_T_MAX_N10}）"
+    echo "  环境变量 HC_WANDB_MODE: online|offline（默认 online 上云+本地 metrics.jsonl；网络不稳用 offline）"
+    echo "  环境变量 HC_WANDB_SYNC: 1=仅 offline 时跑完后 wandb sync（默认 1；online 无需）"
     exit 1
 fi
 
@@ -77,6 +79,36 @@ HC_TASK="HRTPaHC-v1"
 HC_WANDB_PROJECT="HcFactory_TPA"
 HC_NUM_ENVS=1
 HC_WARMSTART="${HC_WARMSTART:-}"
+
+# wandb: 默认 online 边训边上云；metrics.jsonl 始终写本地。网络不稳可 HC_WANDB_MODE=offline
+# 本地 metrics.jsonl 始终写入 logs/rl_games/HcFactory/<exp>/
+export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
+export WANDB_HTTP_TIMEOUT="${WANDB_HTTP_TIMEOUT:-90}"
+export WANDB_INIT_TIMEOUT="${WANDB_INIT_TIMEOUT:-120}"
+HC_WANDB_SYNC="${HC_WANDB_SYNC:-1}"
+echo "[wandb] mode=${WANDB_MODE} sync_after_job=${HC_WANDB_SYNC} (metrics.jsonl always local)"
+
+hc_wandb_sync_latest() {
+    # Only meaningful after offline runs; never fail the training job.
+    if [ "${WANDB_MODE}" != "offline" ]; then
+        return 0
+    fi
+    if [ "${HC_WANDB_SYNC}" != "1" ]; then
+        return 0
+    fi
+    local latest
+    latest=$(ls -td wandb/offline-run-* 2>/dev/null | head -1)
+    if [ -z "${latest}" ]; then
+        echo "[wandb] no offline-run to sync"
+        return 0
+    fi
+    echo "[wandb] syncing ${latest} ..."
+    if command -v wandb >/dev/null 2>&1; then
+        wandb sync "${latest}" || echo "[wandb] sync failed; local metrics.jsonl + offline-run still kept"
+    else
+        echo "[wandb] CLI missing; run later: wandb sync ${latest}"
+    fi
+}
 
 # 可选 --warmstart（22/23/27）
 hc_warmstart_args() {
@@ -397,6 +429,9 @@ run_test_29() {
         --test \
         --test_times "${HC_TEST_TIMES:-1}" \
         --load_dir "${HC_LOAD_DIR}" \
+        --wandb_activate \
+        --wandb_project "${HC_WANDB_PROJECT}" \
+        --wandb_name "hier_test_N16_T${HC_T_MAX_N16}" \
         $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
@@ -539,6 +574,10 @@ run_one_job() {
 for job in "${JOBS[@]}"; do
     echo ">>> 开始任务: $job"
     run_one_job "$job" || exit 1
+    # HcFactory 22–32：offline 跑完后尝试上传到云端
+    if [[ "$job" =~ ^(2[2-9]|3[0-2]|C|D|E)$ ]]; then
+        hc_wandb_sync_latest
+    fi
 done
 
 echo "所有训练完成！"

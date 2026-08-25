@@ -8,9 +8,15 @@ Namespaces:
   - MetricTrain: training-process health
   - MetricLoss: optimization losses
   - Curriculum: segment metadata
+
+Local mirror (always on when experiment_dir is set):
+  - ``metrics.jsonl``: one JSON object per ``log_metrics`` call
+  - ``metrics_summary.json``: last payload + row count at close
 """
 from __future__ import annotations
 
+import json
+import os
 import re
 from typing import Any
 
@@ -19,6 +25,70 @@ import wandb
 from .hc_factory_imports import import_hc_module
 
 _curr = import_hc_module("src.curriculum")
+
+
+def _jsonable(value: Any) -> Any:
+    """Best-effort convert tensor / numpy scalars for JSON."""
+    if value is None or isinstance(value, (bool, int, str)):
+        return value
+    if isinstance(value, float):
+        return float(value)
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            return _jsonable(item())
+        except Exception:
+            pass
+    if isinstance(value, dict):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(v) for v in value]
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return str(value)
+
+
+class LocalMetricsWriter:
+    """Append-only local mirror of wandb.log payloads under experiment_dir."""
+
+    def __init__(self, experiment_dir: str):
+        self.dir = str(experiment_dir)
+        os.makedirs(self.dir, exist_ok=True)
+        self.path = os.path.join(self.dir, "metrics.jsonl")
+        self.summary_path = os.path.join(self.dir, "metrics_summary.json")
+        self._n = 0
+        self._last: dict[str, Any] = {}
+        # Fresh file per run (experiment_dir is unique by timestamp).
+        with open(self.path, "w", encoding="utf-8"):
+            pass
+        print(f"[Metrics] local jsonl → {self.path}")
+
+    def log(self, payload: dict[str, Any]) -> None:
+        row = {str(k): _jsonable(v) for k, v in payload.items()}
+        self._last = row
+        with open(self.path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        self._n += 1
+
+    def close(self) -> None:
+        summary = {"n_rows": self._n, "last": self._last}
+        with open(self.summary_path, "w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=2, ensure_ascii=False)
+        print(f"[Metrics] wrote {self._n} rows → {self.path}; summary → {self.summary_path}")
+
+
+def log_metrics(
+    payload: dict[str, Any],
+    *,
+    local: LocalMetricsWriter | None = None,
+    use_wandb: bool = False,
+) -> None:
+    """Write metrics to local jsonl always (if local set); optionally mirror to wandb."""
+    if local is not None:
+        local.log(payload)
+    if use_wandb and wandb.run is not None:
+        wandb.log(payload)
 
 _CORE_KEYS = (
     "01_normalized_makespan",
@@ -339,9 +409,11 @@ def log_eval_episodes(
     *,
     t_budget: int,
     algo_name: str,
+    local: LocalMetricsWriter | None = None,
+    use_wandb: bool = True,
 ) -> None:
     """Log eval episodes under MetricTest/* (separate from training MetricCore)."""
-    if wandb.run is None:
+    if use_wandb and wandb.run is None and local is None:
         return
     makespans: list[int] = []
     success_ms: list[int] = []
@@ -370,5 +442,10 @@ def log_eval_episodes(
             mean_makespan_success=mean_ok,
             prefix="MetricTest",
         )
-        wandb.log(payload)
-    print(f"[Eval:{algo_name}] wandb logged {len(results)} episodes (MetricTest)")
+        log_metrics(payload, local=local, use_wandb=use_wandb)
+    dest = []
+    if local is not None:
+        dest.append(local.path)
+    if use_wandb and wandb.run is not None:
+        dest.append("wandb")
+    print(f"[Eval:{algo_name}] logged {len(results)} episodes → {', '.join(dest) or 'nowhere'}")
