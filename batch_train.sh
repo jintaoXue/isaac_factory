@@ -48,6 +48,7 @@ if [ $# -eq 0 ]; then
     echo "  环境变量 HC_T_MAX_ANCHOR: 全订单 T_max anchor（默认 ${HC_T_MAX_ANCHOR} → N10=${HC_T_MAX_N10}）"
     echo "  环境变量 HC_WANDB_MODE: online|offline（默认 online 上云+本地 metrics.jsonl；网络不稳用 offline）"
     echo "  环境变量 HC_WANDB_SYNC: 1=仅 offline 时跑完后 wandb sync（默认 1；online 无需）"
+    echo "  文件 .wandb_local.env: 共享机私有 wandb（HC_WANDB_API_KEY / HC_WANDB_ENTITY），gitignore，不影响别人"
     exit 1
 fi
 
@@ -82,11 +83,32 @@ HC_WARMSTART="${HC_WARMSTART:-}"
 
 # wandb: 默认 online 边训边上云；metrics.jsonl 始终写本地。网络不稳可 HC_WANDB_MODE=offline
 # 本地 metrics.jsonl 始终写入 logs/rl_games/HcFactory/<exp>/
+#
+# 共享机：不要 wandb logout。在本仓库放 gitignore 的 .wandb_local.env，只影响本脚本：
+#   HC_WANDB_API_KEY=...
+#   HC_WANDB_ENTITY=你的用户名或团队
 export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
 export WANDB_HTTP_TIMEOUT="${WANDB_HTTP_TIMEOUT:-90}"
 export WANDB_INIT_TIMEOUT="${WANDB_INIT_TIMEOUT:-120}"
 HC_WANDB_SYNC="${HC_WANDB_SYNC:-1}"
-echo "[wandb] mode=${WANDB_MODE} sync_after_job=${HC_WANDB_SYNC} (metrics.jsonl always local)"
+
+# 仅加载本仓库私有配置（不写系统 ~/.netrc，不影响同机其他人）
+HC_WANDB_LOCAL_ENV="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
+if [ -f "${HC_WANDB_LOCAL_ENV}" ]; then
+    # shellcheck disable=SC1090
+    set -a
+    # shellcheck source=/dev/null
+    . "${HC_WANDB_LOCAL_ENV}"
+    set +a
+    echo "[wandb] loaded local env: ${HC_WANDB_LOCAL_ENV}"
+fi
+if [ -n "${HC_WANDB_API_KEY:-}" ]; then
+    export WANDB_API_KEY="${HC_WANDB_API_KEY}"
+fi
+if [ -n "${HC_WANDB_ENTITY:-}" ]; then
+    export WANDB_ENTITY="${HC_WANDB_ENTITY}"
+fi
+echo "[wandb] mode=${WANDB_MODE} entity=${WANDB_ENTITY:-"(default login)"} sync_after_job=${HC_WANDB_SYNC} (metrics.jsonl always local)"
 
 hc_wandb_sync_latest() {
     # Only meaningful after offline runs; never fail the training job.

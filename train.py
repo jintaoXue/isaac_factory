@@ -430,13 +430,34 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
             resume="allow",
             mode=wandb_mode,
         )
+        # Per-run identity (does not change machine-global wandb login / ~/.netrc):
+        #   WANDB_API_KEY / HC_WANDB_API_KEY  → which account
+        #   WANDB_ENTITY / HC_WANDB_ENTITY    → which team/user owns the project
+        entity = (
+            os.environ.get("HC_WANDB_ENTITY")
+            or os.environ.get("WANDB_ENTITY")
+            or ""
+        ).strip()
+        if entity:
+            init_kwargs["entity"] = entity
+        api_key = (
+            os.environ.get("HC_WANDB_API_KEY")
+            or os.environ.get("WANDB_API_KEY")
+            or ""
+        ).strip()
+        if api_key:
+            os.environ["WANDB_API_KEY"] = api_key
         try:
             init_kwargs["settings"] = wandb.Settings(
                 init_timeout=float(os.environ.get("WANDB_INIT_TIMEOUT", "120")),
             )
         except Exception:
             pass
-        print(f"[wandb] init mode={wandb_mode} project={init_kwargs['project']} name={run_name}")
+        entity_str = init_kwargs.get("entity") or "(default login)"
+        print(
+            f"[wandb] init mode={wandb_mode} entity={entity_str} "
+            f"project={init_kwargs['project']} name={run_name}"
+        )
         wandb.init(**init_kwargs)
 
     # train the agent
