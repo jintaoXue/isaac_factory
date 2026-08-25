@@ -154,69 +154,137 @@ python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0
 
 ## 数据资产
 
-仿真场景依赖外部 USD 资产与地图数据，需放置于以下路径：
+仿真依赖外部 USD 与路网数据。代码默认路径（可用 `~` 展开为当前用户 home）：
 
 | 资源 | 路径 | 说明 |
 |------|------|------|
-| 工厂 USD 场景 | `~/work/Dataset/HC_data/final_for_isaac/HC_import.usd` | 含机器、人员、机器人、物料等全部 3D 资产 |
-| 地图路由数据 | `~/work/Dataset/HC_data/map_data/` | `map_routes_human.json`、`map_routes_robot.json` 等 |
+| 工厂 USD | `~/work/Dataset/HC_data/final_for_isaac/HC_import.usd` | 主场景（`cfg_hc_env.py` → `asset_path`） |
+| 人/机路网预计算 | `~/work/Dataset/HC_data/map_data/map_routes_human.json` | human 路网图 |
+| AGV 路网预计算 | `~/work/Dataset/HC_data/map_data/map_routes_robot.json` | robot 路网图 |
+| 路网点（随仓库） | `.../env_asset_cfg/route/map_points_human.json` 等 | 点号 / occupancy，已在 git 内 |
 
-> 路径可在 `source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/cfg_hc_env.py` 的 `asset_path` 字段中修改。
+多机同步时**最少**需拷贝：`HC_import.usd`、`map_points_human.json`（若远端 clone 不完整）、`map_routes_robot.json`；人走完整路径时还需 `map_routes_human.json`。
 
-本仓库 `map_data/` 目录提供了地图生成与坐标转换工具，用于维护人机共用的路网点数据。
+> USD 路径可在 `env_asset_cfg/cfg_hc_env.py` 的 `asset_path` 修改；路网路径见 `env_asset_cfg/route/cfg_route.py`。
+
+仓库根目录 `map_data/` 另有地图生成与坐标转换工具（维护用）。
+
+### 人因动力学（HeterogeneousHuman）
+
+`cfg_human.py` / `human.py` 中：工人疲劳 `fatigue` → 效率 `η` → 拉长子任务工时与减速行走；熟练度按 task×subtask 异质化。Makespan 仍是唯一 RL 目标；疲劳后工时变长，因此默认 **`T_MAX_ANCHOR=64000`（N=16）/ N=10 → `T_max=40000`**（相对无疲劳旧值约 4×）。可用环境变量 `HC_T_MAX_ANCHOR` 覆盖。
 
 ---
 
 ## 快速运行
 
-在项目根目录、已激活 `isaaclab` 环境的前提下执行：
+在项目根目录、已激活 conda 环境（如 `isaaclab` / `env_isaaclab`）的前提下：
 
 ```bash
-# 带 GUI 运行（4 个并行环境，使用 cuda:1）
-python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 4 --device cuda:1
+# 带 GUI
+python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0
 
-# 无头模式（服务器 / 批量训练）
-python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 4 --device cuda:1 --headless
+# 无头
+python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0 --headless
 
-# 无头 + 相机 / 感知采集（需启用渲染 kit）
+# 无头 + 相机 / 感知采集
 python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0 --headless --enable_cameras
 ```
 
-当前注册的 Gym 环境 ID 为 **`HRTPaHC-v1`**（Human-Robot Task Planning and Allocation for HC Factory）。常用算法：
+Gym 环境 ID：**`HRTPaHC-v1`**。常用算法：
 
 | `--algo` | 说明 |
 |----------|------|
-| `rule_based` | 规则基线（默认）：A 准入 → B FIFO 优先级 → C/D 并行派工 |
+| `rule_based` | 规则基线：A 准入 → B FIFO → C/D 派工 |
 | `hier` | Hierarchical Masked DQN（A→B→C→D） |
 | `flat` | Flat 联合动作（代码保留，**非主对比**） |
 
-运行日志保存在 `logs/rl_games/HcFactory/` 目录下。
+实验目录：`logs/rl_games/HcFactory/<algo>_<timestamp>/`（含 `nn/`、`params/`、`metrics.jsonl`）。
+
+---
+
+## 批量训练（batch_train.sh）
+
+推荐用 `./batch_train.sh` 跑 Hier4TPA 流水线（编号 22–32）：
+
+```bash
+./batch_train.sh              # 查看帮助
+./batch_train.sh 24 cuda:0    # rule 单产品 N=10
+./batch_train.sh C cuda:0     # N=10 主路径：22→24→25→26→27
+```
+
+| 序号 | 内容 | 默认 N / T_max |
+|------|------|----------------|
+| 22 | explore 采 catalog | 10 / 40000 |
+| 23 | explore debug（可视化 + warmstart） | 10 / 40000 |
+| 24 / 25 | rule K=1 / K=10 | 10 / 40000 |
+| 26 | hier random 基线（ε=1） | 10 / 40000 |
+| 27 | hier 倒序 curriculum → target 10 | 段预算 ΔN×per_T |
+| 28 / 29 | hier 硬训 / 评测 | 16 / 64000 |
+| 30–32 | rule / random N=16 基线 | 16 / 64000 |
+
+常用环境变量：`HC_RULE_EPISODES`、`HC_MULTI_K`、`HC_T_MAX_ANCHOR`、`HC_WARMSTART`、`HC_LOAD_DIR`、`HC_WANDB_MODE`。
+
+---
+
+## 日志与 Weights & Biases
+
+每次训练（无论是否开 wandb）都会把与 `wandb.log` 同结构的指标写入：
+
+```
+logs/rl_games/HcFactory/<exp>/metrics.jsonl
+logs/rl_games/HcFactory/<exp>/metrics_summary.json   # 结束时汇总
+```
+
+`batch_train.sh` 中 22–32 默认带 `--wandb_activate`，**默认 `WANDB_MODE=online`**（边训边上云），同时写本地 jsonl。网络不稳：`HC_WANDB_MODE=offline ./batch_train.sh ...`。
+
+### 共享机器：只用自己的 wandb，不影响别人
+
+**不要**在共享机上执行 `wandb logout`（会改全局 `~/.netrc`）。在本仓库放私有文件（已 gitignore）：
+
+```bash
+cd /path/to/isaac_factory   # 或远端 isaac_factory_tpa 等
+cp .wandb_local.env.example .wandb_local.env
+# 编辑 .wandb_local.env：
+#   HC_WANDB_API_KEY=<你的 API key>
+#   HC_WANDB_ENTITY=<你的用户名或团队>
+#   HC_WANDB_MODE=online
+```
+
+再跑 `./batch_train.sh ...`。脚本只在当前进程注入 `WANDB_API_KEY` / `WANDB_ENTITY`，**不改系统全局登录**。
+
+也可临时一行：
+
+```bash
+HC_WANDB_API_KEY=xxx HC_WANDB_ENTITY=your_name ./batch_train.sh 24 cuda:0
+```
+
+启动时应看到：`[wandb] loaded local env: .wandb_local.env` 以及 `entity=your_name`。
 
 ---
 
 ## 命令行参数
 
-`train.py` 基于 Hydra 配置系统，常用参数如下：
+`train.py` 基于 Hydra，常用参数：
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
 | `--task` | Gym 环境 ID | `HRTPaHC-v1` |
-| `--algo` | 算法配置名（`rule_based` / `hier` / `flat`） | `rule_based` |
-| `--num_envs` | 并行仿真环境数量 | 3 |
+| `--algo` | `rule_based` / `hier` / `flat` | `rule_based` |
+| `--num_envs` | 并行环境数 | 3 |
 | `--device` | CUDA 设备 | `cuda:0` |
-| `--headless` | 无 GUI 模式 | 关闭 |
-| `--enable_cameras` | 启用相机与离屏 RTX 渲染（headless 下采集图像必需） | 关闭 |
+| `--headless` | 无 GUI | 关闭 |
+| `--enable_cameras` | 相机与离屏渲染 | 关闭 |
 | `--seed` | 随机种子 | 42 |
-| `--test` | 评测模式（Makespan / Success / Truncation，多 seed） | 关闭 |
-| `--test_times` | 每个 seed 的 episode 数 | 见 yaml |
-| `--test_seeds` | 逗号分隔 seeds，如 `42,43,44` | 见 yaml |
-| `--wandb_activate` | 启用 Weights & Biases 日志 | 关闭 |
-| `--video` | 录制仿真视频 | 关闭 |
-| `--active_livestream` | 启用 Livestream 推流 | 关闭 |
-| `--livestream_public_ip` | Livestream 公网 IP | — |
-| `--livestream_port` | Livestream 端口 | 49100 |
+| `--test` | 评测模式 | 关闭 |
+| `--test_times` / `--test_seeds` | 评测 episode / seeds | 见 yaml |
+| `--train_n_products` | rule 训练订单件数 | yaml（常用 10） |
+| `--explore` / `--curriculum` | hier 采库 / 倒序课程 | 关闭 |
+| `--wandb_activate` | 启用 W&B | 关闭 |
+| `--wandb_project` / `--wandb_name` | W&B 项目与 run 名 | 见 yaml |
+| `--video` | 录视频 | 关闭 |
+| `--active_livestream` 等 | Livestream | 关闭 |
 
-完整参数列表见 `train.py` 源码。
+完整列表见 `train.py`。
 
 ---
 
@@ -317,42 +385,22 @@ python train.py \
 
 ```
 isaac_factory/
-├── train.py                          # 训练 / 仿真入口脚本
-├── isaaclab.sh                       # Isaac Lab 环境管理脚本
-├── map_data/                         # 地图数据与生成工具
+├── train.py                          # 训练 / 仿真入口
+├── batch_train.sh                    # Hier4TPA 批量任务（22–32）
+├── .wandb_local.env.example          # 共享机私有 wandb 模板（复制为 .wandb_local.env）
+├── isaaclab.sh
+├── map_data/                         # 地图工具（维护用）
 ├── source/
-│   ├── algo/hierarchical/hc_factory/  # 分层 TPA 决策算法
-│   ├── isaaclab/                     # Isaac Lab 核心库
-│   ├── isaaclab_assets/              # 资产定义
-│   ├── isaaclab_rl/                  # RL 框架集成（RL-Games 封装）
+│   ├── algo/hierarchical/hc_factory/  # 分层 TPA（含 wandb_metrics 本地 jsonl）
+│   ├── isaaclab/
+│   ├── isaaclab_assets/
+│   ├── isaaclab_rl/
 │   └── isaaclab_tasks/
 │       └── isaaclab_tasks/direct/hc_factory/
-│           ├── __init__.py           # Gym 环境注册（HRTPaHC-v1）
-│           ├── hc_vector_env.py      # 向量化环境入口
-│           ├── hc_vector_env_base.py # 向量化环境基类（场景加载、物理步）
-│           ├── hc_single_env.py      # 单环境逻辑
-│           ├── hc_single_env_base.py # 单环境基类（Manager 注册与 reset/step）
-│           ├── env_asset_cfg/        # 环境资产配置
-│           │   ├── cfg_hc_env.py             # 环境全局配置
-│           │   ├── cfg_material_product.py   # 产品与物料定义
-│           │   ├── cfg_process_task_gallery.py  # 工序任务库
-│           │   ├── cfg_process_subtask_gallery.py # 子任务库
-│           │   ├── cfg_machine.py            # 机器配置
-│           │   ├── cfg_human.py              # 人工配置
-│           │   ├── cfg_robot.py              # 机器人配置
-│           │   ├── cfg_storage.py            # 仓储配置
-│           │   └── route/                    # 路径规划配置与地图点
-│           ├── src/                  # 运行时 Manager 实现
-│           │   ├── machine.py
-│           │   ├── material.py
-│           │   ├── human.py
-│           │   ├── robot.py
-│           │   ├── storage.py
-│           │   ├── route.py
-│           │   ├── task_progress_manager.py
-│           │   └── algo_hierarchical_masker.py
-│           └── algo_cfg/             # 算法 Hydra 配置
-└── logs/                             # 运行日志与参数快照
+│           ├── env_asset_cfg/        # 含 cfg_human 人因、route/ 路网点
+│           ├── src/                  # Managers（含 fatigue 工时）
+│           └── algo_cfg/             # rule_based.yaml / hier.yaml（t_max_anchor）
+└── logs/                             # 实验目录：nn / params / metrics.jsonl
 ```
 
 ---
@@ -365,7 +413,7 @@ isaac_factory/
 
 ### 当前产品：水喉（ProductWaterPipe）
 
-默认生产订单为 **16** 件水喉（idx `00`–`15`），同时在制上限（WIP）为 **`single_env_parallel_producing_limit=10`**。每件经历 6 道加工工序及对应的物流任务：
+默认生产订单全量 **16** 件（idx `00`–`15`）；训练/基线常用 **N=10**。同时在制上限 WIP=`single_env_parallel_producing_limit=10`。人因开启后默认时间预算约 **N=10 → 40000 step，N=16 → 64000 step**（`curriculum.T_MAX_ANCHOR`）。每件 6 道加工工序及对应物流：
 
 | 序号 | 工序 | 执行设备 |
 |------|------|----------|

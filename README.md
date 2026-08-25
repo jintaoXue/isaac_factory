@@ -14,6 +14,8 @@ A **factory-scale production scheduling simulation** built on [NVIDIA Isaac Sim]
 - [Installation](#installation)
 - [Data Assets](#data-assets)
 - [Quick Start](#quick-start)
+- [Batch Training (batch_train.sh)](#batch-training-batch_trainsh)
+- [Logging and Weights & Biases](#logging-and-weights--biases)
 - [Command-Line Arguments](#command-line-arguments)
 - [Remote Visualization (Livestream)](#remote-visualization-livestream)
 - [Framework Architecture (hc_factory)](#framework-architecture-hc_factory)
@@ -152,69 +154,137 @@ python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0
 
 ## Data Assets
 
-The simulation depends on external USD assets and map data placed at the following paths:
+External USD and roadmap files (paths expand `~` to the current user home):
 
 | Resource | Path | Description |
 |----------|------|-------------|
-| Factory USD scene | `~/work/Dataset/HC_data/final_for_isaac/HC_import.usd` | All 3D assets: machines, workers, robots, materials |
-| Map route data | `~/work/Dataset/HC_data/map_data/` | `map_routes_human.json`, `map_routes_robot.json`, etc. |
+| Factory USD | `~/work/Dataset/HC_data/final_for_isaac/HC_import.usd` | Main scene (`cfg_hc_env.py` → `asset_path`) |
+| Human route graph | `~/work/Dataset/HC_data/map_data/map_routes_human.json` | Precomputed human routes |
+| AGV route graph | `~/work/Dataset/HC_data/map_data/map_routes_robot.json` | Precomputed robot routes |
+| Map points (in repo) | `.../env_asset_cfg/route/map_points_human.json`, etc. | Waypoint IDs / occupancy (tracked in git) |
 
-> You can change the path in the `asset_path` field of `source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/env_asset_cfg/cfg_hc_env.py`.
+Minimum sync across machines: `HC_import.usd`, `map_points_human.json` (if clone incomplete), `map_routes_robot.json`; also `map_routes_human.json` for full human routing.
 
-The `map_data/` directory in this repo provides map generation and coordinate conversion tools for maintaining shared human/robot route waypoints.
+> Change USD via `asset_path` in `cfg_hc_env.py`; route paths in `env_asset_cfg/route/cfg_route.py`.
+
+Repo-root `map_data/` has map generation / coordinate tools (maintenance).
+
+### Human factors (HeterogeneousHuman)
+
+In `cfg_human.py` / `human.py`: fatigue → efficiency `η` → longer timed subtasks and slower walking; skill is heterogeneous by task×subtask. Makespan remains the sole RL objective. With fatigue, default **`T_MAX_ANCHOR=64000` (N=16) / N=10 → `T_max=40000`** (~4× pre-fatigue). Override with `HC_T_MAX_ANCHOR`.
 
 ---
 
 ## Quick Start
 
-From the project root with the `isaaclab` environment activated:
+From the project root with the conda env activated (`isaaclab` / `env_isaaclab`):
 
 ```bash
-# Run with GUI (4 parallel environments, cuda:1)
-python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 4 --device cuda:1
+# With GUI
+python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0
 
-# Headless mode (server / batch training)
-python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 4 --device cuda:1 --headless
+# Headless
+python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0 --headless
 
-# Headless + cameras / perception collection (requires rendering kit)
+# Headless + cameras / perception collection
 python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 --device cuda:0 --headless --enable_cameras
 ```
 
-The registered Gym environment ID is **`HRTPaHC-v1`** (Human-Robot Task Planning and Allocation for HC Factory). Common algorithms:
+Gym ID: **`HRTPaHC-v1`**. Algorithms:
 
 | `--algo` | Description |
 |----------|-------------|
-| `rule_based` | Rule baseline (default): A admission → B FIFO priority → C/D parallel dispatch |
+| `rule_based` | Rule baseline: A admission → B FIFO → C/D dispatch |
 | `hier` | Hierarchical Masked DQN (A→B→C→D) |
-| `flat` | Flat joint action (code kept; **not a main baseline**) |
+| `flat` | Flat joint action (kept; **not a main baseline**) |
 
-Run logs are saved under `logs/rl_games/HcFactory/`.
+Runs land under `logs/rl_games/HcFactory/<algo>_<timestamp>/` (`nn/`, `params/`, `metrics.jsonl`).
+
+---
+
+## Batch Training (batch_train.sh)
+
+Prefer `./batch_train.sh` for the Hier4TPA pipeline (jobs 22–32):
+
+```bash
+./batch_train.sh              # help
+./batch_train.sh 24 cuda:0    # rule K=1, N=10
+./batch_train.sh C cuda:0     # N=10 path: 22→24→25→26→27
+```
+
+| ID | Role | Default N / T_max |
+|----|------|-------------------|
+| 22 | explore catalog | 10 / 40000 |
+| 23 | explore debug (GUI + warmstart) | 10 / 40000 |
+| 24 / 25 | rule K=1 / K=10 | 10 / 40000 |
+| 26 | hier random (ε=1) | 10 / 40000 |
+| 27 | hier reverse curriculum → target 10 | segment ΔN×per_T |
+| 28 / 29 | hier hard train / eval | 16 / 64000 |
+| 30–32 | rule / random N=16 baselines | 16 / 64000 |
+
+Env vars: `HC_RULE_EPISODES`, `HC_MULTI_K`, `HC_T_MAX_ANCHOR`, `HC_WARMSTART`, `HC_LOAD_DIR`, `HC_WANDB_MODE`.
+
+---
+
+## Logging and Weights & Biases
+
+Every train run (with or without wandb) also writes the same payloads as `wandb.log` to:
+
+```
+logs/rl_games/HcFactory/<exp>/metrics.jsonl
+logs/rl_games/HcFactory/<exp>/metrics_summary.json
+```
+
+Jobs 22–32 in `batch_train.sh` enable `--wandb_activate` by default with **`WANDB_MODE=online`**, plus local jsonl. For flaky networks: `HC_WANDB_MODE=offline ./batch_train.sh ...`.
+
+### Shared machines: use your own wandb without affecting others
+
+**Do not** run `wandb logout` on a shared host (it rewrites global `~/.netrc`). Use a repo-local private file (gitignored):
+
+```bash
+cd /path/to/isaac_factory   # or isaac_factory_tpa on a remote box
+cp .wandb_local.env.example .wandb_local.env
+# Edit .wandb_local.env:
+#   HC_WANDB_API_KEY=<your API key>
+#   HC_WANDB_ENTITY=<your user or team>
+#   HC_WANDB_MODE=online
+```
+
+Then `./batch_train.sh ...`. The script only injects `WANDB_API_KEY` / `WANDB_ENTITY` into **this process**.
+
+One-liner:
+
+```bash
+HC_WANDB_API_KEY=xxx HC_WANDB_ENTITY=your_name ./batch_train.sh 24 cuda:0
+```
+
+You should see `[wandb] loaded local env: .wandb_local.env` and `entity=your_name`.
 
 ---
 
 ## Command-Line Arguments
 
-`train.py` uses the Hydra configuration system. Common arguments:
+`train.py` (Hydra). Common flags:
 
 | Argument | Description | Default |
 |----------|-------------|---------|
-| `--task` | Gym environment ID | `HRTPaHC-v1` |
-| `--algo` | Algorithm config (`rule_based` / `hier` / `flat`) | `rule_based` |
-| `--num_envs` | Number of parallel simulation environments | 3 |
+| `--task` | Gym env ID | `HRTPaHC-v1` |
+| `--algo` | `rule_based` / `hier` / `flat` | `rule_based` |
+| `--num_envs` | Parallel envs | 3 |
 | `--device` | CUDA device | `cuda:0` |
-| `--headless` | Run without GUI | off |
-| `--enable_cameras` | Enable cameras and offscreen RTX rendering (required for headless image capture) | off |
+| `--headless` | No GUI | off |
+| `--enable_cameras` | Cameras / offscreen RTX | off |
 | `--seed` | Random seed | 42 |
-| `--test` | Evaluation mode (Makespan / Success / Truncation, multi-seed) | off |
-| `--test_times` | Episodes per seed | see yaml |
-| `--test_seeds` | Comma-separated seeds, e.g. `42,43,44` | see yaml |
-| `--wandb_activate` | Enable Weights & Biases logging | off |
-| `--video` | Record simulation video | off |
-| `--active_livestream` | Enable Livestream | off |
-| `--livestream_public_ip` | Livestream public IP | — |
-| `--livestream_port` | Livestream port | 49100 |
+| `--test` | Eval mode | off |
+| `--test_times` / `--test_seeds` | Eval episodes / seeds | see yaml |
+| `--train_n_products` | Rule order size | yaml (often 10) |
+| `--explore` / `--curriculum` | Hier catalog / reverse curriculum | off |
+| `--wandb_activate` | Enable W&B | off |
+| `--wandb_project` / `--wandb_name` | W&B project / run name | see yaml |
+| `--video` | Record video | off |
+| `--active_livestream`, … | Livestream | off |
 
-See `train.py` for the full argument list.
+See `train.py` for the full list.
 
 ---
 
@@ -315,42 +385,22 @@ Each environment instance maintains an `env_state_action_dict` containing:
 
 ```
 isaac_factory/
-├── train.py                          # Training / simulation entry point
-├── isaaclab.sh                       # Isaac Lab environment management script
-├── map_data/                         # Map data and generation tools
+├── train.py                          # Training / simulation entry
+├── batch_train.sh                    # Hier4TPA batch jobs (22–32)
+├── .wandb_local.env.example          # Shared-host private wandb template
+├── isaaclab.sh
+├── map_data/                         # Map tools (maintenance)
 ├── source/
-│   ├── algo/hierarchical/hc_factory/  # Hierarchical TPA decision algorithms
-│   ├── isaaclab/                     # Isaac Lab core library
-│   ├── isaaclab_assets/              # Asset definitions
-│   ├── isaaclab_rl/                  # RL framework integration (RL-Games wrapper)
+│   ├── algo/hierarchical/hc_factory/  # Hierarchical TPA (+ local metrics.jsonl)
+│   ├── isaaclab/
+│   ├── isaaclab_assets/
+│   ├── isaaclab_rl/
 │   └── isaaclab_tasks/
 │       └── isaaclab_tasks/direct/hc_factory/
-│           ├── __init__.py           # Gym env registration (HRTPaHC-v1)
-│           ├── hc_vector_env.py      # Vectorized environment entry
-│           ├── hc_vector_env_base.py # Vectorized env base (scene load, physics step)
-│           ├── hc_single_env.py      # Single-env logic
-│           ├── hc_single_env_base.py # Single-env base (manager registration, reset/step)
-│           ├── env_asset_cfg/        # Environment asset configuration
-│           │   ├── cfg_hc_env.py             # Global env config
-│           │   ├── cfg_material_product.py   # Product & material definitions
-│           │   ├── cfg_process_task_gallery.py  # Process task gallery
-│           │   ├── cfg_process_subtask_gallery.py # Subtask gallery
-│           │   ├── cfg_machine.py            # Machine config
-│           │   ├── cfg_human.py              # Human config
-│           │   ├── cfg_robot.py              # Robot config
-│           │   ├── cfg_storage.py            # Storage config
-│           │   └── route/                    # Route planning config & map points
-│           ├── src/                  # Runtime manager implementations
-│           │   ├── machine.py
-│           │   ├── material.py
-│           │   ├── human.py
-│           │   ├── robot.py
-│           │   ├── storage.py
-│           │   ├── route.py
-│           │   ├── task_progress_manager.py
-│           │   └── algo_hierarchical_masker.py
-│           └── algo_cfg/             # Algorithm Hydra configs
-└── logs/                             # Run logs and config snapshots
+│           ├── env_asset_cfg/        # cfg_human factors, route/ map points
+│           ├── src/                  # Managers (fatigue → duration)
+│           └── algo_cfg/             # rule_based.yaml / hier.yaml (t_max_anchor)
+└── logs/                             # Experiments: nn / params / metrics.jsonl
 ```
 
 ---
@@ -363,7 +413,7 @@ The simulation models the **HC (Haichuang) factory**, including CNC machines, we
 
 ### Current Product: Water Pipe (ProductWaterPipe)
 
-The default production order is **16** water pipes (idx `00`–`15`), with a WIP cap of **`single_env_parallel_producing_limit=10`**. Each unit goes through 6 processing steps plus corresponding logistics tasks:
+The full-order default is **16** pipes (idx `00`–`15`); training/baselines often use **N=10**. WIP cap: **`single_env_parallel_producing_limit=10`**. With human factors, default horizons are about **N=10 → 40000 steps, N=16 → 64000** (`curriculum.T_MAX_ANCHOR`). Each unit has 6 processing steps plus logistics:
 
 | Step | Process | Equipment |
 |------|---------|-----------|
