@@ -6,6 +6,17 @@ import torch
 import torch.nn as nn
 
 
+def _human_mover_extra_dim() -> int:
+    try:
+        from isaaclab_tasks.direct.hc_factory.env_asset_cfg.cfg_human import (  # type: ignore
+            HUMAN_MOVER_EXTRA_DIM,
+        )
+
+        return int(HUMAN_MOVER_EXTRA_DIM)
+    except Exception:
+        return 27  # dynamic(4) + static(23)
+
+
 def masked_mean(x: torch.Tensor, mask: torch.Tensor, dim: int) -> torch.Tensor:
     """Masked mean over ``dim``. ``mask`` broadcastable to ``x``, values in {0,1}."""
     while mask.ndim < x.ndim:
@@ -100,12 +111,12 @@ class StateEncoder(nn.Module):
         self.ongoing_out = nn.Sequential(nn.Linear(64, 128), nn.ReLU())
 
         # movers: state + areas(2) + route_start/end(12) + progress/len/has/detour/yield(5)
-        # For humans we additionally append:
-        #   - subtask_time_counter (1)
-        #   - fatigue (1)
-        #   - efficiency (1)
+        # Humans additionally append dynamic+static specialist priors (see cfg_human):
+        #   subtask_time, fatigue, efficiency, skill_effective,
+        #   human_idx, fatigue_work/recover_rate, skill_task[T], skill_subtask[S]
         mover_in = emb_dim + 2 + 12 + 5
-        self.human_mlp = nn.Sequential(nn.Linear(mover_in + 3, 64), nn.ReLU())
+        human_extra = _human_mover_extra_dim()
+        self.human_mlp = nn.Sequential(nn.Linear(mover_in + human_extra, 64), nn.ReLU())
         self.robot_mlp = nn.Sequential(nn.Linear(mover_in, 64), nn.ReLU())
         self.human_out = nn.Linear(64, 64)
         self.robot_out = nn.Linear(64, 64)
@@ -260,11 +271,29 @@ class StateEncoder(nn.Module):
         feats = [st, cur.unsqueeze(-1), tgt.unsqueeze(-1), rs, re, rp.unsqueeze(-1), rl.unsqueeze(-1), hr.unsqueeze(-1), det.unsqueeze(-1), yld.unsqueeze(-1)]
         if is_human:
             stc = _get("subtask_time_counter", 2) / 100.0
-            ftg = _get("fatigue", 2)  # ∈ [0,1]
-            eff = _get("efficiency", 2)  # ∈ [0,1]
-            feats.append(stc.unsqueeze(-1))
-            feats.append(ftg.unsqueeze(-1))
-            feats.append(eff.unsqueeze(-1))
+            ftg = _get("fatigue", 2)
+            eff = _get("efficiency", 2)
+            sk_eff = _get("skill_effective", 2)
+            # Specialist priors (known tables); idx / (n_human-1) for [0,1] scale.
+            h_idx = _get("human_idx", 2)
+            h_idx_n = (h_idx / 4.0).unsqueeze(-1)
+            work_r = _get("fatigue_work_rate", 2).unsqueeze(-1)
+            rec_r = _get("fatigue_recover_rate", 2).unsqueeze(-1)
+            sk_t = _get("skill_task", 3)
+            sk_s = _get("skill_subtask", 3)
+            feats.extend(
+                [
+                    stc.unsqueeze(-1),
+                    ftg.unsqueeze(-1),
+                    eff.unsqueeze(-1),
+                    sk_eff.unsqueeze(-1),
+                    h_idx_n,
+                    work_r,
+                    rec_r,
+                    sk_t,
+                    sk_s,
+                ]
+            )
             h = self.human_mlp(torch.cat(feats, dim=-1))
             h = self.human_out(h)
         else:

@@ -7,6 +7,7 @@ from ..env_asset_cfg.cfg_human import (
     CfgHumanRegistrationInfos,
     human_efficiency,
     human_effective_skill,
+    human_static_obs_fields,
     human_step_fatigue,
 )
 from ..env_asset_cfg.cfg_machine import CfgMachine
@@ -96,6 +97,8 @@ class Human:
         self.env_id = env_id
         self.reset_state : str = copy.deepcopy(cfg["reset_state"])
         self.reset_state["key_variables"] = self.iter_key_variables()
+        # Specialist priors (idx / fatigue rates / skill tables) — known to the policy.
+        self.reset_state.update(human_static_obs_fields(self.idx))
         self.skeleton: UsdSkel.Skeleton | None = None
         self.prim: RigidPrim | None = None
         self._joint_names: list[str] = []

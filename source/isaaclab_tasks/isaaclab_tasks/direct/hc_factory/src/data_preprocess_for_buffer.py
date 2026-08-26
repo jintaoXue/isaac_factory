@@ -46,6 +46,67 @@ class BufferPreprocessCfg:
 CFG = BufferPreprocessCfg()
 
 
+def _human_cfg_obs():
+    """Lazy import specialist tables (package or path-loaded preprocess)."""
+    try:
+        from ..env_asset_cfg.cfg_human import (  # type: ignore
+            HUMAN_MOVER_EXTRA_DIM,
+            HUMAN_N_SKILL_SUB,
+            HUMAN_N_SKILL_TASK,
+            HUMAN_STATIC_OBS_DIM,
+            human_static_obs_fields,
+        )
+
+        return {
+            "n_task": HUMAN_N_SKILL_TASK,
+            "n_sub": HUMAN_N_SKILL_SUB,
+            "static_dim": HUMAN_STATIC_OBS_DIM,
+            "extra_dim": HUMAN_MOVER_EXTRA_DIM,
+            "fields": human_static_obs_fields,
+        }
+    except Exception:
+        pass
+    try:
+        import importlib.util
+
+        path = Path(__file__).resolve().parent.parent / "env_asset_cfg" / "cfg_human.py"
+        # cfg_human imports cfg_hc_env; may fail offline — use dim defaults only.
+        spec = importlib.util.spec_from_file_location("_hc_cfg_human_obs", path)
+        if spec and spec.loader:
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return {
+                "n_task": int(mod.HUMAN_N_SKILL_TASK),
+                "n_sub": int(mod.HUMAN_N_SKILL_SUB),
+                "static_dim": int(mod.HUMAN_STATIC_OBS_DIM),
+                "extra_dim": int(mod.HUMAN_MOVER_EXTRA_DIM),
+                "fields": mod.human_static_obs_fields,
+            }
+    except Exception:
+        pass
+    n_task, n_sub = 12, 8
+
+    def _fields(human_idx: int) -> dict:
+        return {
+            "human_idx": float(human_idx),
+            "fatigue_work_rate": 0.0,
+            "fatigue_recover_rate": 0.0,
+            "skill_task": [1.0] * n_task,
+            "skill_subtask": [1.0] * n_sub,
+        }
+
+    return {
+        "n_task": n_task,
+        "n_sub": n_sub,
+        "static_dim": 1 + 2 + n_task + n_sub,
+        "extra_dim": 4 + 1 + 2 + n_task + n_sub,
+        "fields": _fields,
+    }
+
+
+_HUMAN_OBS = _human_cfg_obs()
+
+
 # =============================================================================
 # 字符串 → id（pad=0, unk=1）
 # =============================================================================
@@ -415,6 +476,17 @@ def _encode_movers(
     sub_t = _z((max_n,), torch.float32, device) if with_subtask_time else None
     fatigue = _z((max_n,), torch.float32, device) if with_subtask_time else None
     efficiency = _z((max_n,), torch.float32, device) if with_subtask_time else None
+    skill_effective = _z((max_n,), torch.float32, device) if with_subtask_time else None
+    n_task = int(_HUMAN_OBS["n_task"])
+    n_sub = int(_HUMAN_OBS["n_sub"])
+    human_idx_t = _z((max_n,), torch.float32, device) if with_subtask_time else None
+    fatigue_work = _z((max_n,), torch.float32, device) if with_subtask_time else None
+    fatigue_rec = _z((max_n,), torch.float32, device) if with_subtask_time else None
+    skill_task = _z((max_n, n_task), torch.float32, device) if with_subtask_time else None
+    skill_sub = _z((max_n, n_sub), torch.float32, device) if with_subtask_time else None
+    if skill_task is not None:
+        skill_task.fill_(1.0)
+        skill_sub.fill_(1.0)
 
     for key, ent in (group or {}).items():
         if not isinstance(ent, dict):
@@ -435,9 +507,38 @@ def _encode_movers(
         yield_[idx] = float(bool(ent.get("yield_active")))
         if sub_t is not None:
             sub_t[idx] = float(_as_int(ent.get("subtask_time_counter"), 0))
-            # human-factors state (added for Hier4TPA human fatigue / efficiency)
             fatigue[idx] = float(ent.get("fatigue", 0.0) or 0.0)
             efficiency[idx] = float(ent.get("efficiency", 1.0) or 1.0)
+            skill_effective[idx] = float(ent.get("skill_effective", 1.0) or 1.0)
+            # Specialist priors: prefer entity fields; fall back to cfg tables by idx.
+            static = None
+            if ent.get("skill_task") is None or ent.get("fatigue_work_rate") is None:
+                static = _HUMAN_OBS["fields"](idx)
+            human_idx_t[idx] = float(
+                ent["human_idx"] if ent.get("human_idx") is not None else (static or {}).get("human_idx", idx)
+            )
+            fatigue_work[idx] = float(
+                ent["fatigue_work_rate"]
+                if ent.get("fatigue_work_rate") is not None
+                else (static or {}).get("fatigue_work_rate", 0.0)
+            )
+            fatigue_rec[idx] = float(
+                ent["fatigue_recover_rate"]
+                if ent.get("fatigue_recover_rate") is not None
+                else (static or {}).get("fatigue_recover_rate", 0.0)
+            )
+            st_list = ent.get("skill_task")
+            if not isinstance(st_list, (list, tuple)) or len(st_list) < n_task:
+                st_list = (static or _HUMAN_OBS["fields"](idx))["skill_task"]
+            ss_list = ent.get("skill_subtask")
+            if not isinstance(ss_list, (list, tuple)) or len(ss_list) < n_sub:
+                ss_list = (static or _HUMAN_OBS["fields"](idx))["skill_subtask"]
+            skill_task[idx] = torch.tensor(
+                [float(st_list[j]) for j in range(n_task)], dtype=torch.float32, device=device
+            )
+            skill_sub[idx] = torch.tensor(
+                [float(ss_list[j]) for j in range(n_sub)], dtype=torch.float32, device=device
+            )
 
     out = {
         "mask": mask,
@@ -457,6 +558,12 @@ def _encode_movers(
         out["subtask_time_counter"] = sub_t
         out["fatigue"] = fatigue
         out["efficiency"] = efficiency
+        out["skill_effective"] = skill_effective
+        out["human_idx"] = human_idx_t
+        out["fatigue_work_rate"] = fatigue_work
+        out["fatigue_recover_rate"] = fatigue_rec
+        out["skill_task"] = skill_task
+        out["skill_subtask"] = skill_sub
     return out
 
 

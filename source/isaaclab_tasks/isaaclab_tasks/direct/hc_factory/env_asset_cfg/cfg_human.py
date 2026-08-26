@@ -365,3 +365,32 @@ def human_step_fatigue(human_idx: int, fatigue: float, *, idle: bool, subtask_na
         f += work_rate * float(HUMAN_SUBTASK_FATIGUE_LOAD.get(subtask_name, 1.0))
     return min(1.0, max(0.0, f))
 
+
+# ---------------------------------------------------------------------------
+# Static privileged obs for the policy (known specialist tables, not learned).
+# Layout: idx | work_rate*1e3 | recover_rate*1e3 | skill_task[T] | skill_sub[S]
+# ---------------------------------------------------------------------------
+_HUMAN_RATE_OBS_SCALE = 1000.0
+HUMAN_N_SKILL_TASK = len(_HUMAN_TASK_NAMES)
+HUMAN_N_SKILL_SUB = len(_HUMAN_SUBTASK_NAMES)
+HUMAN_STATIC_OBS_DIM = 1 + 2 + HUMAN_N_SKILL_TASK + HUMAN_N_SKILL_SUB  # 23
+# Dynamic extras on human mover: subtask_time, fatigue, efficiency, skill_effective
+HUMAN_DYNAMIC_OBS_DIM = 4
+HUMAN_MOVER_EXTRA_DIM = HUMAN_DYNAMIC_OBS_DIM + HUMAN_STATIC_OBS_DIM  # 27
+
+
+def human_static_obs_fields(human_idx: int) -> dict:
+    """Idx-tied specialist priors written into human state / preprocess tensors."""
+    n = len(HUMAN_FATIGUE_RATES)
+    i = int(human_idx) % n if n else 0
+    work_rate, rec_rate = HUMAN_FATIGUE_RATES[i]
+    skill_row = HUMAN_SKILL_TASK[i] if i < len(HUMAN_SKILL_TASK) else {}
+    sub_row = HUMAN_SKILL_SUBTASK[i] if i < len(HUMAN_SKILL_SUBTASK) else {}
+    return {
+        "human_idx": float(i),
+        "fatigue_work_rate": float(work_rate) * _HUMAN_RATE_OBS_SCALE,
+        "fatigue_recover_rate": float(rec_rate) * _HUMAN_RATE_OBS_SCALE,
+        "skill_task": [float(skill_row.get(name, 1.0)) for name in _HUMAN_TASK_NAMES],
+        "skill_subtask": [float(sub_row.get(name, 1.0)) for name in _HUMAN_SUBTASK_NAMES],
+    }
+
