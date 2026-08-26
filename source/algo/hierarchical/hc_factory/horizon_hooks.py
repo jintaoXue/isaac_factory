@@ -47,13 +47,25 @@ class HorizonHooks:
             start_stage=int(config.get("curriculum_start_stage", 0)),
             t_max_anchor=anchor,
         )
-        # Explore catalog root follows explore_n_products (N=16 collect vs N=10 baseline).
+        # Catalog root: explore uses explore_n_products; curriculum warmstart uses N_TRAIN_TARGET
+        # (e.g. N10_T40000), NOT N_FULL_ORDER — otherwise pick_by_nfin silently misses the collect library.
         catalog_root = config.get("explore_catalog_dir") or None
+        if catalog_root:
+            catalog_n = self.explore_n_products
+        elif self.explore:
+            catalog_n = self.explore_n_products
+        else:
+            catalog_n = _curr.N_TRAIN_TARGET
+        catalog_t = _curr.t_max_for(catalog_n, anchor)
         self.catalog = _catalog.ExploreCatalog(
             catalog_root,
-            n_products=self.explore_n_products,
-            t_max=_curr.t_max_for(self.explore_n_products, anchor),
+            n_products=catalog_n,
+            t_max=catalog_t,
             create_round=self.explore and self.explore_save_catalog,
+        )
+        print(
+            f"[Horizon] catalog={self.catalog.root} "
+            f"entries={len(self.catalog._rows)} curriculum={self.curriculum.enabled}"
         )
         self.l1 = int(config.get("stagnation_l1", 400))
         self.l2 = int(config.get("stagnation_l2", 600))
@@ -157,6 +169,12 @@ class HorizonHooks:
         if path is not None:
             self._restore_path(env_id, path, overlay=True)
         else:
+            if spec.start_nfin > 0:
+                print(
+                    f"[Hier] curriculum warmstart miss env={env_id} "
+                    f"start_nfin={spec.start_nfin} catalog={self.catalog.root} "
+                    f"(falling back to empty start)"
+                )
             self.curriculum.apply(env, overlay_existing=False)
 
     def on_decision(self, env_id: int, action: dict, env: dict) -> None:
