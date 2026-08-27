@@ -38,13 +38,13 @@ if [ $# -eq 0 ]; then
     echo "  25: rule 多产品 (K=${HC_MULTI_K}, N=10, T_max=${HC_T_MAX_N10}, ${HC_RULE_EPISODES} ep)"
     echo "  26: hier random 基线 (ε=1, N=10, T_max=${HC_T_MAX_N10}, ${HC_RANDOM_EPISODES} ep, 不写 catalog)"
     echo "  27: hier 倒序课程 (--curriculum → target=10)"
-    echo "  28: hier 全量硬训对照 (无课程, N=16, T_max=${HC_T_MAX_N16})"
+    echo "  28: hier N=10 硬训对照 (同 27 设置，无课程, T_max=${HC_T_MAX_N10})"
     echo "  29: hier 评测 (加载 nn/, 全量 N=16, T_max=${HC_T_MAX_N16})"
     echo "  30: rule 单产品 (K=1, N=16, T_max=${HC_T_MAX_N16})"
     echo "  31: rule 多产品 (K=${HC_MULTI_K}, N=16, T_max=${HC_T_MAX_N16})"
     echo "  32: hier random 基线 (ε=1, N=16, T_max=${HC_T_MAX_N16}, 不写 catalog)"
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
-    echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 22/23/27 的 --warmstart"
+    echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 22/23/27/28 的 --warmstart"
     echo "  环境变量 HC_LOAD_DIR: 29 号评测的实验目录（含 nn/）"
     echo "  环境变量 HC_RULE_EPISODES: rule 基线 episode 数（默认 ${HC_RULE_EPISODES}）"
     echo "  环境变量 HC_RANDOM_EPISODES: job 26 HierRandom episode 数（默认 ${HC_RANDOM_EPISODES}）"
@@ -423,8 +423,8 @@ run_test_27() {
 }
 
 run_test_28() {
-    # hier 全量硬训对照（无课程）
-    echo "运行 28: hier 全量硬训对照 (K=${HC_MULTI_K}, N=16, T_max=${HC_T_MAX_N16}, wandb)"
+    # hier N=10 硬训对照：与 27 同 K / T_anchor / wandb / warmstart，无 --curriculum（整单 0→10）
+    echo "运行 28: hier hard train (no curriculum, N=10, T_max=${HC_T_MAX_N10}, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -432,9 +432,10 @@ run_test_28() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "hier_K${HC_MULTI_K}_hard_N16_T${HC_T_MAX_N16}" \
+        --wandb_name "hier_hard_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}" \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         $(hc_t_max_args) \
+        $(hc_warmstart_args) \
         ${DEVICE_ARG}
 }
 

@@ -237,6 +237,14 @@ class HierarchicalTPA:
                 f"[Hier] explore mode: epsilon=1, no DQN backward, "
                 f"N={self.horizon.explore_n_products} T_max={self.max_episodic_steps}"
             )
+        elif not self.horizon.curriculum.enabled:
+            # Hard train: same N/T as curriculum final stage (N_TRAIN_TARGET), not N16 anchor.
+            anchor = int(config.get("t_max_anchor", _curr.T_MAX_ANCHOR))
+            self.max_episodic_steps = _curr.t_max_for(_curr.N_TRAIN_TARGET, anchor)
+            print(
+                f"[Hier] hard train: N={_curr.N_TRAIN_TARGET} T_max={self.max_episodic_steps} "
+                f"(no curriculum)"
+            )
 
     def init_wandb_logger(self):
         define_shared_metrics(
