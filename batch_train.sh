@@ -2,6 +2,8 @@
 
 # HcFactory TPA 默认（help 与 run 共用；可用环境变量覆盖）
 HC_RULE_EPISODES="${HC_RULE_EPISODES:-10}"
+# job 26（N10 HierRandom）单独 episode 数，不跟 HC_RULE_EPISODES
+HC_RANDOM_EPISODES="${HC_RANDOM_EPISODES:-100}"
 HC_MULTI_K="${HC_MULTI_K:-10}"
 # 全订单 anchor：N=16 的 T_max；N=10 = round(anchor/16)*10（fatigue 后默认 4× 旧 16000/10000）
 HC_T_MAX_ANCHOR="${HC_T_MAX_ANCHOR:-64000}"
@@ -34,7 +36,7 @@ if [ $# -eq 0 ]; then
     echo "  23: explore debug（N=10, T_max=${HC_T_MAX_N10}, 可视化+warmstart，不录视频不启wandb）"
     echo "  24: rule 单产品 (K=1, N=10, T_max=${HC_T_MAX_N10}, ${HC_RULE_EPISODES} ep)"
     echo "  25: rule 多产品 (K=${HC_MULTI_K}, N=10, T_max=${HC_T_MAX_N10}, ${HC_RULE_EPISODES} ep)"
-    echo "  26: hier random 基线 (ε=1, N=10, T_max=${HC_T_MAX_N10}, 不写 catalog)"
+    echo "  26: hier random 基线 (ε=1, N=10, T_max=${HC_T_MAX_N10}, ${HC_RANDOM_EPISODES} ep, 不写 catalog)"
     echo "  27: hier 倒序课程 (--curriculum → target=10)"
     echo "  28: hier 全量硬训对照 (无课程, N=16, T_max=${HC_T_MAX_N16})"
     echo "  29: hier 评测 (加载 nn/, 全量 N=16, T_max=${HC_T_MAX_N16})"
@@ -44,7 +46,8 @@ if [ $# -eq 0 ]; then
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
     echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 22/23/27 的 --warmstart"
     echo "  环境变量 HC_LOAD_DIR: 29 号评测的实验目录（含 nn/）"
-    echo "  环境变量 HC_RULE_EPISODES: 基线 episode 数（默认 ${HC_RULE_EPISODES}）"
+    echo "  环境变量 HC_RULE_EPISODES: rule 基线 episode 数（默认 ${HC_RULE_EPISODES}）"
+    echo "  环境变量 HC_RANDOM_EPISODES: job 26 HierRandom episode 数（默认 ${HC_RANDOM_EPISODES}）"
     echo "  环境变量 HC_T_MAX_ANCHOR: 全订单 T_max anchor（默认 ${HC_T_MAX_ANCHOR} → N10=${HC_T_MAX_N10}）"
     echo "  环境变量 HC_WANDB_MODE: online|offline（默认 online 上云+本地 metrics.jsonl；网络不稳用 offline）"
     echo "  环境变量 HC_WANDB_SYNC: 1=仅 offline 时跑完后 wandb sync（默认 1；online 无需）"
@@ -383,18 +386,18 @@ run_test_25() {
 
 run_test_26() {
     # hier masked-random makespan 基线：N=10, ε=1, 无 DQN 学习, 不写 catalog
-    echo "运行 26: hier RL random baseline (ε=1, N=10, T=${HC_T_MAX_N10}, ${HC_RULE_EPISODES} episodes, wandb)"
+    echo "运行 26: hier RL random baseline (ε=1, N=10, T=${HC_T_MAX_N10}, ${HC_RANDOM_EPISODES} episodes, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
         --num_envs "${HC_NUM_ENVS}" \
         --headless \
         --explore \
-        --max_sim_episodes "${HC_RULE_EPISODES}" \
+        --max_sim_episodes "${HC_RANDOM_EPISODES}" \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "random_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}_${HC_RULE_EPISODES}ep" \
+        --wandb_name "random_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}_${HC_RANDOM_EPISODES}ep" \
         --explore_n_products 10 \
         --no_explore_save_catalog \
         $(hc_t_max_args) \
