@@ -1,9 +1,10 @@
 """A3 bottleneck root-cause classes.
 
 Must stay in sync with ``tools/bn_agg/labels.py`` (``root_cause_reason`` strings).
-Stage-C now emits process heuristics only (queue / stall / utilization).
-The first four names are kept for old npz/checkpoints; new labels do not use
-them — injected L2 is environment context, not a bottleneck class.
+Stage-C emits process heuristics from window features (shortage flag, inbound
+wait, queue, blocked/starved). It does not copy ``disturbance_log`` types.
+``machine_failure`` / ``human_unavailable`` / ``unavailable`` stay in the
+tuple for old npz; new labels do not write those three.
 Empty / unknown → ``-1`` (ignored by the classification loss).
 """
 

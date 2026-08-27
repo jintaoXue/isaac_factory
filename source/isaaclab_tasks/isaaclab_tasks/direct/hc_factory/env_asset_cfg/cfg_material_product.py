@@ -2,13 +2,13 @@
 
 CfgRegistrationInfos = {
     
-    "ProductWaterPipe": 18, # idx: 00-17 (G1 P01_order_scale)
+    "ProductWaterPipe": 18, # USD still has idx 00-17; order below uses the first 10
     
 }
 
 CfgProductOrder = {
-    # The production order is a map of product type to requested quantity.
-    "ProductWaterPipe": 18, # idx: 00-17 (G1 P01_order_scale)
+    # Short-order BN pack: 10 pipes, WIP cap 5 (see HcVectorEnvCfg).
+    "ProductWaterPipe": 10, # idx: 00-09
 }
 
 for product_type, quantity in CfgProductOrder.items():

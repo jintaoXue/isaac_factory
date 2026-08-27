@@ -142,6 +142,24 @@ def _near_remain_mask(remain_mask: torch.Tensor | None, near_k: int) -> torch.Te
     return remain_mask.float() * (steps < max(int(near_k), 1)).float()
 
 
+def _occupancy_eval_mask(
+    remain_mask: torch.Tensor | None,
+    occ_node_mask: torch.Tensor | None,
+) -> torch.Tensor | None:
+    """(B, K, N) bool: near remaining windows × labeled occupancy columns."""
+    if remain_mask is None:
+        return None
+    step = remain_mask > 0.5
+    if occ_node_mask is None:
+        return step.unsqueeze(-1)
+    node = occ_node_mask
+    if node.dim() == 2:
+        return step.unsqueeze(-1) & (node > 0.5).unsqueeze(1)
+    if node.dim() == 3:
+        return step.unsqueeze(-1) & (node > 0.5)
+    return step.unsqueeze(-1)
+
+
 def _average_precision(y_true: torch.Tensor, y_score: torch.Tensor) -> float:
     """Non-interpolated AP (sklearn-style) for a 1-d binary label / score."""
     y = y_true.reshape(-1).float()
@@ -178,7 +196,27 @@ def _will_metrics(y_true: torch.Tensor, y_prob: torch.Tensor, thresh: float = 0.
         "will_f1": f1,
         "will_ap": _average_precision(y, p),
         "will_pos_rate": float(y.mean().item()) if y.numel() else 0.0,
+        "will_pred_pos_rate": float(hat.mean().item()) if hat.numel() else 0.0,
     }
+
+
+OCC_EVAL_TYPES = ("machine", "gantry", "agv")
+
+
+def _harmonic_mean(values: list[float]) -> float:
+    xs = [max(float(v), 1e-8) for v in values]
+    if not xs:
+        return 0.0
+    return len(xs) / sum(1.0 / x for x in xs)
+
+
+def _model_type_masks(model: BNPDFormer) -> dict[str, torch.Tensor]:
+    out: dict[str, torch.Tensor] = {}
+    for name in OCC_EVAL_TYPES:
+        buf = getattr(model, f"occ_type_{name}", None)
+        if buf is not None and buf.numel() > 0 and float(buf.sum()) > 0:
+            out[name] = buf
+    return out
 
 
 def _epoch_loop(
@@ -188,6 +226,7 @@ def _epoch_loop(
     device: torch.device,
     train: bool,
     cause_majority: int = -1,
+    hot_eval_threshold: float = 0.5,
 ) -> dict[str, float]:
     if train:
         model.train()
@@ -201,6 +240,9 @@ def _epoch_loop(
     remain_n = 0
     hot_true: list[torch.Tensor] = []
     hot_prob: list[torch.Tensor] = []
+    hot_true_t: dict[str, list[torch.Tensor]] = {t: [] for t in OCC_EVAL_TYPES}
+    hot_prob_t: dict[str, list[torch.Tensor]] = {t: [] for t in OCC_EVAL_TYPES}
+    type_masks = _model_type_masks(model)
     correct_cause = 0
     total_cause = 0
     majority_hit = 0
@@ -234,12 +276,23 @@ def _epoch_loop(
                     ) * batch["X"].shape[0]
                     remain_n += batch["X"].shape[0]
                 if "y_hot" in batch and "hot_prob" in pred and near_m is not None:
-                    m = near_m > 0.5
-                    if m.any():
-                        hot_true.append(batch["y_hot"][m].detach().cpu().reshape(-1))
-                        hot_prob.append(pred["hot_prob"][m].detach().cpu().reshape(-1))
+                    cell = _occupancy_eval_mask(near_m, batch.get("occ_node_mask"))
+                    if cell is not None and cell.any():
+                        hot_true.append(batch["y_hot"][cell].detach().cpu().reshape(-1))
+                        hot_prob.append(pred["hot_prob"][cell].detach().cpu().reshape(-1))
+                        for name, nmask in type_masks.items():
+                            tcell = cell & nmask.to(device=cell.device).bool().view(1, 1, -1)
+                            if tcell.any():
+                                hot_true_t[name].append(
+                                    batch["y_hot"][tcell].detach().cpu().reshape(-1)
+                                )
+                                hot_prob_t[name].append(
+                                    pred["hot_prob"][tcell].detach().cpu().reshape(-1)
+                                )
                 if "cause" in batch and "cause_pred" in pred:
                     valid = batch["cause"] >= 0
+                    if "window_hot" in batch:
+                        valid = valid & (batch["window_hot"].reshape(-1) > 0.5)
                     if valid.any():
                         y = batch["cause"][valid]
                         hat = pred["cause_pred"][valid]
@@ -260,11 +313,32 @@ def _epoch_loop(
         if remain_n > 0:
             out["remain_len_mae"] = remain_len_mae / remain_n
         if hot_true:
-            hm = _will_metrics(torch.cat(hot_true), torch.cat(hot_prob))
+            hm = _will_metrics(torch.cat(hot_true), torch.cat(hot_prob), thresh=hot_eval_threshold)
             out["hot_f1"] = hm["will_f1"]
             out["hot_precision"] = hm["will_precision"]
             out["hot_recall"] = hm["will_recall"]
             out["hot_ap"] = hm["will_ap"]
+            out["hot_pos_rate"] = hm["will_pos_rate"]
+            out["hot_pred_pos_rate"] = hm["will_pred_pos_rate"]
+            type_f1s: list[float] = []
+            for name in OCC_EVAL_TYPES:
+                if not hot_true_t[name]:
+                    continue
+                tm = _will_metrics(
+                    torch.cat(hot_true_t[name]),
+                    torch.cat(hot_prob_t[name]),
+                    thresh=hot_eval_threshold,
+                )
+                out[f"hot_f1_{name}"] = tm["will_f1"]
+                out[f"hot_precision_{name}"] = tm["will_precision"]
+                out[f"hot_recall_{name}"] = tm["will_recall"]
+                out[f"hot_pos_rate_{name}"] = tm["will_pos_rate"]
+                out[f"hot_pred_pos_rate_{name}"] = tm["will_pred_pos_rate"]
+                if tm["will_pos_rate"] > 0:
+                    type_f1s.append(tm["will_f1"])
+            out["hot_type_hmean"] = (
+                _harmonic_mean(type_f1s) if type_f1s else float(out["hot_f1"])
+            )
         if total_cause > 0:
             out["cause_acc"] = correct_cause / total_cause
             out["cause_n"] = float(total_cause)
@@ -290,7 +364,7 @@ def train(cfg: dict[str, Any]) -> Path:
 
     train_loader, val_loader, test_loader, data_feature = build_dataloaders(
         data_dir=data_dir,
-        input_window=int(cfg.get("input_window", 12)),
+        input_window=int(cfg.get("input_window", 30)),
         output_window=int(cfg.get("output_window", 1)),
         horizon_s=float(cfg.get("horizon_s", 180)),
         batch_size=int(cfg.get("batch_size", 16)),
@@ -299,8 +373,14 @@ def train(cfg: dict[str, Any]) -> Path:
         seed=int(cfg.get("seed", 42)),
         max_hist_events=int(cfg.get("max_hist_events", 8)),
         remain_to_jobs_done=bool(cfg.get("remain_to_jobs_done", True)),
-        max_remain_windows=int(cfg.get("max_remain_windows", 512)),
+        max_remain_windows=int(cfg.get("max_remain_windows", 15)),
         hot_score_threshold=float(cfg.get("hot_score_threshold", 0.55)),
+        occupancy_horizon_windows=int(
+            cfg.get("occupancy_horizon_windows", cfg.get("max_remain_windows", 15))
+        ),
+        hot_min_windows=int(cfg.get("hot_min_windows", 2)),
+        hot_gap_windows=int(cfg.get("hot_gap_windows", 1)),
+        train_only_contains=list(cfg.get("train_only_contains") or []),
     )
 
     pattern_keys = make_pattern_keys(
@@ -335,10 +415,12 @@ def train(cfg: dict[str, Any]) -> Path:
 
     best_mae = float("inf")
     best_hot_f1 = -1.0
+    best_ckpt = -1.0
     best_val_loss = float("inf")
     best_path = save_dir / "BNPDFormer_best.pt"
     stale = 0
     last_epoch = 0
+    epoch_log: list[dict[str, Any]] = []
 
     def _ckpt_payload(epoch: int, val_metrics: dict[str, float]) -> dict[str, Any]:
         return {
@@ -392,6 +474,7 @@ def train(cfg: dict[str, Any]) -> Path:
             f"test={data_feature.get('test_episodes_by_run')}"
         )
     cause_majority = int(data_feature.get("cause_majority", -1))
+    hot_eval_threshold = float(cfg.get("hot_eval_threshold", 0.55))
     counts = data_feature.get("cause_train_counts")
     classes = data_feature.get("cause_classes") or []
     if counts is not None and classes:
@@ -412,37 +495,83 @@ def train(cfg: dict[str, Any]) -> Path:
             t0 = time.time()
             tr = _epoch_loop(model, train_loader, optimizer, device, train=True)
             va = _epoch_loop(
-                model, val_loader, None, device, train=False, cause_majority=cause_majority
+                model,
+                val_loader,
+                None,
+                device,
+                train=False,
+                cause_majority=cause_majority,
+                hot_eval_threshold=hot_eval_threshold,
             )
             dt = time.time() - t0
             last_epoch = epoch
+            epoch_log.append(
+                {
+                    "epoch": epoch,
+                    "train_loss": float(tr.get("loss", 0.0)),
+                    "train_hot": float(tr.get("loss_hot", 0.0)),
+                    "train_dice": float(tr.get("loss_dice", 0.0)),
+                    "train_iou": float(tr.get("loss_iou", 0.0)),
+                    "train_cause": float(tr.get("loss_cause", 0.0)),
+                    "train_remain": float(tr.get("loss_remain_len", 0.0)),
+                    "train_contrast": float(tr.get("loss_contrast", 0.0)),
+                    "val_loss": float(va.get("loss", 0.0)),
+                    "hot_f1": float(va.get("hot_f1", 0.0)),
+                    "hot_precision": float(va.get("hot_precision", 0.0)),
+                    "hot_recall": float(va.get("hot_recall", 0.0)),
+                    "hot_type_hmean": float(va.get("hot_type_hmean", 0.0)),
+                    "hot_precision_machine": float(va.get("hot_precision_machine", 0.0)),
+                    "hot_precision_gantry": float(va.get("hot_precision_gantry", 0.0)),
+                    "hot_precision_agv": float(va.get("hot_precision_agv", 0.0)),
+                    "remain_len_mae": float(va.get("remain_len_mae", 0.0)),
+                    "score_mae": float(va.get("score_mae", 0.0)),
+                    "cause_acc": float(va.get("cause_acc", 0.0)),
+                }
+            )
             print(
                 f"epoch {epoch:03d}/{max_epoch}  "
-                f"train_loss={tr['loss']:.4f} (score={tr['loss_score']:.4f} "
-                f"will={tr['loss_will']:.4f} cause={tr.get('loss_cause', 0):.4f} "
-                f"event={tr.get('loss_event', 0):.4f} nll={tr.get('nll', 0):.3f})  "
+                f"train_loss={tr['loss']:.4f} (hot={tr.get('loss_hot', 0):.4f} "
+                f"dice={tr.get('loss_dice', 0):.4f} iou={tr.get('loss_iou', 0):.4f} "
+                f"cause={tr.get('loss_cause', 0):.4f} remain={tr.get('loss_remain_len', 0):.4f} "
+                f"contrast={tr.get('loss_contrast', 0):.4f})  "
                 f"val_loss={va['loss']:.4f} score_mae={va.get('score_mae', 0):.4f} "
                 f"will_f1={va.get('will_f1', 0):.3f} will_p={va.get('will_precision', 0):.3f} "
                 f"will_r={va.get('will_recall', 0):.3f} will_ap={va.get('will_ap', 0):.3f} "
-                f"hot_f1={va.get('hot_f1', 0):.3f} remain_mae={va.get('remain_len_mae', 0):.1f} "
+                f"hot_f1={va.get('hot_f1', 0):.3f} hot_p={va.get('hot_precision', 0):.3f} "
+                f"hot_r={va.get('hot_recall', 0):.3f} "
+                f"m_p={va.get('hot_precision_machine', 0):.3f} "
+                f"g_p={va.get('hot_precision_gantry', 0):.3f} "
+                f"a_p={va.get('hot_precision_agv', 0):.3f} "
+                f"type_h={va.get('hot_type_hmean', 0):.3f} "
+                f"remain_mae={va.get('remain_len_mae', 0):.1f} "
                 f"nll={va.get('nll', 0):.3f}  ({dt:.1f}s)"
             )
 
             ckpt_metric = str(cfg.get("ckpt_metric") or "hot_f1")
+            min_hot_p = float(cfg.get("ckpt_min_hot_precision", 0.0))
             mae = float(va.get("score_mae", float("inf")))
             hot_f1 = float(va.get("hot_f1", 0.0))
-            if ckpt_metric == "hot_f1":
-                improved = hot_f1 > best_hot_f1 + 1e-6
+            hot_p = float(va.get("hot_precision", 0.0))
+            type_h = float(va.get("hot_type_hmean", 0.0))
+            if ckpt_metric == "hot_type_hmean":
+                improved = (hot_p + 1e-12 >= min_hot_p) and (type_h > best_ckpt + 1e-6)
+                ckpt_show = type_h
+            elif ckpt_metric == "hot_f1":
+                improved = (hot_p + 1e-12 >= min_hot_p) and (hot_f1 > best_hot_f1 + 1e-6)
+                ckpt_show = hot_f1
             else:
                 improved = mae < best_mae - 1e-6
+                ckpt_show = mae
             if improved:
                 best_mae = min(best_mae, mae)
                 best_hot_f1 = max(best_hot_f1, hot_f1)
+                best_ckpt = max(best_ckpt, type_h if ckpt_metric == "hot_type_hmean" else hot_f1)
                 stale = 0
                 torch.save(_ckpt_payload(epoch, va), best_path)
                 print(
-                    f"  saved best {ckpt_metric}="
-                    f"{hot_f1 if ckpt_metric == 'hot_f1' else mae:.4f} -> {best_path}"
+                    f"  saved best {ckpt_metric}={ckpt_show:.4f}"
+                    f" (hot_p={hot_p:.3f} type_h={type_h:.3f})"
+                    f" -> {best_path}"
                 )
                 if wandb_run is not None:
                     import wandb
@@ -476,20 +605,52 @@ def train(cfg: dict[str, Any]) -> Path:
                 break
 
         if not best_path.is_file():
-            raise SystemExit("No checkpoint written; validation score_mae missing?")
+            fail_metrics = save_dir / "last_metrics.json"
+            fail_metrics.write_text(
+                json.dumps(
+                    {
+                        "ckpt_written": False,
+                        "reason": "hot_precision_gate",
+                        "ckpt_metric": str(cfg.get("ckpt_metric") or "hot_f1"),
+                        "ckpt_min_hot_precision": float(cfg.get("ckpt_min_hot_precision", 0.0)),
+                        "val_best_hot_f1": best_hot_f1,
+                        "epochs": epoch_log,
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            raise SystemExit(
+                "No checkpoint written: val hot_precision never reached "
+                f"ckpt_min_hot_precision={float(cfg.get('ckpt_min_hot_precision', 0.0)):.2f} "
+                f"(best hot_f1 seen={best_hot_f1:.3f}). "
+                "Do not keep a junk ckpt; check occupancy labels / collect."
+            )
         try:
             ckpt = torch.load(best_path, map_location=device, weights_only=False)
         except TypeError:
             ckpt = torch.load(best_path, map_location=device)
         model.load_state_dict(ckpt["model"])
         te = _epoch_loop(
-            model, test_loader, None, device, train=False, cause_majority=cause_majority
+            model,
+            test_loader,
+            None,
+            device,
+            train=False,
+            cause_majority=cause_majority,
+            hot_eval_threshold=hot_eval_threshold,
         )
         print(
             f"[test] loss={te['loss']:.4f} score_mae={te.get('score_mae', 0):.4f} "
             f"will_f1={te.get('will_f1', 0):.3f} will_p={te.get('will_precision', 0):.3f} "
             f"will_r={te.get('will_recall', 0):.3f} will_ap={te.get('will_ap', 0):.3f} "
-            f"hot_f1={te.get('hot_f1', 0):.3f} remain_mae={te.get('remain_len_mae', 0):.1f} "
+            f"hot_f1={te.get('hot_f1', 0):.3f} hot_p={te.get('hot_precision', 0):.3f} "
+            f"hot_r={te.get('hot_recall', 0):.3f} "
+            f"m_p={te.get('hot_precision_machine', 0):.3f} "
+            f"g_p={te.get('hot_precision_gantry', 0):.3f} "
+            f"a_p={te.get('hot_precision_agv', 0):.3f} "
+            f"type_h={te.get('hot_type_hmean', 0):.3f} "
+            f"remain_mae={te.get('remain_len_mae', 0):.1f} "
             f"nll={te.get('nll', 0):.3f} cause_acc={te.get('cause_acc', 0):.3f}"
         )
         metrics_path = save_dir / "last_metrics.json"
@@ -499,6 +660,7 @@ def train(cfg: dict[str, Any]) -> Path:
                     "ckpt_metric": str(cfg.get("ckpt_metric") or "hot_f1"),
                     "val_best_score_mae": best_mae,
                     "val_best_hot_f1": best_hot_f1,
+                    "val_best_hot_type_hmean": best_ckpt,
                     "val_best_loss": best_val_loss,
                     "best_epoch": int(ckpt.get("epoch") or 0),
                     "test": te,
@@ -512,6 +674,8 @@ def train(cfg: dict[str, Any]) -> Path:
                     "test_episodes_by_run": data_feature.get("test_episodes_by_run") or {},
                     "n_event_positive_train": int(data_feature.get("n_event_positive_train") or 0),
                     "n_event_surv_train": int(data_feature.get("n_event_surv_train") or 0),
+                    "ckpt_min_hot_precision": float(cfg.get("ckpt_min_hot_precision", 0.0)),
+                    "epochs": epoch_log,
                 },
                 indent=2,
             ),
@@ -565,6 +729,12 @@ def main() -> None:
     parser.add_argument("--batch_size", type=int, default=None)
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument(
+        "--ckpt_min_hot_precision",
+        type=float,
+        default=None,
+        help="Override FactoryBN.json ckpt_min_hot_precision for this run.",
+    )
+    parser.add_argument(
         "--wandb_activate",
         action="store_true",
         default=None,
@@ -573,6 +743,13 @@ def main() -> None:
     parser.add_argument("--wandb_project", type=str, default=None, help="wandb project name.")
     parser.add_argument("--wandb_name", type=str, default=None, help="Optional wandb run name.")
     parser.add_argument("--wandb_entity", type=str, default=None, help="Optional wandb team/user.")
+    parser.add_argument(
+        "--train_only_contains",
+        action="append",
+        default=None,
+        help="Episode names containing this substring stay in train (repeatable). "
+        "Use n10_mix_ so mix OOD regularizers never enter val/test.",
+    )
     args = parser.parse_args()
 
     cfg = _load_config(Path(args.config))
@@ -586,6 +763,8 @@ def main() -> None:
         cfg["batch_size"] = args.batch_size
     if args.device is not None:
         cfg["device"] = args.device
+    if args.ckpt_min_hot_precision is not None:
+        cfg["ckpt_min_hot_precision"] = float(args.ckpt_min_hot_precision)
     if args.wandb_activate:
         cfg["wandb_activate"] = True
     if args.wandb_project:
@@ -594,6 +773,8 @@ def main() -> None:
         cfg["wandb_name"] = args.wandb_name
     if args.wandb_entity:
         cfg["wandb_entity"] = args.wandb_entity
+    if args.train_only_contains:
+        cfg["train_only_contains"] = list(args.train_only_contains)
 
     train(cfg)
 

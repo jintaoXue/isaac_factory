@@ -29,6 +29,274 @@ from factory_bn.backbone import DataEmbedding, STEncoderBlock, TokenEmbedding
 from factory_bn.stgnpp import ContinuousGRU, PeriodicGatedIntensity, SpatioTemporalInquirer
 
 
+OCC_TYPE_NAMES = ("machine", "gantry", "agv")
+OCC_TYPE_ALIASES = {
+    "machine": ("machine",),
+    "gantry": ("gantry",),
+    "agv": ("transport_robot", "agv"),
+}
+
+
+def apply_hot_type_affine(
+    logits: torch.Tensor,
+    type_masks: dict[str, torch.Tensor],
+    scale: torch.Tensor,
+    bias: torch.Tensor,
+) -> torch.Tensor:
+    """Per-type scale/bias on occupancy logits. scale=1, bias=0 is identity."""
+    out = logits
+    for i, name in enumerate(OCC_TYPE_NAMES):
+        mask = type_masks.get(name)
+        if mask is None:
+            continue
+        mask = mask.to(device=logits.device, dtype=logits.dtype).reshape(-1)
+        if mask.numel() != logits.shape[-1] or float(mask.sum()) <= 0:
+            continue
+        m = mask.view(1, 1, -1)
+        out = out * (1.0 + (scale[i] - 1.0) * m) + bias[i] * m
+    return out
+
+
+def occupancy_bce_cell_weight(
+    y_hot: torch.Tensor,
+    type_masks: dict[str, torch.Tensor],
+    *,
+    default_pos_weight: float,
+    pos_weight_by_type: dict[str, float] | None = None,
+    fp_weight_by_type: dict[str, float] | None = None,
+) -> torch.Tensor:
+    """Per-cell BCE multiplier: positives × pos_weight[type], negatives × fp_weight[type].
+
+    Gantry occupancy is ~19% of cells; a global pos_weight=4 makes FN four times
+    costlier than FP and is the main reason gantry over-predicts.
+    """
+    pos_map = {str(k): float(v) for k, v in (pos_weight_by_type or {}).items()}
+    fp_map = {str(k): float(v) for k, v in (fp_weight_by_type or {}).items()}
+    default_w = 1.0 + (float(default_pos_weight) - 1.0) * y_hot
+    w = default_w
+    tagged = torch.zeros_like(y_hot)
+    for name in OCC_TYPE_NAMES:
+        node = type_masks.get(name)
+        if node is None:
+            continue
+        node = node.to(device=y_hot.device, dtype=y_hot.dtype).reshape(-1)
+        if node.numel() != y_hot.shape[-1] or float(node.sum()) <= 0:
+            continue
+        m = node.view(1, 1, -1)
+        pw = float(pos_map.get(name, default_pos_weight))
+        fw = float(fp_map.get(name, 1.0))
+        type_w = y_hot * pw + (1.0 - y_hot) * fw
+        w = torch.where(m > 0.5, type_w, w)
+        tagged = torch.maximum(tagged, m.expand_as(y_hot))
+    return torch.where(tagged > 0.5, w, default_w)
+
+
+def occupancy_cell_weight(
+    step_w: torch.Tensor,
+    occ_node_mask: torch.Tensor | None,
+) -> torch.Tensor:
+    """(B, K, N) = near-horizon step weight × labeled occupancy columns.
+
+    Human / buffer stay 0. Machine, gantry, and AGV are supervised.
+    """
+    weight = step_w.unsqueeze(-1)
+    if occ_node_mask is None:
+        return weight
+    node = occ_node_mask.float()
+    if node.dim() == 2:
+        return weight * node.unsqueeze(1)
+    return weight * node
+
+
+def occupancy_type_node_masks(
+    resource_types: list[str] | None,
+    num_nodes: int,
+) -> dict[str, torch.Tensor]:
+    """Per-type (N,) 0/1 masks. AGV aliases transport_robot."""
+    types = [str(t).strip().lower() for t in (resource_types or [])]
+    out: dict[str, torch.Tensor] = {}
+    for name, aliases in OCC_TYPE_ALIASES.items():
+        mask = torch.zeros(int(num_nodes), dtype=torch.float32)
+        for i, t in enumerate(types[: int(num_nodes)]):
+            if t in aliases:
+                mask[i] = 1.0
+        out[name] = mask
+    return out
+
+
+def type_balanced_occupancy_losses(
+    logits: torch.Tensor,
+    y_hot: torch.Tensor,
+    hot_m: torch.Tensor,
+    type_masks: dict[str, torch.Tensor],
+    *,
+    hot_pos_weight: float,
+    w_dice: float,
+    w_iou: float,
+    pos_weight_by_type: dict[str, float] | None = None,
+    fp_weight_by_type: dict[str, float] | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Mean BCE / Dice / IoU over types that have any weight this batch.
+
+    Gantry cells (~4× more positives) cannot dominate the occupancy loss.
+    Types with empty weight are skipped, not treated as zero loss.
+    """
+    zero = logits.sum() * 0.0
+    pw = occupancy_bce_cell_weight(
+        y_hot,
+        type_masks,
+        default_pos_weight=hot_pos_weight,
+        pos_weight_by_type=pos_weight_by_type,
+        fp_weight_by_type=fp_weight_by_type,
+    )
+    bce = F.binary_cross_entropy_with_logits(logits, y_hot, reduction="none")
+    bce_parts: list[torch.Tensor] = []
+    dice_parts: list[torch.Tensor] = []
+    iou_parts: list[torch.Tensor] = []
+    for name in OCC_TYPE_NAMES:
+        node = type_masks.get(name)
+        if node is None:
+            continue
+        node = node.to(device=hot_m.device, dtype=hot_m.dtype).reshape(-1)
+        if node.numel() != hot_m.shape[-1] or float(node.sum()) <= 0:
+            continue
+        tm = hot_m * node.view(1, 1, -1)
+        if float(tm.sum()) < 1e-6:
+            continue
+        denom = tm.sum().clamp_min(1.0)
+        bce_parts.append((bce * pw * tm).sum() / denom)
+        if w_dice > 0:
+            dice_parts.append(soft_dice_loss(logits, y_hot, tm))
+        if w_iou > 0:
+            iou_parts.append(soft_iou_loss(logits, y_hot, tm))
+    if not bce_parts:
+        denom = hot_m.sum().clamp_min(1.0)
+        loss_hot = (bce * pw * hot_m).sum() / denom
+        loss_dice = soft_dice_loss(logits, y_hot, hot_m) if w_dice > 0 else zero
+        loss_iou = soft_iou_loss(logits, y_hot, hot_m) if w_iou > 0 else zero
+        return loss_hot, loss_dice, loss_iou
+    loss_hot = torch.stack(bce_parts).mean()
+    loss_dice = torch.stack(dice_parts).mean() if dice_parts else zero
+    loss_iou = torch.stack(iou_parts).mean() if iou_parts else zero
+    return loss_hot, loss_dice, loss_iou
+
+
+def occupied_type_id(
+    y_hot: torch.Tensor,
+    type_masks: dict[str, torch.Tensor],
+    occ_node_mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Dominant occupied type in the horizon: 1=machine, 2=gantry, 3=AGV, 0=none."""
+    y = y_hot.float()
+    if occ_node_mask is not None:
+        node = occ_node_mask.float()
+        if node.dim() == 1:
+            node = node.unsqueeze(0)
+        if node.dim() == 2:
+            y = y * node.unsqueeze(1)
+    batch = y.shape[0]
+    counts: list[torch.Tensor] = []
+    for name in OCC_TYPE_NAMES:
+        mask = type_masks.get(name)
+        if mask is None:
+            counts.append(y.new_zeros(batch))
+            continue
+        mask = mask.to(device=y.device, dtype=y.dtype).reshape(-1)
+        if mask.numel() != y.shape[-1]:
+            counts.append(y.new_zeros(batch))
+            continue
+        counts.append((y * mask.view(1, 1, -1)).reshape(batch, -1).sum(dim=-1))
+    stacked = torch.stack(counts, dim=1)
+    max_c, arg = stacked.max(dim=1)
+    return torch.where(max_c > 0.5, arg + 1, torch.zeros_like(arg))
+
+
+def contrastive_class_ids(
+    y_block: torch.Tensor,
+    dim_id: torch.Tensor,
+    type_id: torch.Tensor,
+) -> torch.Tensor:
+    """Integer class (block, disturbance dim, resource type). Unknown dim → 5."""
+    dim_id = dim_id.reshape(-1).to(dtype=torch.long)
+    dim_id = torch.where(dim_id < 0, torch.full_like(dim_id, 5), dim_id.clamp(min=0, max=5))
+    type_id = type_id.reshape(-1).to(dtype=torch.long).clamp(min=0, max=3)
+    y_block = y_block.reshape(-1).to(dtype=torch.long)
+    return y_block * 32 + dim_id * 4 + type_id
+
+
+def soft_dice_loss(
+    logits: torch.Tensor,
+    target: torch.Tensor,
+    weight: torch.Tensor,
+    *,
+    eps: float = 1.0,
+) -> torch.Tensor:
+    """1 − Dice on sigmoid(logits); empty mask → 0 (eps keeps the ratio defined)."""
+    pred = torch.sigmoid(logits)
+    w = weight.float()
+    inter = (pred * target * w).sum()
+    denom = (pred * w).sum() + (target * w).sum()
+    return 1.0 - (2.0 * inter + eps) / (denom + eps)
+
+
+def supervised_contrastive_loss(
+    z: torch.Tensor,
+    labels: torch.Tensor,
+    *,
+    temperature: float = 0.2,
+) -> torch.Tensor:
+    """SupCon: same integer label is a positive. Skip if batch < 2 or no pairs."""
+    if z.dim() != 2 or z.shape[0] < 2:
+        return z.new_zeros(())
+    z = F.normalize(z, dim=-1)
+    labels = labels.reshape(-1)
+    b = z.shape[0]
+    sim = (z @ z.T) / max(float(temperature), 1e-6)
+    self_mask = torch.eye(b, dtype=torch.bool, device=z.device)
+    pos = (labels.unsqueeze(0) == labels.unsqueeze(1)) & ~self_mask
+    if not pos.any():
+        return z.new_zeros(())
+    sim = sim - sim.max(dim=1, keepdim=True).values.detach()
+    exp = torch.exp(sim) * (~self_mask).float()
+    log_prob = sim - torch.log(exp.sum(dim=1, keepdim=True).clamp_min(1e-8))
+    pos_n = pos.float().sum(dim=1).clamp_min(1.0)
+    loss_i = -(log_prob * pos.float()).sum(dim=1) / pos_n
+    return loss_i[pos.any(dim=1)].mean()
+
+
+def soft_iou_loss(
+    logits: torch.Tensor,
+    target: torch.Tensor,
+    weight: torch.Tensor,
+    *,
+    eps: float = 1.0,
+) -> torch.Tensor:
+    """1 − soft IoU on sigmoid(logits); empty mask → 0."""
+    pred = torch.sigmoid(logits)
+    w = weight.float()
+    inter = (pred * target * w).sum()
+    union = (pred * w).sum() + (target * w).sum() - inter
+    return 1.0 - (inter + eps) / (union + eps)
+
+
+def _horizon_block_flag(batch: dict[str, torch.Tensor]) -> torch.Tensor:
+    """1 if any supervised node is occupied in the forecast horizon."""
+    y_hot = batch.get("y_hot")
+    if y_hot is None:
+        wh = batch.get("window_hot")
+        if wh is None:
+            x = batch["X"]
+            return torch.zeros(x.shape[0], device=x.device)
+        return (wh.reshape(-1) > 0.5).to(dtype=torch.long)
+    occ = batch.get("occ_node_mask")
+    if occ is not None:
+        if occ.dim() == 1:
+            occ = occ.unsqueeze(0)
+        if occ.dim() == 2:
+            y_hot = y_hot * occ.unsqueeze(1)
+    return (y_hot.reshape(y_hot.shape[0], -1).sum(dim=-1) > 0.5).to(dtype=torch.long)
+
+
 class BNPDFormer(nn.Module):
     def __init__(self, config: dict[str, Any], data_feature: dict[str, Any]):
         super().__init__()
@@ -38,7 +306,7 @@ class BNPDFormer(nn.Module):
         self.num_nodes = int(data_feature["num_nodes"])
         self.feature_dim = int(data_feature["feature_dim"])
         self.output_dim = int(config.get("output_dim", 1))
-        self.input_window = int(config.get("input_window", 12))
+        self.input_window = int(config.get("input_window", 30))
         self.output_window = int(config.get("output_window", 1))
         self.embed_dim = int(config.get("embed_dim", 64))
         self.skip_dim = int(config.get("skip_dim", 128))
@@ -58,12 +326,28 @@ class BNPDFormer(nn.Module):
         self.pos_weight = float(config.get("will_pos_weight", 20.0))
         self.use_stgnpp = bool(config.get("use_stgnpp", True))
         self.remain_to_jobs_done = bool(config.get("remain_to_jobs_done", False))
-        self.max_remain_windows = int(config.get("max_remain_windows", 512))
+        self.max_remain_windows = int(config.get("max_remain_windows", 15))
         self.w_hot = float(config.get("w_hot", 1.0))
-        self.w_remain_len = float(config.get("w_remain_len", 0.3))
-        self.hot_pos_weight = float(config.get("hot_pos_weight", 32.0))
-        self.near_remain_windows = int(config.get("near_remain_windows", 60))
-        self.remain_loss_tau = float(config.get("remain_loss_tau", 20.0))
+        self.w_dice = float(config.get("w_dice", 1.0))
+        self.w_iou = float(config.get("w_iou", 1.0))
+        self.w_remain_len = float(config.get("w_remain_len", 0.5))
+        self.w_contrast = float(config.get("w_contrast", 0.1))
+        self.contrast_temp = float(config.get("contrast_temp", 0.2))
+        self.type_balanced_occupancy = bool(config.get("type_balanced_occupancy", True))
+        self.use_grouped_embed = bool(config.get("use_grouped_embed", True))
+        self.hot_pos_weight = float(config.get("hot_pos_weight", 8.0))
+        self.hot_pos_weight_by_type = {
+            str(k): float(v)
+            for k, v in (config.get("hot_pos_weight_by_type") or {}).items()
+            if str(k) in OCC_TYPE_NAMES
+        }
+        self.hot_fp_weight_by_type = {
+            str(k): float(v)
+            for k, v in (config.get("hot_fp_weight_by_type") or {}).items()
+            if str(k) in OCC_TYPE_NAMES
+        }
+        self.near_remain_windows = int(config.get("near_remain_windows", 15))
+        self.remain_loss_tau = float(config.get("remain_loss_tau", 40.0))
 
         self.n_cause_classes = int(
             data_feature.get("n_cause_classes") or len(data_feature.get("cause_classes") or [])
@@ -77,6 +361,11 @@ class BNPDFormer(nn.Module):
             "cause_class_weight",
             torch.as_tensor(np.asarray(cause_w, dtype=np.float32)),
         )
+        for name, mask in occupancy_type_node_masks(
+            [str(t) for t in data_feature.get("resource_types") or []],
+            self.num_nodes,
+        ).items():
+            self.register_buffer(f"occ_type_{name}", mask)
 
         adj_mx = data_feature["adj_mx"]
         sh_mx = data_feature["sh_mx"]
@@ -124,6 +413,12 @@ class BNPDFormer(nn.Module):
             add_time_in_day=False,
             add_day_in_week=False,
             device=self.device,
+            use_grouped_embed=self.use_grouped_embed,
+        )
+        self.contrast_proj = nn.Sequential(
+            nn.Linear(self.embed_dim, self.embed_dim),
+            nn.GELU(),
+            nn.Linear(self.embed_dim, self.embed_dim),
         )
         enc_dpr = [x.item() for x in torch.linspace(0, drop_path, enc_depth)]
         self.encoder_blocks = nn.ModuleList(
@@ -171,6 +466,13 @@ class BNPDFormer(nn.Module):
                 nn.Linear(self.embed_dim, self.embed_dim),
                 nn.GELU(),
                 nn.Linear(self.embed_dim, 1),
+            )
+            self.hot_type_scale = nn.Parameter(torch.ones(len(OCC_TYPE_NAMES)))
+            bias_init = config.get("hot_type_bias_init") or [0.0, 0.0, 0.0]
+            if not isinstance(bias_init, (list, tuple)) or len(bias_init) != len(OCC_TYPE_NAMES):
+                bias_init = [0.0, 0.0, 0.0]
+            self.hot_type_bias = nn.Parameter(
+                torch.tensor([float(x) for x in bias_init], dtype=torch.float32)
             )
             self.end_conv1 = None
             self.end_conv2 = None
@@ -277,7 +579,7 @@ class BNPDFormer(nn.Module):
         h = self.remain_fuse(torch.cat([h_last, skip_pool], dim=-1))
         jobs = jobs_remaining.float().clamp_min(0.0)
         total = jobs_total.float().clamp_min(1.0)
-        cond = torch.stack([jobs / total, jobs / 18.0], dim=-1)
+        cond = torch.stack([jobs / total, total.clamp_min(1.0) / 32.0], dim=-1)
         cond_e = self.jobs_mlp(cond)
         h = h + cond_e.unsqueeze(1)
         pooled = self.aux_pool(h).mean(dim=1)
@@ -287,6 +589,12 @@ class BNPDFormer(nn.Module):
         h_k = h.unsqueeze(1) + pe.unsqueeze(0).unsqueeze(2)
         score_pred = self.remain_score_mlp(h_k)
         hot_logit = self.remain_hot_mlp(h_k).squeeze(-1)
+        hot_logit = apply_hot_type_affine(
+            hot_logit,
+            self._occ_type_masks(),
+            self.hot_type_scale,
+            self.hot_type_bias,
+        )
         return score_pred, hot_logit, remain_len
 
     def forward(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
@@ -318,6 +626,7 @@ class BNPDFormer(nn.Module):
         tts_aux = self.tts_aux(feat).squeeze(-1)
         cause_logits = self.cause_head(feat)
 
+        z = F.normalize(self.contrast_proj(h_last.mean(dim=1)), dim=-1)
         out: dict[str, torch.Tensor] = {
             "score_pred": score_pred,
             "will_logit": will_logit,
@@ -325,6 +634,7 @@ class BNPDFormer(nn.Module):
             "cause_logits": cause_logits,
             "tts_aux": tts_aux,
             "h_last": h_last,
+            "z": z,
         }
         if hot_logit is not None:
             out["hot_logit"] = hot_logit
@@ -360,7 +670,7 @@ class BNPDFormer(nn.Module):
     def _remain_step_weight(self, remain_mask: torch.Tensor | None) -> torch.Tensor | None:
         """Down-weight far remaining windows so occupancy loss is not all-zero.
 
-        Supervise at most ``near_remain_windows`` (default 60 min) with
+        Supervise at most ``near_remain_windows`` (A.1 H, default 15 min) with
         exponential decay ``exp(-k / tau)``. ``remain_len`` is still full-horizon.
         """
         if remain_mask is None:
@@ -371,6 +681,14 @@ class BNPDFormer(nn.Module):
         tau = max(float(self.remain_loss_tau), 1.0)
         decay = torch.exp(-steps / tau) * (steps < float(near)).float()
         return remain_mask.float() * decay.unsqueeze(0)
+
+    def _occ_type_masks(self) -> dict[str, torch.Tensor]:
+        out: dict[str, torch.Tensor] = {}
+        for name in OCC_TYPE_NAMES:
+            buf = getattr(self, f"occ_type_{name}", None)
+            if buf is not None:
+                out[name] = buf
+        return out
 
     def calculate_loss(self, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, dict[str, float]]:
         out = self.forward(batch)
@@ -387,38 +705,76 @@ class BNPDFormer(nn.Module):
         else:
             loss_score = F.smooth_l1_loss(out["score_pred"], y_score)
 
-        loss_hot = out["score_pred"].sum() * 0.0
-        loss_remain_len = out["score_pred"].sum() * 0.0
+        zero = out["score_pred"].sum() * 0.0
+        loss_hot = zero
+        loss_dice = zero
+        loss_iou = zero
+        loss_remain_len = zero
         if "hot_logit" in out and "y_hot" in batch and step_w is not None:
-            hot_m = step_w.unsqueeze(-1)
             logits = out["hot_logit"]
             y_hot = batch["y_hot"]
-            bce = F.binary_cross_entropy_with_logits(logits, y_hot, reduction="none")
-            pw = 1.0 + (self.hot_pos_weight - 1.0) * y_hot
-            loss_hot = (bce * pw * hot_m).sum() / hot_m.sum().clamp_min(1.0)
+            hot_m = occupancy_cell_weight(step_w, batch.get("occ_node_mask"))
+            type_masks = self._occ_type_masks()
+            if self.type_balanced_occupancy and any(
+                float(m.sum()) > 0 for m in type_masks.values()
+            ):
+                loss_hot, loss_dice, loss_iou = type_balanced_occupancy_losses(
+                    logits,
+                    y_hot,
+                    hot_m,
+                    type_masks,
+                    hot_pos_weight=self.hot_pos_weight,
+                    w_dice=self.w_dice,
+                    w_iou=self.w_iou,
+                    pos_weight_by_type=self.hot_pos_weight_by_type,
+                    fp_weight_by_type=self.hot_fp_weight_by_type,
+                )
+            else:
+                bce = F.binary_cross_entropy_with_logits(logits, y_hot, reduction="none")
+                pw = occupancy_bce_cell_weight(
+                    y_hot,
+                    type_masks,
+                    default_pos_weight=self.hot_pos_weight,
+                    pos_weight_by_type=self.hot_pos_weight_by_type,
+                    fp_weight_by_type=self.hot_fp_weight_by_type,
+                )
+                loss_hot = (bce * pw * hot_m).sum() / hot_m.sum().clamp_min(1.0)
+                if self.w_dice > 0:
+                    loss_dice = soft_dice_loss(logits, y_hot, hot_m)
+                if self.w_iou > 0:
+                    loss_iou = soft_iou_loss(logits, y_hot, hot_m)
         if "remain_len_pred" in out and "remain_len" in batch:
             loss_remain_len = F.smooth_l1_loss(
                 torch.log1p(out["remain_len_pred"]),
                 torch.log1p(batch["remain_len"].clamp_min(0.0)),
             )
-        pos_weight = torch.tensor([self.pos_weight], device=will.device)
-        loss_will = F.binary_cross_entropy_with_logits(
-            out["will_logit"], will, pos_weight=pos_weight
-        )
-
-        pos_mask = (will > 0.5) & (mark >= 0)
-        if pos_mask.any():
-            loss_mark = F.cross_entropy(out["mark_logits"][pos_mask], mark[pos_mask])
-            tts_n = batch["tts"][pos_mask] / 60.0
-            loss_tts = F.smooth_l1_loss(out["tts_aux"][pos_mask] / 60.0, tts_n)
+        if self.w_will > 0:
+            pos_weight = torch.tensor([self.pos_weight], device=will.device)
+            loss_will = F.binary_cross_entropy_with_logits(
+                out["will_logit"], will, pos_weight=pos_weight
+            )
         else:
-            zero = out["score_pred"].sum() * 0.0
+            loss_will = zero
+
+        if self.w_mark > 0 or self.w_tts > 0:
+            pos_mask = (will > 0.5) & (mark >= 0)
+            if pos_mask.any():
+                loss_mark = F.cross_entropy(out["mark_logits"][pos_mask], mark[pos_mask])
+                tts_n = batch["tts"][pos_mask] / 60.0
+                loss_tts = F.smooth_l1_loss(out["tts_aux"][pos_mask] / 60.0, tts_n)
+            else:
+                loss_mark = zero
+                loss_tts = zero
+        else:
             loss_mark = zero
             loss_tts = zero
 
         cause = batch.get("cause")
-        if cause is not None:
+        if cause is not None and self.w_cause > 0:
             valid_cause = cause >= 0
+            window_hot = batch.get("window_hot")
+            if window_hot is not None:
+                valid_cause = valid_cause & (window_hot.reshape(-1) > 0.5)
             if valid_cause.any():
                 w = self.cause_class_weight
                 if w.numel() != out["cause_logits"].shape[-1]:
@@ -481,6 +837,21 @@ class BNPDFormer(nn.Module):
             if n_pos + n_surv > 0:
                 loss_event = nll_v + dur_v
 
+        loss_contrast = zero
+        if self.w_contrast > 0 and "z" in out:
+            y_block = _horizon_block_flag(batch)
+            dim_id = batch.get("run_dim_id")
+            if dim_id is None:
+                dim_id = torch.zeros(out["z"].shape[0], dtype=torch.long, device=out["z"].device)
+            y_hot_c = batch.get("y_hot")
+            if y_hot_c is None:
+                y_hot_c = y_block.new_zeros(out["z"].shape[0], 1, 1)
+            type_id = occupied_type_id(y_hot_c, self._occ_type_masks(), batch.get("occ_node_mask"))
+            labels = contrastive_class_ids(y_block, dim_id, type_id)
+            loss_contrast = supervised_contrastive_loss(
+                out["z"], labels, temperature=self.contrast_temp
+            )
+
         total = (
             self.w_score * loss_score
             + self.w_will * loss_will
@@ -489,7 +860,10 @@ class BNPDFormer(nn.Module):
             + self.w_event * loss_event
             + self.w_cause * loss_cause
             + self.w_hot * loss_hot
+            + self.w_dice * loss_dice
+            + self.w_iou * loss_iou
             + self.w_remain_len * loss_remain_len
+            + self.w_contrast * loss_contrast
         )
         stats = {
             "loss": float(total.detach().cpu()),
@@ -500,7 +874,10 @@ class BNPDFormer(nn.Module):
             "loss_event": float(loss_event.detach().cpu()) if torch.is_tensor(loss_event) else float(loss_event),
             "loss_cause": float(loss_cause.detach().cpu()) if torch.is_tensor(loss_cause) else float(loss_cause),
             "loss_hot": float(loss_hot.detach().cpu()) if torch.is_tensor(loss_hot) else float(loss_hot),
+            "loss_dice": float(loss_dice.detach().cpu()) if torch.is_tensor(loss_dice) else float(loss_dice),
+            "loss_iou": float(loss_iou.detach().cpu()) if torch.is_tensor(loss_iou) else float(loss_iou),
             "loss_remain_len": float(loss_remain_len.detach().cpu()) if torch.is_tensor(loss_remain_len) else float(loss_remain_len),
+            "loss_contrast": float(loss_contrast.detach().cpu()) if torch.is_tensor(loss_contrast) else float(loss_contrast),
             "nll": float(nll_v.detach().cpu()) if torch.is_tensor(nll_v) else float(nll_v),
             "nll_arrival": float(nll_arr.detach().cpu()) if torch.is_tensor(nll_arr) else float(nll_arr),
             "nll_surv": float(nll_surv.detach().cpu()) if torch.is_tensor(nll_surv) else float(nll_surv),

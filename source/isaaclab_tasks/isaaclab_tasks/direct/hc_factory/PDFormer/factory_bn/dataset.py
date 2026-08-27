@@ -12,7 +12,13 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from factory_bn.causes import ROOT_CAUSE_CLASSES
-from factory_bn.remain import first_done_index, node_hot_mask, pack_remain_target
+from factory_bn.remain import (
+    ensure_labor_saturated_feature,
+    first_done_index,
+    node_hot_mask,
+    occupancy_node_mask,
+    pack_remain_target,
+)
 
 
 @dataclass
@@ -141,6 +147,14 @@ class FactoryBNWindowDataset(Dataset):
             item["remain_len"] = torch.tensor(float(s["remain_len"]), dtype=torch.float32)
             item["jobs_remaining"] = torch.tensor(float(s["jobs_remaining"]), dtype=torch.float32)
             item["jobs_total"] = torch.tensor(float(s["jobs_total"]), dtype=torch.float32)
+        if "occ_node_mask" in s:
+            item["occ_node_mask"] = torch.from_numpy(
+                np.asarray(s["occ_node_mask"], dtype=np.float32)
+            )
+        else:
+            item["occ_node_mask"] = torch.from_numpy(occupancy_node_mask(s["x"]))
+        item["window_hot"] = torch.tensor(float(s.get("window_hot", 0.0)), dtype=torch.float32)
+        item["run_dim_id"] = torch.tensor(int(s.get("run_dim_id", -1)), dtype=torch.long)
         return item
 
 
@@ -154,7 +168,7 @@ def load_factory_bn_bundle(data_dir: Path) -> dict[str, Any]:
         ep = {
             "name": name,
             "episode_id": i,
-            "features": npz[f"{name}_features"],
+            "features": ensure_labor_saturated_feature(npz[f"{name}_features"]),
             "scores": npz[f"{name}_scores"],
             "will": npz[f"{name}_will"],
             "mark": npz[f"{name}_mark"],
@@ -215,6 +229,9 @@ def _build_samples(
     remain_to_jobs_done: bool = False,
     max_remain_windows: int = 512,
     hot_score_threshold: float = 0.55,
+    occupancy_horizon_windows: int | None = None,
+    hot_min_windows: int = 2,
+    hot_gap_windows: int = 1,
 ) -> list[dict[str, Any]]:
     """Create causal windows with STGNPP event histories.
 
@@ -225,9 +242,10 @@ def _build_samples(
     ``window_start[t-1]``. Arrival NLL only if that tau is within
     the event horizon; otherwise the node is right-censored at H (survival Λ(H)).
 
-    When ``remain_to_jobs_done``, the dense target is occupancy from ``t`` until
-    remaining jobs hit zero (padded to ``max_remain_windows``). Event-horizon
-    H is that remaining time. Auxiliary ``will`` stays the 180s near-term label.
+    When ``remain_to_jobs_done``, occupancy y is the next
+    ``occupancy_horizon_windows`` steps (A.1 fixed H, padded to
+    ``max_remain_windows``). ``remain_len`` is still windows until jobs hit
+    zero. Auxiliary ``will`` stays the 180s near-term label.
     """
     samples: list[dict[str, Any]] = []
     for ep in episodes:
@@ -250,7 +268,15 @@ def _build_samples(
         )
         jobs_total = float(ep.get("jobs_total") or (jobs_rem[0] if jobs_rem.size else 0.0))
         done_ti = first_done_index(jobs_rem) if remain_to_jobs_done else t_len
-        hot = node_hot_mask(feats, scores, score_threshold=hot_score_threshold)
+        hot = node_hot_mask(
+            feats,
+            scores,
+            score_threshold=hot_score_threshold,
+            window_size_s=window_size_s,
+            min_hot_windows=hot_min_windows,
+            gap_windows=hot_gap_windows,
+        )
+        occ_mask = occupancy_node_mask(feats)
 
         ev_node = ep["event_node"]
         ev_start_s = ep["event_start_s"]
@@ -281,16 +307,19 @@ def _build_samples(
             )
 
             if remain_to_jobs_done:
+                k_occ = int(occupancy_horizon_windows) if occupancy_horizon_windows else int(max_remain_windows)
+                k_occ = max(1, min(int(max_remain_windows), k_occ))
                 y_score, y_hot, remain_mask, remain_len = pack_remain_target(
                     scores,
                     hot,
                     t=t,
                     done_ti=done_ti,
                     max_remain_windows=max_remain_windows,
+                    occupancy_horizon_windows=k_occ,
                 )
                 if remain_len <= 0:
                     continue
-                event_h_s = max(remain_len * float(window_size_s), float(window_size_s))
+                event_h_s = max(k_occ * float(window_size_s), float(window_size_s))
             else:
                 y_score = scores[t : t + output_window].astype(np.float32)
                 y_hot = None
@@ -348,8 +377,35 @@ def _build_samples(
                 sample["remain_len"] = float(remain_len)
                 sample["jobs_remaining"] = obs_jobs
                 sample["jobs_total"] = jobs_total
+            sample["occ_node_mask"] = occ_mask
+            ep_name = str(ep.get("name") or ep["episode_id"])
+            sample["run_dim_id"] = run_dim_id(ep_name)
+            if label_idx < hot.shape[0]:
+                sample["window_hot"] = float((hot[label_idx] * occ_mask).sum() > 0.5)
+            else:
+                sample["window_hot"] = 0.0
             samples.append(sample)
     return samples
+
+
+def run_dim_id(episode_name: str) -> int:
+    """Map episode / run prefix to a disturbance-dimension id.
+
+    ``machine`` / ``human`` / ``logistics`` / ``material`` / ``none|norm``.
+    Unknown names get -1 so they do not share a contrastive class by accident.
+    """
+    prefix = _run_prefix(episode_name).lower()
+    for key, idx in (
+        ("logistics", 2),
+        ("material", 3),
+        ("machine", 0),
+        ("human", 1),
+        ("none", 4),
+        ("norm", 4),
+    ):
+        if key in prefix:
+            return idx
+    return -1
 
 
 def _run_prefix(episode_name: str) -> str:
@@ -364,6 +420,7 @@ def split_episodes_by_name(
     train_ratio: float = 0.7,
     val_ratio: float = 0.15,
     seed: int = 42,
+    train_only_contains: list[str] | None = None,
 ) -> tuple[set[str], set[str], set[str]]:
     """Hold out whole episodes. Stratify by run prefix so each dim stays in all splits.
 
@@ -414,7 +471,26 @@ def split_episodes_by_name(
         val = list(test)
     elif not val and train:
         val = list(train)
-    return set(train), set(val), set(test)
+    train_s, val_s, test_s = set(train), set(val), set(test)
+    needles = [str(x) for x in (train_only_contains or []) if str(x)]
+    if needles:
+        def _forced(name: str) -> bool:
+            text = str(name)
+            return any(n in text for n in needles)
+
+        extra = {x for x in val_s if _forced(x)} | {x for x in test_s if _forced(x)}
+        train_s |= extra
+        val_s -= extra
+        test_s -= extra
+        if not val_s and test_s:
+            val_s = set(test_s)
+        elif not val_s and train_s:
+            val_s = set(train_s)
+        if not test_s and val_s:
+            test_s = set(val_s)
+        elif not test_s and train_s:
+            test_s = set(train_s)
+    return train_s, val_s, test_s
 
 
 def _count_by_run(names: list[str] | set[str]) -> dict[str, int]:
@@ -438,7 +514,7 @@ def build_infer_sample(
     will: np.ndarray | None = None,
     mark: np.ndarray | None = None,
     cause: np.ndarray | None = None,
-    input_window: int = 12,
+    input_window: int = 30,
     output_window: int = 1,
     max_hist_events: int = 8,
     window_size_s: float = 60.0,
@@ -451,6 +527,8 @@ def build_infer_sample(
     jobs_total: float | None = None,
     done_ti: int | None = None,
     hot: np.ndarray | None = None,
+    hot_min_windows: int = 2,
+    hot_gap_windows: int = 1,
 ) -> dict[str, Any]:
     """Pack one causal window for ``model.predict`` (no future labels required).
 
@@ -487,10 +565,21 @@ def build_infer_sample(
     remain_len = 0
     has_future = False
     if remain_to_jobs_done and scores is not None and t < t_len:
-        hot_arr = hot if hot is not None else node_hot_mask(features, scores)
+        hot_arr = (
+            hot
+            if hot is not None
+            else node_hot_mask(
+                features,
+                scores,
+                window_size_s=window_size_s,
+                min_hot_windows=hot_min_windows,
+                gap_windows=hot_gap_windows,
+            )
+        )
         end_i = int(done_ti) if done_ti is not None else t_len
         y_score, y_hot, remain_mask, remain_len = pack_remain_target(
-            scores, hot_arr, t=t, done_ti=end_i, max_remain_windows=k_out
+            scores, hot_arr, t=t, done_ti=end_i, max_remain_windows=k_out,
+            occupancy_horizon_windows=k_out,
         )
         has_future = remain_len > 0
     elif scores is not None and t + output_window <= t_len:
@@ -527,6 +616,9 @@ def build_infer_sample(
         "t": int(t),
         "window_start_s": ref_s,
         "has_future_score": has_future,
+        "occ_node_mask": occupancy_node_mask(features),
+        "run_dim_id": -1,
+        "window_hot": 0.0,
     }
     if remain_to_jobs_done:
         sample["remain_mask"] = remain_mask
@@ -541,6 +633,8 @@ def _cause_stats(samples: list[dict[str, Any]], n_classes: int) -> tuple[np.ndar
     """Inverse-frequency class weights, counts, majority class id (-1 if none)."""
     counts = np.zeros(n_classes, dtype=np.float32)
     for s in samples:
+        if float(s.get("window_hot", 1.0)) < 0.5:
+            continue
         cid = int(s.get("cause", -1))
         if 0 <= cid < n_classes:
             counts[cid] += 1
@@ -558,7 +652,7 @@ def _cause_stats(samples: list[dict[str, Any]], n_classes: int) -> tuple[np.ndar
 
 def build_dataloaders(
     data_dir: Path,
-    input_window: int = 12,
+    input_window: int = 30,
     output_window: int = 1,
     horizon_s: float = 180.0,
     batch_size: int = 16,
@@ -570,6 +664,10 @@ def build_dataloaders(
     remain_to_jobs_done: bool = True,
     max_remain_windows: int = 512,
     hot_score_threshold: float = 0.55,
+    occupancy_horizon_windows: int | None = None,
+    hot_min_windows: int = 2,
+    hot_gap_windows: int = 1,
+    train_only_contains: list[str] | None = None,
 ) -> tuple[DataLoader, DataLoader, DataLoader, dict[str, Any]]:
     bundle = load_factory_bn_bundle(data_dir)
     window_size = bundle["window_size_s"]
@@ -586,6 +684,9 @@ def build_dataloaders(
         remain_to_jobs_done=remain_to_jobs_done,
         max_remain_windows=max_remain_windows,
         hot_score_threshold=hot_score_threshold,
+        occupancy_horizon_windows=occupancy_horizon_windows,
+        hot_min_windows=hot_min_windows,
+        hot_gap_windows=hot_gap_windows,
     )
     if not samples:
         raise RuntimeError("No training samples; check episode length vs input_window")
@@ -596,6 +697,7 @@ def build_dataloaders(
         train_ratio=train_ratio,
         val_ratio=val_ratio,
         seed=seed,
+        train_only_contains=train_only_contains,
     )
     train_samples = [s for s in samples if str(s.get("episode_name")) in train_eps]
     val_samples = [s for s in samples if str(s.get("episode_name")) in val_eps]
@@ -672,6 +774,9 @@ def build_dataloaders(
         "n_cause_labeled_train": int(sum(1 for s in train_samples if int(s.get("cause", -1)) >= 0)),
         "remain_to_jobs_done": bool(remain_to_jobs_done),
         "max_remain_windows": int(max_remain_windows),
+        "occupancy_horizon_windows": int(
+            occupancy_horizon_windows if occupancy_horizon_windows else max_remain_windows
+        ),
         "hot_score_threshold": float(hot_score_threshold),
     }
     return (*loaders, data_feature)

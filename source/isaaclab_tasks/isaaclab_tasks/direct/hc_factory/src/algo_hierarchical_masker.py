@@ -1,13 +1,11 @@
 from ..algo_cfg.cfg_hierarchical import CfgProductSequencerAgent
-from ..env_asset_cfg.cfg_process_task_gallery import (
-    CfgProcessTaskGalleryDetailedClassified,
-    CfgProcessTaskGalleryInAll,
-)
+from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
 from ..env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
 from ..env_asset_cfg.cfg_human import CfgHuman
 from ..env_asset_cfg.cfg_robot import CfgRobot
 from ..env_asset_cfg.cfg_machine import CfgMachine
 from .env_checkpoint import wip_cap
+from .material import next_gallery_task_name, task_required_materials_ready
 import torch
 
 
@@ -127,24 +125,15 @@ class AlgoHierarchicalMasker:
                 continue
             product_type = material_state["key_variables"]["type_name"]
             finished_task = material_state["finished_task"]
-            one_process_task_gallery = CfgProcessTaskGalleryDetailedClassified[product_type]
-            next_allowing_task_index = self._find_product_next_allowing_task_index(
-                finished_task, one_process_task_gallery
-            )
-            mask[material_batch_index][next_allowing_task_index] = 1
+            next_task = next_gallery_task_name(product_type, finished_task)
+            if next_task != "none" and not task_required_materials_ready(
+                env_state_action_dict, product_type, material_batch_index, next_task
+            ):
+                # Shortage hid the part (storage_name == "disappear"): wait, do not dispatch.
+                continue
+            mask[material_batch_index][CfgProcessTaskGalleryInAll[next_task]] = 1
         env_state_action_dict["agent_action_mask"]["material"]["task_availability_mask"] = mask
         return env_state_action_dict
-
-    @staticmethod
-    def _find_product_next_allowing_task_index(finished_task, one_process_task_gallery):
-        keys = list(one_process_task_gallery.keys())
-        assert finished_task in keys, f"Current task {finished_task} not found in the product's process task gallery."
-        current_index = keys.index(finished_task)
-        next_index = current_index + 1
-        if next_index >= len(keys):
-            return CfgProcessTaskGalleryInAll["none"]
-        next_task = keys[next_index]
-        return CfgProcessTaskGalleryInAll[next_task]
 
 class ProductSequencerAgentMasker:
     def __init__(self, cuda_device: torch.device) -> None:

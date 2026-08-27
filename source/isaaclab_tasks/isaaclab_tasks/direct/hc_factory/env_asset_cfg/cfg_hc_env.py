@@ -190,13 +190,13 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     # rendering_resolution = (3840, 2160)
     rendering_resolution = (1920, 1080)
 
-    single_env_parallel_producing_limit = 10
+    single_env_parallel_producing_limit = 5
     human_number_upper_bound = 6
     robot_upper_bound = 4
     material_batch_upper_bound = 18
     # None = run until manually stopped; 1 = single episode then exit.
     max_episodes: int | None = None
-    # Collect horizon for 18 pipes + real nav. RL yaml may override to 25000.
+    # Collect horizon for 10 pipes + real nav. RL yaml may override to 25000.
     max_episodic_steps = 80000
     # Reward v2 (written by TaskManager.update_rl_signals)
     rl_step_penalty = 0.05

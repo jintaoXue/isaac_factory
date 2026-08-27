@@ -15,11 +15,17 @@ from ..env_asset_cfg.cfg_machine import CfgMachine
 from ..env_asset_cfg.cfg_material_product import CfgProductOrder
 from ..env_asset_cfg.cfg_process_subtask_gallery import CfgSubtaskPredefinedTimeGallery
 from ..env_asset_cfg.cfg_process_task_gallery import (
+    CfgProcessTaskGalleryDetailedClassified,
     CfgProcessTaskGalleryInAll,
     CfgProductProcessGallery,
 )
 from ..env_asset_cfg.cfg_robot import CfgRobotRegistrationInfos
-from ..env_asset_cfg.cfg_disturbance import RuntimeDisturbanceCfg, episode_l2_schedule, episode_qc_holds
+from ..env_asset_cfg.cfg_disturbance import (
+    RuntimeDisturbanceCfg,
+    episode_l2_schedule,
+    episode_qc_holds,
+    parse_disturbance_dims,
+)
 
 AGENT_COL_HUMAN = 0
 AGENT_COL_GANTRY = 1
@@ -112,11 +118,85 @@ def map_machine_state(raw_state: str) -> tuple[str, str | None]:
         return "PROCESSING", f"task={raw_state.split('_', 1)[1]}"
     if raw_state == "waiting_park":
         return "IDLE", "parking_at_siding"
+    if raw_state == "waiting_processing_task":
+        return "WAITING", "waiting_for_operator"
     if raw_state.startswith("waiting_"):
         return "BLOCKED", "downstream_not_ready"
     if raw_state.startswith("materialReadyFor_"):
         return "WAITING", "material_ready"
     return "IDLE", f"unknown_state={raw_state}"
+
+
+def _any_free_human(env: dict) -> bool:
+    for h in (env.get("human") or {}).values():
+        if h.get("state") == "free":
+            return True
+    return False
+
+
+def _pending_next_task_metas(env: dict) -> list[dict[str, Any]]:
+    """WIP / staging products that still have a next gallery task and no record."""
+    progress = env.get("progress") or {}
+    ongoing = progress.get("ongoing_task_records") or {}
+    materials = env.get("material") or {}
+    out: list[dict[str, Any]] = []
+
+    def add(product_type: str | None, product_index: int | None) -> None:
+        if not product_type or product_index is None or product_index in ongoing:
+            return
+        gallery = CfgProcessTaskGalleryDetailedClassified.get(product_type)
+        if not gallery:
+            return
+        mat_name = f"num_{int(product_index):02d}_{product_type}"
+        finished = (materials.get(mat_name) or {}).get("finished_task", "none")
+        keys = list(gallery.keys())
+        if finished not in keys:
+            return
+        nxt_i = keys.index(finished) + 1
+        if nxt_i >= len(keys):
+            return
+        task = keys[nxt_i]
+        if task == "none":
+            return
+        meta = gallery.get(task) or {}
+        out.append(
+            {
+                "task": task,
+                "task_type": meta.get("task_type"),
+                "target_machine": meta.get("target_machine"),
+            }
+        )
+
+    producing = progress.get("producing") or []
+    producing_indexs = progress.get("producing_indexs") or []
+    for i, pidx in enumerate(producing_indexs):
+        add(producing[i] if i < len(producing) else None, pidx)
+    add(progress.get("next_product"), progress.get("next_product_index"))
+    return out
+
+
+def _operator_wait_raw(env: dict, machine_type: str, raw: str) -> str:
+    """Log operator-wait when work is ready but no free human (do not leave idle)."""
+    if raw not in ("free",) and not raw.startswith("materialReadyFor_"):
+        return raw
+    if _any_free_human(env):
+        return raw
+    pending = _pending_next_task_metas(env)
+    if not pending:
+        return raw
+    if machine_type == "num07_gantry_group":
+        if raw == "free" and any(p.get("task_type") == "logistic" for p in pending):
+            return "waiting_processing_task"
+        return raw
+    if raw.startswith("materialReadyFor_"):
+        task = raw.split("_", 1)[1]
+        if any(
+            p.get("target_machine") == machine_type
+            and (p.get("task") == task or p.get("task_type") == "processing")
+            for p in pending
+        ):
+            return "waiting_processing_task"
+    return raw
 
 
 def map_human_robot_state(
@@ -125,6 +205,8 @@ def map_human_robot_state(
 ) -> tuple[str, str | None]:
     if raw_state == "free":
         return "IDLE", None
+    if raw_state in ("invalid", "working_disturbance_absent"):
+        return "STOP", "disturbance_absent"
     if not raw_state.startswith("working_"):
         return "IDLE", f"unknown_state={raw_state}"
     if subtask_name == "wait":
@@ -478,6 +560,7 @@ class BottleneckDataCollector:
                 "request_time_step", "pickup_time_step", "transport_start_time_step",
                 "transport_end_time_step", "dropoff_time_step", "delay_reason",
                 "chosen_gantry_index", "human_key", "robot_key", "status",
+                "time_step",
             ],
         )
         self._material_writer = _CsvWriter(
@@ -517,7 +600,7 @@ class BottleneckDataCollector:
             applied["event_schedule"] = episode_l2_schedule(
                 dim, intensity, seed, int(self.env_id), int(self.episode_id)
             )
-        if dim == "machine" and mode != "none":
+        if "machine" in parse_disturbance_dims(dim) and mode != "none":
             applied["qc_holds"] = episode_qc_holds(
                 intensity, seed, int(self.env_id), int(self.episode_id)
             )
@@ -624,7 +707,7 @@ class BottleneckDataCollector:
                 for gantry_idx in active_gantry:
                     if gantry_idx >= len(states):
                         continue
-                    raw = states[gantry_idx]
+                    raw = _operator_wait_raw(env, gantry_type, states[gantry_idx])
                     job_id = ongoing_list[gantry_idx] if gantry_idx < len(ongoing_list) else None
                     tr = env["progress"]["ongoing_task_records"].get(job_id) if job_id is not None else None
                     task = tr.get("task") if tr else None
@@ -649,6 +732,7 @@ class BottleneckDataCollector:
                 continue
 
             for ws_idx, raw in enumerate(states):
+                raw = _operator_wait_raw(env, machine_type, raw)
                 job_id = ongoing_list[ws_idx] if ws_idx < len(ongoing_list) else None
                 tr = env["progress"]["ongoing_task_records"].get(job_id) if job_id is not None else None
                 task = tr.get("task") if tr else None
@@ -1016,6 +1100,10 @@ class BottleneckDataCollector:
             if len(ongoing_row) > AGENT_COL_GANTRY and ongoing_row[AGENT_COL_GANTRY] == "finding_free_gantry":
                 if len(finished) <= AGENT_COL_GANTRY or not finished[AGENT_COL_GANTRY]:
                     delay_reason = "finding_free_gantry"
+            robot_st = ongoing_row[AGENT_COL_ROBOT] if len(ongoing_row) > AGENT_COL_ROBOT else None
+            robot_done = bool(finished[AGENT_COL_ROBOT]) if len(finished) > AGENT_COL_ROBOT else False
+            if robot_st in ("wait", "finding_free_robot") and not robot_done:
+                delay_reason = delay_reason or "waiting_robot"
 
             gidx = tr.get("chosen_gantry_index")
             carrier_type, carrier_id = _primary_carrier(tr)
@@ -1033,8 +1121,9 @@ class BottleneckDataCollector:
                 meta["carrier_type"] = carrier_type
                 meta["carrier_id"] = carrier_id
 
-            if tr.get("task_start_time_step") and not meta.get("logged_start"):
-                meta["pickup_time_step"] = tr["task_start_time_step"]
+            start_t = tr.get("task_start_time_step")
+            if start_t is not None and start_t != "" and not meta.get("logged_start"):
+                meta["pickup_time_step"] = start_t
                 meta["logged_start"] = True
                 self._write_transport_row(tr, tid, int(job_id), sd, gidx, delay_reason, meta, time_step, "in_progress")
 
@@ -1068,6 +1157,7 @@ class BottleneckDataCollector:
                 "human_key": meta.get("human_key"),
                 "robot_key": meta.get("robot_key"),
                 "status": "completed",
+                "time_step": time_step,
             })
 
     def _write_transport_row(
@@ -1114,6 +1204,7 @@ class BottleneckDataCollector:
             "human_key": tr.get("human"),
             "robot_key": tr.get("robot"),
             "status": status,
+            "time_step": time_step,
         })
 
     # ------------------------------------------------------------------
@@ -1198,6 +1289,24 @@ class BottleneckDataCollector:
                 self._prev_material[mid] = (storage, finished_task, job_id)
 
     def _material_shortage_flag(self, env: dict, ms: dict, sub_name: str) -> int:
+        """1 when a job is waiting on a hidden kit SKU at/after grooving.
+
+        After ``logistic_for_batch_spot_welding`` the workbench is
+        ``materialReadyFor_`` with no ongoing task record — still a shortage.
+        """
+        loc = (ms.get("submaterials") or {}).get(sub_name, {}).get("storage_name")
+        hidden = loc in (None, "disappear")
+        if not hidden:
+            return 0
+
+        finished = ms.get("finished_task", "none")
+        if sub_name in ("product_00_flange", "product_00_elbow") and finished in (
+            "pipe_grooving",
+            "logistic_for_batch_spot_welding",
+            "batch_spot_welding",
+        ):
+            return 1
+
         job_id = ms.get("ongoing_task_record_index")
         if job_id is None:
             return 0
@@ -1207,21 +1316,10 @@ class BottleneckDataCollector:
         if tr.get("task_type") == "processing":
             required = tr.get("processing_submaterials") or []
             if sub_name in required:
-                loc = ms.get("submaterials", {}).get(sub_name, {}).get("storage_name")
-                if loc in (None, "disappear"):
-                    return 1
+                return 1
         if tr.get("task_type") == "logistic":
-            logistic_mat = tr.get("logistic_submaterial")
-            if sub_name == logistic_mat:
-                loc = ms.get("submaterials", {}).get(sub_name, {}).get("storage_name")
-                if loc in (None, "disappear"):
-                    return 1
-        finished = ms.get("finished_task", "none")
-        if finished in ("none", "logistic_for_pipe_cutting", "pipe_cutting"):
-            if sub_name in ("product_00_flange", "product_00_elbow"):
-                loc = ms.get("submaterials", {}).get(sub_name, {}).get("storage_name")
-                if loc in (None, "disappear"):
-                    return 1
+            if sub_name == tr.get("logistic_submaterial"):
+                return 1
         return 0
 
 

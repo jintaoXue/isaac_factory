@@ -40,7 +40,7 @@ from factory_bn.graph import (
     semantic_distance_matrix,
     type_onehot,
 )
-from factory_bn.remain import jobs_remaining_series
+from factory_bn.remain import ensure_labor_saturated_feature, jobs_remaining_series
 
 
 FEATURE_COLS = [
@@ -112,6 +112,38 @@ def _load_job_kpi(path: Path) -> list[dict[str, str]]:
         return []
     with path.open(newline="") as f:
         return list(csv.DictReader(f))
+
+
+def _kpi_completed(kpi: list[dict[str, str]]) -> int:
+    n = 0
+    for row in kpi:
+        flag = str(row.get("completed") or "").strip().lower()
+        if flag in ("1", "true", "yes"):
+            n += 1
+            continue
+        raw = row.get("complete_s") or ""
+        if raw not in ("", "None", "nan"):
+            try:
+                if float(raw) >= 0:
+                    n += 1
+            except (TypeError, ValueError):
+                pass
+    return n
+
+
+def _has_deadlock_reset(ep_dir: Path) -> bool:
+    """Raw ``episode_XX/env_00/disturbance_log.csv`` (sibling of derived/)."""
+    try:
+        raw = ep_dir.parents[2] / ep_dir.parent.name / "env_00" / "disturbance_log.csv"
+    except IndexError:
+        return False
+    if not raw.is_file():
+        return False
+    with raw.open(newline="") as f:
+        for row in csv.DictReader(f):
+            if (row.get("disturbance_type") or "").strip() == "deadlock_reset":
+                return True
+    return False
 
 
 def _load_events(path: Path, window_size: float) -> list[dict[str, Any]]:
@@ -226,6 +258,7 @@ def _pivot_episode(
         ev_start_ti.append(ti)
 
     jobs_rem, jobs_total = jobs_remaining_series(job_kpi_rows or [], window_start)
+    features = ensure_labor_saturated_feature(features)
 
     return {
         "windows": np.asarray(windows, dtype=np.int64),
@@ -332,6 +365,8 @@ def _collect_run_episodes(
     window_size: float,
     *,
     name_prefix: str | None = None,
+    require_complete: int = 0,
+    skip_deadlock: bool = False,
 ) -> tuple[
     dict[str, str],
     list[
@@ -374,6 +409,17 @@ def _collect_run_episodes(
         kpi = _load_job_kpi(ep_dir / "job_kpi.csv")
         if not rows:
             continue
+        if skip_deadlock and _has_deadlock_reset(ep_dir):
+            print(f"[export] skip {ep_dir.parent.name}: deadlock_reset")
+            continue
+        if require_complete > 0:
+            n_done = _kpi_completed(kpi)
+            if n_done < int(require_complete):
+                print(
+                    f"[export] skip {ep_dir.parent.name}: "
+                    f"completed {n_done}/{len(kpi)} < {require_complete}"
+                )
+                continue
         for row in rows:
             all_ids.setdefault(row["resource_id"], row["resource_type"])
         ep_base = ep_dir.parent.name if ep_dir.parent.name.startswith("episode_") else "episode_00"
@@ -418,6 +464,8 @@ def export_runs(
     out_dir: Path,
     window_size: float = 60.0,
     write_atomic: bool = True,
+    require_complete: int = 0,
+    skip_deadlock: bool = False,
 ) -> Path:
     """Export one or more bottleneck runs into a single FactoryBN training bundle.
 
@@ -427,8 +475,11 @@ def export_runs(
     if not run_dirs:
         raise ValueError("At least one run_dir is required")
 
-    run_dirs = [Path(p).resolve() for p in run_dirs]
-    multi = len(run_dirs) > 1
+    labeled: list[tuple[str, Path]] = []
+    for p in run_dirs:
+        p = Path(p)
+        labeled.append((p.name, p.resolve()))
+    multi = len(labeled) > 1
 
     all_ids: dict[str, str] = {}
     per_ep_rows: list[
@@ -440,9 +491,15 @@ def export_runs(
             list[dict[str, str]],
         ]
     ] = []
-    for run_dir in run_dirs:
-        prefix = run_dir.name if multi else None
-        ids, rows = _collect_run_episodes(run_dir, window_size, name_prefix=prefix)
+    for prefix_name, run_dir in labeled:
+        prefix = prefix_name if multi else None
+        ids, rows = _collect_run_episodes(
+            run_dir,
+            window_size,
+            name_prefix=prefix,
+            require_complete=require_complete,
+            skip_deadlock=skip_deadlock,
+        )
         for rid, rtype in ids.items():
             all_ids.setdefault(rid, rtype)
         per_ep_rows.extend(rows)
@@ -515,11 +572,14 @@ def export_runs(
     )
 
     meta = {
-        "run_dir": str(run_dirs[0]) if len(run_dirs) == 1 else None,
-        "run_dirs": [str(p) for p in run_dirs],
+        "run_dir": str(labeled[0][1]) if len(labeled) == 1 else None,
+        "run_dirs": [str(p) for _, p in labeled],
+        "run_names": [name for name, _ in labeled],
         "window_size_s": window_size,
         "num_nodes": len(resource_ids),
-        "feature_dim": len(FEATURE_COLS) + len(RESOURCE_TYPES),
+        "feature_dim": int(next(iter(episodes_payload.values()))["features"].shape[-1])
+        if episodes_payload
+        else len(FEATURE_COLS) + len(RESOURCE_TYPES) + 1,
         "ops_feature_dim": len(FEATURE_COLS),
         "resource_types": RESOURCE_TYPES,
         "feature_cols": FEATURE_COLS,
@@ -538,7 +598,8 @@ def export_runs(
             for ep, v in episodes_payload.items()
         },
         "notes": [
-            "Input X uses FEATURE_COLS + type one-hot; does NOT include bottleneck_score_s (label leak).",
+            "Input X uses FEATURE_COLS + type one-hot (21–25) + labor_saturated at 26; does NOT include bottleneck_score_s (label leak).",
+            "labor_saturated is broadcast onto machine nodes only; type one-hot indices stay 21–25.",
             "A.1 remain-to-jobs-done: jobs_remaining[t] unfinished jobs at window start; occupancy is [t, done).",
             "Score head (PDFormer): future bottleneck_score_s (dense per-node) over remaining windows.",
             "Event path (STGNPP): per-node sequences from bottleneck_event.csv; score and L2 onsets are not merged.",
@@ -601,8 +662,17 @@ def export_run(
     out_dir: Path,
     window_size: float = 60.0,
     write_atomic: bool = True,
+    require_complete: int = 0,
+    skip_deadlock: bool = False,
 ) -> Path:
-    return export_runs([run_dir], out_dir, window_size=window_size, write_atomic=write_atomic)
+    return export_runs(
+        [run_dir],
+        out_dir,
+        window_size=window_size,
+        write_atomic=write_atomic,
+        require_complete=require_complete,
+        skip_deadlock=skip_deadlock,
+    )
 
 
 def main() -> None:
@@ -622,13 +692,31 @@ def main() -> None:
     )
     parser.add_argument("--window_size", type=float, default=60.0)
     parser.add_argument("--no_atomic", action="store_true")
+    parser.add_argument(
+        "--require_complete",
+        type=int,
+        default=0,
+        help="Skip episodes with fewer than N completed jobs (short order: 10).",
+    )
+    parser.add_argument(
+        "--skip_deadlock",
+        action="store_true",
+        help="Skip episodes whose raw disturbance_log has deadlock_reset.",
+    )
     args = parser.parse_args()
 
     here = Path(__file__).resolve().parent
     pdformer_root = here.parent
-    run_dirs = [Path(p).resolve() for p in args.run_dir]
+    run_dirs = [Path(p) for p in args.run_dir]
     out_dir = Path(args.out_dir).resolve() if args.out_dir else (pdformer_root / "raw_data" / "export")
-    export_runs(run_dirs, out_dir, window_size=args.window_size, write_atomic=not args.no_atomic)
+    export_runs(
+        run_dirs,
+        out_dir,
+        window_size=args.window_size,
+        write_atomic=not args.no_atomic,
+        require_complete=int(args.require_complete),
+        skip_deadlock=bool(args.skip_deadlock),
+    )
 
 
 if __name__ == "__main__":

@@ -48,11 +48,51 @@ BUFFER_MACHINE_AFFINITY: dict[str, list[str]] = {
         "num08_workbench_ws0",
     ],
 }
-MATERIAL_CONSUMER: dict[str, str] = {
-    "product_00_pipe_raw": "num02_rollerbedCNCPipeIntersectionCuttingMachine_ws0",
-    "product_00_flange": "num08_workbench_ws0",
-    "product_00_elbow": "num08_workbench_ws0",
+MATERIAL_CONSUMERS: dict[str, tuple[str, ...]] = {
+    "product_00_pipe_raw": ("num02_rollerbedCNCPipeIntersectionCuttingMachine_ws0",),
+    "product_00_flange": ("num08_workbench_ws0", "num08_workbench_ws1"),
+    "product_00_elbow": ("num08_workbench_ws0", "num08_workbench_ws1"),
 }
+MATERIAL_CONSUMER: dict[str, str] = {k: v[0] for k, v in MATERIAL_CONSUMERS.items()}
+# Jobs waiting at kitting for this SKU. Warehouse snapshots of hidden stock
+# must not enter shortage_propagation (they dilute the 0.25 cause gate).
+MATERIAL_SHORTAGE_TASKS: dict[str, frozenset[str]] = {
+    "product_00_flange": frozenset(
+        {"pipe_grooving", "logistic_for_batch_spot_welding", "batch_spot_welding"}
+    ),
+    "product_00_elbow": frozenset(
+        {"pipe_grooving", "logistic_for_batch_spot_welding", "batch_spot_welding"}
+    ),
+}
+# Same numeric gates as labels._process_root_cause and factory_bn.remain.node_hot_mask.
+HOT_SHORTAGE_PROP = 0.25
+HOT_SHORTAGE_STARVE_FRAC = 0.50
+HOT_INBOUND_S = 20.0
+HOT_ROUTE_S = 20.0
+HOT_INBOUND_STARVE_FRAC = 0.30
+HOT_BLOCK_FRAC = 0.40
+HOT_QUEUE_PILEUP = 2.0
+HOT_QUEUE_CAUSE = 1.0
+HOT_WAIT_CAUSE = 20.0
+# Sustained stall plus line coupling (human / logistics backup).
+HOT_COUPLED_STALL_FRAC = 0.40
+HOT_COUPLED_UP = 0.15
+HOT_COUPLED_DOWN = 0.15
+# Process machine actually STOP this window while an L2 pulse is injected.
+# L0-disabled ws1 has unavailable=1 but disturbance_active=0 — not an event.
+HOT_DOWNTIME_UNAVAIL = 0.50
+# Merge STGNPP / occupancy runs that skip at most this many cold windows.
+HOT_EVENT_GAP_WINDOWS = 1
+# Occupancy y: drop isolated 1-min flicker. A.1 reports minutes, not blips.
+HOT_MIN_OCC_WINDOWS = 2
+# Machine waiting for an operator: stall while some human is observed STOP,
+# or while every on-duty human is busy (5→3 with nobody on leave).
+HOT_OPERATOR_STALL_FRAC = 0.40
+HOT_LABOR_ACTIVE = 0.80
+# Humans who never work and never STOP this episode are unused slots (type=0).
+HOT_HUMAN_PRESENT_EPS = 0.05
+# Freeze / leave raw states that must read as STOP even in already-collected jsonl.
+HOT_ABSENT_RAW_STATES = frozenset({"invalid", "working_disturbance_absent"})
 
 # Parallel workstations share the same up/down neighbors (Lai 2021 TPM).
 PROCESS_NEIGHBORS: dict[str, dict[str, list[str]]] = {

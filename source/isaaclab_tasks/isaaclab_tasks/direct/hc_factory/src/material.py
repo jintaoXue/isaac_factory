@@ -58,6 +58,15 @@ def _is_storage_location(storage_name: str | None) -> bool:
     return bool(storage_name and "Storage_" in storage_name)
 
 
+def next_gallery_task_name(product_type: str, finished_task: str) -> str:
+    keys = list(CfgProcessTaskGalleryDetailedClassified[product_type].keys())
+    assert finished_task in keys, f"Current task {finished_task} not found in the product's process task gallery."
+    nxt = keys.index(finished_task) + 1
+    if nxt >= len(keys):
+        return "none"
+    return keys[nxt]
+
+
 def task_required_materials_ready(
     env_state_action_dict: dict,
     product_type: str,
@@ -83,6 +92,19 @@ def task_required_materials_ready(
         if loc in (None, "disappear"):
             return False
     return True
+
+
+def maybe_release_unready_next_product(env_state_action_dict: dict) -> None:
+    """Drop staging if the reserved batch's first-task parts are still hidden."""
+    progress = env_state_action_dict.get("progress") or {}
+    product_type = progress.get("next_product")
+    product_index = progress.get("next_product_index")
+    if product_type is None or product_index is None:
+        return
+    next_task = next_gallery_task_name(product_type, "none")
+    if not task_required_materials_ready(env_state_action_dict, product_type, product_index, next_task):
+        progress["next_product"] = None
+        progress["next_product_index"] = None
 
 
 def _effective_storage_capacity(storage: dict) -> int:
@@ -300,9 +322,12 @@ class ProductMaterialManager:
                 continue
             product_type = material_batch.type_name
             finished_task = material_batch.state["finished_task"]
-            one_ProcessTaskGallery = CfgProcessTaskGalleryDetailedClassified[product_type]
-            next_allowing_task_index = self.find_product_next_allowing_task_index(finished_task, one_ProcessTaskGallery)
-            mask[material_batch_index][next_allowing_task_index] = 1
+            next_task = next_gallery_task_name(product_type, finished_task)
+            if next_task != "none" and not task_required_materials_ready(
+                env_state_action_dict, product_type, material_batch_index, next_task
+            ):
+                continue
+            mask[material_batch_index][CfgProcessTaskGalleryInAll[next_task]] = 1
         env_state_action_dict["agent_action_mask"]["material"]["task_availability_mask"] = mask
         return env_state_action_dict
     

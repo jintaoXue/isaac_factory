@@ -29,6 +29,71 @@ class TokenEmbedding(nn.Module):
         return x
 
 
+class GroupedTokenEmbedding(nn.Module):
+    """One Linear per semantic group, then mean-pool to a single embed token.
+
+    FEATURE_COLS groups (indices 0..20) plus type one-hot at 21:26.
+    Optional labor_saturated at 26 goes into CONTEXT, never into type.
+    Toy tensors with F < 21 fall back to a single Linear so unit tests keep working.
+    """
+
+    QUEUE = (0, 1, 2, 3)
+    STALL = (6, 7, 8, 9, 11, 12)
+    LOGISTICS = (10, 13, 14, 16)
+    SHORTAGE = (15,)
+    CONTEXT = (4, 5, 17, 18, 19, 20)
+    TYPE_START = 21
+    TYPE_DIM = 5
+    LABOR_IDX = 26
+
+    def __init__(self, feature_dim, embed_dim):
+        super().__init__()
+        self.feature_dim = int(feature_dim)
+        self.embed_dim = int(embed_dim)
+        if self.feature_dim < 21:
+            self.fallback = TokenEmbedding(self.feature_dim, self.embed_dim)
+            self.projs = None
+            self.type_proj = None
+            return
+        self.fallback = None
+        ctx = [i for i in self.CONTEXT if i < self.feature_dim]
+        if self.feature_dim > self.LABOR_IDX:
+            ctx.append(self.LABOR_IDX)
+        self._context_idx = tuple(ctx)
+        self._type_end = min(self.feature_dim, self.TYPE_START + self.TYPE_DIM)
+        type_dim = max(self._type_end - self.TYPE_START, 0)
+        self.projs = nn.ModuleDict(
+            {
+                "queue": nn.Sequential(nn.Linear(len(self.QUEUE), embed_dim), nn.GELU()),
+                "stall": nn.Sequential(nn.Linear(len(self.STALL), embed_dim), nn.GELU()),
+                "logistics": nn.Sequential(nn.Linear(len(self.LOGISTICS), embed_dim), nn.GELU()),
+                "shortage": nn.Sequential(nn.Linear(len(self.SHORTAGE), embed_dim), nn.GELU()),
+                "context": nn.Sequential(nn.Linear(len(self._context_idx), embed_dim), nn.GELU()),
+            }
+        )
+        self.type_proj = (
+            nn.Sequential(nn.Linear(type_dim, embed_dim), nn.GELU()) if type_dim > 0 else None
+        )
+
+    def _gather(self, x, idxs):
+        idx = torch.as_tensor(idxs, device=x.device, dtype=torch.long)
+        return x.index_select(-1, idx)
+
+    def forward(self, x):
+        if self.fallback is not None:
+            return self.fallback(x)
+        toks = [
+            self.projs["queue"](self._gather(x, self.QUEUE)),
+            self.projs["stall"](self._gather(x, self.STALL)),
+            self.projs["logistics"](self._gather(x, self.LOGISTICS)),
+            self.projs["shortage"](self._gather(x, self.SHORTAGE)),
+            self.projs["context"](self._gather(x, self._context_idx)),
+        ]
+        if self.type_proj is not None:
+            toks.append(self.type_proj(x[..., self.TYPE_START : self._type_end]))
+        return torch.stack(toks, dim=0).mean(dim=0)
+
+
 class PositionalEncoding(nn.Module):
     def __init__(self, embed_dim, max_len=100):
         super(PositionalEncoding, self).__init__()
@@ -62,6 +127,7 @@ class DataEmbedding(nn.Module):
     def __init__(
         self, feature_dim, embed_dim, lape_dim, adj_mx, drop=0.,
         add_time_in_day=False, add_day_in_week=False, device=torch.device('cpu'),
+        use_grouped_embed=False,
     ):
         super().__init__()
 
@@ -71,7 +137,11 @@ class DataEmbedding(nn.Module):
         self.device = device
         self.embed_dim = embed_dim
         self.feature_dim = feature_dim
-        self.value_embedding = TokenEmbedding(feature_dim, embed_dim)
+        self.use_grouped_embed = bool(use_grouped_embed)
+        if self.use_grouped_embed:
+            self.value_embedding = GroupedTokenEmbedding(feature_dim, embed_dim)
+        else:
+            self.value_embedding = TokenEmbedding(feature_dim, embed_dim)
 
         self.position_encoding = PositionalEncoding(embed_dim)
         if self.add_time_in_day:

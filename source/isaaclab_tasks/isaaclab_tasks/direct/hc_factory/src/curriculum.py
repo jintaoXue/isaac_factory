@@ -1,4 +1,4 @@
-"""Incremental-ΔN curriculum. Encoder dim and WIP cap stay 10; order stays 16.
+"""Incremental-ΔN curriculum. Encoder dim stays 10; WIP cap 5; order stays 16.
 
 Each stage is a *segment*: start from ``start_nfin`` (catalog warmstart), finish
 ``delta_N`` more products within ``T_budget = delta_N * per_T_max``.
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 T_MAX_ANCHOR = 25000
 N_ANCHOR = 16
-WIP_CAP = 10  # same as HcVectorEnvCfg.single_env_parallel_producing_limit
+WIP_CAP = 5  # same as HcVectorEnvCfg.single_env_parallel_producing_limit
 
 # (stage, start_nfin, delta_N) — target_nfin = start + delta; T_budget = delta * per_T_max
 STAGES: tuple[tuple[int, int, int], ...] = (

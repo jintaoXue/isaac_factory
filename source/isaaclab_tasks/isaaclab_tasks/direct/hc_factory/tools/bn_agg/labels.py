@@ -9,7 +9,16 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from .constants import DISTURBANCE_L2_TYPES
+from .constants import (
+    DISTURBANCE_L2_TYPES,
+    HOT_BLOCK_FRAC,
+    HOT_EVENT_GAP_WINDOWS,
+    HOT_INBOUND_S,
+    HOT_QUEUE_CAUSE,
+    HOT_ROUTE_S,
+    HOT_SHORTAGE_PROP,
+    HOT_WAIT_CAUSE,
+)
 from .features import row_is_hot
 from .io_util import _f, _i
 
@@ -130,12 +139,13 @@ def _coalesce_per_node_score_events(
             hot = row_is_hot(row, score_threshold)
             if hot:
                 score = float(row["bottleneck_score_s"])
-                if cur is not None and wi == cur["end_window_index"] + 1:
+                gap = max(int(HOT_EVENT_GAP_WINDOWS), 0)
+                if cur is not None and wi <= cur["end_window_index"] + 1 + gap:
                     cur["end_window_index"] = wi
                     cur["end_s"] = meta["window_end_s"]
                     cur["duration_s"] = cur["end_s"] - cur["start_s"]
                     cur["max_score"] = max(cur["max_score"], score)
-                    cur["n_windows"] += 1
+                    cur["n_windows"] = cur["end_window_index"] - cur["start_window_index"] + 1
                 else:
                     if cur is not None and cur["n_windows"] >= min_event_windows:
                         score_events.append(cur)
@@ -166,14 +176,36 @@ def _coalesce_per_node_score_events(
 
 
 def _process_root_cause(nr: dict) -> str:
-    """Process-side cause of a hot window. Never copies L2 disturbance_type."""
-    if nr["blocked_time_s"] >= nr["starved_time_s"] and nr["blocked_time_s"] > 0:
-        return "blocked_downstream"
-    if nr["starved_time_s"] > 0:
-        return "starved_upstream"
-    if nr["queue_length_s"] > 0 or nr["avg_waiting_time_s"] > 0:
+    """Process-side cause. Uses operational features, never disturbance_log types.
+
+    TPM turning-points are starved by construction (TB−TS<0), so starved_upstream
+    must not win before shortage / inbound-wait / queue evidence.
+    """
+    wlen = max(
+        float(nr.get("window_end_s") or 0) - float(nr.get("window_start_s") or 0),
+        float(nr.get("window_size_s") or 0),
+        1.0,
+    )
+    shortage = float(nr.get("material_shortage_propagation_s") or 0)
+    inbound = float(nr.get("inbound_wait_s") or 0)
+    route = float(nr.get("route_delay_s") or 0)
+    q = float(nr.get("queue_length_s") or 0)
+    wait = float(nr.get("avg_waiting_time_s") or 0)
+    buf = float(nr.get("affiliated_buffer_occ_s") or 0)
+    blocked = float(nr.get("blocked_time_s") or 0)
+    starved = float(nr.get("starved_time_s") or 0)
+
+    if shortage >= HOT_SHORTAGE_PROP:
+        return "material_shortage"
+    if inbound >= HOT_INBOUND_S or route >= HOT_ROUTE_S:
+        return "transport_delay"
+    if q >= HOT_QUEUE_CAUSE or wait >= HOT_WAIT_CAUSE or buf >= 0.70:
         return "queue_buildup"
-    if nr["active_pct_s"] >= 0.8:
+    if blocked >= starved and blocked > HOT_BLOCK_FRAC * wlen:
+        return "blocked_downstream"
+    if starved > 0:
+        return "starved_upstream"
+    if float(nr.get("active_pct_s") or 0) >= 0.8:
         return "high_utilization"
     return "score_threshold"
 
@@ -188,9 +220,10 @@ def build_labels_and_events(
 ) -> tuple[list[dict], list[dict]]:
     """Window-level labels + process bottleneck events for PDFormer / STGNPP.
 
-    Events are consecutive TPM turning-point windows only. Injected L2 is not
-    an onset: the model conditions on ``disturbance_active_s`` (and episode
-    dim/intensity) to predict process phenomena that arise under that config.
+    Events are consecutive hot windows: machines (TPM, WIP pile, kitting
+    starve, inbound-wait starve, coupled stall, injected-and-STOP downtime)
+    or delayed gantry / AGV with stall. L2 is not copied as
+    ``disturbance_type``; a scheduled pulse with no STOP is not an onset.
 
     ``bottleneck_node_t`` prefers TP-hot, then momentary, else score argmax.
     ``will_bottleneck`` / ``future_bottleneck_object_id`` look at process events

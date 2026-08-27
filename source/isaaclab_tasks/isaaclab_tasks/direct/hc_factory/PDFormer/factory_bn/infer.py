@@ -180,7 +180,7 @@ class BNPredictor:
             mean=_as_numpy(meta["score_scaler_mean"]).astype(np.float32),
             std=_as_numpy(meta["score_scaler_std"]).astype(np.float32),
         )
-        self.input_window = int(self.cfg.get("input_window", 12))
+        self.input_window = int(self.cfg.get("input_window", 30))
         self.output_window = int(self.cfg.get("output_window", 1))
         self.horizon_s = float(self.cfg.get("horizon_s", 180))
         self.window_size_s = float(self.cfg.get("window_size_s", 60))
@@ -189,8 +189,9 @@ class BNPredictor:
             self.cfg.get("remain_to_jobs_done", meta.get("remain_to_jobs_done", False))
         )
         self.max_remain_windows = int(
-            self.cfg.get("max_remain_windows") or meta.get("max_remain_windows") or 512
+            self.cfg.get("max_remain_windows") or meta.get("max_remain_windows") or 15
         )
+        self.hot_eval_threshold = float(self.cfg.get("hot_eval_threshold", 0.55))
         data_feature = _data_feature_from_ckpt(meta)
         self.model = BNPDFormer(self.cfg, data_feature).to(self.device)
         self.model.load_state_dict(ckpt["model"])
@@ -241,7 +242,7 @@ class BNPredictor:
             if dur is not None:
                 rec["dur_min"] = float(np.asarray(dur).reshape(-1)[i])
             if hot_grid is not None:
-                rec["hot_windows"] = int((hot_grid[:, i] >= 0.5).sum())
+                rec["hot_windows"] = int((hot_grid[:, i] >= self.hot_eval_threshold).sum())
             nodes.append(rec)
         nodes_sorted = sorted(nodes, key=lambda r: r["score_pred"], reverse=True)
         first_future = float(sample.get("window_start_s", 0.0)) + float(self.window_size_s)
@@ -252,6 +253,7 @@ class BNPredictor:
                 resource_ids=self.resource_ids,
                 first_future_start_s=first_future,
                 window_size_s=self.window_size_s,
+                threshold=self.hot_eval_threshold,
             )
         y = sample.get("y_score")
         result: dict[str, Any] = {
@@ -302,7 +304,7 @@ class BNPredictor:
     ) -> dict[str, Any]:
         """Live call: ``features`` is ``(Tin, N, F)`` in checkpoint node order.
 
-        ``Tin`` must equal ``input_window`` (12). With remain-to-jobs-done,
+        ``Tin`` must equal ``input_window`` (default 30). With remain-to-jobs-done,
         predicts occupancy until remaining jobs finish.
         """
         features = np.asarray(features, dtype=np.float32)

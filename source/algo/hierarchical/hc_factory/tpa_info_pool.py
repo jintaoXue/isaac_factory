@@ -18,6 +18,9 @@ from .hc_factory_imports import (
     find_free_gantry_index,
     find_workstation_index_for_task,
     staging_slot_index,
+    maybe_release_unready_next_product,
+    next_gallery_task_name,
+    task_required_materials_ready,
     wip_cap,
 )
 
@@ -59,7 +62,9 @@ class TpaInfoPool:
 
     def apply_product_sequencing(self, product_sequencing: torch.Tensor) -> None:
         """Mirror ``TaskManager.decode_action_product_sequencing`` on pool progress."""
+        maybe_release_unready_next_product(self._working)
         if product_sequencing.sum() == 0:
+            self._refresh_masks()
             return
         if self.progress.get("next_product") is not None:
             return
@@ -72,6 +77,11 @@ class TpaInfoPool:
                 and material_state["finished_task"] == "none"
                 and material_state["ongoing_task_record_index"] is None
             ):
+                next_task = next_gallery_task_name(product_type, material_state["finished_task"])
+                if not task_required_materials_ready(
+                    self._working, product_type, key_variables["idx"], next_task
+                ):
+                    continue
                 self.progress["next_product"] = product_type
                 self.progress["next_product_index"] = key_variables["idx"]
                 break

@@ -5,7 +5,7 @@ Bottleneck prediction for HC Factory, adapted from:
 - **PDFormer** (Jiang et al., AAAI 2023) — propagation-delay-aware ST Transformer
 - **ST-GNN Point Process** (Jin et al., 2023) — congestion / bottleneck *event* prediction
 
-Default head (`remain_to_jobs_done=true`): from the last 12×60s windows + `jobs_remaining`, forecast occupancy until remaining jobs finish (A.1: start / duration / station). Checkpoint metric is **`hot_f1`**. Train/val/test is an **episode** split (stratified by run), not a shuffled window split. Current `evt/BNPDFormer_best.pt` was trained on the old window split.
+Default head (`remain_to_jobs_done=true`): from the last 30×60s windows + `jobs_remaining`, forecast occupancy for the next 15 min (A.1: start / duration / station). Checkpoint metric is **`hot_f1`**. Train/val/test is an **episode** split (stratified by run), not a shuffled window split. Current `evt/BNPDFormer_best.pt` was trained on the old window split.
 
 ## Quick start
 
@@ -25,7 +25,7 @@ python -m factory_bn.train \
   --save_dir libcity/cache/model_cache/old2.0 \
   --max_epoch 50
 
-# 3) Infer (12×60s windows + remaining jobs → occupancy until jobs done)
+# 3) Infer (30×60s windows + remaining jobs → occupancy for next 15 min)
 python -m factory_bn.infer \
   --ckpt libcity/cache/model_cache/evt/BNPDFormer_best.pt \
   --run_dir ../output/bottleneck_dataset/old_machine2.0 \

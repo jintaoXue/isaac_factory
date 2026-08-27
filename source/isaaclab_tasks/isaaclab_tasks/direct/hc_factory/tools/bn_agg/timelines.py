@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import csv
+import json
 from collections import defaultdict
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
+
+from .constants import HOT_ABSENT_RAW_STATES
 
 @dataclass
 class Interval:
@@ -78,6 +83,15 @@ def _i(val: Any, default: int | None = None) -> int | None:
         return default
 
 
+def _event_to_state(event: dict[str, Any]) -> str:
+    """Prefer logged to_state; remap freeze/leave raw states that were stored as PROCESSING."""
+    raw = str(event.get("raw_to_state") or "")
+    to_state = str(event.get("to_state") or "")
+    if raw in HOT_ABSENT_RAW_STATES:
+        return "STOP"
+    return to_state
+
+
 def build_timelines(
     events: list[dict[str, Any]], episode_end: float
 ) -> dict[str, ResourceTimeline]:
@@ -98,7 +112,7 @@ def build_timelines(
             t = float(e.get("logic_time_s", e["time_step"]))
             if t > t0:
                 intervals.append(Interval(t0, t, state))
-            state = e.get("to_state") or state
+            state = _event_to_state(e) or state
             t0 = t
         if episode_end > t0:
             intervals.append(Interval(t0, episode_end, state))

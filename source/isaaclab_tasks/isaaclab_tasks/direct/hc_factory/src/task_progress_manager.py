@@ -5,7 +5,14 @@ from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll,
 from ..env_asset_cfg.cfg_machine import CfgMachine
 from ..env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
 from ..env_asset_cfg.cfg_gantry_zone import get_gantry_zone
-from .material import find_free_storage, reserve_storage_slot, finalize_material_batch_task_done
+from .material import (
+    find_free_storage,
+    reserve_storage_slot,
+    finalize_material_batch_task_done,
+    maybe_release_unready_next_product,
+    next_gallery_task_name,
+    task_required_materials_ready,
+)
 import torch
 import copy
 
@@ -221,6 +228,7 @@ class TaskManager:
         return True
 
     def decode_action_product_sequencing(self, env_state_action_dict):
+        maybe_release_unready_next_product(env_state_action_dict)
         action_product_sequencing = env_state_action_dict["action"]["product_sequencing"]
         # Return a torch tensor filled with zeros that matches the shape of action_product_sequencing,
         # placed on the correct device.
@@ -235,6 +243,11 @@ class TaskManager:
                 finished_task = material_state["finished_task"]
                 ongoing_task_record_index = material_state["ongoing_task_record_index"]
                 if key_variables["type_name"] == product_type and finished_task == "none" and ongoing_task_record_index is None:
+                    next_task = next_gallery_task_name(product_type, finished_task)
+                    if not task_required_materials_ready(
+                        env_state_action_dict, product_type, key_variables["idx"], next_task
+                    ):
+                        continue
                     env_state_action_dict["progress"]["next_product"] = product_type
                     env_state_action_dict["progress"]["next_product_index"] = key_variables["idx"]
                     break
@@ -324,6 +337,14 @@ class TaskManager:
         assert new_task_record["task"] != "none", "The task should not be none"
         product_type = new_task_record["product"]
         new_task_record.update(copy.deepcopy(CfgProcessTaskGalleryDetailedClassified[product_type][new_task_record["task"]]))
+        if not task_required_materials_ready(
+            env_state_action_dict,
+            new_task_record["product"],
+            new_task_record["product_index"],
+            new_task_record["task"],
+        ):
+            # Material shortage (or not yet spawned): skip start, retry after restore.
+            return False
         ##machine information
         states = env_state_action_dict["machine"][new_task_record["target_machine"]]["state"]
         workstation_index = find_workstation_index_for_task(
@@ -340,7 +361,7 @@ class TaskManager:
         # Build subtasks first (sets preferred_gantry_zone / may drop AGV on same-zone).
         subtasks = self.initialze_subtasks(env_state_action_dict, new_task_record)
         if subtasks is None:
-            # Cross-zone logistic with no free AGV: skip start (wait for a later dispatch).
+            # No free AGV, hidden material, or preferred crane busy: skip and retry later.
             return False
         new_task_record["subtasks_dict"] = subtasks
         if new_task_record["task_type"] == "logistic":
@@ -382,7 +403,9 @@ class TaskManager:
             required_logistic_material = task_record["logistic_submaterial"]
             state_material = env_state_action_dict["material"][product_name]["submaterials"][required_logistic_material]
             assert state_material["storage_name"] is not None, "The storage name should be initialized in material.py"
-            assert state_material["storage_name"] != "disappear", "The material still not appeared"
+            if state_material["storage_name"] == "disappear":
+                # Shortage window still hiding this SKU: wait instead of crashing.
+                return None
             material_start_area = state_material["storage_name"]
             gallery_task = CfgSubtaskGallery[task_record["product"]][task_record["task"]]
             # Peek goal from template (before deepcopy) to choose same/cross template.

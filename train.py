@@ -100,8 +100,9 @@ parser.add_argument(
     "--disturbance_dim",
     type=str,
     default="none",
-    choices=["none", "material", "human", "logistics", "machine"],
-    help="Primary bottleneck disturbance dimension to inject this run.",
+    help="Bottleneck dim(s): none|machine|human|logistics|material, "
+    "or comma/+ mixes (2/3/4-dim, e.g. human,logistics or machine+human+material). "
+    "I=1.0 train stays one dim; mixes are OOD collect only.",
 )
 parser.add_argument(
     "--disturbance_intensity",

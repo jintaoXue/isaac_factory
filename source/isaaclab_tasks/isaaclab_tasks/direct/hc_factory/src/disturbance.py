@@ -7,6 +7,7 @@ from typing import Any
 
 from ..env_asset_cfg.cfg_disturbance import (
     RuntimeDisturbanceCfg,
+    active_dims,
     episode_l2_schedule,
     episode_qc_holds,
     QC_HOLD_TASKS,
@@ -56,9 +57,10 @@ class DisturbanceInjector:
         self._current_max_units = None
         self._queue = self._load_schedule()
 
-        dim = RuntimeDisturbanceCfg.get("dim", "none")
-        if dim == "none":
+        dims = active_dims()
+        if dims == ["none"]:
             return
+        dim = str(RuntimeDisturbanceCfg.get("dim") or "+".join(dims))
 
         if self._queue:
             ep = getattr(self.collector, "episode_id", "?")
@@ -95,9 +97,10 @@ class DisturbanceInjector:
             self._log_qc_windows()
 
     def _load_schedule(self) -> list[dict[str, Any]]:
-        dim = RuntimeDisturbanceCfg.get("dim", "none")
+        dims = active_dims()
+        dim = str(RuntimeDisturbanceCfg.get("dim") or "+".join(dims))
         RuntimeDisturbanceCfg["qc_holds"] = []
-        if dim == "none":
+        if dims == ["none"]:
             return []
         mode = str(RuntimeDisturbanceCfg.get("event_schedule_mode") or "resample_per_episode")
         raw = RuntimeDisturbanceCfg.get("event_schedule") or []
@@ -110,14 +113,14 @@ class DisturbanceInjector:
         episode_id = int(getattr(self.collector, "episode_id", 0) or 0)
         seed = int(getattr(BottleneckRunContext, "seed", 0) or 0)
         intensity = float(RuntimeDisturbanceCfg.get("intensity", 1.0) or 1.0)
-        if dim == "machine":
+        if "machine" in dims:
             RuntimeDisturbanceCfg["qc_holds"] = episode_qc_holds(
                 intensity, seed, int(self.env_id), episode_id
             )
         return episode_l2_schedule(dim, intensity, seed, int(self.env_id), episode_id)
 
     def step(self, env: dict) -> None:
-        dim = RuntimeDisturbanceCfg.get("dim", "none")
+        dim = str(RuntimeDisturbanceCfg.get("dim", "none"))
         if dim == "none" or not self._queue:
             return
 
@@ -384,10 +387,12 @@ class DisturbanceInjector:
         return False
 
     def _activate_material_shortage(self, env: dict, target: str | None) -> bool:
-        """Hide idle warehouse stock of one raw SKU (or a kit mix); restore later.
+        """Hide idle warehouse flange or elbow; restore later.
 
-        Never yank parts already in process. ``max_units`` limits how many pieces
-        disappear so an 18-job order can still finish after the window ends.
+        L1 hides one kit SKU once pipes are heading to kitting. The workbench
+        stays ``materialReadyFor_batch_spot_welding`` until restore (weld
+        starves, grooving cannot discharge). L2 pulses the other kit SKU.
+        Never yank parts already in process.
         """
         from .material import _release_storage_slot
 

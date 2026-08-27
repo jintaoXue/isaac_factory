@@ -21,7 +21,11 @@
   "hot_fp_weight_by_type": {
     "gantry": 2.0
   },
-  "hot_type_bias_init": [0.0, -0.5, 0.0],
+  "hot_type_bias_init": [
+    0.0,
+    -0.5,
+    0.0
+  ],
   "hot_eval_threshold": 0.55,
   "hot_min_windows": 2,
   "hot_gap_windows": 1,
@@ -33,7 +37,7 @@
   "eval_rate": 0.15,
   "seed": 42,
   "max_epoch": 50,
-  "patience": 15,
+  "patience": 40,
   "learning_rate": 0.001,
   "weight_decay": 0.05,
   "embed_dim": 64,
