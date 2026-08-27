@@ -17,6 +17,10 @@ class Transition:
     mask: torch.Tensor
     next_mask: torch.Tensor
     done: bool
+    # SMDP bootstrap multiplier (gamma ** elapsed simulation steps).
+    discount: float | None = None
+    # Parent action conditioning this hierarchical head (A->B, B->C, C->D).
+    context: torch.Tensor | None = None
     pre: dict | None = None
     next_pre: dict | None = None
     obs: torch.Tensor | None = None

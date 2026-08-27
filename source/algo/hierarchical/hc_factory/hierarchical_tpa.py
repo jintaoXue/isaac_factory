@@ -7,6 +7,7 @@ Learning: one preprocess per env step (cached s_t); act reuses it; s_{t+1} becom
 """
 from __future__ import division
 
+import copy
 import os
 import time
 from collections import deque
@@ -160,6 +161,8 @@ class HierarchicalTPA:
         self.epsilon_start = config.get("epsilon_start", 1.0)
         self.epsilon_end = config.get("epsilon_end", 0.05)
         self.epsilon_decay_steps = config.get("epsilon_decay_steps", 100000)
+        self.gamma = float(config.get("gamma", 0.99))
+        self.decision_reward_scale = float(config.get("decision_reward_scale", 0.01))
         self.learn_interval = config.get("learn_interval", 1)
         self.save_interval = config.get("save_interval", 1000)
         self.log_interval = config.get("log_interval", 100)
@@ -229,6 +232,9 @@ class HierarchicalTPA:
         self.makespan_success = deque(maxlen=int(config.get("makespan_window", 50)))
         self.makespan_all = deque(maxlen=int(config.get("makespan_window", 50)))
         self.success_hist = deque(maxlen=int(config.get("makespan_window", 50)))
+        self.fullorder_makespan_success = deque(maxlen=int(config.get("makespan_window", 50)))
+        self.fullorder_makespan_all = deque(maxlen=int(config.get("makespan_window", 50)))
+        self.fullorder_success_hist = deque(maxlen=int(config.get("makespan_window", 50)))
 
         self.horizon = HorizonHooks(config)
         if self.horizon.explore:
@@ -389,38 +395,37 @@ class HierarchicalTPA:
         return actions, actions_extra
 
     def _had_meaningful_decision(self, action: dict) -> bool:
-        if action.get("dispatch_list"):
-            return True
-        product_sequencing = action.get("product_sequencing")
-        return isinstance(product_sequencing, torch.Tensor) and product_sequencing.sum() > 0
+        # Sequencing without a feasible dispatch does not change the factory.
+        return bool(action.get("dispatch_list"))
 
     def _joint_learn(self, entries: list[tuple[str, torch.Tensor, object | None]]) -> dict[str, float]:
-        """Sum TD losses, backprop through shared encoder + per-agent Q heads."""
+        """Average repeated K-dispatch losses per head, then update each optimizer once."""
         if not entries:
             return {}
 
-        q_optimizers = []
-        dqns = []
-        for _name, _loss, dqn in entries:
-            if dqn is None:
-                continue
-            dqn.optimizer.zero_grad()
-            q_optimizers.append(dqn.optimizer)
-            dqns.append(dqn)
+        grouped: dict[str, list[torch.Tensor]] = {}
+        dqn_by_name: dict[str, object] = {}
+        for name, loss, dqn in entries:
+            grouped.setdefault(name, []).append(loss)
+            if dqn is not None:
+                dqn_by_name[name] = dqn
 
+        head_losses = {name: torch.stack(losses).mean() for name, losses in grouped.items()}
+        for dqn in dqn_by_name.values():
+            dqn.optimizer.zero_grad()
         self.encoder_optimizer.zero_grad()
-        total_loss = sum(loss for _name, loss, _dqn in entries)
+
+        total_loss = sum(head_losses.values())
         total_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.obs_encoder.parameters(), self.grad_clip_norm)
-        for dqn in dqns:
+        for dqn in dqn_by_name.values():
             torch.nn.utils.clip_grad_norm_(dqn.q_net.parameters(), self.grad_clip_norm)
         self.encoder_optimizer.step()
-        for optimizer in q_optimizers:
-            optimizer.step()
-        for dqn in dqns:
+        for dqn in dqn_by_name.values():
+            dqn.optimizer.step()
             dqn.register_train_step()
 
-        return {name: float(loss.detach().item()) for name, loss, _dqn in entries}
+        return {name: float(loss.detach().item()) for name, loss in head_losses.items()}
 
     def observe_one_env(
         self,
@@ -431,68 +436,94 @@ class HierarchicalTPA:
         done: bool,
         epsilon: float,
         *,
+        bootstrap_discount: float | None = None,
         learn: bool = False,
     ) -> dict[str, float]:
-        """Store transitions on every meaningful decision; learn when ``learn`` is True."""
+        """Store one decision-interval transition, including every K dispatch."""
         losses: dict[str, float] = {}
         if not self._had_meaningful_decision(action):
             return losses
 
         explore = getattr(self, "horizon", None) is not None and self.horizon.explore
         should_learn = bool(learn) and not explore
-        pending: list[tuple[str, torch.Tensor, object | None]] = []
+        loss_entries: list[tuple[str, torch.Tensor, object | None]] = []
 
         loss_a = self.agent_A.observe_step(
-            prev_obs, action["product_sequencing"], reward, next_obs, done, epsilon, learn=should_learn
-        )
-        if loss_a is not None:
-            pending.append(("A", loss_a, self.agent_A.dqn))
-
-        loss_b = self.agent_B.observe_step(
             prev_obs,
             action["product_sequencing"],
-            action["product_selection"],
             reward,
             next_obs,
             done,
             epsilon,
+            discount=bootstrap_discount,
             learn=should_learn,
         )
-        if loss_b is not None:
-            pending.append(("B", loss_b, self.agent_B.dqn))
+        if loss_a is not None:
+            loss_entries.append(("A", loss_a, self.agent_A.dqn))
 
-        loss_c = self.agent_C.observe_step(
-            prev_obs,
-            action["product_selection"],
-            action["process_task_planning"],
-            reward,
-            next_obs,
-            done,
-            epsilon,
-            learn=should_learn,
-        )
-        if loss_c is not None:
-            pending.append(("C", loss_c, self.agent_C.dqn))
+        dispatches = action.get("dispatch_list") or []
+        if not dispatches and action.get("product_selection") is not None:
+            dispatches = [
+                {
+                    "product_selection": action["product_selection"],
+                    "process_task_planning": action["process_task_planning"],
+                    "human_robot_allocation": action["human_robot_allocation"],
+                }
+            ]
 
-        loss_d_h, loss_d_r = self.agent_D.observe_step(
-            prev_obs,
-            action["process_task_planning"],
-            action["human_robot_allocation"],
-            reward,
-            next_obs,
-            done,
-            epsilon,
-            learn=should_learn,
-        )
-        if loss_d_h is not None:
-            pending.append(("D_human", loss_d_h, self.agent_D.human_dqn))
-        if loss_d_r is not None:
-            pending.append(("D_robot", loss_d_r, self.agent_D.robot_dqn))
+        for dispatch in dispatches:
+            selection = dispatch["product_selection"]
+            planning = dispatch["process_task_planning"]
+            allocation = dispatch["human_robot_allocation"]
+
+            loss_b = self.agent_B.observe_step(
+                prev_obs,
+                action["product_sequencing"],
+                selection,
+                reward,
+                next_obs,
+                done,
+                epsilon,
+                discount=bootstrap_discount,
+                learn=should_learn,
+            )
+            if loss_b is not None:
+                loss_entries.append(("B", loss_b, self.agent_B.dqn))
+
+            loss_c = self.agent_C.observe_step(
+                prev_obs,
+                selection,
+                planning,
+                reward,
+                next_obs,
+                done,
+                epsilon,
+                discount=bootstrap_discount,
+                learn=should_learn,
+            )
+            if loss_c is not None:
+                loss_entries.append(("C", loss_c, self.agent_C.dqn))
+
+            loss_d_h, loss_d_r = self.agent_D.observe_step(
+                prev_obs,
+                planning,
+                allocation,
+                reward,
+                next_obs,
+                done,
+                epsilon,
+                discount=bootstrap_discount,
+                learn=should_learn,
+            )
+            if loss_d_h is not None:
+                loss_entries.append(("D_human", loss_d_h, self.agent_D.human_dqn))
+            if loss_d_r is not None:
+                loss_entries.append(("D_robot", loss_d_r, self.agent_D.robot_dqn))
 
         if not should_learn:
             return losses
 
-        losses = self._joint_learn(pending)
+        losses = self._joint_learn(loss_entries)
         for key, value in losses.items():
             self._loss_window[key].append(value)
         return losses
@@ -534,6 +565,7 @@ class HierarchicalTPA:
         # Env may reset on done, so we accumulate per-step n_product_finished.
         episode_n_finished = [0 for _ in range(len(obs))]
         prev_pre_list = [self.obs_encoder.preprocess(o) for o in obs]
+        pending_decisions = [None for _ in range(len(obs))]
         self._train_t0 = time.time()
         stop = False
         last_saved_env_steps = 0
@@ -546,23 +578,51 @@ class HierarchicalTPA:
             for i, a in enumerate(actions):
                 obs[i]["action"] = a
 
-            # Env writes rl and resets itself when done
+            # Close the previous decision interval at the current pre-action state,
+            # then start a pending interval for each new meaningful decision.
+            next_env_step = env_steps(self.global_step + 1, self.num_actors)
+            do_learn = crossed_interval(last_learned_env_steps, next_env_step, self.learn_interval)
+            learn_event = False
+            for env_id, action in enumerate(actions):
+                if not self._had_meaningful_decision(action):
+                    continue
+                old = pending_decisions[env_id]
+                if old is not None:
+                    self.observe_one_env(
+                        old["pre"],
+                        old["action"],
+                        old["reward"] * self.decision_reward_scale,
+                        prev_pre_list[env_id],
+                        done=False,
+                        epsilon=old["epsilon"],
+                        bootstrap_discount=old["discount"],
+                        learn=do_learn,
+                    )
+                    learn_event = True
+                pending_decisions[env_id] = {
+                    "pre": prev_pre_list[env_id],
+                    "action": copy.deepcopy(action),
+                    "reward": 0.0,
+                    "discount": 1.0,
+                    "epsilon": epsilon,
+                }
+
+            # Env writes rl and resets itself when done.
             next_obs = self.vec_env.step(actions, actions_extra)
             self.global_step += 1
             env_step = env_steps(self.global_step, self.num_actors)
-            do_learn = crossed_interval(last_learned_env_steps, env_step, self.learn_interval)
-            if do_learn:
-                last_learned_env_steps = env_step
 
             for env_id in range(len(obs)):
                 self._update_concurrency_peaks(env_id, next_obs[env_id])
                 self.horizon.on_decision(env_id, actions[env_id], next_obs[env_id])
                 stall = self.horizon.after_step(env_id, next_obs[env_id])
-                reward = compute_team_reward(obs[env_id], next_obs[env_id])
-                if stall in ("L2", "L3"):
-                    reward -= 0.05
+                restored = stall in ("L2_RESTORE", "L3_RESTORE")
+                reward = -0.05 if restored else compute_team_reward(obs[env_id], next_obs[env_id])
                 done, truncated, success = read_rl_done(next_obs[env_id])
-                if stall in ("L2", "L3"):
+                if restored:
+                    # Checkpoint jumps are not environment dynamics: discard the pending
+                    # transition and restart credit assignment from the restored state.
+                    pending_decisions[env_id] = None
                     done = False
                     truncated = False
                     success = False
@@ -571,17 +631,31 @@ class HierarchicalTPA:
                 episode_reward[env_id] += reward
                 episode_len[env_id] += 1
                 rl_step = next_obs[env_id].get("rl") or {}
-                episode_n_finished[env_id] += int(rl_step.get("n_product_finished", 0) or 0)
+                if restored:
+                    spec_now = self.horizon.curriculum.spec
+                    episode_n_finished[env_id] = max(
+                        0, _count_finished(next_obs[env_id]) - int(spec_now.start_nfin)
+                    )
+                else:
+                    episode_n_finished[env_id] += int(rl_step.get("n_product_finished", 0) or 0)
                 next_pre = self.obs_encoder.preprocess(next_obs[env_id])
-                self.observe_one_env(
-                    prev_pre_list[env_id],
-                    actions[env_id],
-                    reward,
-                    next_pre,
-                    done=done,
-                    epsilon=epsilon,
-                    learn=do_learn,
-                )
+                pending = pending_decisions[env_id]
+                if pending is not None and not restored:
+                    pending["reward"] += pending["discount"] * reward
+                    pending["discount"] *= self.gamma
+                    if done:
+                        self.observe_one_env(
+                            pending["pre"],
+                            pending["action"],
+                            pending["reward"] * self.decision_reward_scale,
+                            next_pre,
+                            done=True,
+                            epsilon=pending["epsilon"],
+                            bootstrap_discount=pending["discount"],
+                            learn=do_learn,
+                        )
+                        learn_event = True
+                        pending_decisions[env_id] = None
                 prev_pre_list[env_id] = next_pre
                 if done:
                     self.episodes_done += 1
@@ -602,12 +676,22 @@ class HierarchicalTPA:
                         else self.max_episodic_steps
                     )
                     wall = self._wall_time_sec()
+                    is_fullorder = (not self.horizon.curriculum.enabled) or (
+                        spec.start_nfin == 0 and spec.target_nfin == spec.n_products
+                    )
                     if success:
                         self.makespan_success.append(ep_len)
                         self.makespan_all.append(ep_len)
                     elif truncated:
                         self.makespan_all.append(ep_len)
                     self.success_hist.append(float(success))
+                    if is_fullorder:
+                        if success:
+                            self.fullorder_makespan_success.append(ep_len)
+                            self.fullorder_makespan_all.append(ep_len)
+                        elif truncated:
+                            self.fullorder_makespan_all.append(ep_len)
+                        self.fullorder_success_hist.append(float(success))
                     mean_ms = (
                         sum(self.makespan_all) / len(self.makespan_all) if self.makespan_all else None
                     )
@@ -658,11 +742,21 @@ class HierarchicalTPA:
                     payload.update(core_payload)
                     payload.update(peak_payload)
                     payload.update(human_ep)
-                    is_fullorder = (not self.horizon.curriculum.enabled) or (
-                        spec.start_nfin == 0 and spec.target_nfin == spec.n_products
-                    )
                     if is_fullorder:
-                        payload.update(fullorder_core_metrics(core_payload))
+                        full_core_payload = dict(core_payload)
+                        if self.fullorder_success_hist:
+                            full_core_payload["MetricCore/03_success_rate"] = (
+                                sum(self.fullorder_success_hist) / len(self.fullorder_success_hist)
+                            )
+                        if self.fullorder_makespan_all:
+                            full_core_payload["MetricCore/09_mean_makespan"] = (
+                                sum(self.fullorder_makespan_all) / len(self.fullorder_makespan_all)
+                            )
+                        if self.fullorder_makespan_success:
+                            full_core_payload["MetricCore/10_mean_makespan_success"] = (
+                                sum(self.fullorder_makespan_success) / len(self.fullorder_makespan_success)
+                            )
+                        payload.update(fullorder_core_metrics(full_core_payload))
                         payload.update(fullorder_peak_metrics(peak_payload))
                     if self.horizon.curriculum.enabled:
                         payload.update(
@@ -686,12 +780,17 @@ class HierarchicalTPA:
                     self._ep_peak_ongoing_robot[env_id] = 0
                     _clear_rl(next_obs[env_id])
                     self.horizon.on_episode_end(env_id, success=success, ep_len=ep_len)
+                    prev_pre_list[env_id] = self.obs_encoder.preprocess(next_obs[env_id])
+                    pending_decisions[env_id] = None
                     episode_n_finished[env_id] = 0
                     if (
                         self.max_sim_episodes is not None
                         and self.episodes_done >= self.max_sim_episodes
                     ):
                         stop = True
+
+            if do_learn and learn_event:
+                last_learned_env_steps = env_step
 
             obs = next_obs
 

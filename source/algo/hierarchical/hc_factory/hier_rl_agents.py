@@ -76,6 +76,7 @@ class MaskedDQNAgent:
         mask: torch.Tensor,
         next_mask: torch.Tensor,
         done: bool,
+        discount: float | None = None,
     ) -> None:
         """Legacy flat path: store detached obs tensors."""
         self.buffer.push(
@@ -85,6 +86,7 @@ class MaskedDQNAgent:
                 mask=mask.detach().cpu(),
                 next_mask=next_mask.detach().cpu(),
                 done=done,
+                discount=discount,
                 obs=obs.detach().cpu(),
                 next_obs=next_obs.detach().cpu(),
             )
@@ -99,6 +101,8 @@ class MaskedDQNAgent:
         mask: torch.Tensor,
         next_mask: torch.Tensor,
         done: bool,
+        discount: float | None = None,
+        context: torch.Tensor | None = None,
     ) -> None:
         from .hier_utils import detach_pre_to_cpu
 
@@ -109,6 +113,8 @@ class MaskedDQNAgent:
                 mask=mask.detach().cpu(),
                 next_mask=next_mask.detach().cpu(),
                 done=done,
+                discount=discount,
+                context=None if context is None else context.detach().cpu(),
                 pre=detach_pre_to_cpu(pre),
                 next_pre=detach_pre_to_cpu(next_pre),
             )
@@ -117,7 +123,7 @@ class MaskedDQNAgent:
     def _encode_batch(
         self,
         transitions: list[Transition],
-        encode_fn: Callable[[dict], torch.Tensor] | None,
+        encode_fn: Callable[[dict, Transition], torch.Tensor] | None,
         *,
         use_next: bool,
     ) -> torch.Tensor:
@@ -131,7 +137,7 @@ class MaskedDQNAgent:
                     transition.next_pre if use_next else transition.pre,
                     self.device,
                 )
-                encoded.append(encode_fn(pre))
+                encoded.append(encode_fn(pre, transition))
             return torch.stack(encoded)
 
         obs_key = "next_obs" if use_next else "obs"
@@ -139,7 +145,7 @@ class MaskedDQNAgent:
 
     def compute_loss(
         self,
-        encode_fn: Callable[[dict], torch.Tensor] | None = None,
+        encode_fn: Callable[[dict, Transition], torch.Tensor] | None = None,
     ) -> torch.Tensor | None:
         if len(self.buffer) < self.batch_size:
             return None
@@ -152,6 +158,11 @@ class MaskedDQNAgent:
         mask_batch = torch.stack([t.mask for t in batch]).to(self.device)
         next_mask_batch = torch.stack([t.next_mask for t in batch]).to(self.device)
         done_batch = torch.tensor([t.done for t in batch], dtype=torch.float32, device=self.device)
+        discount_batch = torch.tensor(
+            [self.gamma if t.discount is None else t.discount for t in batch],
+            dtype=torch.float32,
+            device=self.device,
+        )
 
         q_values = self.q_net(obs_batch).gather(1, action_batch.unsqueeze(1)).squeeze(1)
 
@@ -171,7 +182,7 @@ class MaskedDQNAgent:
             rewards = reward_batch
             if self.reward_clip is not None:
                 rewards = rewards.clamp(-self.reward_clip, self.reward_clip)
-            target = rewards + self.gamma * max_next_q * (1.0 - done_batch)
+            target = rewards + discount_batch * max_next_q * (1.0 - done_batch)
             if self.q_target_clip is not None:
                 target = target.clamp(-self.q_target_clip, self.q_target_clip)
 
@@ -190,7 +201,7 @@ class MaskedDQNAgent:
     def step_optimizer(self) -> None:
         self.optimizer.step()
 
-    def learn(self, encode_fn: Callable[[dict], torch.Tensor] | None = None) -> float | None:
+    def learn(self, encode_fn: Callable[[dict, Transition], torch.Tensor] | None = None) -> float | None:
         loss = self.compute_loss(encode_fn)
         if loss is None:
             return None
@@ -235,7 +246,7 @@ class RLProductSequencingAgent:
         return self.dqn.act_tensor(obs, mask, epsilon)
 
     def observe_step(
-        self, env_state_action_dict, action, reward, next_env_state_action_dict, done, epsilon, *, learn=True
+        self, env_state_action_dict, action, reward, next_env_state_action_dict, done, epsilon, *, discount=None, learn=True
     ):
         del epsilon
         if action.sum() == 0:
@@ -251,10 +262,11 @@ class RLProductSequencingAgent:
             mask,
             next_mask,
             done,
+            discount=discount,
         )
         if not learn:
             return None
-        return self.dqn.compute_loss(lambda pre: self.obs_encoder.encode_A(pre))
+        return self.dqn.compute_loss(lambda pre, transition: self.obs_encoder.encode_A(pre))
 
 
 class RLProductSelectionAgent:
@@ -351,6 +363,7 @@ class RLProductSelectionAgent:
         done,
         epsilon,
         *,
+        discount=None,
         learn=True,
     ):
         del epsilon
@@ -368,10 +381,12 @@ class RLProductSelectionAgent:
             mask,
             next_mask,
             done,
+            discount=discount,
+            context=a_seq,
         )
         if not learn:
             return None
-        return self.dqn.compute_loss(lambda pre: self.obs_encoder.encode_B(pre, a_seq))
+        return self.dqn.compute_loss(lambda pre, transition: self.obs_encoder.encode_B(pre, transition.context.to(self.device)))
 
 
 class RLProcessTaskPlanningAgent:
@@ -439,6 +454,7 @@ class RLProcessTaskPlanningAgent:
         done,
         epsilon,
         *,
+        discount=None,
         learn=True,
     ):
         del epsilon
@@ -456,10 +472,12 @@ class RLProcessTaskPlanningAgent:
             mask,
             next_mask,
             done,
+            discount=discount,
+            context=b_sel,
         )
         if not learn:
             return None
-        return self.dqn.compute_loss(lambda pre: self.obs_encoder.encode_C(pre, b_sel))
+        return self.dqn.compute_loss(lambda pre, transition: self.obs_encoder.encode_C(pre, transition.context.to(self.device)))
 
 
 class RLHumanRobotAllocatorAgent:
@@ -550,6 +568,7 @@ class RLHumanRobotAllocatorAgent:
         done,
         epsilon,
         *,
+        discount=None,
         learn=True,
     ):
         del epsilon
@@ -558,7 +577,9 @@ class RLHumanRobotAllocatorAgent:
 
         self._ensure_dqn(env_state_action_dict, process_task_planning_action)
         c_plan = process_task_planning_action
-        encode_d = lambda pre: self.obs_encoder.encode_D(pre, c_plan)
+        encode_d = lambda pre, transition: self.obs_encoder.encode_D(
+            pre, transition.context.to(self.device)
+        )
 
         human_mask = env_state_action_dict["agent_action_mask"]["human"]["self_availability_mask"].float()
         robot_mask = env_state_action_dict["agent_action_mask"]["robot"]["self_availability_mask"].float()
@@ -576,6 +597,8 @@ class RLHumanRobotAllocatorAgent:
                 human_mask,
                 next_human_mask,
                 done,
+                discount=discount,
+                context=c_plan,
             )
             if learn:
                 human_loss = self.human_dqn.compute_loss(encode_d)
@@ -588,6 +611,8 @@ class RLHumanRobotAllocatorAgent:
                 robot_mask,
                 next_robot_mask,
                 done,
+                discount=discount,
+                context=c_plan,
             )
             if learn:
                 robot_loss = self.robot_dqn.compute_loss(encode_d)

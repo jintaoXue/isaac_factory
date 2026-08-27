@@ -19,7 +19,10 @@ params:
     max_episodic_steps: 64000
     state_dim: 256
 
-    gamma: 0.995
+    # Per-simulation-step discount used as gamma ** decision_duration.
+    gamma: 0.9999
+    # Scale the accumulated SMDP return before replay (episode logs remain unscaled).
+    decision_reward_scale: 0.01
     learning_rate: 1.0e-4
     encoder_learning_rate: 1.0e-4
     batch_size: 64
@@ -41,7 +44,7 @@ params:
     epsilon_end: 0.05
     epsilon_decay_steps: 1500000
 
-    # training loop (learn_interval: DQN backward every N env steps; buffer stores every decision step)
+    # training loop (learn_interval: DQN backward every N env steps; buffer stores every completed decision interval)
     learn_interval: 8
     save_interval: 5000
     log_interval: 100

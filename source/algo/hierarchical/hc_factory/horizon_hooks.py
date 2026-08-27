@@ -211,6 +211,7 @@ class HorizonHooks:
                     f"[Hier] stagnation L2 restore env={env_id} "
                     f"from ep_t={cur_t} to ep_t={to_t} stall_counts={self.stall_counts_str()}"
                 )
+                return "L2_RESTORE"
             else:
                 print(f"[Hier] stagnation L2 no-restore env={env_id} stall_counts={self.stall_counts_str()}")
             return "L2"
@@ -232,7 +233,7 @@ class HorizonHooks:
                 self.maybe_warmstart_new_episode(env_id)
                 print(f"[Hier] stagnation L3 full reset env={env_id} stall_counts={self.stall_counts_str()}")
             self.detectors[env_id].reset()
-            return "L3"
+            return "L3_RESTORE"
         return None
 
     def on_episode_end(self, env_id: int, *, success: bool, ep_len: int) -> None:

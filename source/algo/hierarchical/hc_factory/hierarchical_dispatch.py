@@ -169,6 +169,7 @@ def build_hier_rl_action(
         dispatch_list.append(
             {
                 "slot_index": int(slot_index),
+                "product_selection": slot_one_hot,
                 "process_task_planning": process_task_planning,
                 "human_robot_allocation": human_robot_allocation,
             }
