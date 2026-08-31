@@ -11,12 +11,19 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+from factory_bn.cause_cluster import (
+    future_tpm_target,
+    hist_tpm_flag,
+    seed_cluster_ids,
+)
 from factory_bn.causes import ROOT_CAUSE_CLASSES
 from factory_bn.remain import (
     ensure_labor_saturated_feature,
     first_done_index,
     node_hot_mask,
     occupancy_node_mask,
+    ops_hot_mask,
+    pack_future_features,
     pack_remain_target,
 )
 
@@ -147,6 +154,11 @@ class FactoryBNWindowDataset(Dataset):
             item["remain_len"] = torch.tensor(float(s["remain_len"]), dtype=torch.float32)
             item["jobs_remaining"] = torch.tensor(float(s["jobs_remaining"]), dtype=torch.float32)
             item["jobs_total"] = torch.tensor(float(s["jobs_total"]), dtype=torch.float32)
+        hist_last = s.get("hist_last_hot")
+        if hist_last is None:
+            n_hist = int(item["X"].shape[1])
+            hist_last = np.zeros((n_hist,), dtype=np.float32)
+        item["hist_last_hot"] = torch.from_numpy(np.asarray(hist_last, dtype=np.float32))
         if "occ_node_mask" in s:
             item["occ_node_mask"] = torch.from_numpy(
                 np.asarray(s["occ_node_mask"], dtype=np.float32)
@@ -155,6 +167,31 @@ class FactoryBNWindowDataset(Dataset):
             item["occ_node_mask"] = torch.from_numpy(occupancy_node_mask(s["x"]))
         item["window_hot"] = torch.tensor(float(s.get("window_hot", 0.0)), dtype=torch.float32)
         item["run_dim_id"] = torch.tensor(int(s.get("run_dim_id", -1)), dtype=torch.long)
+        item["cluster_id"] = torch.tensor(int(s.get("cluster_id", -1)), dtype=torch.long)
+        hist_c = s.get("hist_cluster")
+        if hist_c is None:
+            hist_c = np.full((int(item["X"].shape[1]),), -1, dtype=np.int64)
+        item["hist_cluster"] = torch.from_numpy(np.asarray(hist_c, dtype=np.int64))
+        hist_cp = s.get("hist_cluster_prev")
+        if hist_cp is None:
+            hist_cp = hist_c
+        item["hist_cluster_prev"] = torch.from_numpy(np.asarray(hist_cp, dtype=np.int64))
+        item["hist_tpm"] = torch.from_numpy(
+            np.asarray(s.get("hist_tpm", np.zeros((int(item["X"].shape[1]),), dtype=np.float32)), dtype=np.float32)
+        )
+        item["y_tpm"] = torch.from_numpy(
+            np.asarray(s.get("y_tpm", np.zeros((int(item["X"].shape[1]),), dtype=np.float32)), dtype=np.float32)
+        )
+        if "y_x" in s:
+            y_x_raw = np.asarray(s["y_x"], dtype=np.float32)
+            item["y_x"] = torch.from_numpy(self.feature_scaler.transform(y_x_raw))
+            # FEATURE_COLS active_pct_s (0–1). Travel is not occupancy y.
+            if y_x_raw.ndim == 3 and y_x_raw.shape[-1] > 4:
+                item["agv_drive"] = torch.from_numpy(
+                    (y_x_raw[..., 4] >= 0.5).astype(np.float32)
+                )
+        if "y_cluster" in s:
+            item["y_cluster"] = torch.from_numpy(np.asarray(s["y_cluster"], dtype=np.int64))
         return item
 
 
@@ -200,6 +237,16 @@ def load_factory_bn_bundle(data_dir: Path) -> dict[str, Any]:
             t_len = int(ep["features"].shape[0])
             ep["jobs_remaining"] = np.linspace(float(t_len), 1.0, t_len, dtype=np.float32)
             ep["jobs_total"] = float(t_len)
+        t_len = int(ep["features"].shape[0])
+        n_nodes = int(ep["features"].shape[1])
+        if f"{name}_cluster_id" in npz:
+            ep["cluster_id"] = np.asarray(npz[f"{name}_cluster_id"], dtype=np.int64)
+        else:
+            ep["cluster_id"] = np.full((t_len, n_nodes), -1, dtype=np.int64)
+        if f"{name}_window_cluster" in npz:
+            ep["window_cluster"] = np.asarray(npz[f"{name}_window_cluster"], dtype=np.int64)
+        else:
+            ep["window_cluster"] = np.full((t_len,), -1, dtype=np.int64)
         episodes.append(ep)
     if "cause_classes" in npz:
         cause_classes = [str(x) for x in npz["cause_classes"].tolist()]
@@ -230,8 +277,9 @@ def _build_samples(
     max_remain_windows: int = 512,
     hot_score_threshold: float = 0.55,
     occupancy_horizon_windows: int | None = None,
-    hot_min_windows: int = 2,
+    hot_min_windows: int = 8,
     hot_gap_windows: int = 1,
+    train_mode: str = "supervised",
 ) -> list[dict[str, Any]]:
     """Create causal windows with STGNPP event histories.
 
@@ -268,15 +316,38 @@ def _build_samples(
         )
         jobs_total = float(ep.get("jobs_total") or (jobs_rem[0] if jobs_rem.size else 0.0))
         done_ti = first_done_index(jobs_rem) if remain_to_jobs_done else t_len
-        hot = node_hot_mask(
-            feats,
-            scores,
-            score_threshold=hot_score_threshold,
-            window_size_s=window_size_s,
-            min_hot_windows=hot_min_windows,
-            gap_windows=hot_gap_windows,
-        )
+        unsupervised = str(train_mode).strip().lower() == "unsupervised"
+        if unsupervised:
+            # Occupancy y from operational X only — bottleneck_score / TPM unused.
+            hot = ops_hot_mask(
+                feats,
+                window_size_s=window_size_s,
+                min_hot_windows=hot_min_windows,
+                gap_windows=hot_gap_windows,
+            )
+        else:
+            hot = node_hot_mask(
+                feats,
+                scores,
+                score_threshold=hot_score_threshold,
+                window_size_s=window_size_s,
+                min_hot_windows=hot_min_windows,
+                gap_windows=hot_gap_windows,
+            )
         occ_mask = occupancy_node_mask(feats)
+        window_cluster = np.asarray(
+            ep.get("window_cluster", np.full((t_len,), -1, dtype=np.int64)),
+            dtype=np.int64,
+        )
+        station_cluster = np.asarray(
+            ep.get("cluster_id", np.full((t_len, n_nodes), -1, dtype=np.int64)),
+            dtype=np.int64,
+        )
+        if station_cluster.ndim == 1:
+            station_cluster = np.broadcast_to(
+                station_cluster[:, None], (t_len, n_nodes)
+            )
+        cause_cluster = seed_cluster_ids(feats, window_size_s=window_size_s).copy()
 
         ev_node = ep["event_node"]
         ev_start_s = ep["event_start_s"]
@@ -326,6 +397,7 @@ def _build_samples(
                 remain_mask = None
                 remain_len = int(output_window)
                 event_h_s = float(horizon_s)
+                k_occ = max(1, int(occupancy_horizon_windows or max_remain_windows or 15))
 
             horizon_min = max(event_h_s, 1.0) / 60.0
             next_tau = np.full((n_nodes,), horizon_min, dtype=np.float32)
@@ -377,13 +449,41 @@ def _build_samples(
                 sample["remain_len"] = float(remain_len)
                 sample["jobs_remaining"] = obs_jobs
                 sample["jobs_total"] = jobs_total
+            if unsupervised and remain_to_jobs_done:
+                y_x, y_cluster = pack_future_features(
+                    feats,
+                    cause_cluster,
+                    t=t,
+                    done_ti=done_ti,
+                    max_remain_windows=int(max_remain_windows),
+                    occupancy_horizon_windows=k_occ,
+                )
+                sample["y_x"] = y_x
+                sample["y_cluster"] = y_cluster
             sample["occ_node_mask"] = occ_mask
             ep_name = str(ep.get("name") or ep["episode_id"])
             sample["run_dim_id"] = run_dim_id(ep_name)
             if label_idx < hot.shape[0]:
                 sample["window_hot"] = float((hot[label_idx] * occ_mask).sum() > 0.5)
+                sample["hist_last_hot"] = hot[label_idx].astype(np.float32)
             else:
                 sample["window_hot"] = 0.0
+                sample["hist_last_hot"] = np.zeros((n_nodes,), dtype=np.float32)
+            # Contrast id: plant snapshot of the first future window (forecast target).
+            future_idx = t if t < len(window_cluster) else label_idx
+            if 0 <= future_idx < len(window_cluster):
+                sample["cluster_id"] = int(window_cluster[future_idx])
+            else:
+                sample["cluster_id"] = -1
+            if 0 <= label_idx < cause_cluster.shape[0]:
+                sample["hist_cluster"] = cause_cluster[label_idx].astype(np.int64)
+                prev_i = label_idx - 1 if label_idx > 0 else label_idx
+                sample["hist_cluster_prev"] = cause_cluster[prev_i].astype(np.int64)
+            else:
+                sample["hist_cluster"] = np.full((n_nodes,), -1, dtype=np.int64)
+                sample["hist_cluster_prev"] = np.full((n_nodes,), -1, dtype=np.int64)
+            sample["hist_tpm"] = hist_tpm_flag(feats, label_idx)
+            sample["y_tpm"] = future_tpm_target(feats, t=t, horizon=int(k_occ))
             samples.append(sample)
     return samples
 
@@ -527,7 +627,7 @@ def build_infer_sample(
     jobs_total: float | None = None,
     done_ti: int | None = None,
     hot: np.ndarray | None = None,
-    hot_min_windows: int = 2,
+    hot_min_windows: int = 8,
     hot_gap_windows: int = 1,
 ) -> dict[str, Any]:
     """Pack one causal window for ``model.predict`` (no future labels required).
@@ -626,6 +726,22 @@ def build_infer_sample(
         sample["remain_len"] = float(remain_len)
         sample["jobs_remaining"] = jobs_rem
         sample["jobs_total"] = jobs_tot
+    if hot is not None and 0 <= label_idx < int(np.asarray(hot).shape[0]):
+        sample["hist_last_hot"] = np.asarray(hot[label_idx], dtype=np.float32)
+    else:
+        sample["hist_last_hot"] = np.zeros((n_nodes,), dtype=np.float32)
+    cause_c = seed_cluster_ids(features, window_size_s=window_size_s)
+    if 0 <= label_idx < cause_c.shape[0]:
+        sample["hist_cluster"] = cause_c[label_idx].astype(np.int64)
+        prev_i = label_idx - 1 if label_idx > 0 else label_idx
+        sample["hist_cluster_prev"] = cause_c[prev_i].astype(np.int64)
+    else:
+        sample["hist_cluster"] = np.full((n_nodes,), -1, dtype=np.int64)
+        sample["hist_cluster_prev"] = np.full((n_nodes,), -1, dtype=np.int64)
+    sample["hist_tpm"] = hist_tpm_flag(features, label_idx)
+    sample["y_tpm"] = future_tpm_target(
+        features, t=t, horizon=int(max_remain_windows or 15)
+    )
     return sample
 
 
@@ -665,9 +781,10 @@ def build_dataloaders(
     max_remain_windows: int = 512,
     hot_score_threshold: float = 0.55,
     occupancy_horizon_windows: int | None = None,
-    hot_min_windows: int = 2,
+    hot_min_windows: int = 8,
     hot_gap_windows: int = 1,
     train_only_contains: list[str] | None = None,
+    train_mode: str = "supervised",
 ) -> tuple[DataLoader, DataLoader, DataLoader, dict[str, Any]]:
     bundle = load_factory_bn_bundle(data_dir)
     window_size = bundle["window_size_s"]
@@ -687,6 +804,7 @@ def build_dataloaders(
         occupancy_horizon_windows=occupancy_horizon_windows,
         hot_min_windows=hot_min_windows,
         hot_gap_windows=hot_gap_windows,
+        train_mode=train_mode,
     )
     if not samples:
         raise RuntimeError("No training samples; check episode length vs input_window")
@@ -778,6 +896,10 @@ def build_dataloaders(
             occupancy_horizon_windows if occupancy_horizon_windows else max_remain_windows
         ),
         "hot_score_threshold": float(hot_score_threshold),
+        "train_mode": str(train_mode),
+        "n_cluster_labeled_train": int(
+            sum(1 for s in train_samples if int(s.get("cluster_id", -1)) >= 0)
+        ),
     }
     return (*loaders, data_feature)
 

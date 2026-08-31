@@ -212,6 +212,8 @@ def _pivot_episode(
     duration = np.full((t_len,), -1.0, dtype=np.float32)
     is_hot = np.zeros((t_len,), dtype=np.float32)
     window_start = np.zeros((t_len,), dtype=np.float32)
+    cluster_id = np.full((t_len, n), -1, dtype=np.int64)
+    window_cluster = np.full((t_len,), -1, dtype=np.int64)
 
     type_mat = np.array([type_onehot(t) for t in resource_types], dtype=np.float32)
 
@@ -224,6 +226,12 @@ def _pivot_episode(
             feat = [_f(row, c) for c in FEATURE_COLS] + type_mat[ni].tolist()
             features[ti, ni] = feat
             scores[ti, ni, 0] = _f(row, TARGET_COL)
+            cid = row.get("cluster_id")
+            if cid not in (None, "", "-1"):
+                cluster_id[ti, ni] = int(float(cid))
+            wcid = row.get("window_cluster_id")
+            if wcid not in (None, "", "-1"):
+                window_cluster[ti] = int(float(wcid))
 
         lab = labels.get(w)
         if lab is not None:
@@ -273,6 +281,8 @@ def _pivot_episode(
         "is_bottleneck_window": is_hot,
         "jobs_remaining": jobs_rem,
         "jobs_total": np.float32(jobs_total),
+        "cluster_id": cluster_id,
+        "window_cluster": window_cluster,
         "event_node": np.asarray(ev_node, dtype=np.int64),
         "event_start_s": np.asarray(ev_start_s, dtype=np.float32),
         "event_duration_s": np.asarray(ev_dur, dtype=np.float32),
@@ -568,6 +578,8 @@ def export_runs(
         **{f"{ep}_event_start_ti": v["event_start_ti"] for ep, v in episodes_payload.items()},
         **{f"{ep}_jobs_remaining": v["jobs_remaining"] for ep, v in episodes_payload.items()},
         **{f"{ep}_jobs_total": np.asarray([v["jobs_total"]], dtype=np.float32) for ep, v in episodes_payload.items()},
+        **{f"{ep}_cluster_id": v["cluster_id"] for ep, v in episodes_payload.items()},
+        **{f"{ep}_window_cluster": v["window_cluster"] for ep, v in episodes_payload.items()},
         episode_names=np.asarray(list(episodes_payload.keys())),
     )
 
@@ -594,6 +606,7 @@ def export_runs(
                 "n_events": int(len(v["event_node"])),
                 "jobs_total": float(v["jobs_total"]),
                 "jobs_remaining_start": float(v["jobs_remaining"][0]) if len(v["jobs_remaining"]) else 0.0,
+                "n_clustered_windows": int((np.asarray(v["window_cluster"]) >= 0).sum()),
             }
             for ep, v in episodes_payload.items()
         },
@@ -607,6 +620,7 @@ def export_runs(
             "A3 cause head: per-window root_cause_reason (L2 type or score heuristic); -1 = unlabeled.",
             "Coupling features are node-local (PROCESS_CHAIN, carrier delay, shortage at consumer).",
             "Multi-run merge uses episode keys {run_id}__episode_XX.",
+            "Unsupervised: cluster_id is station-window k-means; window_cluster is the plant snapshot. No bottleneck_score labels.",
         ],
     }
     (out_dir / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")

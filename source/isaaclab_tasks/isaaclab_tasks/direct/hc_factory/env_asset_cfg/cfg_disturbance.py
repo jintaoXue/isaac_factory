@@ -136,7 +136,9 @@ _L2_HORIZON_HI = 8000
 _L2_MATERIAL_HORIZON_HI = 8000
 _L2_MIN_GAP = 360
 _L2_COUNT_CAP = 12
-_L2_MIN_DURATION = 360
+# Align with occupancy y: hot_min_windows=8. 6 min pulses were dropped after
+# mid-window alignment; 10 min (600 steps) survives the 8-min filter.
+_L2_MIN_DURATION = 600
 _MATERIAL_ORDER_N = 10
 # Kit SKUs consumed at batch_spot_welding (not pipe_raw — hiding pipe only idles the head).
 _MATERIAL_KIT_SKUS = ("product_00_flange", "product_00_elbow")
@@ -161,7 +163,7 @@ def _l2_count_range(intensity: float) -> tuple[int, int]:
 def _l2_duration_cap(intensity: float, dim: str = "") -> int:
     """Longer failures at higher intensity, always below stall_timeout_steps=5000.
 
-    I=1.0≈900 (15 min), I=2.0≈1200, I=3.0≈1400.
+    I=1.0≈900 (15 min), I=2.0≈1200, I=3.0≈1400. Floor is ``_L2_MIN_DURATION`` (10 min).
     """
     del dim
     return int(min(1400, 500 + 400 * max(intensity, 0.5)))
@@ -365,6 +367,33 @@ def episode_qc_holds(intensity: float, seed: int, env_id: int, episode_id: int) 
     return sample_qc_holds(intensity, rng)
 
 
+def _ensure_logistics_agv_freeze(
+    chosen: list[str],
+    targets: list[str],
+    rng: random.Random,
+) -> None:
+    """I=1.0 logistics: keep one gantry freeze, but every episode must freeze an AGV.
+
+    Occupancy y no longer counts driving delay, so AGV positives only come from
+    STOP / inbound wait. Random draw among 4 gantries + 2 AGVs left AGV empty.
+    """
+    if not chosen:
+        return
+    agv_pool = [t for t in targets if str(t).startswith("agv_")]
+    if not agv_pool:
+        return
+    if any(str(t).startswith("agv_") for t in chosen):
+        return
+    idx = next(
+        (i for i, t in enumerate(chosen) if str(t).startswith("gantry_")),
+        len(chosen) - 1,
+    )
+    prev = chosen[idx - 1] if idx > 0 else None
+    nxt = chosen[idx + 1] if idx + 1 < len(chosen) else None
+    pool = [a for a in agv_pool if a != prev and a != nxt] or agv_pool
+    chosen[idx] = rng.choice(pool)
+
+
 def sample_l2_schedule(
     dim: str,
     intensity: float,
@@ -377,7 +406,9 @@ def sample_l2_schedule(
     """Draw a non-overlapping L2 queue for one episode.
 
     Count, start, duration and target are random. Intensity (intended 1.0–3.0)
-    scales both how many events fire and how long each lasts.
+    scales both how many events fire and how long each lasts. Logistics always
+    freezes at least one AGV when ``agv_count`` > 0. Each pulse is at least
+    ``_L2_MIN_DURATION`` steps (10 min at I=1.0).
     """
     dim = (dim or "none").lower().strip()
     intensity = max(0.0, float(intensity))
@@ -456,6 +487,8 @@ def sample_l2_schedule(
             if alt:
                 pool = alt
         chosen.append(rng.choice(pool))
+    if dim == "logistics":
+        _ensure_logistics_agv_freeze(chosen, targets, rng)
 
     mu_lo, mu_hi = material_l2_hide_count_range(intensity) if dim == "material" else (0, 0)
     events: list[dict[str, Any]] = []

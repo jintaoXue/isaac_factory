@@ -270,6 +270,307 @@ def test_build_samples_remain_horizon() -> None:
     assert "window_hot" in first
 
 
+def test_ops_recon_channel_weight_occupancy_cols() -> None:
+    from factory_bn.remain import ops_recon_channel_weight
+
+    w = ops_recon_channel_weight(27, floor=0.05)
+    assert w.shape == (27,)
+    assert float(w[19]) == 0.0  # TPM
+    assert float(w[21]) == 0.0  # type
+    assert float(w[2]) >= float(w[5])  # occupancy_ratio >> duration
+    assert float(w[6]) >= 1.5  # blocked
+    assert float(w[13]) >= 1.5  # route
+    assert 0.0 < float(w[5]) < 0.06  # floor on unused ops
+
+
+def test_ops_hot_ignores_score_and_tpm() -> None:
+    from factory_bn.remain import ops_hot_mask
+
+    t_len, n, f = 4, 2, 27
+    feats = np.zeros((t_len, n, f), dtype=np.float32)
+    feats[:, 0, 21] = 1.0  # machine
+    scores = np.ones((t_len, n, 1), dtype=np.float32)
+    feats[:, 0, 19] = 1.0  # TPM turning-point
+    idle = ops_hot_mask(feats, window_size_s=60.0, min_hot_windows=1, gap_windows=0)
+    assert float(idle.sum()) == 0.0
+    scored = node_hot_mask(
+        feats, scores, score_threshold=0.55, window_size_s=60.0, min_hot_windows=1, gap_windows=0
+    )
+    assert float(scored[:, 0].sum()) == t_len
+
+    feats[:, 0, 0] = 2.0
+    feats[:, 0, 6] = 10.0
+    busy = ops_hot_mask(feats, window_size_s=60.0, min_hot_windows=1, gap_windows=0)
+    assert float(busy[:, 0].sum()) == t_len
+
+
+def test_agv_ops_hot_drops_short_runs() -> None:
+    from factory_bn.remain import ops_hot_mask
+
+    t_len, n, f = 10, 2, 27
+    feats = np.zeros((t_len, n, f), dtype=np.float32)
+    feats[:, 0, 21] = 1.0  # machine
+    feats[:, 1, 24] = 1.0  # AGV
+    # Driving 8 min (route_delay + starve) is not a block.
+    feats[1:9, 1, 7] = 42.0
+    feats[1:9, 1, 13] = 42.0
+    drive = ops_hot_mask(feats, window_size_s=60.0)
+    assert float(drive[:, 1].sum()) == 0.0
+    feats[:, 1, 13] = 0.0
+    # Inbound wait + stall 7 min dropped.
+    feats[1:8, 1, 7] = 42.0
+    feats[1:8, 1, 14] = 42.0
+    seven = ops_hot_mask(feats, window_size_s=60.0)
+    assert float(seven[:, 1].sum()) == 0.0
+    # Inbound 8 min hot.
+    feats[1:9, 1, 7] = 42.0
+    feats[1:9, 1, 14] = 42.0
+    eight = ops_hot_mask(feats, window_size_s=60.0)
+    assert float(eight[:, 1].sum()) == 8.0
+    # Freeze / STOP 8 min hot.
+    feats[:, 1, 7] = 0.0
+    feats[:, 1, 14] = 0.0
+    feats[1:9, 1, 9] = 0.8
+    freeze = ops_hot_mask(feats, window_size_s=60.0)
+    assert float(freeze[:, 1].sum()) == 8.0
+
+
+def test_disturbance_without_stall_not_hot() -> None:
+    from factory_bn.remain import ops_hot_mask
+
+    t_len, n, f = 10, 1, 27
+    feats = np.zeros((t_len, n, f), dtype=np.float32)
+    feats[:, 0, 21] = 1.0
+    feats[:, 0, 18] = 1.0
+    cold = ops_hot_mask(feats, window_size_s=60.0, min_hot_windows=1, gap_windows=0)
+    assert float(cold.sum()) == 0.0
+
+
+def test_gaussian_start_soft_labels() -> None:
+    from factory_bn.remain import gaussian_start_soft_labels
+
+    w = gaussian_start_soft_labels(np.array([5]), n_bins=15, sigma=1.0)
+    assert w.shape == (1, 15)
+    assert abs(float(w.sum()) - 1.0) < 1e-5
+    assert int(np.argmax(w[0])) == 5
+    nearby = float(w[0, 4] + w[0, 5] + w[0, 6])
+    assert nearby > 0.85
+
+
+def test_station_report_metrics_who_and_start_tol() -> None:
+    from factory_bn.remain import station_report_metrics
+
+    y = np.zeros((1, 15, 2), dtype=np.float32)
+    y[0, 2:10, 0] = 1.0
+    will = np.array([[0.9, 0.1]], dtype=np.float32)
+    start = np.array([[2, 0]])
+    dur = np.array([[8.0, 0.0]], dtype=np.float32)
+    rm = np.ones((1, 15), dtype=np.float32)
+    occ = np.ones((2,), dtype=np.float32)
+    ok = station_report_metrics(
+        y, will, start, dur, rm, occ, threshold=0.7, min_windows=8, start_tol_windows=3
+    )
+    assert ok["who_precision"] == 1.0
+    assert ok["who_recall"] == 1.0
+    assert ok["report_precision"] == 1.0
+    assert ok["report_f1"] == 1.0
+    assert ok["start_mae"] == 0.0
+    late = np.array([[6, 0]])
+    miss = station_report_metrics(
+        y, will, late, dur, rm, occ, threshold=0.7, min_windows=8, start_tol_windows=3
+    )
+    assert miss["who_precision"] == 1.0
+    assert miss["report_precision"] == 0.0
+    y0 = np.zeros((1, 15, 2), dtype=np.float32)
+    y0[0, 0:8, 0] = 1.0
+    last = np.array([[1.0, 0.0]], dtype=np.float32)
+    guessed = np.array([[2, 0]])
+    forced = station_report_metrics(
+        y0,
+        will,
+        guessed,
+        dur,
+        rm,
+        occ,
+        threshold=0.7,
+        min_windows=8,
+        start_tol_windows=3,
+        hist_last_hot=last,
+    )
+    assert forced["report_precision"] == 1.0
+    assert forced["who_recall_ongoing"] == 1.0
+    unforced = station_report_metrics(
+        y0, will, guessed, dur, rm, occ, threshold=0.7, min_windows=8, start_tol_windows=3
+    )
+    assert unforced["report_precision"] == 1.0  # start 2 vs true 0 is ≤3
+    far = np.array([[5, 0]])
+    fail = station_report_metrics(
+        y0, will, far, dur, rm, occ, threshold=0.7, min_windows=8, start_tol_windows=3
+    )
+    assert fail["report_precision"] == 0.0
+    ok_on = station_report_metrics(
+        y0,
+        will,
+        far,
+        dur,
+        rm,
+        occ,
+        threshold=0.7,
+        min_windows=8,
+        start_tol_windows=3,
+        hist_last_hot=last,
+    )
+    assert ok_on["report_precision"] == 1.0
+    shy = np.array([[0.63, 0.1]], dtype=np.float32)
+    forced_will = station_report_metrics(
+        y0, shy, far, dur, rm, occ, threshold=0.7, min_windows=8, start_tol_windows=3,
+        hist_last_hot=last,
+        force_ongoing_will=True,
+    )
+    assert forced_will["who_recall_ongoing"] == 1.0
+    assert forced_will["report_precision"] == 1.0
+    cold = np.array([[0.1, 0.1]], dtype=np.float32)
+    no_cold = station_report_metrics(
+        y0, cold, far, dur, rm, occ, threshold=0.7, min_windows=8, start_tol_windows=3,
+        hist_last_hot=last,
+        force_ongoing_will=True,
+    )
+    assert no_cold["who_recall"] == 0.0
+    short = np.array([[3.0, 0.0]], dtype=np.float32)
+    no_force = station_report_metrics(
+        y0, shy, far, short, rm, occ, threshold=0.7, min_windows=8, start_tol_windows=3,
+        hist_last_hot=last,
+        force_ongoing_will=True,
+    )
+    assert no_force["who_recall"] == 0.0
+
+
+def test_occupancy_event_match_iou() -> None:
+    from factory_bn.remain import match_occupancy_events, occupancy_event_metrics, occupancy_to_events
+
+    y = np.zeros((1, 10, 2), dtype=np.float32)
+    y[0, 2:8, 0] = 1.0  # 6 min on station 0
+    p = np.zeros((1, 10, 2), dtype=np.float32)
+    p[0, 3:9, 0] = 0.9  # shifted 1 min, IoU=5/7>0.5
+    rm = np.ones((1, 10), dtype=np.float32)
+    occ = np.ones((2,), dtype=np.float32)
+    m = occupancy_event_metrics(y, p, rm, occ, ["a", "b"], threshold=0.55, min_windows=5, iou_min=0.5)
+    assert m["event_precision"] == 1.0
+    assert m["event_recall"] == 1.0
+    p2 = np.zeros_like(p)
+    p2[0, 0:6, 1] = 0.9  # wrong station
+    m2 = occupancy_event_metrics(y, p2, rm, occ, ["a", "b"], threshold=0.55, min_windows=5, iou_min=0.5)
+    assert m2["event_precision"] == 0.0
+    ev = occupancy_to_events(y[0], resource_ids=["a", "b"], first_future_start_s=0.0, window_size_s=60.0)
+    assert match_occupancy_events(ev, ev, iou_min=0.5) == (1, 1, 1)
+
+
+def test_node_event_targets_and_rasterize() -> None:
+    from factory_bn.remain import node_event_targets, rasterize_node_events
+
+    y = np.zeros((15, 2), dtype=np.float32)
+    y[2:8, 0] = 1.0
+    y[0:3, 1] = 1.0
+    y[5:10, 1] = 1.0
+    will, start, dur = node_event_targets(y, min_windows=5)
+    assert will.tolist() == [1.0, 1.0]
+    assert int(start[0]) == 2 and int(dur[0]) == 6
+    assert int(start[1]) == 5 and int(dur[1]) == 5
+    grid = rasterize_node_events(will, start, dur, 15, threshold=0.5, min_windows=5)
+    assert float(grid[2:8, 0].sum()) == 6.0
+    assert float(grid[5:10, 1].sum()) == 5.0
+    cold = np.zeros((12, 1), dtype=np.float32)
+    w0, _, _ = node_event_targets(cold, min_windows=5)
+    assert float(w0.sum()) == 0.0
+    masked = node_event_targets(
+        y, min_windows=5, occ_node_mask=np.array([1.0, 0.0], dtype=np.float32)
+    )[0]
+    assert masked.tolist() == [1.0, 0.0]
+
+
+def test_rasterize_node_events_torch() -> None:
+    import torch
+
+    from factory_bn.model import rasterize_node_events_torch
+
+    will = torch.tensor([[0.9, 0.2]])
+    start = torch.tensor([[3, 0]])
+    dur = torch.tensor([[5.2, 8.0]])
+    grid = rasterize_node_events_torch(will, start, dur, 15, threshold=0.7, min_windows=5)
+    assert grid.shape == (1, 15, 2)
+    assert float(grid[0, 3:8, 0].sum()) == 5.0
+    assert float(grid[0, :, 1].sum()) == 0.0
+
+
+def test_unsupervised_samples_skip_score_hot() -> None:
+    from factory_bn.dataset import _build_samples
+
+    t_len, n_nodes, f = 20, 3, 27
+    feats = np.zeros((t_len, n_nodes, f), dtype=np.float32)
+    feats[:, 0, 21] = 1.0
+    feats[:, 1, 22] = 1.0
+    feats[:, 2, 23] = 1.0
+    scores = np.ones((t_len, n_nodes, 1), dtype=np.float32)
+    jobs = np.linspace(3, 0, t_len, dtype=np.float32)
+    cluster = np.array([0] * 10 + [1] * 10, dtype=np.int64)
+    station = np.zeros((t_len, n_nodes), dtype=np.int64)
+    station[10:, 0] = 1
+    ep = {
+        "name": "toy",
+        "episode_id": 0,
+        "features": feats,
+        "scores": scores,
+        "will": np.zeros((t_len,), dtype=np.float32),
+        "mark": np.full((t_len,), -1, dtype=np.int64),
+        "cause": np.full((t_len,), -1, dtype=np.int64),
+        "tts": np.zeros((t_len,), dtype=np.float32),
+        "duration": np.zeros((t_len,), dtype=np.float32),
+        "window_start_s": np.arange(t_len, dtype=np.float32) * 60.0,
+        "event_node": np.zeros((0,), dtype=np.int64),
+        "event_start_s": np.zeros((0,), dtype=np.float32),
+        "event_duration_s": np.zeros((0,), dtype=np.float32),
+        "event_start_ti": np.zeros((0,), dtype=np.int64),
+        "jobs_remaining": jobs,
+        "jobs_total": 3.0,
+        "window_cluster": cluster,
+        "cluster_id": station,
+    }
+    samples = _build_samples(
+        [ep],
+        input_window=4,
+        output_window=1,
+        horizon_windows=3,
+        remain_to_jobs_done=True,
+        max_remain_windows=8,
+        occupancy_horizon_windows=8,
+        window_size_s=60.0,
+        train_mode="unsupervised",
+    )
+    assert samples
+    # Idle X + high scores must not mint occupancy y.
+    assert all(float(s["y_hot"].sum()) == 0.0 for s in samples)
+    assert samples[0]["cluster_id"] == int(cluster[4])
+    assert samples[-1]["cluster_id"] in (0, 1)
+    assert "y_x" in samples[0] and samples[0]["y_x"].shape[-1] == f
+    assert samples[0]["y_cluster"].shape[1] == n_nodes
+
+    feats[:, 0, 0] = 2.0
+    feats[:, 0, 6] = 30.0
+    ep["features"] = feats
+    busy = _build_samples(
+        [ep],
+        input_window=4,
+        output_window=1,
+        horizon_windows=3,
+        remain_to_jobs_done=True,
+        max_remain_windows=8,
+        occupancy_horizon_windows=8,
+        window_size_s=60.0,
+        train_mode="unsupervised",
+    )
+    assert any(float(s["y_hot"].sum()) > 0.0 for s in busy)
+
+
 def test_occupancy_horizon_caps_mask_not_remain_len() -> None:
     t_len, n = 30, 2
     scores = np.zeros((t_len, n, 1), dtype=np.float32)
@@ -387,6 +688,16 @@ def test_type_balanced_occupancy_and_contrast_ids() -> None:
     assert float(types["machine"].sum()) == 1.0
     assert float(types["gantry"].sum()) == 2.0
     assert float(types["agv"].sum()) == 1.0
+    assert float(types["workbench"].sum()) == 0.0
+
+    split = occupancy_type_node_masks(
+        ["machine", "machine", "gantry"],
+        3,
+        ["num02_cut_ws0", "num08_workbench_ws0", "gantry_0"],
+    )
+    assert float(split["machine"].sum()) == 1.0
+    assert float(split["workbench"].sum()) == 1.0
+    assert float(split["gantry"].sum()) == 1.0
 
     # 1 machine wrong, 20 gantries right: type-mean BCE > cell-mean BCE.
     n = 21
@@ -419,7 +730,7 @@ def test_type_balanced_occupancy_and_contrast_ids() -> None:
         torch.tensor([1, 1, 0]), torch.tensor([0, 0, 1]), tid
     )
     assert ids[0] != ids[1]
-    assert int(ids[2]) == 1 * 4 + 0
+    assert int(ids[2]) == 1 * 8 + 0
 
 
 def test_gantry_fp_costs_more_than_machine_fp() -> None:
@@ -455,6 +766,60 @@ def test_gantry_fp_costs_more_than_machine_fp() -> None:
     assert float(pos_w[0, 0, 1]) == 1.0
 
 
+def test_agv_drive_fp_and_wrong_robot() -> None:
+    import torch
+
+    from factory_bn.model import agv_wrong_robot_loss, occupancy_bce_cell_weight, occupancy_type_node_masks
+
+    types = occupancy_type_node_masks(["machine", "transport_robot", "transport_robot"], 3)
+    y = torch.zeros(1, 1, 3)
+    drive = torch.tensor([[[0.0, 1.0, 0.0]]])
+    base = occupancy_bce_cell_weight(
+        y,
+        types,
+        default_pos_weight=4.0,
+        pos_weight_by_type={"agv": 4.0, "machine": 4.0},
+        fp_weight_by_type={"agv": 2.0, "machine": 2.0},
+    )
+    boosted = occupancy_bce_cell_weight(
+        y,
+        types,
+        default_pos_weight=4.0,
+        pos_weight_by_type={"agv": 4.0, "machine": 4.0},
+        fp_weight_by_type={"agv": 2.0, "machine": 2.0},
+        extra_fp_mask=drive,
+        extra_fp_scale=2.0,
+    )
+    assert float(base[0, 0, 1]) == 2.0
+    assert float(boosted[0, 0, 1]) == 4.0
+    assert float(boosted[0, 0, 2]) == 2.0
+    assert float(boosted[0, 0, 0]) == 2.0
+    y_pos = torch.tensor([[[0.0, 1.0, 0.0]]])
+    pos_boost = occupancy_bce_cell_weight(
+        y_pos,
+        types,
+        default_pos_weight=4.0,
+        pos_weight_by_type={"agv": 4.0},
+        fp_weight_by_type={"agv": 2.0},
+        extra_fp_mask=drive,
+        extra_fp_scale=2.0,
+    )
+    assert float(pos_boost[0, 0, 1]) == 4.0
+
+    agv = types["agv"]
+    y_one = torch.tensor([[[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]]])
+    w = torch.ones_like(y_one)
+    right = torch.tensor([[[0.0, 8.0, -8.0], [0.0, 8.0, -8.0]]])
+    wrong = torch.tensor([[[0.0, -8.0, 8.0], [0.0, -8.0, 8.0]]])
+    assert float(agv_wrong_robot_loss(right, y_one, agv, w)) < 0.05
+    assert float(agv_wrong_robot_loss(wrong, y_one, agv, w)) > 1.0
+    y_both = torch.ones(1, 1, 3)
+    y_both[0, 0, 0] = 0.0
+    assert float(agv_wrong_robot_loss(wrong[:, :1], y_both, agv, w[:, :1])) == 0.0
+    y_none = torch.zeros(1, 1, 3)
+    assert float(agv_wrong_robot_loss(wrong[:, :1], y_none, agv, w[:, :1])) == 0.0
+
+
 def test_hot_type_affine_identity_and_bias() -> None:
     import torch
 
@@ -474,6 +839,44 @@ def test_hot_type_affine_identity_and_bias() -> None:
     assert float(biased[0, 0, 2]) == 0.5
 
 
+def test_cause_cluster_priority() -> None:
+    from factory_bn.cause_cluster import CAUSE_NAME_TO_ID, seed_cluster_ids
+
+    feats = np.zeros((1, 4, 21), dtype=np.float32)
+    feats[0, 0, 4] = 0.1
+    feats[0, 1, 15] = 0.8
+    feats[0, 1, 0] = 3.0
+    feats[0, 2, 14] = 30.0
+    feats[0, 3, 6] = 40.0
+    ids = seed_cluster_ids(feats, window_size_s=60.0)[0]
+    assert int(ids[0]) == CAUSE_NAME_TO_ID["normal"]
+    assert int(ids[1]) == CAUSE_NAME_TO_ID["material_shortage"]
+    assert int(ids[2]) == CAUSE_NAME_TO_ID["transport_delay"]
+    assert int(ids[3]) == CAUSE_NAME_TO_ID["blocked_downstream"]
+
+
+def test_combine_will_uses_onset_when_cold() -> None:
+    import torch
+    from factory_bn.model import BNPDFormer
+
+    class _M(BNPDFormer):
+        def __init__(self):
+            self.split_will_heads = True
+
+    m = _M.__new__(_M)
+    m.split_will_heads = True
+    cont = torch.tensor([[4.0, 4.0]])
+    onset = torch.tensor([[-4.0, 4.0]])
+    last = torch.tensor([[1.0, 0.0]])
+    out = BNPDFormer._combine_will_logit(m, cont, onset, {"hist_last_hot": last})
+    assert float(out[0, 0]) == 4.0
+    assert float(out[0, 1]) == 4.0
+    out_cold = BNPDFormer._combine_will_logit(
+        m, cont, onset, {"hist_last_hot": torch.tensor([[0.0, 0.0]])}
+    )
+    assert float(out_cold[0, 0]) == -4.0
+
+
 if __name__ == "__main__":
     test_node_hot_includes_score()
     test_labor_saturated_appended_on_machines_only()
@@ -482,11 +885,24 @@ if __name__ == "__main__":
     test_grouped_embed_and_contrastive()
     test_type_balanced_occupancy_and_contrast_ids()
     test_gantry_fp_costs_more_than_machine_fp()
+    test_agv_drive_fp_and_wrong_robot()
     test_hot_type_affine_identity_and_bias()
     test_soft_dice_iou_and_occ_mask()
     test_jobs_remaining_series()
     test_pack_remain_and_events()
     test_build_samples_remain_horizon()
+    test_ops_recon_channel_weight_occupancy_cols()
+    test_ops_hot_ignores_score_and_tpm()
+    test_agv_ops_hot_drops_short_runs()
+    test_disturbance_without_stall_not_hot()
+    test_gaussian_start_soft_labels()
+    test_station_report_metrics_who_and_start_tol()
+    test_occupancy_event_match_iou()
+    test_node_event_targets_and_rasterize()
+    test_rasterize_node_events_torch()
+    test_unsupervised_samples_skip_score_hot()
     test_occupancy_horizon_caps_mask_not_remain_len()
     test_split_episodes_by_name()
+    test_cause_cluster_priority()
+    test_combine_will_uses_onset_when_cold()
     print("ok")

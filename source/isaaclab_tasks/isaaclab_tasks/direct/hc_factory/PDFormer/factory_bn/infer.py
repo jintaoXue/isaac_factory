@@ -224,8 +224,16 @@ class BNPredictor:
             jobs_rem = float(sample.get("jobs_remaining") or 0.0)
             if jobs_rem <= 0:
                 k_use = 0
-            if "hot_prob" in out:
+            if "event_occ" in out:
+                hot_grid = _as_numpy(out["event_occ"])[0, : max(k_use, 1)]
+                event_thresh = 0.5
+            elif "hot_prob" in out:
                 hot_grid = _as_numpy(out["hot_prob"])[0, : max(k_use, 1)]
+                event_thresh = self.hot_eval_threshold
+            else:
+                event_thresh = self.hot_eval_threshold
+        else:
+            event_thresh = self.hot_eval_threshold
         score_now = score[0, 0, :, 0]
         if k_use > 0:
             score_now = score[0, :k_use, :, 0].mean(axis=0)
@@ -242,7 +250,15 @@ class BNPredictor:
             if dur is not None:
                 rec["dur_min"] = float(np.asarray(dur).reshape(-1)[i])
             if hot_grid is not None:
-                rec["hot_windows"] = int((hot_grid[:, i] >= self.hot_eval_threshold).sum())
+                rec["hot_windows"] = int((hot_grid[:, i] >= event_thresh).sum())
+            if "event_will_prob" in out:
+                rec["will_block"] = float(_as_numpy(out["event_will_prob"])[0, i])
+                rec["start_min"] = int(_as_numpy(out["event_start_idx"])[0, i])
+                rec["duration_min"] = float(_as_numpy(out["event_dur"])[0, i])
+                last = sample.get("hist_last_hot")
+                rec["ongoing"] = bool(
+                    last is not None and float(np.asarray(last).reshape(-1)[i]) > 0.5
+                )
             nodes.append(rec)
         nodes_sorted = sorted(nodes, key=lambda r: r["score_pred"], reverse=True)
         first_future = float(sample.get("window_start_s", 0.0)) + float(self.window_size_s)
@@ -253,7 +269,7 @@ class BNPredictor:
                 resource_ids=self.resource_ids,
                 first_future_start_s=first_future,
                 window_size_s=self.window_size_s,
-                threshold=self.hot_eval_threshold,
+                threshold=event_thresh,
             )
         y = sample.get("y_score")
         result: dict[str, Any] = {

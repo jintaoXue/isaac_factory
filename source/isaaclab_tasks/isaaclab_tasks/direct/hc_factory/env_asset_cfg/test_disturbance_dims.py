@@ -105,6 +105,26 @@ def test_mixed_triple_and_quad_l1_l2() -> None:
     assert dims == {"machine", "human", "logistics", "material"}
 
 
+def test_l2_min_duration_survives_eight_min_hot() -> None:
+    d = _load()
+    rng = __import__("random").Random(0)
+    for dim in ("machine", "human", "logistics"):
+        ev = d.sample_l2_schedule(dim, 1.0, rng, human_count=3, gantry_indices=[0, 1, 2, 3], agv_count=2)
+        assert ev
+        assert all(int(e["duration"]) >= 600 for e in ev), dim
+
+
+def test_logistics_episode_always_freezes_an_agv() -> None:
+    d = _load()
+    for seed in range(40):
+        rng = __import__("random").Random(seed)
+        ev = d.sample_l2_schedule(
+            "logistics", 1.0, rng, gantry_indices=[0, 1, 2, 3], agv_count=2
+        )
+        assert any(str(e["target"]).startswith("agv_") for e in ev), seed
+        assert all(int(e["duration"]) >= 600 for e in ev)
+
+
 if __name__ == "__main__":
     test_parse_and_label()
     test_single_human_l1_unchanged()
@@ -112,5 +132,7 @@ if __name__ == "__main__":
     test_mixed_l2_has_both_dims()
     test_all_ood_mix_parse()
     test_mixed_triple_and_quad_l1_l2()
+    test_l2_min_duration_survives_eight_min_hot()
+    test_logistics_episode_always_freezes_an_agv()
     print("ok")
 

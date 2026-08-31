@@ -79,6 +79,15 @@ def _brief(metrics: dict[str, float]) -> str:
         f"m_p={metrics.get('hot_precision_machine', 0):.3f} "
         f"g_p={metrics.get('hot_precision_gantry', 0):.3f} "
         f"a_p={metrics.get('hot_precision_agv', 0):.3f} "
+        f"w_p={metrics.get('hot_precision_workbench', 0):.3f} "
+        f"ev_p={metrics.get('event_precision', 0):.3f} "
+        f"ev_r={metrics.get('event_recall', 0):.3f} "
+        f"ev_f1={metrics.get('event_f1', 0):.3f} "
+        f"who_p={metrics.get('who_precision', 0):.3f} "
+        f"who_r={metrics.get('who_recall', 0):.3f} "
+        f"rep_p={metrics.get('report_precision', 0):.3f} "
+        f"rep_r={metrics.get('report_recall', 0):.3f} "
+        f"rep_f1={metrics.get('report_f1', 0):.3f} "
         f"pred={metrics.get('hot_pred_pos_rate', 0):.3f} "
         f"true={metrics.get('hot_pos_rate', 0):.3f} "
         f"remain_mae={metrics.get('remain_len_mae', 0):.1f}"
@@ -95,6 +104,12 @@ def eval_loader(
     device: torch.device,
     cause_majority: int,
     hot_eval_threshold: float,
+    event_iou_min: float = 0.5,
+    event_min_windows: int = 8,
+    event_report_threshold: float = 0.70,
+    start_tol_windows: int = 3,
+    ongoing_will_floor: float = 0.62,
+    force_ongoing_will: bool = False,
 ) -> dict[str, float]:
     if not samples:
         return {}
@@ -108,6 +123,12 @@ def eval_loader(
         train=False,
         cause_majority=cause_majority,
         hot_eval_threshold=hot_eval_threshold,
+        event_iou_min=event_iou_min,
+        event_min_windows=event_min_windows,
+        event_report_threshold=event_report_threshold,
+        start_tol_windows=start_tol_windows,
+        ongoing_will_floor=ongoing_will_floor,
+        force_ongoing_will=force_ongoing_will,
     )
 
 
@@ -170,7 +191,7 @@ def main() -> None:
         max_remain_windows=max_remain_windows,
         hot_score_threshold=float(cfg.get("hot_score_threshold", 0.55)),
         occupancy_horizon_windows=occupancy_horizon_windows,
-        hot_min_windows=int(cfg.get("hot_min_windows", 2)),
+        hot_min_windows=int(cfg.get("hot_min_windows", 8)),
         hot_gap_windows=int(cfg.get("hot_gap_windows", 1)),
     )
     if not samples:
@@ -184,6 +205,14 @@ def main() -> None:
     cause_majority = int(meta.get("cause_majority", -1))
     hot_thr = float(cfg.get("hot_eval_threshold", 0.55))
     batch_size = int(args.batch_size)
+    event_kw = dict(
+        event_iou_min=float(cfg.get("event_iou_min", 0.5)),
+        event_min_windows=int(cfg.get("event_min_windows", cfg.get("hot_min_windows", 8))),
+        event_report_threshold=float(cfg.get("event_report_threshold", 0.70)),
+        start_tol_windows=int(cfg.get("start_tol_windows", 3)),
+        ongoing_will_floor=float(cfg.get("ongoing_will_floor", 0.62)),
+        force_ongoing_will=bool(cfg.get("force_ongoing_will", False)),
+    )
 
     by_run: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for s in samples:
@@ -221,6 +250,7 @@ def main() -> None:
             device=device,
             cause_majority=cause_majority,
             hot_eval_threshold=hot_thr,
+            **event_kw,
         )
         n_ep = len({str(s.get("episode_name")) for s in subset})
         report["slices"][name] = {

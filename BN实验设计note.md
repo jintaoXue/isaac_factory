@@ -19,13 +19,23 @@
 - 当前订单还要多久做完
 - 瓶颈出现的原因（见思路 2：现行 7 类过程原因，不是「机台故障 / 人离岗」）
 
-占用图只是把「会不会堵、堵在哪、堵多久」画成工位×分钟的 0/1 格子，方便算精度；**它就是主任务的表示，不是辅助分析图。** 不要用这张图去凑完工时间——完工时间另报一个数。
+**模型怎么报（现行 unsup9，不是格子图当成果）：**
+
+每个监督工位（机台 / 工作台 / 龙门 / AGV）出一个事件，不是一张 15×工位的热力图当主输出：
+
+1. **会不会堵** `will_block`（0/1；s9 阈值 0.70，unsup_best 阈值 0.65）
+2. **几点开始** `start_min`（预报窗内第几分钟；上一分钟已经在堵 → 强制 0，只报还要堵多久）
+3. **持续几分钟** `duration_min`
+
+格子占用图仍在训，只当辅助（对齐连通段）。不要用占用图去凑完工时间——完工时间另报一个数。
 
 正式采集只用 **I=1.0**。I=2.0 / 3.0 更难、更容易卡死，先不要混进训练集。
 
 **时间怎么换算（后面所有「分钟」都用这一套）：** 调度/采集 1 step = 1 逻辑秒 = **1 秒厂时**。墙钟大约 0.08 秒跑完 1 逻辑秒；PhysX 每步只走 1/120 秒，和工序无关。
 
-**这篇笔记怎么用：** 任务、短单、扰动表是底座。窗、指标、采集、标签、loss **以现行代码为准**（`FactoryBN.json`、`factory_bn/model.py`、`remain.py`、`cfg_disturbance.py`）。改代码后同步改对应小节，不要留下「先不做 / 占用还只有机台」这种过时结论。
+**这篇笔记怎么用：** 任务、短单、扰动表是底座。窗、指标、采集、标签、loss **以现行代码为准**（精度优先 `FactoryBN_unsupervised_s9.json`，现行可用无监督 `FactoryBN_unsupervised_best.json`；`factory_bn/model.py`、`remain.py`、`cfg_disturbance.py`）。改代码后同步改对应小节，不要留下「存盘还看格子 F1 / AGV 行驶也算堵 / 龙门速度 0.30」这种过时结论。
+
+**两套扰动不要混：** `cfg_disturbance.py` **现在**是 L2 下限 10 分钟、物流每局至少冻一台 AGV。已经训完的 77 局生产包、以及物料重采 seed 43，是 **改代码之前**采的（L2 下限 6 分钟、物流随机抽吊车/AGV）。extra seed 44 才走新配方。厂线本体（10 根、WIP 5、按维 L0/L1）两边一样。
 
 ---
 
@@ -93,9 +103,9 @@
 
 | 开哪一维               | 现场在发生什么          | 一直开着                                         | 中途突然发生                                                                                                  | 主任务上应看到的堵                            |
 | ------------------ | ---------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| **工位** `machine`   | 产能不够 + 偶发宕机      | 工作台、环焊各关掉一个工位（只留 ws0）；加工时间抖、成功率约 0.88、刀具越用越慢 | **2 次**故障，每次约 **8–15 分钟**，停切管/坡口/焊机/工作台之一；另外 1–2 次焊后质检多扣 40–90 秒                                        | 单工位排队，故障点后面饿、前面堵；要报对是哪台、堵几分钟         |
-| **工人** `human`     | 人手不够、快慢不均        | 5 人减到 **3**；全体约慢 1.55 倍，有人快有人慢               | **2 次**离岗，每次约 **9–15 分钟**                                                                               | 人工工序拉长，机台等工人；要报对等在哪、等多久              |
-| **物流** `logistics` | 小车不够、限速、偶发冻车     | **4 龙门全留**（分区不能拆），AGV 4→**2**，龙门再降到约 0.30    | **2 次**冻一台龙门 **或** 一台 AGV，每次约 **8–14 分钟**                                                               | 到货等很久，工位饥饿；龙门/AGV 自己堵也要报（堵在哪台车、冻了多久） |
+| **工位** `machine`   | 产能不够 + 偶发宕机      | 工作台、环焊各关掉一个工位（只留 ws0）；加工时间抖、成功率约 0.88、刀具越用越慢 | **2 次**故障，每次约 **10–15 分钟**，停切管/坡口/焊机/工作台之一；另外 1–2 次焊后质检多扣 40–90 秒                                        | 单工位排队，故障点后面饿、前面堵；要报对是哪台、堵几分钟         |
+| **工人** `human`     | 人手不够、快慢不均        | 5 人减到 **3**（`round(5-(1+I))`）；全体约慢 1.55 倍，技能梯 0.8–1.4；加工成功率约 0.95、刀具磨损 6 | **2 次**离岗，每次约 **10–15 分钟**                                                                               | 人工工序拉长，机台等工人；要报对等在哪、等多久              |
+| **物流** `logistics` | 小车不够、限速、偶发冻车     | **4 龙门全留**（分区不能拆），AGV 4→**2**；`gantry_time_scale=1.65`，`move_speed≈0.61`（1/1.65），速度噪声 std≈0.30（**不是**把速度降到 0.30） | **2 次**冻结，每次约 **10–15 分钟**；**现行代码每局至少冻一台 AGV**（另一条可以是龙门）。旧生产包没有这条保证 | 到货等很久，工位饥饿；龙门/AGV 自己堵也要报（堵在哪台车、冻了多久） |
 | **物料** `material`  | 管子到了组焊台，法兰或弯头没送到 | 加工成功率仍是 1.0（不靠返工装缺料）                         | 开局后约 7–17 分钟，藏法兰 **或** 弯头 **6–7 件（留 3 件）**，藏 **23–37 分钟**；放回后再藏另一种 **4–6 件**，1–2 波，每波约 9–15 分钟。**不藏管坯** | 工作台卡在等套件，坡口卸不下来，焊机没半成品；要报对工作台堵了多久    |
 
 
@@ -105,13 +115,22 @@
 |        | I=1.0（先采这个）                           | I=2.0     | I=3.0     |
 | ------ | ------------------------------------- | --------- | --------- |
 | 每局几条   | 工位/人/物流 **2 条**；物料另有 1 段长藏料 + 1–2 波短藏 | 2–3       | 3–4       |
-| 一条多长   | 约 **6–15 分钟**（360–900 步）              | 上限约 22 分钟 | 上限约 23 分钟 |
+| 一条多长   | 约 **10–15 分钟**（`max(600, 0.7–1.3×基准)`，I=1.0 上限 900 步） | 上限 1300 步（≈22 分钟） | 上限 1400 步（≈23 分钟） |
 | 从何时开始抽 | 约第 7 分钟到第 2 小时                        | 同左        | 同左        |
 | 两条之间   | 至少隔 6 分钟，不撞同一台                        | 同左        | 同左        |
 | 和卡死看门狗 | 必须短于 5000 步                           | 同左        | 同左        |
 
 
-工位维的「质检」不占上面那 2 条故障名额：焊完再多等几十秒，机台仍显示在干活，不是 STOP。
+工位维的「质检」不占上面那 2 条故障名额：1–2 个窗口（约 400–900 秒），焊完再多扣 **40–90 秒**（`hold_steps`），机台仍显示在干活，不是 STOP。
+
+**已落地数据用的是哪套 L2：**
+
+
+| 数据 | 种子 | L2 下限 | 物流 AGV 冻结 | 状态 |
+| --- | --- | --- | --- | --- |
+| 生产包 `n10_*1.0` → `raw_data/n10_i1_20ep_unsup`（77 局） | 42 | **6 分钟**（360），实测常见 7–15 分钟，有多段不到 10 分钟 | 随机抽吊车/AGV，不少局 0 次 AGV 冻 | **现行训/评包**；不要用新代码重采去覆盖这些链接 |
+| 物料重采 `material重采` | 43 | 旧配方（同生产包） | 未采物流 | **20/20 已采完**；未替换 `material20` / `n10_material1.0` |
+| extra `2026-08-29_09-27-14_seed44` | 44 | **10 分钟**（600），已采 machine 段全部 ≥600 | 现行代码保证每局 ≥1 台 AGV | 只建 `extra_<dim>1.0_seed44`；**禁止**改 `n10_*` / `new_*` / `material20` / `zone4_*` |
 
 #### 物料藏多少（按 10 根订单写的，不能拿 18 根的旧数）
 
@@ -139,10 +158,10 @@
 | #   | 问题                         | 结论（先看这一列） |
 | --- | -------------------------- | -------------- |
 | 1   | 历史窗可以小于主预报窗吗？12 分钟历史够不够？   | **可以小于，但 12 分钟偏紧。** 已改成 **30 格 = 30 分钟** 历史、预报仍是 15 分钟。 |
-| 2   | 当前瓶颈原因都有哪些？那三个 L2 类名为什么去掉？ | **新标签只写 7 类过程原因。** `machine_failure` / `human_unavailable` / `unavailable` 是扰动怎么注入，不是线上怎么堵；当原因会变成抄实验开关。 |
-| 3   | 现行扰动能不能让模型学到明显的堵和原因？       | **能。** I=1.0 四维会把排队、缺料、到货等待打到 6–15 分钟热窗上。占用 y **已经打机台 / 工作台 / 龙门 / AGV**（人、buffer 不监督）。正式训练包是 **每维约 20 局**（`n10_*1.0`），不是早期的 10 局预览。 |
-| 4   | 模型代码要不要改？                  | **编码器宽度先不动**（仍是 PDFormer，不上 HeteroGNN）。窗、占用头、分组投影、对比、Dice/IoU、龙门/AGV 标签都已落地。再改优先调占用精度（按类型平衡、龙门误报），不要先加宽网络或重开 STGNPP。 |
-| 5   | 当前训练的 loss 怎么设计的？          | **主任务三项并列（占用 BCE + Dice + 软 IoU），次要压轻。** 占用按资源类型均摊，龙门正例权重 1、误报权重 2。L=1.0 L_{\mathrm{hot}}+1.0 L_{\mathrm{dice}}+1.0 L_{\mathrm{IoU}}+0.5 L_{\mathrm{remain}}+0.2 L_{\mathrm{cause}}+0.1 L_{\mathrm{contrast}}。点过程 / will / mark / tts / STGNPP 全关。详见 §5。 |
+| 2   | 当前瓶颈原因都有哪些？那三个 L2 类名为什么去掉？ | **新标签写出 7 类（6 个过程类 + `score_threshold` 兜底），loss 只监督 6 个过程类。** `machine_failure` / `human_unavailable` / `unavailable` 是扰动怎么注入，不是线上怎么堵；当原因会变成抄实验开关。 |
+| 3   | 现行扰动能不能让模型学到明显的堵和原因？       | **能，但要分清两套数据。** 现行 `cfg_disturbance.py`：I=1.0 中途事件下限 **10 分钟**、物流 **每局至少冻一台 AGV**。占用 y 打机台 / 工作台 / 龙门 / AGV。**77 局生产包仍是旧 L2**（下限 6 分钟、无 AGV 保证）。extra seed 44 走新配方，只挂 `extra_*`，**不改**生产链接。 |
+| 4   | 模型代码要不要改？                  | **编码器宽度先不动**（仍是 PDFormer，不上 HeteroGNN / STGNPP）。主输出已改成按工位的事件头（will / start / dur）；占用格子只当辅助。再改优先补长事件数据和「尚未发生」的 start，不要先加宽网络。 |
+| 5   | 当前训练的 loss 怎么设计的？          | **主任务：工位 will（误报权重大）+ 即将发生的 start 软标签 + 时长；进行中事件不猜 start。** 占用 BCE/Dice/IoU 仍训但权重轻、不抢存盘。次要：remain 0.4、cause 0.1（忽略 `score_threshold` 和旧 L2 名）。详见 §5。 |
 
 
 ---
@@ -174,21 +193,21 @@
 
 **历史多长和预报多远，本来就不必谁大谁小。** 历史回答「现在是什么局」，预报回答「现场要提前几分钟被提醒」。12 < 15 在预报里说得通，不必为了对称去砍 H。
 
-但 12 格是从交通论文抄的步数，那边一格 5 分钟、历史其实是 **60 分钟**。这里一格是 1 分钟，12 格只剩 12 分钟，相对一根水管约 50 分钟、故障 6–15 分钟，偏紧。所以历史加长到 **30 格 = 30 分钟**（`FactoryBN.json` 的 `input_window=30`），预报仍钉 **15 分钟**。现在是历史长于预报。
+但 12 格是从交通论文抄的步数，那边一格 5 分钟、历史其实是 **60 分钟**。这里一格是 1 分钟，12 格只剩 12 分钟，相对一根水管约 50 分钟、故障 10–15 分钟，偏紧。所以历史加长到 **30 格 = 30 分钟**（`FactoryBN.json` 的 `input_window=30`），预报仍钉 **15 分钟**。现在是历史长于预报。
 
 
 | 拿来比的量      | 多长        | 30 分钟历史在干什么           | 15 分钟预报在干什么      |
 | ---------- | --------- | --------------------- | ---------------- |
 | 无扰动整单      | ~133 分钟   | 看最近约 23% 的厂时          | 提前约 11% 一局长      |
 | 一根水管周期     | 平均 ~50 分钟 | 能看见大半根在制怎么走，仍不必看完整根   | 只预报未来 15 分钟谁堵    |
-| 中途故障/离岗/冻车 | 约 6–15 分钟 | 一次事件能完整落进历史，还能看到前后各一段 | 一张预报图能罩住「这一次堵多久」 |
+| 中途故障/离岗/冻车 | 约 10–15 分钟 | 一次事件能完整落进历史，还能看到前后各一段 | 一张预报图能罩住「这一次堵多久」 |
 
 
 代价：每局前 30 分钟攒不满历史，不拿来训、在线也要等满 30 格（或丢掉早局）。无扰动 ~133 分钟的局大约还剩 100 个训练窗，够用。H 仍然不要砍。旧的 `input_window=12` 权重不能直接加载到 30 格网络上，必须重训。
 
 评占用时仍可把 15 格拆开看前段 vs 尾段 precision。消融（12 / 20 / 30 历史）等主任务跑通再做。
 
-主任务要报的工位集合（机台、工作台、龙门、AGV）已经写进占用 y：`node_hot_mask` / `row_is_hot` 监督这四类；人和 buffer 格子权重为 0。
+主任务要报的工位集合（机台、工作台、龙门、AGV）已经写进占用 y：`ops_hot_mask`（无监督）/ `node_hot_mask`（有监督）；人和 buffer 格子权重为 0。**现场读数看事件头，不看格子图。**
 
 ---
 
@@ -222,7 +241,7 @@
 | `unavailable`       | 资源不可用（关工位、STOP 等） | **不会**           |
 
 
-所以网络仍是 10 类 CE，但新包的 y 只有上面 7 个过程类。旧权重 `cause_acc=1.0` 多半是塌成 `starved_upstream` 一类，不能当成果。
+所以网络仍是 10 类 CE，但 **loss 只监督 6 个过程类**（上表 1–6）。`score_threshold` 和三个旧 L2 名在 CE 里忽略。日志看 per-class / macro recall，**不要把 overall `cause_acc` 当成果**（unsup8 的 0.79 被 `score_threshold` 和多数类抬高了）。
 
 #### 为什么这三类不当原因了
 
@@ -249,32 +268,36 @@ L2 也 **不是** STGNPP 事件：`n_events_from_disturbance` 必须为 0。扰�
 
 ### 2. metric 是什么？
 
-主任务看 **准不准**，不是看报得全不全。乱报工位、把没堵说成堵，比漏报更差。
+主任务看 **准不准**，不是看报得全不全。乱报工位、把没堵说成堵、开始时间差超过 3 分钟，都算失败。
 
-**主指标（决定能不能存盘）——现行代码按格子算**
+**主指标（决定能不能存盘）——现行代码按工位事件算，不是按格子**
 
-
-| 你要的事 | 指标                         | 白话                       | 怎么用                          |
-| ---- | -------------------------- | ------------------------ | ---------------------------- |
-| 会不会堵 | 格子 precision / recall / F1 | 报堵的格子里有多少是真堵 / 真堵有多少报出来了 | **先看 precision**；P 太低的权重直接丢掉 |
-| 堵在哪  | 按类型拆开的格子 P（machine / gantry / AGV） | 哪一类资源在乱报                 | 日志里打 `m_p` / `g_p` / `a_p`  |
-| 堵多久  | Dice / 软 IoU（训练里对齐连通段）     | 预测时段和真值重叠多少              | 训练目标；存盘仍看格子 F1               |
+一条预报窗口里，每个监督工位最多一个事件。先比 **谁**，再比 **何时**（只在工位对了的时候），再比 **多久**。
 
 
-存盘：`ckpt_metric=hot_f1`，占用 **precision < 0.38 不存**（`ckpt_min_hot_precision=0.38`）。评占用的二值阈值是 **0.55**。从未达标则不写 junk ckpt。
+| 你要的事 | 指标 | 白话 | 怎么用 |
+| ---- | --- | --- | --- |
+| 堵在哪 | `who_precision` / `who_recall` | 报出来的工位有多少是真会堵 / 真会堵的工位报出了多少 | 工位错了整条失败 |
+| 何时开始 | `start_mae`（只在 who 对的工位上） | 开始时间平均差几分钟；**差 > 3 分钟 = 这条报告失败** | 进行中事件真值 start=0，不猜开始 |
+| 堵多久 | `dur_mae`（只在 who 对的工位上） | 持续时间平均差几分钟 | 进行中训的是**剩余**时长 |
+| **主分数** | `report_precision` / `report_recall` / `report_f1` | 工位对 **且** start 误差 ≤ 3 分钟 | s9 先看 P（召回低于 0.12 不存盘）；**unsup_best 存盘看 `report_f1`，P≥0.80** |
+| 拆开看 | ongoing vs upcoming | 已经在堵 vs 还没开始 | unsup9 Test 几乎只会报 ongoing |
 
-任务表述里还有事件级（工位是否对、开始时间误差、持续时间 IoU）。那是现场验收口径，**还没有接到存盘**；现在比的是格子 P/F1。不要把格子 F1 说成已经评了事件 IoU。
+
+存盘分两套配方：s9 用 `ckpt_metric=report_precision`，`who_recall` / `report_recall` 都至少 **0.12** 才存，will 阈值 **0.70**。unsup_best 用 `ckpt_metric=report_f1`，will 阈值 **0.65**，正例×3 / 尚未发生×4 / 负例×2，**P < 0.80 不存**。最短事件都是 **8 分钟**。从未达标则不写 junk ckpt。remain MAE **不抢存盘**。
+
+格子占用 P/F1（`hot_p` / `m_p` / `g_p` / `a_p`）和 IoU≥0.5 的 `event_*` 每个 epoch 仍打，**只当附录**。不要把格子 F1 或 IoU F1 说成主任务已经过关。IoU≥0.5 对 6 分钟真事件过严（开始偏 2 分钟 IoU 就掉到 0.5）。
 
 **次要指标（每个 epoch 都打，不和主任务抢存盘）**
 
 
-| 你要的事   | 指标                                      | 白话                     |
-| ------ | --------------------------------------- | ---------------------- |
-| 订单还要多久 | MAE（分钟）、MAPE                            | 平均差几分钟                 |
-| 原因     | `cause_acc`，必须带训练集多数类 `cause_maj` 和混淆矩阵 | 旧包 acc=1.0 是一类塌掉，不能当成果 |
+| 你要的事   | 指标 | 白话 |
+| ------ | --- | --- |
+| 订单还要多久 | remain MAE（分钟） | 平均差几分钟；unsup9 Test ≈ 5.4，可以接受 |
+| 原因     | 6 个过程类的 **per-class recall** 和 `cause_macro_recall` | 不要报 overall `cause_acc`；`score_threshold` 不进 loss |
 
 
-不要当主指标的：总 val_loss、score MAE、will acc、STGNPP 贴在下限上的 NLL。
+不要当主指标的：总 val_loss、score MAE、格子 F1、IoU event F1、STGNPP NLL。
 
 ---
 
@@ -287,20 +310,33 @@ L2 也 **不是** STGNPP 事件：`n_events_from_disturbance` 必须为 0。扰�
 已经按这个改过的：
 
 - **训练集：一次 run 只开一个扰动维**，堵的位置和原因才分得开。
-- 产线本身先变难（减人 / 关工位 / 少 AGV / 藏套件），再叠加中途 6–15 分钟的事件，格子上才看得见。
+- 产线本身先变难（减人 / 关工位 / 少 AGV / 藏套件），再叠加中途事件，格子上才看得见。
 - 订单 10、并行 5，线能顶满，又不会采一整晚。
-- 混维 11 组只做 OOD（`./collect_n10_mix_all.sh`），不并进生产训练集。
+- 混维只做 OOD，不并进生产训练集。
+
+仓库根目录现在只留 **`collect_n10_extra_i1.sh`**（extra，不改生产链接）。`collect_preview_n10_1ep.sh` / `collect_n10_i1_20.sh` / `collect_n10_mix_all.sh` **已经不在仓库里**。预览或补采用根目录 `train.py`（`HRTPaHC-v1`、`rule_based`），**两个停局参数一起写**：
+
+```bash
+conda activate env_isaaclab
+python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 \
+  --seed 44 --device cuda:0 --headless \
+  --disturbance_dim machine --disturbance_intensity 1.0 \
+  --max_episodes 1 --max_sim_episodes 1
+```
+
+**不要跑 `batch_bn_collect.sh`**：它的 `link_run` 会改写 `new_*` / `zone4_*` / 生产链接。
 
 建议顺序：
 
-1. 先跑 **1 局 × 四维**（`./collect_preview_n10_1ep.sh` → `preview_n10_`*）。确认：堵能撑过好几个 60 秒格；四维热工位不一样（缺料→工作台，物流→到货等待/车，工位→被关或故障的那台，减人→等人的机台）；注入的故障本身不要被当成「堵」的唯一定义——要看过程有没有真的排队/饥饿。
-2. 预览过关后再采 **I=1.0、每维约 20 局**（`./collect_n10_i1_20.sh` → 链接 `n10_<dim>1.0`）。不要混 I=2.0/3.0，不要混 18 根旧包。
+1. 先跑 **1 局 × 四维**（上面的 `train.py`，每维 `--max_episodes 1 --max_sim_episodes 1`）。确认：堵能撑过好几个 60 秒格；四维热工位不一样（缺料→工作台，物流→到货等待/车，工位→被关或故障的那台，减人→等人的机台）；注入的故障本身不要被当成「堵」的唯一定义——要看过程有没有真的排队/饥饿。
+2. 预览过关后再采 **I=1.0、每维约 20 局**（同一命令改局数）。产出目录形如 `output/bottleneck_dataset/<run_id>/`。**不要**用 extra 脚本去覆盖 `n10_<dim>1.0`。不要混 I=2.0/3.0，不要混 18 根旧包。
 3. 无扰动 `n10_none1.0` **约 8 局** 当负例对照。生产训包 **没有** 把 none 混进去（混进去 Test P 更差）。
 4. 丢掉死锁局、没做完 **10/10** 的局。
-5. 改过打标或扰动后必须重聚 derived、重导出 npz。旧 `evt` 权重作废。
-6. 混维 OOD：`./collect_n10_mix_all.sh`（每组 5 局、11 个非空子集），导出 `raw_data/n10_mix_ood`，用 `python -m factory_bn.eval_ckpt` 评生产权重。不要 `--train_only_contains n10_mix_` 进生产训。
+5. 改过打标或扰动后必须重聚 derived、重导出 npz。旧 `evt` / 只评格子的权重不能当现行主任务成果。新扰动 extra **不要**直接并进 77 局包当同分布。
+6. 混维 OOD 仍是「每组若干局、11 个非空子集」，导出另包；不要 `--train_only_contains n10_mix_` 进生产训。仓库里没有一键 mix 脚本，用 `train.py --disturbance_dim human,logistics` 自行采。
+7. **额外 I=1.0**（每维 10 局、seed 44）：`./collect_n10_extra_i1.sh`，tmux `materialdata:extra_i1`。物料重采（seed 43、旧扰动、20 局）**已经采完**；extra **已经在跑**（新扰动：L2≥10 分钟、物流每局至少一台 AGV 冻）。顺序 machine → human → logistics → material。只建 `extra_<dim>1.0_seed44`，**禁止**改 `n10_*` / `new_*` / `material20` / `zone4_*`。
 
-现行单维包（skip_deadlock + 要求 10/10 之后）：machine 20、human 20、logistics 20、material 17。人维另有 wait 重采 `n10_human1.0_wait`（`waiting_processing_task`→WAITING），**没有改 `n10_human1.0` 链接**；生产训仍用旧 human。
+现行单维生产包（skip_deadlock + 要求 10/10 之后）：machine 20、human 20、logistics 20、material 17。无监督训包 `raw_data/n10_i1_20ep_unsup` 现 **77 局**（split 53/11/13），**旧 L2 配方**。人维另有 wait 重采 `n10_human1.0_wait`，**没有改 `n10_human1.0` 链接**。物料重采 seed 43 已满 20 局，未替换生产链接。
 
 ---
 
@@ -319,9 +355,9 @@ L2 也 **不是** STGNPP 事件：`n_events_from_disturbance` 必须为 0。扰�
 现行实现（都已开）：
 
 1. **分组投影**（`use_grouped_embed=true`）：队列/等待、阻塞/饥饿、到货/物流、缺料、扰动上下文（含劳动力饱和）、类型，各组自己过一小层再平均。缺料堵和冻车堵从第一层就不走同一套权重。`GroupedTokenEmbedding`。
-2. **有监督对比学习**（`w_contrast=0.1`）：编码器输出投影成 z。同类 = 同一组 **`(未来 H 内堵不堵, 扰动维, 主导资源类型)`**（机台 / 龙门 / AGV / 无）。混维 / 未知 run 名 `dim_id=-1`，不和单维抢类。
+2. **有监督对比学习**（`w_contrast=0.05`，以 s9 为准）：编码器输出投影成 z。同类 = 同一组 **`(未来 H 内堵不堵, 扰动维, 主导资源类型)`**（机台 / 龙门 / AGV / 无）。混维 / 未知 run 名 `dim_id=-1`，不和单维抢类。
 3. **不要**给 IDLE/PROCESSING 做一张很大的离散表——要的是谁在等、等了多久，不是状态名字。
-4. **不要**先上 HeteroGNN：节点大约 34 个，数据也少。也不要先加宽 PDFormer。
+4. **不要**先上 HeteroGNN：现行 unsup 包 `num_nodes=38`，数据也少。也不要先加宽 PDFormer。
 
 检验：编码器输出做 t-SNE/UMAP，应能分开「不堵 / 缺料堵 / 工位堵 / 物流堵」。分不开先查采集、特征和占用标签，别先加层。
 
@@ -335,13 +371,15 @@ L2 也 **不是** STGNPP 事件：`n_events_from_disturbance` 必须为 0。扰�
 
 标签是 **过程启发式**，不是把注入类型抄进去：
 
-- **主标签（堵）：** `node_hot_mask`（训练占用 y）/ `row_is_hot`（Stage-C 热窗）。
-  - **机台 / 工作台：** 工艺链拐点、排队堆积、缺料饥饿、到货延误饥饿、上游堵死、耦合停顿、等人（stall ≥40% 且人 STOP 或 `labor_saturated`）、注入且本窗 STOP。
-  - **龙门 / AGV：** 路径或入站延误 **加上** 停顿，或本窗 STOP。运输延误按 (任务, 载体) 记，**只计 STARVED/WAITING，不含行驶**。冻车 raw=`working_disturbance_absent` 记 STOP。
-  - **人 / buffer：** 占用格子权重 0，不监督。
+- **主标签（堵）：** 无监督用 `ops_hot_mask` → `ops_occupancy_raw`（训练占用 y / 事件真值）；有监督另加分数和 TPM 的 `node_hot_mask`。Stage-C 热窗仍是 `row_is_hot`。`tools/bn_agg/constants.py` 里 `HOT_MIN_OCC_WINDOWS=2` 是聚合侧旧默认，**训练以 s9 的 `hot_min_windows=8` 为准**。
+  - **机台 / 工作台：** 队列 ≥2 且 stall>0；或 blocked ≥40% 且队列 ≥1；或 stall ≥40% 且（上下游耦合 / 入站或路径延误 / 缺料传播 / 队列 ≥1）；缺料传播 ≥0.25 且饥饿 ≥50%；入站或路径延误 ≥20s 且饥饿 ≥30%；注入亮着且 unavailable ≥50%；等人（stall ≥40% 且有人 STOP 或 `labor_saturated`）。注入亮着但没有队列/stall/STOP 的假热 **滤掉**。
+  - **龙门：** （路径 **或** 入站延误 ≥20s）**加上** stall ≥30%，或本窗 unavailable ≥50%。
+  - **AGV：** **只算冻车/STOP（unavailable ≥50%），或入站等待 ≥20s + stall。** 路上 `route_delay` 不算堵。
+  - **人 / buffer：** `occ_node_mask` 为 0，不监督。
   - 注入的故障/离岗/冻车本身 **不是** 标签——要看过程有没有堵。
-  - 平滑：`hot_min_windows=2`、`hot_gap_windows=1`（丢掉孤立 1 分钟正例，填 1 格空洞）。
-- **次要标签（原因）：** 缺料、到货延误、排队、下游堵、上游饿、高利用率……按门槛排队。禁止写成 `machine_failure` / `human_unavailable`。
+  - 平滑：`hot_min_windows=8`、`hot_gap_windows=1`（丢掉短于 **8 分钟** 的闪烁）。新采集 I=1.0 中途事件 **10–15 分钟**；旧生产包仍有 6–10 分钟脉冲，对齐后可能被滤掉。
+  - 事件真值：每个工位取预报窗内最长一段；已经在堵 → start=0，dur=剩余时长。样本带 `hist_last_hot`（上一分钟该工位是否热）。
+- **次要标签（原因）：** 缺料、到货延误、排队、下游堵、上游饿、高利用率。`score_threshold` 仍可能写进 npz，**loss 忽略它和三个旧 L2 名**。
 - **次要标签（收工）：** 还剩多少分钟，从 `job_kpi` 算（`remain_len`，单位是窗）。
 
 聚类只适合当检查工具：看四维是不是落在不同堆、不堵是不是单独一堆。不能用簇号代替「哪一工位、堵几分钟」。簇没有时间起点和持续时间，现场没法当预警。
@@ -352,71 +390,74 @@ L2 也 **不是** STGNPP 事件：`n_events_from_disturbance` 必须为 0。扰�
 
 ### 5. 瓶颈带来的变化一定要明显。loss 怎么设计？
 
-一句话：**为报对「堵、堵在哪、堵多久」付钱，为乱报罚重金；收工时间和原因不要压过主任务。**
+一句话：**为报对「哪一工位会堵、几点开始、持续几分钟」付钱，为乱报罚重金；格子占用、收工时间、原因都不要压过这件事。**
 
 ```text
-总损失 =
-    占用格子 BCE（未来 H=15 分钟；默认 pos_weight=4，龙门正例=1、龙门误报×2）
-  + Dice / 软 IoU（机台 / 龙门 / AGV 三类先各自算再平均）
-  + 0.5 × 订单剩余时间 SmoothL1（分钟）
-  + 0.2 × 原因分类（只在热窗上算）
-  + 0.1 × 对比损失（堵 vs 不堵 × 扰动维 × 资源类型）
+总损失（s9 / FactoryBN_unsupervised_s9.json，宁可不报）=
+    2.0 × 工位 will BCE（正例×2，负例×4）
+  + 1.0 × 即将发生的 start 软标签（Gaussian σ=1，约 ±2 分钟；已经在堵的不训 start）
+  + 1.0 × 时长 SmoothL1（进行中训剩余时长）
+  + 0.5 × 占用格子 BCE（辅助）
+  + 0.25 × Dice + 0.25 × 软 IoU（辅助）
+  + 0.4 × 订单剩余时间
+  + 0.1 × 原因分类（忽略 score_threshold 和旧 L2 名）
+  + 0.05 × 对比 + 0.25 × 未来 X 重构
+
+总损失（unsup_best / FactoryBN_unsupervised_best.json）=
+    2.5 × 工位 will BCE（正例×3，尚未发生×4，负例×2）
+  + 1.5 × start 软标签
+  + 其余项与 s9 相同
 ```
 
-点过程 NLL、will、mark、tts 关掉（权重 0）。等占用 **precision 稳定过 0.4**，再考虑加回来。不要把重开 STGNPP 当成提高格子 P 的第一步。
+点过程 NLL、旧 will/mark/tts、STGNPP 关掉（权重 0）。不要把加宽 PDFormer / 重开 STGNPP 当成提高 report P 的第一步。
 
-变化不明显时，先查采集再调 loss：这一格有没有缺料/排队/到货等待；标签是不是正例；同一维的正例是不是都挤在焊台上。loss 救不了「输入和标签都看不出谁在堵」的数据。
+变化不明显时，先查采集再调 loss：这一格有没有缺料/排队/入站等待；AGV 是不是只在冻/等；8 分钟以上的正例够不够；尚未发生的堵在包里有没有。loss 救不了「输入和标签都看不出谁在堵」的数据。
 
 #### 当前代码里 loss 实际怎么算
 
-配置以 `source/.../PDFormer/factory_bn/configs/FactoryBN.json` 为准，实现在 `factory_bn/model.py` 的 `calculate_loss`。STGNPP / will / mark / tts / 分数回归权重都是 0，不进反传。`remain_to_jobs_done=true`。
+精度优先看 `FactoryBN_unsupervised_s9.json`；现行可用无监督看 `FactoryBN_unsupervised_best.json`。实现在 `factory_bn/model.py`。不要拿默认的 `FactoryBN_unsupervised.json` / `FactoryBN.json` 当现行主任务（里面还是 `hot_min_windows=2`、`ckpt_metric=hot_f1`）。`remain_to_jobs_done=true`。unsup_best 事件头整段 warmup（`event_head_warmup_epochs=50`）。
 
 
-L = 1.0L_{\text{hot}} + 1.0L_{\text{dice}} + 1.0L_{\text{IoU}} + 0.5L_{\text{remain}} + 0.2L_{\text{cause}} + 0.1L_{\text{contrast}}
+L = 2.0 L_{\text{event\_will}} + 1.0 L_{\text{event\_start}} + 1.0 L_{\text{event\_dur}} + 0.5 L_{\text{hot}} + 0.25 L_{\text{dice}} + 0.25 L_{\text{IoU}} + 0.4 L_{\text{remain}} + 0.1 L_{\text{cause}} + 0.05 L_{\text{contrast}} + 0.25 L_{\text{recon}}
 
 
-**1. 占用格子 BCE（主任务，**`w_hot=1`**）**
+**1. 工位 will（主任务）**
 
-预报图是未来 **H=15 格（15 分钟）× 工位** 的 0/1 占用。只监督机台、工作台、龙门、AGV；人和 buffer 的格子权重为 0（`occupancy_cell_weight` × `occ_node_mask`）。
+每个监督工位一个 logit。真值来自预报窗内最长一段占用（最短 8 分钟）。s9：`w_event_will=2`，FP×4 > FN×2。unsup_best：`w_event_will=2.5`，正例×3、尚未发生×4、负例×2。
 
-- 默认 `hot_pos_weight=4`：正格比负格重 4 倍，避免全报 0；不用 32
-- **按类型覆盖：** `hot_pos_weight_by_type` machine=4、gantry=**1**、agv=4；`hot_fp_weight_by_type` gantry=**2**（龙门负格罚更重，压误报）
-- `type_balanced_occupancy=true`：BCE / Dice / IoU 对 machine、gantry、AGV **先各自归一再平均**，龙门正例多不能吃掉机台/AGV 梯度
-- 占用头还有按类型的仿射：`hot_type_bias_init=[0, -0.5, 0]`（龙门 logit 初值偏低）
-- 时间衰减：第 k 格权重 \exp(-k/40)（`remain_loss_tau=40`），且只算前 15 格
+**2. start / dur（主任务，各** `1.0`**）**
 
-**2. Dice + 软 IoU（主任务，各** `1.0`**）**
+- **即将发生**（上一分钟未热、真值 start>0）：start 用 Gaussian 软标签 σ=1，不要 15 档硬 CE。
+- **进行中**（`hist_last_hot` 或真值 start=0）：预测强制 start=0，只训剩余时长。
+- 时长对 \log(1+d) 做 SmoothL1。
 
-BCE 只看格子对错。这两项在 \sigma(\mathrm{logit}) 上算重叠，让连通堵段（开始时刻、持续时间）对齐。空 mask 时两项都是 0。`type_balanced_occupancy` 打开时按类型平均。
+**3. 占用格子（辅助，**`w_hot=0.5`，Dice/IoU 各 0.25**）**
 
-- L_{\mathrm{dice}}=1-\dfrac{2\sum pyw+1}{\sum pw+\sum yw+1}
-- L_{\mathrm{IoU}}=1-\dfrac{\sum pyw+1}{\sum pw+\sum yw-\sum pyw+1}
+仍是未来 H=15×工位的 0/1 图，用来对齐连通段。按类型均摊；龙门正例权重 1、误报×2。**不决定存盘。**
 
-**3. 订单剩余时间（次要，**`w_remain_len=0.5`**）**
+**4. 订单剩余时间（次要，**`w_remain_len=0.4`**）**
 
-单独一个数：还要多少分钟收工，**不从占用图推**。对 \log(1+R) 做 SmoothL1，长尾完工时间不会把梯度打爆。
+单独一个数：还要多少分钟收工。对 \log(1+R) 做 SmoothL1。不抢 ckpt。
 
-**4. 原因分类（次要，**`w_cause=0.2`**）**
+**5. 原因分类（次要，**`w_cause=0.1`**）**
 
-10 类 CE，只在 **热窗且原因标签 ≥ 0** 的样本上算（`valid_cause = (cause≥0) & window_hot`）。新数据实际只有 7 类过程原因；旧的 `machine_failure` / `human_unavailable` 不会再写入。
+10 类 CE，只在热窗且标签 ≥ 0 上算，并 **丢掉** `score_threshold` / `machine_failure` / `human_unavailable` / `unavailable`。评测看 6 个过程类 recall，不看 overall acc。
 
-**5. 对比损失（**`w_contrast=0.1`**）**
+**6. 对比 + 重构（**`w_contrast=0.05`，`w_recon=0.25`**）**
 
-编码器输出投影成 z，做 Supervised Contrastive（温度 `contrast_temp=0.2`）。同类 = `(未来 H 内堵不堵, 扰动维, 主导占用类型)`。`run_dim_id`：machine=0、human=1、logistics=2、material=3、none/norm=4；混维缩写名 → −1（对比时归到维 5，避免和单维撞类）。batch 太小或没有正对时这项为 0。
+对比同类 = `(未来 H 内堵不堵, 扰动维, 主导占用类型)`。重构是无监督未来 X。
 
 **关掉的项（权重 0，**`use_stgnpp=false`**）**
 
 
-| 项                             | 权重  | 原因                          |
-| ----------------------------- | --- | --------------------------- |
-| `w_score` 瓶颈分数 SmoothL1       | 0   | 主任务改成占用格子                   |
-| `w_will` / `w_mark` / `w_tts` | 0   | 点过程辅助头                      |
-| `w_event` + STGNPP NLL        | 0   | 等占用 precision 稳定过 0.4 再考虑加回 |
+| 项 | 权重 | 原因 |
+| --- | --- | --- |
+| `w_score` 瓶颈分数 | 0 | 无监督不用分数当 y |
+| `w_will` / `w_mark` / `w_tts` | 0 | 旧点过程头，不是工位事件头 |
+| `w_event` + STGNPP NLL | 0 | 事件改由 per-node will/start/dur 承担 |
 
 
-这些项在 `calculate_loss` 里仍可能算出数（或走零张量），但不进反传。will / 分数头还在网络里，不当成果。
-
-**存盘不看总 loss：** `ckpt_metric=hot_f1`，占用 **precision < 0.38 不存**。评占用阈值 0.55。可选 `ckpt_metric=hot_type_hmean`（三类 F1 调和平均）目前不用。
+**存盘不看总 loss、不看 remain MAE。** s9：`ckpt_metric=report_precision`，who/report 召回至少 0.12，will 阈值 0.70。unsup_best：`ckpt_metric=report_f1`，report P 至少 0.80，will 阈值 0.65。`ckpt_min_hot_precision=0.45` 写在 json 里，但 **report 这两条路径都不用它**。格子阈值 0.55 只用于附录占用日志。
 
 #### 现行实现清单（不要再写成待办）
 
@@ -424,32 +465,69 @@ BCE 只看格子对错。这两项在 \sigma(\mathrm{logit}) 上算重叠，让�
 | 设计 | 代码 | 状态 |
 | --- | --- | --- |
 | 30→15 窗 | `input_window=30`，`occupancy_horizon_windows=15` | 已落地 |
-| 占用 BCE + Dice / 软 IoU | `w_hot=w_dice=w_iou=1.0` | 已落地 |
-| 按类型平衡占用损失 | `type_balanced_occupancy=true` | 已落地 |
-| 龙门少报、少误报 | gantry `pos_weight=1`，FP×2，bias init −0.5 | 已落地 |
-| 原因 0.2，只在热窗上算 | `w_cause=0.2` | 已落地 |
-| 点过程 / will / mark / tts 先关 | `use_stgnpp=false`，对应 w=0 | 已落地。占用 P 稳定过 0.4 再开 |
-| 存盘 = P 达标后的占用 F1 | `ckpt_min_hot_precision=0.38` | 已落地 |
-| 对比 0.1 | 同类 = `(block, dim, type)` | 已落地 |
-| 分组 embedding | `use_grouped_embed=true` | 已落地 |
-| 报龙门 / AGV | `row_is_hot` / `node_hot_mask` | 已落地。人 / buffer 仍不监督 |
-| 占用最短 2 分钟 | `hot_min_windows=2`，`hot_gap_windows=1` | 已落地 |
-| 人维：机台等工人 | stall +（人 STOP 或 `labor_saturated`） | 已落地 |
-| 机台节点 X 加劳动力饱和 | 第 26 列，只广播到 machine | 已落地 |
-| 混维采集 | `--disturbance_dim a,b`；`collect_n10_mix_all.sh` | 已落地，**只评 OOD** |
+| 按工位事件头 will/start/dur | `w_event_will=2`，start/dur=1 | 已落地 |
+| start 软标签 σ=1；进行中不猜 start | `event_start_sigma=1`，`hist_last_hot` | 已落地 |
+| 存盘 = 工位对且 start≤3 分钟 | s9=`report_precision`；unsup_best=`report_f1`（P≥0.80）；tol=3 | 已落地 |
+| 最短热段 8 分钟 | `hot_min_windows=8`，`event_min_windows=8` | 已落地 |
+| AGV 只冻/等，不走行驶 delay | `ops_occupancy_raw` | 已落地 |
+| 注入无 stall 不算热 | disturbance 过滤 | 已落地 |
+| 原因忽略 score_threshold / L2 名 | `CAUSE_IGNORE_IN_LOSS` | 已落地 |
+| 占用格子辅助、不抢 ckpt | `w_hot=0.5` | 已落地 |
+| 分组 embedding + 轻对比 | `use_grouped_embed`，`w_contrast=0.05` | 已落地 |
+| 点过程 / STGNPP 关 | `use_stgnpp=false` | 已落地 |
+| 人 / buffer 不监督 | `occ_node_mask` | 已落地 |
+| L2 下限 10 分钟 + 物流必冻 AGV | `cfg_disturbance._L2_MIN_DURATION=600`，`_ensure_logistics_agv_freeze` | **代码已落地**；77 局生产包仍是旧采样 |
 
 
-**现在不用改：** 10 类原因表（3 个旧 L2 名只是占坑）、把 H 改回画到收工、加宽 PDFormer / HeteroGNN、把混维并进生产训、把 none / wait 人维替换生产包（对照过，格子 P 没过现行权重）。
+**现在不用改：** 10 类原因表（3 个旧 L2 名只是占坑）、把 H 改回画到收工、加宽 PDFormer / HeteroGNN、把混维并进生产训、把 none / wait 人维替换生产包、用 extra 覆盖 `n10_*` / `material20`。
 
-#### 现行生产权重（对照用，不是任务定义）
+#### 有监督对照（格子配方，不是现行主任务）
 
-生产训包：四维 I=1.0 单维（machine+旧 human+logistics+material，约 77 局），**不含** none、不含混维、不含 `n10_human1.0_wait`。
+生产训包：四维 I=1.0 单维约 77 局，不含 none、不含混维、不含 `n10_human1.0_wait`。
 
 - ckpt：`PDFormer/libcity/cache/model_cache/n10_i1_20ep_s9/BNPDFormer_best.pt`
-- 单维 Test：占用 P≈**0.409**，F1≈0.390，remain MAE≈6.6 分钟；龙门 P≈0.53，AGV 格子 P 仍低（约 0.21，报出率接近真值但格子对不齐）
-- 混维 OOD（`raw_data/n10_mix_ood`，55 局）P 会掉到约 0.26——这是分布外，不是改任务
+- 单维 Test（**格子**）：占用 P≈**0.409**，F1≈0.390，remain MAE≈6.6；龙门 P≈0.53，AGV 格子 P≈0.21
+- 混维 OOD P≈0.26——分布外，不是改任务
 
-提高格子 P 时优先：补单维物料局、压 AGV 错格；不要先加混维进训，也不要先开 STGNPP。
+#### 无监督现行（操作占用 + 工位事件头）
+
+占用 y = `ops_hot_mask`，不用 `bottleneck_score` / TPM。
+
+对照（格子 P，旧口径）：unsup2≈0.392；unsup3≈0.382；unsup4≈0.399；**unsup5 Test 格子 P≈0.480**（评阈值 0.55）。**不要覆盖** s9 / unsup5。
+
+配方 **s8**（已跑完的**权重**，附录口径）：当时从 unsup5 热启动，存盘看 IoU 事件 P（召回≥0.12）。Test **IoU** P=0.626 / R=0.114 / F1=0.193；remain≈5.9；cause_acc=0.79（被兜底类抬高，不当成果）。ckpt：`n10_i1_20ep_unsup8`。**磁盘上的 `FactoryBN_unsupervised_s8.json` 后来已改成和 s9 同一套主指标**（`ckpt_metric=report_precision`，`init_ckpt` 仍指向 unsup5）；不要用现在的 json 去理解当时那次 run 的存盘规则。
+
+配方 **s7**（已弃）：格子转事件、最短 5 分钟、存盘 event_f1。Test ev_p=0.44 / ev_r=0.17。不要再堆 loss 权重。
+
+配方 **s9（精度优先，2026-08-28）**：unsup8 热启动；标签最短 8 分钟、AGV 只冻/等、start 软标签、存盘 `report_precision`。现有 77 局包上已训完。
+
+```text
+python -m factory_bn.train --config factory_bn/configs/FactoryBN_unsupervised_s9.json \
+  --data_dir raw_data/n10_i1_20ep_unsup \
+  --save_dir libcity/cache/model_cache/n10_i1_20ep_unsup9
+```
+
+tmux：`bn_n10_unsup9`。**不覆盖** unsup5 / unsup8 / s9。
+
+**unsup9 Test（77 局旧包，主口径：工位对且 start 误差 ≤ 3 分钟）：**
+
+- who / report：**P=0.51，R=0.087，F1≈0.15**（报出 49，真值 288）
+- 报对的工位 start MAE **0.08 分钟**，dur MAE ≈ **2.0 分钟**
+- 进行中召回 0.18；**尚未发生召回 0.013**（几乎只会报「已经在堵」）
+- 本包 AGV 真值热率 = 0（8 分钟 + 冻/等过滤后，77 局里几乎没有合格 AGV 事件）
+- remain MAE **5.4**；cause macro recall **0.69**（transport/starve/shortage≈0.90，queue 0.74，blocked_downstream 无样本）
+
+**unsup_best**（134 局 all-usable；配置 `FactoryBN_unsupervised_best.json`）：阈值 0.65；正例×3、尚未发生×4、负例×2；存盘 `report_f1` 且 **P≥0.80**；事件头整段 warmup。ckpt：`n10_i1_all_usable_unsup_best`。**不覆盖** unsup5 / unsup8 / unsup9 / s9。
+
+```text
+python -m factory_bn.train --config factory_bn/configs/FactoryBN_unsupervised_best.json \
+  --data_dir raw_data/n10_i1_all_usable \
+  --save_dir libcity/cache/model_cache/n10_i1_all_usable_unsup_best
+```
+
+**unsup_best Test（主口径：工位对且 start 误差 ≤ 3 分钟）：** who/report **P=0.817，R=0.447，F1=0.578**。进行中召回 0.58；尚未发生召回 0.32。start MAE 0.20 min。
+
+结论：开始时间一旦报对就准；**主缺口是尚未发生的堵**。extra / 物料重采已进 `n10_i1_all_usable`（134 局）。不要覆盖 `n10_*` / `material20` / unsup5/8/9。
 
 ---
 
@@ -463,4 +541,4 @@ BCE 只看格子对错。这两项在 \sigma(\mathrm{logit}) 上算重叠，让�
   3. 去看论文：window 能不能比别人长，或者比别人细。
 2. 不好在现实中采数据，human，robot，传感部署成本高，仿真环境展示，description。
 
-（论文部分暂不展开。和实验对齐的一句话：主输出是 **未来约 10% 产线时长内各工位会不会堵、堵在哪、堵多久**，准确率优先；再加 **订单剩余完工时间** 和 **瓶颈原因**。窗是 **1 分钟格 + 过去 30 分钟历史 + 未来 15 分钟**。短单 10 根 / 并行 5，**训练一次只开一维扰动**；混维只做 OOD。）
+（论文部分暂不展开。和实验对齐的一句话：主输出是 **未来约 15 分钟内各工位会不会堵、堵在哪、几点开始、持续几分钟**，工位对且开始误差 ≤ 3 分钟才算对，准确率优先；再加 **订单剩余完工时间** 和 **6 类过程原因**。窗是 **1 分钟格 + 过去 30 分钟历史 + 未来 15 分钟**。短单 10 根 / 并行 5，**训练一次只开一维扰动**；混维只做 OOD。现行代码的 L2 下限是 10 分钟、物流必冻 AGV；已经发表/对照用的 77 局包仍是改代码前的旧采样。）
