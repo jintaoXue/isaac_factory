@@ -27,10 +27,18 @@ params:
     encoder_learning_rate: 1.0e-4
     batch_size: 64
     replay_buffer_size: 50000
+    # A acts only on product admission, so its replay grows much slower than B/C/D.
+    batch_size_A: 16
+    replay_buffer_size_A: 5000
     hidden_dim: 128
     target_update_interval: 2000
     double_dqn: True
     target_tau: 0.005
+    # Reduce update aggressiveness once epsilon reaches its floor.
+    late_stability_step: 1500000
+    late_learning_rate: 2.0e-5
+    late_encoder_learning_rate: 2.0e-5
+    late_target_tau: 0.001
     huber_delta: 1.0
     grad_clip_norm: 10.0
     reward_clip: 100.0

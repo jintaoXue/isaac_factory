@@ -27,6 +27,7 @@ parser.add_argument("--test_seeds", type=str, default=None, help="Comma-separate
 parser.add_argument("--test_all_settings", action="store_true", default=False, help="test all settings.")
 parser.add_argument("--load_dir", type=str, default=None, help="dir to model checkpoint.")
 parser.add_argument("--load_name", type=str, default=None, help="name of model checkpoint.")
+parser.add_argument("--load_step", type=int, default=None, help="Exact hierarchical checkpoint step to load.")
 parser.add_argument("--wandb_activate", action="store_true", default=None, help="Activate wandb logging.")
 parser.add_argument("--wandb_project", type=str, default=None, help="name of wandb project.")
 parser.add_argument("--wandb_name", type=str, default=None, help="Optional wandb run name override.")
@@ -240,6 +241,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         algo_cfg["params"]["config"]['load_dir'] = args_cli.load_dir
     if args_cli.load_name:
         algo_cfg["params"]["config"]['load_name'] = args_cli.load_name
+    if args_cli.load_step is not None:
+        algo_cfg["params"]["config"]['load_step'] = int(args_cli.load_step)
     if args_cli.wandb_project:
         algo_cfg["params"]["config"]['wandb_project'] = args_cli.wandb_project
     if args_cli.wandb_name:

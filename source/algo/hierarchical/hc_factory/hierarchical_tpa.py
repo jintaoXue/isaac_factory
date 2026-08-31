@@ -168,6 +168,7 @@ class HierarchicalTPA:
         self.log_interval = config.get("log_interval", 100)
         self.grad_clip_norm = float(config.get("grad_clip_norm", 10.0))
         self.global_step = 0
+        self._late_stability_applied = False
         self.max_episodic_steps = int(config.get("max_episodic_steps", _curr.T_MAX_ANCHOR))
 
         dqn_kwargs = {
@@ -208,7 +209,10 @@ class HierarchicalTPA:
         encoder_lr = float(config.get("encoder_learning_rate", config.get("learning_rate", 1e-4)))
         self.encoder_optimizer = optim.Adam(self.obs_encoder.parameters(), lr=encoder_lr)
 
-        self.agent_A = RLProductSequencingAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
+        dqn_kwargs_A = dict(dqn_kwargs)
+        dqn_kwargs_A["batch_size"] = int(config.get("batch_size_A", 16))
+        dqn_kwargs_A["buffer_capacity"] = int(config.get("replay_buffer_size_A", 5000))
+        self.agent_A = RLProductSequencingAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs_A)
         self.agent_B = RLProductSelectionAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
         self.agent_C = RLProcessTaskPlanningAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
         self.agent_D = RLHumanRobotAllocatorAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
@@ -293,6 +297,37 @@ class HierarchicalTPA:
             return 1.0
         ratio = min(1.0, self.global_step / max(1, self.epsilon_decay_steps))
         return self.epsilon_start + (self.epsilon_end - self.epsilon_start) * ratio
+    def _all_dqns(self):
+        return [
+            self.agent_A.dqn,
+            self.agent_B.dqn,
+            self.agent_C.dqn,
+            self.agent_D.human_dqn,
+            self.agent_D.robot_dqn,
+        ]
+
+    def _maybe_apply_late_stability(self) -> None:
+        """Lower LR and target-network tau once exploration reaches its floor."""
+        threshold = int(self.config.get("late_stability_step", 0) or 0)
+        if self._late_stability_applied or threshold <= 0 or self.global_step < threshold:
+            return
+        dqn_lr = float(self.config.get("late_learning_rate", 2.0e-5))
+        encoder_lr = float(self.config.get("late_encoder_learning_rate", dqn_lr))
+        target_tau = float(self.config.get("late_target_tau", 0.001))
+        for group in self.encoder_optimizer.param_groups:
+            group["lr"] = encoder_lr
+        for dqn in self._all_dqns():
+            if dqn is None:
+                continue
+            for group in dqn.optimizer.param_groups:
+                group["lr"] = dqn_lr
+            dqn.target_tau = target_tau
+        self._late_stability_applied = True
+        print(
+            f"[Hier] late stability enabled at step={self.global_step}: "
+            f"dqn_lr={dqn_lr:g} encoder_lr={encoder_lr:g} target_tau={target_tau:g}"
+        )
+
 
     def restore(self, checkpoint_path: str) -> None:
         self._checkpoint_path = checkpoint_path
@@ -610,6 +645,7 @@ class HierarchicalTPA:
             # Env writes rl and resets itself when done.
             next_obs = self.vec_env.step(actions, actions_extra)
             self.global_step += 1
+            self._maybe_apply_late_stability()
             env_step = env_steps(self.global_step, self.num_actors)
 
             for env_id in range(len(obs)):

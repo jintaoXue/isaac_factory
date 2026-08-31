@@ -1,9 +1,11 @@
 #!/bin/bash
 
 # HcFactory TPA 默认（help 与 run 共用；可用环境变量覆盖）
-HC_RULE_EPISODES="${HC_RULE_EPISODES:-10}"
+HC_RULE_EPISODES="${HC_RULE_EPISODES:-4}"
 # job 26（N10 HierRandom）单独 episode 数，不跟 HC_RULE_EPISODES
-HC_RANDOM_EPISODES="${HC_RANDOM_EPISODES:-100}"
+HC_RANDOM_EPISODES="${HC_RANDOM_EPISODES:-4}"
+# Baseline wrapper runs 5 seeds × 4 episodes; direct invocation runs one seed.
+HC_N16_RANDOM_EPISODES="${HC_N16_RANDOM_EPISODES:-4}"
 HC_MULTI_K="${HC_MULTI_K:-10}"
 # 全订单 anchor：N=16 的 T_max；N=10 = round(anchor/16)*10（fatigue 后默认 4× 旧 16000/10000）
 HC_T_MAX_ANCHOR="${HC_T_MAX_ANCHOR:-64000}"
@@ -80,7 +82,10 @@ echo "任务列表: ${JOBS[*]}"
 
 # HcFactory TPA 公共参数
 HC_TASK="HRTPaHC-v1"
-HC_WANDB_PROJECT="HcFactory_TPA"
+HC_WANDB_PROJECT="${HC_WANDB_TRAIN_PROJECT:-HcFactory_TPA}"
+HC_WANDB_TEST_PROJECT="${HC_WANDB_TEST_PROJECT:-HcFactory_TPA_Eval}"
+HC_WANDB_BASELINE_PROJECT="${HC_WANDB_BASELINE_PROJECT:-${HC_WANDB_TEST_PROJECT}}"
+HC_RUN_SEED="${HC_RUN_SEED:-}"
 HC_NUM_ENVS=1
 HC_WARMSTART="${HC_WARMSTART:-}"
 
@@ -141,6 +146,20 @@ hc_warmstart_args() {
         echo "--warmstart ${HC_WARMSTART}"
     fi
 }
+
+# Optional exact checkpoint step for job 29.
+hc_load_step_args() {
+    if [ -n "${HC_LOAD_STEP:-}" ]; then
+        echo "--load_step ${HC_LOAD_STEP}"
+    fi
+}
+# Optional per-run seed used by distributed baseline groups.
+hc_seed_args() {
+    if [ -n "${HC_RUN_SEED}" ]; then
+        echo "--seed ${HC_RUN_SEED}"
+    fi
+}
+
 
 # 统一 T_max anchor（22–32 共用；可用 HC_T_MAX_ANCHOR 覆盖做极限探测）
 hc_t_max_args() {
@@ -396,10 +415,11 @@ run_test_26() {
         --max_sim_episodes "${HC_RANDOM_EPISODES}" \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         --wandb_activate \
-        --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "random_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}_${HC_RANDOM_EPISODES}ep" \
+        --wandb_project "${HC_WANDB_BASELINE_PROJECT}" \
+        --wandb_name "random_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}_seed${HC_RUN_SEED:-default}_${HC_RANDOM_EPISODES}ep" \
         --explore_n_products 10 \
         --no_explore_save_catalog \
+        $(hc_seed_args) \
         $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
@@ -453,11 +473,13 @@ run_test_29() {
         --num_envs 1 \
         --headless \
         --test \
-        --test_times "${HC_TEST_TIMES:-1}" \
+        --test_times "${HC_TEST_TIMES:-4}" \
+        --test_seeds "${HC_TEST_SEEDS:-42,43,44,45,46}" \
         --load_dir "${HC_LOAD_DIR}" \
         --wandb_activate \
-        --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "hier_test_N16_T${HC_T_MAX_N16}" \
+        --wandb_project "${HC_WANDB_TEST_PROJECT}" \
+        --wandb_name "hier_eval_N16_step${HC_LOAD_STEP:-latest}_T${HC_T_MAX_N16}" \
+        $(hc_load_step_args) \
         $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
@@ -471,11 +493,12 @@ run_test_30() {
         --num_envs "${HC_NUM_ENVS}" \
         --headless \
         --wandb_activate \
-        --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "rule_K1_single_N16_T${HC_T_MAX_N16}_${HC_RULE_EPISODES}ep" \
+        --wandb_project "${HC_WANDB_BASELINE_PROJECT}" \
+        --wandb_name "rule_K1_single_N16_T${HC_T_MAX_N16}_seed${HC_RUN_SEED:-default}_${HC_RULE_EPISODES}ep" \
         --train_n_products 16 \
         --max_parallel_cd_dispatch 1 \
         --max_sim_episodes "${HC_RULE_EPISODES}" \
+        $(hc_seed_args) \
         $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
@@ -489,31 +512,33 @@ run_test_31() {
         --num_envs "${HC_NUM_ENVS}" \
         --headless \
         --wandb_activate \
-        --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "rule_K${HC_MULTI_K}_multi_N16_T${HC_T_MAX_N16}_${HC_RULE_EPISODES}ep" \
+        --wandb_project "${HC_WANDB_BASELINE_PROJECT}" \
+        --wandb_name "rule_K${HC_MULTI_K}_multi_N16_T${HC_T_MAX_N16}_seed${HC_RUN_SEED:-default}_${HC_RULE_EPISODES}ep" \
         --train_n_products 16 \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         --max_sim_episodes "${HC_RULE_EPISODES}" \
+        $(hc_seed_args) \
         $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
 
 run_test_32() {
     # hier masked-random makespan 基线：N=16, ε=1, 无 DQN 学习, 不写 catalog
-    echo "运行 32: hier RL random baseline (ε=1, N=16, T=${HC_T_MAX_N16}, ${HC_RULE_EPISODES} episodes, wandb)"
+    echo "运行 32: hier RL random baseline (ε=1, N=16, T=${HC_T_MAX_N16}, ${HC_N16_RANDOM_EPISODES} episodes, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
         --num_envs "${HC_NUM_ENVS}" \
         --headless \
         --explore \
-        --max_sim_episodes "${HC_RULE_EPISODES}" \
+        --max_sim_episodes "${HC_N16_RANDOM_EPISODES}" \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         --wandb_activate \
-        --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "random_K${HC_MULTI_K}_N16_T${HC_T_MAX_N16}_${HC_RULE_EPISODES}ep" \
+        --wandb_project "${HC_WANDB_BASELINE_PROJECT}" \
+        --wandb_name "random_K${HC_MULTI_K}_N16_T${HC_T_MAX_N16}_seed${HC_RUN_SEED:-default}_${HC_N16_RANDOM_EPISODES}ep" \
         --explore_n_products 16 \
         --no_explore_save_catalog \
+        $(hc_seed_args) \
         $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
