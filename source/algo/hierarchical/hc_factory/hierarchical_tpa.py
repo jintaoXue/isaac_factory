@@ -35,7 +35,6 @@ from .wandb_metrics import (
     episode_metrics,
     fullorder_core_metrics,
     fullorder_peak_metrics,
-    log_eval_episodes,
     log_metrics,
     shop_metrics,
     train_metrics,
@@ -356,10 +355,25 @@ class HierarchicalTPA:
         self._maybe_load_checkpoint(obs[0])
 
         from .tpa_eval import (
+            EvalStream,
             build_eval_payload,
             print_eval_summary,
             run_eval_episodes,
             save_eval_results,
+        )
+
+        if self.use_wandb:
+            self.init_wandb_logger()
+
+        total_eps = len(seeds) * episodes_per_seed
+        progress_iv = int(self.config.get("test_progress_log_interval", 500))
+        stream = EvalStream(
+            output_dir,
+            t_budget=eval_horizon,
+            algo_name="hier",
+            total_episodes=total_eps,
+            local=self.local_metrics,
+            use_wandb=self.use_wandb,
         )
 
         print(
@@ -374,6 +388,9 @@ class HierarchicalTPA:
             max_episodic_steps=eval_horizon,
             epsilon=eval_epsilon,
             on_reset=lambda: self.horizon.apply_full_order_eval(eval_horizon),
+            on_episode_done=stream.on_episode_done,
+            on_progress=stream.on_progress,
+            progress_log_interval=progress_iv,
         )
         payload = build_eval_payload(
             algo_name="hier",
@@ -385,15 +402,6 @@ class HierarchicalTPA:
         )
         json_path, summary_path = save_eval_results(output_dir, payload)
         print_eval_summary(payload["summary"], "hier")
-        if self.use_wandb:
-            self.init_wandb_logger()
-        log_eval_episodes(
-            results,
-            t_budget=eval_horizon,
-            algo_name="hier",
-            local=self.local_metrics,
-            use_wandb=self.use_wandb,
-        )
         self.local_metrics.close()
         print(f"[Hier] eval saved: {json_path}\n[Hier] summary: {summary_path}")
         return payload

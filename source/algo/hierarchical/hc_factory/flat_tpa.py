@@ -24,7 +24,6 @@ from .wandb_metrics import (
     episode_metrics,
     fullorder_core_metrics,
     fullorder_peak_metrics,
-    log_eval_episodes,
     shop_metrics,
     train_metrics,
 )
@@ -167,10 +166,25 @@ class FlatTPA:
         self._maybe_load_checkpoint(obs[0])
 
         from .tpa_eval import (
+            EvalStream,
             build_eval_payload,
             print_eval_summary,
             run_eval_episodes,
             save_eval_results,
+        )
+
+        if self.use_wandb:
+            self.init_wandb_logger()
+
+        total_eps = len(seeds) * episodes_per_seed
+        progress_iv = int(self.config.get("test_progress_log_interval", 500))
+        stream = EvalStream(
+            output_dir,
+            t_budget=self.max_episodic_steps,
+            algo_name="flat",
+            total_episodes=total_eps,
+            local=None,
+            use_wandb=self.use_wandb,
         )
 
         results = run_eval_episodes(
@@ -180,6 +194,9 @@ class FlatTPA:
             episodes_per_seed=episodes_per_seed,
             max_episodic_steps=self.max_episodic_steps,
             epsilon=eval_epsilon,
+            on_episode_done=stream.on_episode_done,
+            on_progress=stream.on_progress,
+            progress_log_interval=progress_iv,
         )
         payload = build_eval_payload(
             algo_name="flat",
@@ -191,9 +208,6 @@ class FlatTPA:
         )
         json_path, summary_path = save_eval_results(output_dir, payload)
         print_eval_summary(payload["summary"], "flat")
-        if self.use_wandb:
-            self.init_wandb_logger()
-            log_eval_episodes(results, t_budget=self.max_episodic_steps, algo_name="flat")
         print(f"[Flat] eval saved: {json_path}\n[Flat] summary: {summary_path}")
         return payload
 

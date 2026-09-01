@@ -13,6 +13,8 @@ set -euo pipefail
 #
 # eval defaults to the three checkpoints identified from run_test_27:
 # best-window neighborhood 2445000/2450000 and final 3315000.
+# Live eval writes under <test_exp>/eval/: episodes.jsonl, eval_summary_partial.json;
+# metrics.jsonl + wandb MetricTest/* update each episode (~500-step heartbeat).
 
 MODE="${1:-next}"
 DEVICE="${2:-cuda:0}"

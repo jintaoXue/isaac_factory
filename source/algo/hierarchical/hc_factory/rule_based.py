@@ -23,7 +23,6 @@ from .wandb_metrics import (
     episode_metrics,
     fullorder_core_metrics,
     fullorder_peak_metrics,
-    log_eval_episodes,
     log_metrics,
     shop_metrics,
     train_metrics,
@@ -198,6 +197,7 @@ class RuleBasedHierarchical():
 
     def test(self) -> dict:
         from .tpa_eval import (
+            EvalStream,
             build_eval_payload,
             print_eval_summary,
             run_eval_episodes,
@@ -208,8 +208,22 @@ class RuleBasedHierarchical():
         episodes_per_seed = int(self.config.get("test_times", 1))
         output_dir = os.path.join(self.experiment_dir, "eval")
 
+        if self.use_wandb:
+            self.init_wandb_logger()
+
         self.vec_env.reset()
         self._apply_eval_order_all()
+
+        total_eps = len(seeds) * episodes_per_seed
+        progress_iv = int(self.config.get("test_progress_log_interval", 500))
+        stream = EvalStream(
+            output_dir,
+            t_budget=self.max_episodic_steps,
+            algo_name="rule_based",
+            total_episodes=total_eps,
+            local=self.local_metrics,
+            use_wandb=self.use_wandb,
+        )
 
         results = run_eval_episodes(
             self.vec_env,
@@ -219,6 +233,9 @@ class RuleBasedHierarchical():
             max_episodic_steps=self.max_episodic_steps,
             epsilon=0.0,
             on_reset=lambda: self._apply_eval_order_all(),
+            on_episode_done=stream.on_episode_done,
+            on_progress=stream.on_progress,
+            progress_log_interval=progress_iv,
         )
         payload = build_eval_payload(
             algo_name="rule_based",
@@ -230,15 +247,6 @@ class RuleBasedHierarchical():
         )
         json_path, summary_path = save_eval_results(output_dir, payload)
         print_eval_summary(payload["summary"], "rule_based")
-        if self.use_wandb:
-            self.init_wandb_logger()
-        log_eval_episodes(
-            results,
-            t_budget=self.max_episodic_steps,
-            algo_name="rule_based",
-            local=self.local_metrics,
-            use_wandb=self.use_wandb,
-        )
         self.local_metrics.close()
         print(f"[Rule] eval saved: {json_path}\n[Rule] summary: {summary_path}")
         return payload

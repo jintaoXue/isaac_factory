@@ -120,6 +120,16 @@ def define_shared_metrics(*, rl: bool = False, curriculum: bool = False, test: b
         wandb.define_metric(f"MetricFullorderCore/{key}", step_metric="MetricFullorderCore/episode")
         if test:
             wandb.define_metric(f"MetricTest/{key}", step_metric="MetricTest/episode")
+    if test:
+        wandb.define_metric("MetricTest/eval_step")
+        for key in (
+            "progress_ep_len",
+            "progress_n_finished",
+            "progress_nmk",
+            "progress_seed",
+            "progress_episode_idx",
+        ):
+            wandb.define_metric(f"MetricTest/{key}", step_metric="MetricTest/eval_step")
 
     for key in (
         "01_producing",
@@ -404,6 +414,96 @@ def train_metrics(
     return payload
 
 
+def _eval_n_finished(row) -> int:
+    n_fin = int(getattr(row, "n_finished", 0) or 0)
+    if n_fin <= 0 and bool(getattr(row, "success", False)):
+        return int(_curr.N_FULL_ORDER)
+    return n_fin
+
+
+def build_eval_episode_payload(
+    episode: int,
+    row,
+    *,
+    t_budget: int,
+    makespans: list[int],
+    success_ms: list[int],
+    n_success: int,
+) -> dict[str, Any]:
+    """One eval episode row under MetricTest/* with running aggregates."""
+    n_fin = _eval_n_finished(row)
+    mean_ms = sum(makespans) / len(makespans)
+    mean_ok = sum(success_ms) / len(success_ms) if success_ms else None
+    payload = episode_metrics(
+        episode=episode,
+        success=bool(row.success),
+        truncated=bool(row.truncated),
+        makespan=int(row.makespan),
+        n_finished=n_fin,
+        finished_abs=n_fin,
+        ep_return=float(row.ep_return),
+        t_budget=t_budget,
+        success_rate=float(n_success) / float(episode),
+        mean_makespan=mean_ms,
+        mean_makespan_success=mean_ok,
+        prefix="MetricTest",
+    )
+    seed = getattr(row, "seed", None)
+    ep_idx = getattr(row, "episode_idx", None)
+    if seed is not None:
+        payload["MetricTest/seed"] = int(seed)
+    if ep_idx is not None:
+        payload["MetricTest/seed_episode_idx"] = int(ep_idx)
+    return payload
+
+
+def log_eval_episode_row(
+    episode: int,
+    row,
+    *,
+    t_budget: int,
+    makespans: list[int],
+    success_ms: list[int],
+    n_success: int,
+    local: LocalMetricsWriter | None = None,
+    use_wandb: bool = True,
+) -> dict[str, Any]:
+    payload = build_eval_episode_payload(
+        episode,
+        row,
+        t_budget=t_budget,
+        makespans=makespans,
+        success_ms=success_ms,
+        n_success=n_success,
+    )
+    log_metrics(payload, local=local, use_wandb=use_wandb)
+    return payload
+
+
+def log_eval_progress(
+    *,
+    eval_step: int,
+    ep_len: int,
+    n_finished: int,
+    t_budget: int,
+    seed: int,
+    episode_idx: int,
+    local: LocalMetricsWriter | None = None,
+    use_wandb: bool = True,
+) -> None:
+    """In-episode heartbeat for long eval rollouts (MetricTest/eval_step)."""
+    t_budget = max(1, int(t_budget))
+    payload = {
+        "MetricTest/eval_step": int(eval_step),
+        "MetricTest/progress_ep_len": int(ep_len),
+        "MetricTest/progress_n_finished": int(n_finished),
+        "MetricTest/progress_nmk": float(ep_len) / float(t_budget),
+        "MetricTest/progress_seed": int(seed),
+        "MetricTest/progress_episode_idx": int(episode_idx),
+    }
+    log_metrics(payload, local=local, use_wandb=use_wandb)
+
+
 def log_eval_episodes(
     results: list,
     *,
@@ -412,37 +512,28 @@ def log_eval_episodes(
     local: LocalMetricsWriter | None = None,
     use_wandb: bool = True,
 ) -> None:
-    """Log eval episodes under MetricTest/* (separate from training MetricCore)."""
+    """Log eval episodes under MetricTest/* (batch; prefer EvalStream for live runs)."""
     if use_wandb and wandb.run is None and local is None:
         return
     makespans: list[int] = []
     success_ms: list[int] = []
     n_success = 0
     for i, row in enumerate(results, start=1):
-        n_fin = int(getattr(row, "n_finished", 0) or 0)
-        if n_fin <= 0 and bool(row.success):
-            n_fin = _curr.N_FULL_ORDER
+        n_fin = _eval_n_finished(row)
         if row.success:
             n_success += 1
             success_ms.append(int(row.makespan))
         makespans.append(int(row.makespan))
-        mean_ms = sum(makespans) / len(makespans)
-        mean_ok = sum(success_ms) / len(success_ms) if success_ms else None
-        payload = episode_metrics(
-            episode=i,
-            success=bool(row.success),
-            truncated=bool(row.truncated),
-            makespan=int(row.makespan),
-            n_finished=n_fin,
-            finished_abs=n_fin,
-            ep_return=float(row.ep_return),
+        log_eval_episode_row(
+            i,
+            row,
             t_budget=t_budget,
-            success_rate=float(n_success) / float(i),
-            mean_makespan=mean_ms,
-            mean_makespan_success=mean_ok,
-            prefix="MetricTest",
+            makespans=makespans,
+            success_ms=success_ms,
+            n_success=n_success,
+            local=local,
+            use_wandb=use_wandb,
         )
-        log_metrics(payload, local=local, use_wandb=use_wandb)
     dest = []
     if local is not None:
         dest.append(local.path)

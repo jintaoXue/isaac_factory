@@ -7,6 +7,7 @@ import math
 import os
 import random
 from dataclasses import asdict, dataclass
+from typing import Callable
 
 import numpy as np
 import torch
@@ -97,6 +98,107 @@ def print_eval_summary(summary: dict, algo_name: str) -> None:
         print(f"  Truncation:   {trunc['mean'] * 100:.1f}% ± {trunc['std'] * 100:.1f}%")
 
 
+class EvalStream:
+    """Live eval sink: append episodes.jsonl, partial summary, wandb + metrics.jsonl."""
+
+    def __init__(
+        self,
+        output_dir: str,
+        *,
+        t_budget: int,
+        algo_name: str,
+        total_episodes: int,
+        local=None,
+        use_wandb: bool = False,
+    ) -> None:
+        from .wandb_metrics import log_eval_episode_row, log_eval_progress
+
+        self.output_dir = output_dir
+        self.t_budget = int(t_budget)
+        self.algo_name = algo_name
+        self.total_episodes = int(total_episodes)
+        self.local = local
+        self.use_wandb = bool(use_wandb)
+        self._log_episode = log_eval_episode_row
+        self._log_progress = log_eval_progress
+        self.results: list[EpisodeResult] = []
+        self._makespans: list[int] = []
+        self._success_ms: list[int] = []
+        self._n_success = 0
+        self._eval_step = 0
+        os.makedirs(output_dir, exist_ok=True)
+        self.episodes_path = os.path.join(output_dir, "episodes.jsonl")
+        self.partial_path = os.path.join(output_dir, "eval_summary_partial.json")
+        open(self.episodes_path, "w", encoding="utf-8").close()
+        print(
+            f"[Eval:{algo_name}] live stream → {self.episodes_path} "
+            f"(total={self.total_episodes}, T_budget={self.t_budget})"
+        )
+
+    def _flush_partial_summary(self) -> None:
+        summary = summarize_episodes(self.results)
+        with open(self.partial_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "num_episodes_done": len(self.results),
+                    "num_episodes_total": self.total_episodes,
+                    "summary": summary,
+                },
+                f,
+                indent=2,
+                ensure_ascii=False,
+            )
+
+    def on_episode_done(self, result: EpisodeResult) -> None:
+        self.results.append(result)
+        with open(self.episodes_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(asdict(result), ensure_ascii=False) + "\n")
+        if result.success:
+            self._n_success += 1
+            self._success_ms.append(int(result.makespan))
+        self._makespans.append(int(result.makespan))
+        ep_num = len(self.results)
+        self._log_episode(
+            ep_num,
+            result,
+            t_budget=self.t_budget,
+            makespans=self._makespans,
+            success_ms=self._success_ms,
+            n_success=self._n_success,
+            local=self.local,
+            use_wandb=self.use_wandb,
+        )
+        self._flush_partial_summary()
+        ms_mean = sum(self._makespans) / len(self._makespans)
+        sr = self._n_success / ep_num
+        print(
+            f"[Eval:{self.algo_name}] ep {ep_num}/{self.total_episodes} "
+            f"seed={result.seed} idx={result.episode_idx} "
+            f"makespan={result.makespan} success={result.success} "
+            f"n_fin={result.n_finished} running_mean={ms_mean:.0f} sr={sr:.2f}"
+        )
+
+    def on_progress(
+        self,
+        *,
+        seed: int,
+        episode_idx: int,
+        ep_len: int,
+        n_finished: int,
+    ) -> None:
+        self._eval_step += 1
+        self._log_progress(
+            eval_step=self._eval_step,
+            ep_len=ep_len,
+            n_finished=n_finished,
+            t_budget=self.t_budget,
+            seed=seed,
+            episode_idx=episode_idx,
+            local=self.local,
+            use_wandb=self.use_wandb,
+        )
+
+
 def run_eval_episodes(
     vec_env,
     act_fn,
@@ -107,9 +209,13 @@ def run_eval_episodes(
     epsilon: float = 0.0,
     env_id: int = 0,
     on_reset=None,
+    on_episode_done: Callable[[EpisodeResult], None] | None = None,
+    on_progress: Callable[..., None] | None = None,
+    progress_log_interval: int = 500,
 ) -> list[EpisodeResult]:
     """Roll out evaluation episodes on ``env_id`` of the vec env."""
     results: list[EpisodeResult] = []
+    progress_log_interval = max(0, int(progress_log_interval))
     for seed in seeds:
         set_global_seed(seed)
         obs: list[dict] = vec_env.reset()
@@ -129,32 +235,45 @@ def run_eval_episodes(
                 ep_len += 1
                 n_finished = max(_count_finished(obs[env_id]), _count_finished(next_obs[env_id]))
                 obs = next_obs
-                if done:
-                    results.append(
-                        EpisodeResult(
-                            seed=seed,
-                            episode_idx=ep_counter,
-                            makespan=ep_len,
-                            success=success,
-                            truncated=truncated,
-                            ep_return=ep_return,
-                            n_finished=n_finished,
-                        )
+                if (
+                    on_progress is not None
+                    and progress_log_interval > 0
+                    and (ep_len % progress_log_interval == 0 or done)
+                ):
+                    on_progress(
+                        seed=seed,
+                        episode_idx=ep_counter,
+                        ep_len=ep_len,
+                        n_finished=n_finished,
                     )
-                    ep_counter += 1
-                    break
-            else:
-                results.append(
-                    EpisodeResult(
+                if done:
+                    row = EpisodeResult(
                         seed=seed,
                         episode_idx=ep_counter,
                         makespan=ep_len,
-                        success=False,
-                        truncated=True,
+                        success=success,
+                        truncated=truncated,
                         ep_return=ep_return,
-                        n_finished=_count_finished(obs[env_id]),
+                        n_finished=n_finished,
                     )
+                    results.append(row)
+                    if on_episode_done is not None:
+                        on_episode_done(row)
+                    ep_counter += 1
+                    break
+            else:
+                row = EpisodeResult(
+                    seed=seed,
+                    episode_idx=ep_counter,
+                    makespan=ep_len,
+                    success=False,
+                    truncated=True,
+                    ep_return=ep_return,
+                    n_finished=_count_finished(obs[env_id]),
                 )
+                results.append(row)
+                if on_episode_done is not None:
+                    on_episode_done(row)
                 ep_counter += 1
     return results
 
