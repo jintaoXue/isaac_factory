@@ -1,11 +1,14 @@
 #!/bin/bash
 
 # HcFactory TPA 默认（help 与 run 共用；可用环境变量覆盖）
-HC_RULE_EPISODES="${HC_RULE_EPISODES:-4}"
+HC_RULE_EPISODES="${HC_RULE_EPISODES:-2}"
 # job 26（N10 HierRandom）单独 episode 数，不跟 HC_RULE_EPISODES
-HC_RANDOM_EPISODES="${HC_RANDOM_EPISODES:-4}"
-# Baseline wrapper runs 5 seeds × 4 episodes; direct invocation runs one seed.
-HC_N16_RANDOM_EPISODES="${HC_N16_RANDOM_EPISODES:-4}"
+HC_RANDOM_EPISODES="${HC_RANDOM_EPISODES:-2}"
+# Baseline wrapper runs 5 seeds × HC_RULE_EPISODES; direct invocation runs one seed.
+HC_N16_RANDOM_EPISODES="${HC_N16_RANDOM_EPISODES:-2}"
+HC_TEST_TIMES="${HC_TEST_TIMES:-2}"
+HC_TEST_SEEDS="${HC_TEST_SEEDS:-42,43,44,45,46}"
+HC_TRAIN_N_PRODUCTS="${HC_TRAIN_N_PRODUCTS:-16}"
 HC_MULTI_K="${HC_MULTI_K:-10}"
 # 全订单 anchor：N=16 的 T_max；N=10 = round(anchor/16)*10（fatigue 后默认 4× 旧 16000/10000）
 HC_T_MAX_ANCHOR="${HC_T_MAX_ANCHOR:-64000}"
@@ -466,19 +469,22 @@ run_test_29() {
         echo "示例：HC_LOAD_DIR=logs/rl_games/HcFactory/hier_2026-08-18_22-00-00 ./batch_train.sh 29 cuda:0"
         exit 1
     fi
-    echo "运行 29: hier test full-order N=16 T_max=${HC_T_MAX_N16} load=${HC_LOAD_DIR}"
+    _eval_n="${HC_TRAIN_N_PRODUCTS}"
+    _eval_t=$([ "${_eval_n}" = "10" ] && echo "${HC_T_MAX_N10}" || echo "${HC_T_MAX_N16}")
+    echo "运行 29: hier test full-order N=${_eval_n} T_max=${_eval_t} load=${HC_LOAD_DIR}"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
         --num_envs 1 \
         --headless \
         --test \
-        --test_times "${HC_TEST_TIMES:-4}" \
-        --test_seeds "${HC_TEST_SEEDS:-42,43,44,45,46}" \
+        --test_times "${HC_TEST_TIMES}" \
+        --test_seeds "${HC_TEST_SEEDS}" \
+        --train_n_products "${_eval_n}" \
         --load_dir "${HC_LOAD_DIR}" \
         --wandb_activate \
         --wandb_project "${HC_WANDB_TEST_PROJECT}" \
-        --wandb_name "hier_eval_N16_step${HC_LOAD_STEP:-latest}_T${HC_T_MAX_N16}" \
+        --wandb_name "hier_eval_N${_eval_n}_step${HC_LOAD_STEP:-latest}_T${_eval_t}" \
         $(hc_load_step_args) \
         $(hc_t_max_args) \
         ${DEVICE_ARG}
