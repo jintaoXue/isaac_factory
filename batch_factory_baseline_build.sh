@@ -9,6 +9,8 @@
 # Environment overrides:
 #   BENCHMARK_TAG=factory_main_aligned_v1
 #   CLEAN_DERIVED=1   # remove shared_bn_agg_unsupervised_v2 before rebuilding
+#   STRICT_RAW=1      # fail if any raw episode is rejected
+#   EXPECTED_ACCEPTED_EPISODES=134
 #   SEED=42
 
 set -euo pipefail
@@ -19,6 +21,8 @@ TOOLS_DIR="${ROOT}/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools"
 BENCHMARK_TAG="${BENCHMARK_TAG:-factory_main_aligned_v1}"
 BENCHMARK_DIR="${DATA_ROOT}/experiments/${BENCHMARK_TAG}"
 CLEAN_DERIVED="${CLEAN_DERIVED:-1}"
+STRICT_RAW="${STRICT_RAW:-1}"
+EXPECTED_ACCEPTED_EPISODES="${EXPECTED_ACCEPTED_EPISODES:-}"
 SEED="${SEED:-42}"
 
 WINDOW_SIZE="${WINDOW_SIZE:-60}"
@@ -85,6 +89,7 @@ echo "Benchmark: ${BENCHMARK_DIR}"
 echo "Raw runs (${#RUN_DIRS[@]}):"
 printf '  %s\n' "${RUN_DIRS[@]}"
 echo "Protocol: window=${WINDOW_SIZE}s history=${INPUT_WINDOWS} occupancy_horizon=${OCCUPANCY_HORIZON_WINDOWS} min_event=${MIN_EVENT_WINDOWS}"
+echo "Raw gate: strict=${STRICT_RAW} expected_accepted=${EXPECTED_ACCEPTED_EPISODES:-unset}"
 
 if [ "$CLEAN_DERIVED" = "1" ]; then
     for run_dir in "${RUN_DIRS[@]}"; do
@@ -99,18 +104,32 @@ elif [ "$CLEAN_DERIVED" != "0" ]; then
     exit 1
 fi
 
-python "${TOOLS_DIR}/build_shared_benchmark.py" \
-    --run_dirs "${RUN_DIRS[@]}" \
-    --out_dir "${BENCHMARK_DIR}" \
-    --window_size "${WINDOW_SIZE}" \
-    --input_windows "${INPUT_WINDOWS}" \
-    --horizon "${HORIZON}" \
-    --score_threshold "${SCORE_THRESHOLD}" \
-    --min_event_windows "${MIN_EVENT_WINDOWS}" \
-    --occupancy_horizon_windows "${OCCUPANCY_HORIZON_WINDOWS}" \
-    --hot_gap_windows "${HOT_GAP_WINDOWS}" \
-    --seed "${SEED}" \
-    --strict
+if [ "$STRICT_RAW" != "0" ] && [ "$STRICT_RAW" != "1" ]; then
+    echo "STRICT_RAW must be 0 or 1, got: ${STRICT_RAW}" >&2
+    exit 1
+fi
+
+BUILD_ARGS=(
+    python "${TOOLS_DIR}/build_shared_benchmark.py"
+    --run_dirs "${RUN_DIRS[@]}"
+    --out_dir "${BENCHMARK_DIR}"
+    --window_size "${WINDOW_SIZE}"
+    --input_windows "${INPUT_WINDOWS}"
+    --horizon "${HORIZON}"
+    --score_threshold "${SCORE_THRESHOLD}"
+    --min_event_windows "${MIN_EVENT_WINDOWS}"
+    --occupancy_horizon_windows "${OCCUPANCY_HORIZON_WINDOWS}"
+    --hot_gap_windows "${HOT_GAP_WINDOWS}"
+    --seed "${SEED}"
+)
+if [ "$STRICT_RAW" = "1" ]; then
+    BUILD_ARGS+=(--strict)
+fi
+if [ -n "$EXPECTED_ACCEPTED_EPISODES" ]; then
+    BUILD_ARGS+=(--expected_accepted_episodes "$EXPECTED_ACCEPTED_EPISODES")
+fi
+
+"${BUILD_ARGS[@]}"
 
 echo "Build completed: ${BENCHMARK_DIR}"
 echo "Dataset: ${BENCHMARK_DIR}/dataset.pt"

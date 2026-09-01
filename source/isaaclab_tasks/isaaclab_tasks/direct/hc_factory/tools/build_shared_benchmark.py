@@ -31,6 +31,7 @@ def main() -> None:
     parser.add_argument("--occupancy_horizon_windows", type=int, default=15)
     parser.add_argument("--hot_gap_windows", type=int, default=1)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--expected_accepted_episodes", type=int)
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
 
@@ -51,6 +52,14 @@ def main() -> None:
             f"Rejected {len(rejected)}/{len(audit_rows)} episodes:\n{detail}"
         )
     accepted = [row for row in audit_rows if row["accepted"]]
+    if (
+        args.expected_accepted_episodes is not None
+        and len(accepted) != args.expected_accepted_episodes
+    ):
+        raise SystemExit(
+            "Accepted episode count mismatch: "
+            f"expected {args.expected_accepted_episodes}, got {len(accepted)}"
+        )
     if len(accepted) < 3:
         raise SystemExit(
             f"At least 3 accepted episodes are required, got {len(accepted)}"

@@ -135,7 +135,12 @@ def _scenario_id(config: dict[str, Any]) -> str:
 def paired_disturbance_intervals(
     rows: list[dict[str, Any]], logic_dt: float, episode_end_s: float
 ) -> list[dict[str, Any]]:
-    """Parse completed v0.3 runtime intervals without treating them as labels."""
+    """Parse v0.3 runtime intervals without treating them as labels.
+
+    A START without END in an otherwise complete episode is right-censored at
+    the episode boundary. This preserves the observed active interval without
+    inventing activity beyond the available raw trace.
+    """
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         disturbance_type = str(row.get("disturbance_type") or "")
@@ -167,12 +172,13 @@ def paired_disturbance_intervals(
             for row in event_rows
             if row.get("target_resource_id") or row.get("actual_target_resource_id")
         }
-        if not starts or not ends:
+        if not starts:
             raise ValueError(f"Unpaired runtime disturbance: {event_id}")
         if len(targets) != 1:
             raise ValueError(f"Disturbance target mismatch: {event_id}")
         start_s = min(starts) * logic_dt
-        end_s = max(ends) * logic_dt
+        right_censored = not ends
+        end_s = episode_end_s if right_censored else max(ends) * logic_dt
         if end_s <= start_s or end_s > episode_end_s + 1e-9:
             raise ValueError(
                 f"Invalid disturbance interval: {event_id}={start_s}:{end_s}"
@@ -185,6 +191,7 @@ def paired_disturbance_intervals(
                 "end": end_s,
                 "type": str(first.get("disturbance_type") or ""),
                 "target": next(iter(targets)),
+                "right_censored": right_censored,
             }
         )
     return intervals
@@ -327,8 +334,20 @@ def audit_raw_episode(env_dir: Path) -> dict[str, Any]:
             disturbance_intervals = paired_disturbance_intervals(
                 disturbance_rows, logic_dt, episode_end_step * logic_dt
             )
+            for interval in disturbance_intervals:
+                if interval["right_censored"]:
+                    warnings.append(
+                        "runtime_disturbance_right_censored="
+                        f"{interval['event_id']}"
+                    )
         except ValueError as exc:
             errors.append(str(exc))
+
+    if any(
+        str(row.get("disturbance_type") or "") == "deadlock_reset"
+        for row in disturbance_rows
+    ):
+        errors.append("deadlock_reset_detected")
 
     resource_ids = sorted(
         {str(row.get("resource_id")) for row in resource_rows if row.get("resource_id")}

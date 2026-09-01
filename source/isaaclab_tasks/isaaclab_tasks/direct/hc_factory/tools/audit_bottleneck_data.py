@@ -17,7 +17,7 @@ from factory_bn_shared.contract import (
 )
 
 
-AUDIT_VERSION = "shared_raw_audit_v1"
+AUDIT_VERSION = "shared_raw_audit_v2"
 
 
 def discover_env_dirs(run_dirs: Iterable[Path]) -> list[tuple[Path, Path]]:

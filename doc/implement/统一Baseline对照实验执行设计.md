@@ -42,6 +42,16 @@ tyx raw v0.3
   -> B2-B5 shared dataset.pt
 ```
 
+当前 PDFormer 134-episode cohort 的 raw quality gate 与主实验一致：订单必须完成，
+含 `deadlock_reset` 的 episode 必须排除。若生产完成时某个运行期扰动已经 START、但尚未
+产生 END，则它属于 episode 右边界上的右删失区间：保留该 episode，将区间截断到最后
+可观测时刻，并记录 `runtime_disturbance_right_censored=<event_id>` warning。该 warning
+不创建瓶颈标签，也不构成 episode 拒绝原因。
+
+这 9 个 raw 目录共含 142 个 episode；8 个未完成 episode 被门禁排除，最终与 PDFormer
+使用相同的 134 个 episode。构建正式数据集前必须同时核对 episode 名称集合，不能只核对
+总数。
+
 共享派生目录为：
 
 ```text
@@ -143,24 +153,37 @@ B2 没有神经事件头，使用其未来 occupancy 概率恢复 station event�
 
 ## 8. 服务器执行
 
-从现有 raw 重新生成 derived 和 dataset：
+从 PDFormer 使用的 9 个 raw 目录重新生成 derived 和 dataset。该 cohort 含 142 个 raw
+episode，其中预期 134 个通过门禁，因此显式关闭“零拒绝”模式并锁定入选数量：
 
 ```bash
-BENCHMARK_TAG=factory_main_aligned_v1 \
-  ./batch_factory_baseline_build.sh I1
+RAW_ROOT="$HOME/work/BNPDFormer/_isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset"
+
+BENCHMARK_TAG=factory_pdformer_134_v1 \
+STRICT_RAW=0 EXPECTED_ACCEPTED_EPISODES=134 \
+  ./batch_factory_baseline_build.sh \
+  "$RAW_ROOT/extra_machine" \
+  "$RAW_ROOT/extra_human" \
+  "$RAW_ROOT/extra_logistics" \
+  "$RAW_ROOT/extra_material" \
+  "$RAW_ROOT/unsup_n10_i1/n10_machine1.0" \
+  "$RAW_ROOT/unsup_n10_i1/n10_human1.0" \
+  "$RAW_ROOT/unsup_n10_i1/n10_logistics1.0" \
+  "$RAW_ROOT/unsup_n10_i1/n10_material1.0" \
+  "$RAW_ROOT/material重采"
 ```
 
 先做四模型 smoke：
 
 ```bash
-BENCHMARK_TAG=factory_main_aligned_v1 RUN_MODE=smoke DEVICE=cuda:0 \
+BENCHMARK_TAG=factory_pdformer_134_v1 RUN_MODE=smoke DEVICE=cuda:0 \
   ./batch_factory_baseline_train.sh ALL
 ```
 
 smoke 通过后正式训练：
 
 ```bash
-BENCHMARK_TAG=factory_main_aligned_v1 RUN_MODE=formal DEVICE=cuda:0 \
+BENCHMARK_TAG=factory_pdformer_134_v1 RUN_MODE=formal DEVICE=cuda:0 \
   MAX_EPOCHS=100 PATIENCE=15 ./batch_factory_baseline_train.sh ALL
 ```
 

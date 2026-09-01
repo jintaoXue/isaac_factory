@@ -182,14 +182,44 @@ class TestRawDataAudit(unittest.TestCase):
             self.assertEqual(row["lifecycle_event"], "PROVEN_COMPLETE")
             self.assertEqual(AUDIT.build_report([row])["status"], "passed")
 
-    def test_unpaired_event_is_rejected(self):
+    def test_open_event_is_right_censored_for_complete_episode(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             run_dir, env_dir = self._make_episode(
                 Path(temp_dir), include_event_end=False
             )
             row = AUDIT.audit_env_dir(run_dir, env_dir)
+            self.assertTrue(row["trainable"])
+            self.assertEqual(row["runtime_event_count"], 1)
+            self.assertEqual(row["runtime_events"][0]["end"], 800.0)
+            self.assertTrue(row["runtime_events"][0]["right_censored"])
+            self.assertIn(
+                "runtime_disturbance_right_censored=human_event_1",
+                row["warnings"],
+            )
+
+    def test_deadlock_reset_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir, env_dir = self._make_episode(Path(temp_dir))
+            disturbance_path = env_dir / "disturbance_log.csv"
+            with disturbance_path.open(newline="", encoding="utf-8") as stream:
+                reader = csv.DictReader(stream)
+                rows = list(reader)
+                fieldnames = list(reader.fieldnames or [])
+            rows.append(
+                {
+                    "disturbance_id": "deadlock_watchdog",
+                    "disturbance_type": "deadlock_reset",
+                    "target_resource_id": "episode",
+                    "start_time_step": 900,
+                    "end_time_step": 900,
+                }
+            )
+            self._write_csv(disturbance_path, fieldnames, rows)
+
+            row = AUDIT.audit_env_dir(run_dir, env_dir)
+
             self.assertFalse(row["trainable"])
-            self.assertIn("Unpaired runtime disturbance: human_event_1", row["errors"])
+            self.assertIn("deadlock_reset_detected", row["errors"])
 
     def test_incomplete_episode_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp_dir:
