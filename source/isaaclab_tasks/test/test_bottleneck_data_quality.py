@@ -249,6 +249,31 @@ class TestRawDataAudit(unittest.TestCase):
 
             self.assertEqual(AUDIT.discover_env_dirs([run_dir]), [])
 
+    def test_symlinked_episode_preserves_logical_run_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _, target_env = self._make_episode(root / "physical")
+            logical_run = root / "unsup_n10_i1" / "n10_human1.0"
+            logical_run.mkdir(parents=True)
+            (logical_run / "episode_00").symlink_to(
+                target_env.parent, target_is_directory=True
+            )
+
+            pairs = AUDIT.discover_env_dirs([logical_run])
+
+            self.assertEqual(len(pairs), 1)
+            run_dir, env_dir = pairs[0]
+            self.assertEqual(run_dir, logical_run.absolute())
+            self.assertEqual(
+                env_dir,
+                (logical_run / "episode_00/env_00").absolute(),
+            )
+            self.assertEqual(env_dir.relative_to(run_dir), Path("episode_00/env_00"))
+            self.assertEqual(
+                AUDIT.audit_env_dir(run_dir, env_dir)["run_dir"],
+                str(logical_run.absolute()),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

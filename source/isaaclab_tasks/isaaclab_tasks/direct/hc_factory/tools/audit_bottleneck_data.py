@@ -24,13 +24,16 @@ def discover_env_dirs(run_dirs: Iterable[Path]) -> list[tuple[Path, Path]]:
     discovered = []
     seen = set()
     for raw_run_dir in run_dirs:
-        run_dir = Path(raw_run_dir).resolve()
+        # Preserve logical run/episode names when the raw cohort is assembled
+        # with symlinks (for example n10_machine1.0 -> machine20 episodes).
+        run_dir = Path(raw_run_dir).expanduser().absolute()
         for env_dir in sorted(run_dir.glob("episode_*/env_*")):
-            key = str(env_dir.resolve())
+            env_dir = env_dir.absolute()
+            key = str(env_dir)
             if key in seen:
                 continue
             seen.add(key)
-            discovered.append((run_dir, env_dir.resolve()))
+            discovered.append((run_dir, env_dir))
     return discovered
 
 
@@ -38,7 +41,7 @@ def audit_env_dir(run_dir: Path, env_dir: Path) -> dict[str, Any]:
     row = audit_raw_episode(env_dir)
     return {
         **row,
-        "run_dir": str(Path(run_dir).resolve()),
+        "run_dir": str(Path(run_dir).expanduser().absolute()),
         "lifecycle_event": "PROVEN_COMPLETE" if row["accepted"] else "REJECTED",
         "trainable": row["accepted"],
     }

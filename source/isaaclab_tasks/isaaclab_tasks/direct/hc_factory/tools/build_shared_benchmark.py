@@ -35,7 +35,7 @@ def main() -> None:
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
 
-    run_dirs = [path.resolve() for path in args.run_dirs]
+    run_dirs = [path.expanduser().absolute() for path in args.run_dirs]
     pairs = discover_env_dirs(run_dirs)
     audit_rows = [audit_env_dir(run_dir, env_dir) for run_dir, env_dir in pairs]
     report = build_report(audit_rows)
@@ -65,11 +65,9 @@ def main() -> None:
             f"At least 3 accepted episodes are required, got {len(accepted)}"
         )
 
-    accepted_dirs = {row["env_dir"]: row for row in accepted}
     derived_summaries = []
-    for run_dir, env_dir in pairs:
-        audit = accepted_dirs.get(str(env_dir))
-        if audit is None:
+    for (run_dir, env_dir), audit in zip(pairs, audit_rows):
+        if not audit["accepted"]:
             continue
         derived_dir = run_dir / SHARED_DERIVED_DIR / env_dir.relative_to(run_dir)
         print(f"[shared bn_agg] {env_dir} -> {derived_dir}")
