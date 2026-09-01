@@ -58,6 +58,8 @@ params:
     log_interval: 100
     parallel_producing_limit: 10
     max_parallel_cd_dispatch: 10
+    # C none handling: always (Rule-aligned, safe for greedy eval) | staging_only
+    c_forbid_none_mode: always
 
     test: False
     test_times: 1

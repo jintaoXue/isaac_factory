@@ -186,6 +186,7 @@ class HierarchicalTPA:
 
         parallel_limit = config.get("parallel_producing_limit", 10)
         self.max_parallel_cd_dispatch = int(config.get("max_parallel_cd_dispatch", 1))
+        self.c_forbid_none_mode = str(config.get("c_forbid_none_mode", "always"))
         self.max_sim_episodes = config.get("max_sim_episodes")
         if self.max_sim_episodes is not None:
             self.max_sim_episodes = int(self.max_sim_episodes)
@@ -340,27 +341,54 @@ class HierarchicalTPA:
         self.act_one_env(env_state_action_dict, epsilon=0.0)
         load_hier_checkpoint(self, self.config, getattr(self, "_checkpoint_path", None))
 
+    def _set_eval_mode(self) -> None:
+        self.obs_encoder.eval()
+        for dqn in self._all_dqns():
+            if dqn is not None:
+                dqn.q_net.eval()
+                dqn.target_net.eval()
+
     def test(self) -> dict:
-        assert self.vec_env is not None, "vec_env required for test()"
-        seeds = list(self.config.get("test_seeds") or [int(self.config.get("seed", 42))])
-        episodes_per_seed = int(self.config.get("test_times", 1))
-        eval_epsilon = float(self.config.get("test_epsilon", 0.0))
-        output_dir = os.path.join(self.experiment_dir, "eval")
-        # Full-order eval: 16 products, T_max=anchor (not incremental curriculum segments).
-        eval_horizon = int(self.config.get("t_max_anchor", _curr.T_MAX_ANCHOR))
-
-        obs: list[dict] = self.vec_env.reset()
-        self.horizon.bind(self.vec_env, len(obs))
-        eval_horizon = self.horizon.apply_full_order_eval(eval_horizon)
-        self._maybe_load_checkpoint(obs[0])
-
         from .tpa_eval import (
             EvalStream,
+            _eprint,
             build_eval_payload,
             print_eval_summary,
             run_eval_episodes,
             save_eval_results,
         )
+
+        assert self.vec_env is not None, "vec_env required for test()"
+        seeds = list(self.config.get("test_seeds") or [int(self.config.get("seed", 42))])
+        episodes_per_seed = int(self.config.get("test_times", 1))
+        eval_epsilon = float(self.config.get("test_epsilon", 0.0))
+        output_dir = os.path.join(self.experiment_dir, "eval")
+        eval_anchor = int(self.config.get("t_max_anchor", _curr.T_MAX_ANCHOR))
+        eval_n = int(self.config.get("train_n_products", _curr.N_FULL_ORDER))
+
+        self.vec_env.reset()
+        self.horizon.bind(self.vec_env, 1)
+        eval_horizon = self.horizon.apply_order_eval(
+            eval_n,
+            horizon=eval_anchor if eval_n >= _curr.N_FULL_ORDER else None,
+        )
+        ckpt_loaded = False
+
+        def _on_eval_reset(obs_list: list[dict]) -> None:
+            nonlocal ckpt_loaded
+            self.horizon.apply_order_eval(
+                eval_n,
+                horizon=eval_anchor if eval_n >= _curr.N_FULL_ORDER else None,
+            )
+            if not ckpt_loaded:
+                self._maybe_load_checkpoint(obs_list[0])
+                self._set_eval_mode()
+                ckpt_loaded = True
+                loaded = bool(self.agent_A.dqn is not None)
+                _eprint(
+                    f"[Hier] eval ckpt loaded={loaded} step={self.config.get('load_step')} "
+                    f"dir={self.config.get('load_dir')}"
+                )
 
         if self.use_wandb:
             self.init_wandb_logger()
@@ -372,7 +400,7 @@ class HierarchicalTPA:
             t_budget=eval_horizon,
             algo_name="hier",
             total_episodes=total_eps,
-            n_target=_curr.N_FULL_ORDER,
+            n_target=eval_n,
             log_interval=log_iv,
             local=self.local_metrics,
             use_wandb=self.use_wandb,
@@ -380,7 +408,7 @@ class HierarchicalTPA:
         )
 
         print(
-            f"[Hier] test full-order N={_curr.N_FULL_ORDER} T_max={eval_horizon} "
+            f"[Hier] test N={eval_n} T_max={eval_horizon} "
             f"eps={eval_epsilon} seeds={seeds} n={episodes_per_seed}"
         )
         results = run_eval_episodes(
@@ -390,7 +418,7 @@ class HierarchicalTPA:
             episodes_per_seed=episodes_per_seed,
             max_episodic_steps=eval_horizon,
             epsilon=eval_epsilon,
-            on_reset=lambda: self.horizon.apply_full_order_eval(eval_horizon),
+            on_reset=_on_eval_reset,
             stream=stream,
         )
         payload = build_eval_payload(

@@ -117,22 +117,42 @@ class HorizonHooks:
 
     def apply_full_order_eval(self, horizon: int | None = None) -> int:
         """Disable segment curriculum: N_FULL_ORDER products, T_max=anchor, no catalog warmstart."""
-        t_max = int(
-            horizon if horizon is not None else _curr.t_max_for(_curr.N_FULL_ORDER, self.curriculum.anchor)
-        )
+        return self.apply_order_eval(_curr.N_FULL_ORDER, horizon=horizon)
+
+    def apply_order_eval(self, n_products: int, horizon: int | None = None) -> int:
+        """Eval order of ``n_products`` (10 = train distribution, 16 = full-order generalization)."""
+        n_products = int(n_products)
+        if n_products >= _curr.N_FULL_ORDER:
+            t_max = int(
+                horizon if horizon is not None else _curr.t_max_for(_curr.N_FULL_ORDER, self.curriculum.anchor)
+            )
+        else:
+            t_max = int(
+                horizon if horizon is not None else _curr.t_max_for(n_products, self.curriculum.anchor)
+            )
         if self.env_list is None:
             return t_max
         self.curriculum.enabled = False
         product_type = self.curriculum.product_type
         for env in self.env_list:
-            env.task_manager.max_episodic_steps = t_max
-            progress = env.env_state_action_dict.setdefault("progress", {})
-            progress.pop("segment_target_nfin", None)
-            progress.pop("segment_start_nfin", None)
-            progress.pop("segment_delta_n", None)
-            progress["stage_wip_cap"] = 10
-            progress["product_order"] = {product_type: _curr.N_FULL_ORDER}
-            progress["not_started"] = {product_type: _curr.N_FULL_ORDER}
+            if n_products >= _curr.N_FULL_ORDER:
+                env.task_manager.max_episodic_steps = t_max
+                progress = env.env_state_action_dict.setdefault("progress", {})
+                progress.pop("segment_target_nfin", None)
+                progress.pop("segment_start_nfin", None)
+                progress.pop("segment_delta_n", None)
+                progress["stage_wip_cap"] = 10
+                progress["product_order"] = {product_type: _curr.N_FULL_ORDER}
+                progress["not_started"] = {product_type: _curr.N_FULL_ORDER}
+            else:
+                _curr.apply_train_order(
+                    env,
+                    n_products=n_products,
+                    product_type=product_type,
+                    anchor=self.curriculum.anchor,
+                )
+                env.task_manager.max_episodic_steps = t_max
+            env.algo_hierarchical_masker.generate_agents_mask(env.env_state_action_dict)
         return t_max
 
     def bind(self, vec_env, n_envs: int) -> None:

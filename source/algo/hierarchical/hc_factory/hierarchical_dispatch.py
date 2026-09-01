@@ -27,6 +27,36 @@ def _empty_allocation(human_dim: int, robot_dim: int, device: torch.device) -> d
     }
 
 
+def _c_mask_for_rl_act(
+    c_mask: torch.Tensor,
+    slot_index: int,
+    pool: TpaInfoPool,
+    *,
+    forbid_none_mode: str = "always",
+) -> torch.Tensor:
+    """Adjust C action mask before RL act.
+
+    ``always`` (default, Rule-aligned): when real tasks exist, forbid none on any slot.
+    Needed for greedy eval with checkpoints that over-prefer none on WIP slots.
+
+    ``staging_only``: forbid none only on staging while ``next_product`` blocks A.
+    WIP may still defer; safe only if the policy rarely greedy-selects none on WIP.
+    """
+    c_mask_for_act = c_mask.clone()
+    if int(c_mask_for_act.sum().item()) <= 1:
+        return c_mask_for_act
+    if forbid_none_mode == "always":
+        c_mask_for_act[0] = 0
+        return c_mask_for_act
+    if forbid_none_mode == "staging_only":
+        is_staging = slot_index == pool.staging_slot
+        blocks_sequencing = pool.progress.get("next_product") is not None
+        if is_staging and blocks_sequencing:
+            c_mask_for_act[0] = 0
+        return c_mask_for_act
+    raise ValueError(f"unknown c_forbid_none_mode={forbid_none_mode!r}")
+
+
 def build_rule_based_action(
     env_state_action_dict: dict,
     cuda_device: torch.device,
@@ -146,9 +176,13 @@ def build_hier_rl_action(
             continue
 
         c_mask = pool.get_c_mask_for_slot(slot_index)
+        forbid_none_mode = getattr(agents, "c_forbid_none_mode", "always")
+        c_mask_for_act = _c_mask_for_rl_act(
+            c_mask, slot_index, pool, forbid_none_mode=forbid_none_mode
+        )
         slot_one_hot = _slot_to_one_hot(slot_index, b_dim, cuda_device)
         process_task_planning = agents.agent_C.act_with_mask(
-            env_state_action_dict, slot_one_hot, c_mask, epsilon, pre=pre
+            env_state_action_dict, slot_one_hot, c_mask_for_act, epsilon, pre=pre
         )
         if process_task_planning[0] == 1 and c_mask.sum() <= 1:
             continue

@@ -188,6 +188,7 @@ class EvalMetricsTracker:
         seed: int,
         episode_idx: int,
         ep_len: int,
+        action: dict | None = None,
     ) -> None:
         self.global_step += 1
         self._fatigue.update(env_id, env_dict)
@@ -197,15 +198,31 @@ class EvalMetricsTracker:
                 f"[Eval:{self.algo_name}] rollout seed={seed} ep_idx={episode_idx} "
                 f"target={self.n_target} T_max={self.t_budget}"
             )
-        if crossed_interval(self._last_logged_step, self.global_step, self.log_interval):
-            self._last_logged_step = self.global_step
-            self._log_step(env_dict, seed=seed, episode_idx=episode_idx)
+        if ep_len == 1 or crossed_interval(self._last_logged_step, self.global_step, self.log_interval):
+            if ep_len == 1:
+                self._last_logged_step = self.global_step
+            elif crossed_interval(self._last_logged_step, self.global_step, self.log_interval):
+                self._last_logged_step = self.global_step
+            self._log_step(
+                env_dict,
+                seed=seed,
+                episode_idx=episode_idx,
+                action=action,
+            )
 
-    def _log_step(self, env_dict: dict, *, seed: int, episode_idx: int) -> None:
+    def _log_step(
+        self,
+        env_dict: dict,
+        *,
+        seed: int,
+        episode_idx: int,
+        action: dict | None = None,
+    ) -> None:
         progress = env_dict.get("progress") or {}
         t0 = int(env_dict.get("time_step", 0) or 0)
         finished = _count_finished(env_dict)
         remain = max(0, self.n_target - finished)
+        n_producing = len(progress.get("producing") or [])
         nmk = float(t0 + 1) / float(max(1, self.t_budget))
         mpps_str = _mean_per_product_span_str(
             t0,
@@ -215,10 +232,21 @@ class EvalMetricsTracker:
         wall = self._wall_sec()
         spm = steps_per_min(self.global_step, wall, self.num_envs)
         spm_str = f"{spm:.1f}" if spm is not None else "n/a"
+        diag = ""
+        if action is not None:
+            a = action.get("product_sequencing")
+            a_sum = int(a.sum().item()) if a is not None else 0
+            n_disp = len(action.get("dispatch_list") or [])
+            mask = (env_dict.get("agent_action_mask") or {}).get("agent_A_product_sequencer")
+            a_mask = int(mask.sum().item()) if mask is not None else -1
+            diag = (
+                f" A_mask={a_mask} A_sum={a_sum} disp={n_disp} "
+                f"producing={n_producing} next={progress.get('next_product')!r}"
+            )
         _eprint(
             f"[Eval:{self.algo_name}] step={self.global_step} seed={seed} ep_idx={episode_idx} "
             f"ep_t={t0} target={self.n_target} finished={finished} remain={remain} "
-            f"nmk={nmk:.3f} mpps={mpps_str} steps/min={spm_str}"
+            f"nmk={nmk:.3f} mpps={mpps_str} steps/min={spm_str}{diag}"
         )
         peak_payload = self._shop_metrics(
             producing=len(progress.get("producing") or []),
@@ -362,6 +390,7 @@ class EvalStream:
         seed: int,
         episode_idx: int,
         ep_len: int,
+        action: dict | None = None,
     ) -> None:
         self.tracker.on_env_step(
             env_id,
@@ -369,6 +398,7 @@ class EvalStream:
             seed=seed,
             episode_idx=episode_idx,
             ep_len=ep_len,
+            action=action,
         )
 
     def on_episode_done(self, result: EpisodeResult) -> None:
@@ -405,11 +435,19 @@ def run_eval_episodes(
     """Roll out evaluation episodes on ``env_id`` of the vec env."""
     del progress_log_interval  # legacy; use stream.log_interval via EvalStream ctor
     results: list[EpisodeResult] = []
+
+    def _call_on_reset(obs_list: list[dict]) -> None:
+        if on_reset is None:
+            return
+        try:
+            on_reset(obs_list)
+        except TypeError:
+            on_reset()
+
     for seed in seeds:
         set_global_seed(seed)
         obs: list[dict] = vec_env.reset()
-        if on_reset is not None:
-            on_reset()
+        _call_on_reset(obs)
         ep_counter = 0
         while ep_counter < episodes_per_seed:
             ep_return = 0.0
@@ -430,6 +468,7 @@ def run_eval_episodes(
                         seed=seed,
                         episode_idx=ep_counter,
                         ep_len=ep_len,
+                        action=actions[env_id],
                     )
                 obs = next_obs
                 if done:
