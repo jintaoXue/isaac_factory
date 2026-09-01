@@ -366,14 +366,17 @@ class HierarchicalTPA:
             self.init_wandb_logger()
 
         total_eps = len(seeds) * episodes_per_seed
-        progress_iv = int(self.config.get("test_progress_log_interval", 500))
+        log_iv = int(self.config.get("test_progress_log_interval", self.log_interval))
         stream = EvalStream(
             output_dir,
             t_budget=eval_horizon,
             algo_name="hier",
             total_episodes=total_eps,
+            n_target=_curr.N_FULL_ORDER,
+            log_interval=log_iv,
             local=self.local_metrics,
             use_wandb=self.use_wandb,
+            num_envs=self.num_actors,
         )
 
         print(
@@ -388,9 +391,7 @@ class HierarchicalTPA:
             max_episodic_steps=eval_horizon,
             epsilon=eval_epsilon,
             on_reset=lambda: self.horizon.apply_full_order_eval(eval_horizon),
-            on_episode_done=stream.on_episode_done,
-            on_progress=stream.on_progress,
-            progress_log_interval=progress_iv,
+            stream=stream,
         )
         payload = build_eval_payload(
             algo_name="hier",

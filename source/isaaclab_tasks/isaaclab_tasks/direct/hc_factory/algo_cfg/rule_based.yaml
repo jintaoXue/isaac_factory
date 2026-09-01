@@ -50,7 +50,7 @@ params:
     test: False
     test_times: 1
     test_seeds: [42, 43, 44, 45, 46]
-    test_progress_log_interval: 500
+    test_progress_log_interval: 100
     train_n_products: 10
     t_max_anchor: 64000
     max_episodic_steps: 64000

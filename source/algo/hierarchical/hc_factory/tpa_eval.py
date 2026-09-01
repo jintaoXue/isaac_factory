@@ -6,13 +6,18 @@ import json
 import math
 import os
 import random
+import sys
+import time
 from dataclasses import asdict, dataclass
 from typing import Callable
 
 import numpy as np
 import torch
 
-from .hier_utils import compute_team_reward, read_rl_done
+from .hier_utils import compute_team_reward, count_busy_agents, crossed_interval, read_rl_done, steps_per_min
+from .hc_factory_imports import import_hc_module
+
+_curr = import_hc_module("src.curriculum")
 
 
 def _count_finished(env_dict: dict) -> int:
@@ -23,6 +28,20 @@ def _count_finished(env_dict: dict) -> int:
         len(v) if hasattr(v, "__len__") and not isinstance(v, (str, bytes)) else int(v or 0)
         for v in fin.values()
     )
+
+
+def _mean_per_product_span_str(ep_t: int, *, episode_n_finished: int, finished: int) -> str:
+    n_done = int(episode_n_finished)
+    if n_done <= 0:
+        n_done = int(finished)
+    if n_done <= 0:
+        return "n/a"
+    return f"{float(ep_t + 1) / float(n_done):.1f}"
+
+
+def _eprint(msg: str) -> None:
+    """Eval progress goes to stderr so wandb stdout redirect does not hide it."""
+    print(msg, file=sys.stderr, flush=True)
 
 
 @dataclass
@@ -87,19 +106,201 @@ def print_eval_summary(summary: dict, algo_name: str) -> None:
     ms_ok = summary.get("makespan_success_only", {})
     succ = summary.get("success_rate", {})
     trunc = summary.get("truncation_rate", {})
-    print(f"\n[Eval:{algo_name}] episodes={summary.get('num_episodes', 0)}")
+    _eprint(f"\n[Eval:{algo_name}] episodes={summary.get('num_episodes', 0)}")
     if ms.get("mean") is not None:
-        print(f"  Makespan:     {ms['mean']:.1f} ± {ms['std']:.1f}")
+        _eprint(f"  Makespan:     {ms['mean']:.1f} ± {ms['std']:.1f}")
     if ms_ok.get("mean") is not None:
-        print(f"  Makespan(ok): {ms_ok['mean']:.1f} ± {ms_ok['std']:.1f}")
+        _eprint(f"  Makespan(ok): {ms_ok['mean']:.1f} ± {ms_ok['std']:.1f}")
     if succ.get("mean") is not None:
-        print(f"  Success:      {succ['mean'] * 100:.1f}% ± {succ['std'] * 100:.1f}%")
+        _eprint(f"  Success:      {succ['mean'] * 100:.1f}% ± {succ['std'] * 100:.1f}%")
     if trunc.get("mean") is not None:
-        print(f"  Truncation:   {trunc['mean'] * 100:.1f}% ± {trunc['std'] * 100:.1f}%")
+        _eprint(f"  Truncation:   {trunc['mean'] * 100:.1f}% ± {trunc['std'] * 100:.1f}%")
+
+
+def _eval_n_finished(row: EpisodeResult) -> int:
+    n_fin = int(row.n_finished or 0)
+    if n_fin <= 0 and bool(row.success):
+        return int(_curr.N_FULL_ORDER)
+    return n_fin
+
+
+class EvalMetricsTracker:
+    """Train-aligned MetricCore/Peak/Human logging during eval rollouts."""
+
+    def __init__(
+        self,
+        *,
+        t_budget: int,
+        algo_name: str,
+        n_target: int,
+        log_interval: int,
+        local=None,
+        use_wandb: bool = False,
+        num_envs: int = 1,
+    ) -> None:
+        from .wandb_metrics import HumanFatigueMonitor, axis_payload, fullorder_core_metrics, fullorder_peak_metrics, log_metrics, shop_metrics
+
+        self.t_budget = int(t_budget)
+        self.algo_name = algo_name
+        self.n_target = int(n_target)
+        self.log_interval = max(1, int(log_interval))
+        self.local = local
+        self.use_wandb = bool(use_wandb)
+        self.num_envs = max(1, int(num_envs))
+        self._axis_payload = axis_payload
+        self._shop_metrics = shop_metrics
+        self._fullorder_core_metrics = fullorder_core_metrics
+        self._fullorder_peak_metrics = fullorder_peak_metrics
+        self._log_metrics = log_metrics
+        self._fatigue = HumanFatigueMonitor(num_envs=self.num_envs)
+        self.global_step = 0
+        self._t0 = time.time()
+        self._last_logged_step = 0
+        self.peak_producing = 0
+        self.peak_ongoing = 0
+        self.peak_ongoing_human = 0
+        self.peak_ongoing_robot = 0
+        self.makespan_all: list[int] = []
+        self.makespan_success: list[int] = []
+        self.success_hist: list[float] = []
+        self.episodes_done = 0
+
+    def _wall_sec(self) -> float:
+        return float(time.time() - self._t0)
+
+    def _update_peaks(self, env_id: int, env_dict: dict) -> tuple[int, int, int, int]:
+        progress = env_dict.get("progress") or {}
+        n_producing = len(progress.get("producing") or [])
+        n_ongoing = len(progress.get("ongoing_task_records") or {})
+        n_human = count_busy_agents(env_dict.get("human"))
+        n_robot = count_busy_agents(env_dict.get("robot"))
+        self.peak_producing = max(self.peak_producing, n_producing)
+        self.peak_ongoing = max(self.peak_ongoing, n_ongoing)
+        self.peak_ongoing_human = max(self.peak_ongoing_human, n_human)
+        self.peak_ongoing_robot = max(self.peak_ongoing_robot, n_robot)
+        return n_producing, n_ongoing, n_human, n_robot
+
+    def on_env_step(
+        self,
+        env_id: int,
+        env_dict: dict,
+        *,
+        seed: int,
+        episode_idx: int,
+        ep_len: int,
+    ) -> None:
+        self.global_step += 1
+        self._fatigue.update(env_id, env_dict)
+        self._update_peaks(env_id, env_dict)
+        if ep_len == 1:
+            _eprint(
+                f"[Eval:{self.algo_name}] rollout seed={seed} ep_idx={episode_idx} "
+                f"target={self.n_target} T_max={self.t_budget}"
+            )
+        if crossed_interval(self._last_logged_step, self.global_step, self.log_interval):
+            self._last_logged_step = self.global_step
+            self._log_step(env_dict, seed=seed, episode_idx=episode_idx)
+
+    def _log_step(self, env_dict: dict, *, seed: int, episode_idx: int) -> None:
+        progress = env_dict.get("progress") or {}
+        t0 = int(env_dict.get("time_step", 0) or 0)
+        finished = _count_finished(env_dict)
+        remain = max(0, self.n_target - finished)
+        nmk = float(t0 + 1) / float(max(1, self.t_budget))
+        mpps_str = _mean_per_product_span_str(
+            t0,
+            episode_n_finished=finished,
+            finished=finished,
+        )
+        wall = self._wall_sec()
+        spm = steps_per_min(self.global_step, wall, self.num_envs)
+        spm_str = f"{spm:.1f}" if spm is not None else "n/a"
+        _eprint(
+            f"[Eval:{self.algo_name}] step={self.global_step} seed={seed} ep_idx={episode_idx} "
+            f"ep_t={t0} target={self.n_target} finished={finished} remain={remain} "
+            f"nmk={nmk:.3f} mpps={mpps_str} steps/min={spm_str}"
+        )
+        peak_payload = self._shop_metrics(
+            producing=len(progress.get("producing") or []),
+            ongoing=len(progress.get("ongoing_task_records") or {}),
+            peak_producing=self.peak_producing,
+            peak_ongoing=self.peak_ongoing,
+            peak_ongoing_human=self.peak_ongoing_human,
+            peak_ongoing_robot=self.peak_ongoing_robot,
+        )
+        payload = self._axis_payload(self.global_step, wall, spm)
+        payload.update(peak_payload)
+        payload.update(self._fullorder_peak_metrics(peak_payload))
+        payload.update(self._fatigue.step_payload(0))
+        self._log_metrics(payload, local=self.local, use_wandb=self.use_wandb)
+
+    def finish_episode(self, result: EpisodeResult) -> dict:
+        from .wandb_metrics import episode_metrics
+
+        self.episodes_done += 1
+        n_fin = _eval_n_finished(result)
+        finished_abs = n_fin
+        if result.success:
+            self.makespan_success.append(int(result.makespan))
+            self.makespan_all.append(int(result.makespan))
+        elif result.truncated:
+            self.makespan_all.append(int(result.makespan))
+        self.success_hist.append(float(result.success))
+
+        mean_ms = sum(self.makespan_all) / len(self.makespan_all) if self.makespan_all else None
+        mean_ms_ok = (
+            sum(self.makespan_success) / len(self.makespan_success) if self.makespan_success else None
+        )
+        success_rate = sum(self.success_hist) / len(self.success_hist) if self.success_hist else None
+        success_rate_str = f"{success_rate:.2f}" if success_rate is not None else "n/a"
+        nmk = float(result.makespan) / float(max(1, self.t_budget))
+        mpps_str = _mean_per_product_span_str(
+            int(result.makespan) - 1,
+            episode_n_finished=n_fin,
+            finished=n_fin,
+        )
+        _eprint(
+            f"[Eval:{self.algo_name}] EP_DONE ep={self.episodes_done} seed={result.seed} "
+            f"idx={result.episode_idx} len={result.makespan} finished={finished_abs} "
+            f"success={result.success} success_rate={success_rate_str} nmk={nmk:.3f} mpps={mpps_str}"
+        )
+
+        wall = self._wall_sec()
+        spm = steps_per_min(self.global_step, wall, self.num_envs)
+        human_ep = self._fatigue.on_episode_done(0, episode=self.episodes_done)
+        core_payload = episode_metrics(
+            episode=self.episodes_done,
+            success=bool(result.success),
+            truncated=bool(result.truncated),
+            makespan=int(result.makespan),
+            n_finished=n_fin,
+            finished_abs=finished_abs,
+            ep_return=float(result.ep_return),
+            t_budget=self.t_budget,
+            success_rate=success_rate,
+            mean_makespan=mean_ms,
+            mean_makespan_success=mean_ms_ok,
+            prefix="MetricCore",
+        )
+        peak_payload = self._shop_metrics(
+            peak_producing=self.peak_producing,
+            peak_ongoing=self.peak_ongoing,
+            peak_ongoing_human=self.peak_ongoing_human,
+            peak_ongoing_robot=self.peak_ongoing_robot,
+        )
+        payload = self._axis_payload(self.global_step, wall, spm)
+        payload.update(core_payload)
+        payload.update(peak_payload)
+        payload.update(human_ep)
+        payload.update(self._fullorder_core_metrics(core_payload))
+        payload.update(self._fullorder_peak_metrics(peak_payload))
+        payload["Eval/seed"] = int(result.seed)
+        payload["Eval/seed_episode_idx"] = int(result.episode_idx)
+        return payload
 
 
 class EvalStream:
-    """Live eval sink: append episodes.jsonl, partial summary, wandb + metrics.jsonl."""
+    """Live eval sink: episodes.jsonl + train-aligned metrics + terminal progress."""
 
     def __init__(
         self,
@@ -108,31 +309,35 @@ class EvalStream:
         t_budget: int,
         algo_name: str,
         total_episodes: int,
+        n_target: int,
+        log_interval: int = 100,
         local=None,
         use_wandb: bool = False,
+        num_envs: int = 1,
     ) -> None:
-        from .wandb_metrics import log_eval_episode_row, log_eval_progress
-
         self.output_dir = output_dir
         self.t_budget = int(t_budget)
         self.algo_name = algo_name
         self.total_episodes = int(total_episodes)
+        self.tracker = EvalMetricsTracker(
+            t_budget=t_budget,
+            algo_name=algo_name,
+            n_target=n_target,
+            log_interval=log_interval,
+            local=local,
+            use_wandb=use_wandb,
+            num_envs=num_envs,
+        )
         self.local = local
-        self.use_wandb = bool(use_wandb)
-        self._log_episode = log_eval_episode_row
-        self._log_progress = log_eval_progress
+        self.use_wandb = use_wandb
         self.results: list[EpisodeResult] = []
-        self._makespans: list[int] = []
-        self._success_ms: list[int] = []
-        self._n_success = 0
-        self._eval_step = 0
         os.makedirs(output_dir, exist_ok=True)
         self.episodes_path = os.path.join(output_dir, "episodes.jsonl")
         self.partial_path = os.path.join(output_dir, "eval_summary_partial.json")
         open(self.episodes_path, "w", encoding="utf-8").close()
-        print(
+        _eprint(
             f"[Eval:{algo_name}] live stream → {self.episodes_path} "
-            f"(total={self.total_episodes}, T_budget={self.t_budget})"
+            f"(total={self.total_episodes}, T_budget={self.t_budget}, log_interval={log_interval})"
         )
 
     def _flush_partial_summary(self) -> None:
@@ -149,53 +354,37 @@ class EvalStream:
                 ensure_ascii=False,
             )
 
-    def on_episode_done(self, result: EpisodeResult) -> None:
-        self.results.append(result)
-        with open(self.episodes_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(asdict(result), ensure_ascii=False) + "\n")
-        if result.success:
-            self._n_success += 1
-            self._success_ms.append(int(result.makespan))
-        self._makespans.append(int(result.makespan))
-        ep_num = len(self.results)
-        self._log_episode(
-            ep_num,
-            result,
-            t_budget=self.t_budget,
-            makespans=self._makespans,
-            success_ms=self._success_ms,
-            n_success=self._n_success,
-            local=self.local,
-            use_wandb=self.use_wandb,
-        )
-        self._flush_partial_summary()
-        ms_mean = sum(self._makespans) / len(self._makespans)
-        sr = self._n_success / ep_num
-        print(
-            f"[Eval:{self.algo_name}] ep {ep_num}/{self.total_episodes} "
-            f"seed={result.seed} idx={result.episode_idx} "
-            f"makespan={result.makespan} success={result.success} "
-            f"n_fin={result.n_finished} running_mean={ms_mean:.0f} sr={sr:.2f}"
-        )
-
-    def on_progress(
+    def on_env_step(
         self,
+        env_id: int,
+        env_dict: dict,
         *,
         seed: int,
         episode_idx: int,
         ep_len: int,
-        n_finished: int,
     ) -> None:
-        self._eval_step += 1
-        self._log_progress(
-            eval_step=self._eval_step,
-            ep_len=ep_len,
-            n_finished=n_finished,
-            t_budget=self.t_budget,
+        self.tracker.on_env_step(
+            env_id,
+            env_dict,
             seed=seed,
             episode_idx=episode_idx,
-            local=self.local,
-            use_wandb=self.use_wandb,
+            ep_len=ep_len,
+        )
+
+    def on_episode_done(self, result: EpisodeResult) -> None:
+        from .wandb_metrics import log_metrics
+
+        self.results.append(result)
+        with open(self.episodes_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(asdict(result), ensure_ascii=False) + "\n")
+        payload = self.tracker.finish_episode(result)
+        log_metrics(payload, local=self.local, use_wandb=self.use_wandb)
+        self._flush_partial_summary()
+        ms_mean = sum(int(r.makespan) for r in self.results) / len(self.results)
+        sr = sum(1 for r in self.results if r.success) / len(self.results)
+        _eprint(
+            f"[Eval:{self.algo_name}] summary ep {len(self.results)}/{self.total_episodes} "
+            f"running_mean={ms_mean:.0f} sr={sr:.2f}"
         )
 
 
@@ -209,13 +398,13 @@ def run_eval_episodes(
     epsilon: float = 0.0,
     env_id: int = 0,
     on_reset=None,
+    stream: EvalStream | None = None,
     on_episode_done: Callable[[EpisodeResult], None] | None = None,
-    on_progress: Callable[..., None] | None = None,
-    progress_log_interval: int = 500,
+    progress_log_interval: int | None = None,
 ) -> list[EpisodeResult]:
     """Roll out evaluation episodes on ``env_id`` of the vec env."""
+    del progress_log_interval  # legacy; use stream.log_interval via EvalStream ctor
     results: list[EpisodeResult] = []
-    progress_log_interval = max(0, int(progress_log_interval))
     for seed in seeds:
         set_global_seed(seed)
         obs: list[dict] = vec_env.reset()
@@ -234,18 +423,15 @@ def run_eval_episodes(
                 done, truncated, success = read_rl_done(next_obs[env_id])
                 ep_len += 1
                 n_finished = max(_count_finished(obs[env_id]), _count_finished(next_obs[env_id]))
-                obs = next_obs
-                if (
-                    on_progress is not None
-                    and progress_log_interval > 0
-                    and (ep_len % progress_log_interval == 0 or done)
-                ):
-                    on_progress(
+                if stream is not None:
+                    stream.on_env_step(
+                        env_id,
+                        next_obs[env_id],
                         seed=seed,
                         episode_idx=ep_counter,
                         ep_len=ep_len,
-                        n_finished=n_finished,
                     )
+                obs = next_obs
                 if done:
                     row = EpisodeResult(
                         seed=seed,
@@ -257,7 +443,9 @@ def run_eval_episodes(
                         n_finished=n_finished,
                     )
                     results.append(row)
-                    if on_episode_done is not None:
+                    if stream is not None:
+                        stream.on_episode_done(row)
+                    elif on_episode_done is not None:
                         on_episode_done(row)
                     ep_counter += 1
                     break
@@ -272,7 +460,9 @@ def run_eval_episodes(
                     n_finished=_count_finished(obs[env_id]),
                 )
                 results.append(row)
-                if on_episode_done is not None:
+                if stream is not None:
+                    stream.on_episode_done(row)
+                elif on_episode_done is not None:
                     on_episode_done(row)
                 ep_counter += 1
     return results

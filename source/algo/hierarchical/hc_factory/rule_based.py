@@ -215,14 +215,17 @@ class RuleBasedHierarchical():
         self._apply_eval_order_all()
 
         total_eps = len(seeds) * episodes_per_seed
-        progress_iv = int(self.config.get("test_progress_log_interval", 500))
+        log_iv = int(self.config.get("test_progress_log_interval", self.log_interval))
         stream = EvalStream(
             output_dir,
             t_budget=self.max_episodic_steps,
             algo_name="rule_based",
             total_episodes=total_eps,
+            n_target=self.train_n_products,
+            log_interval=log_iv,
             local=self.local_metrics,
             use_wandb=self.use_wandb,
+            num_envs=self.num_actors,
         )
 
         results = run_eval_episodes(
@@ -233,9 +236,7 @@ class RuleBasedHierarchical():
             max_episodic_steps=self.max_episodic_steps,
             epsilon=0.0,
             on_reset=lambda: self._apply_eval_order_all(),
-            on_episode_done=stream.on_episode_done,
-            on_progress=stream.on_progress,
-            progress_log_interval=progress_iv,
+            stream=stream,
         )
         payload = build_eval_payload(
             algo_name="rule_based",

@@ -177,14 +177,18 @@ class FlatTPA:
             self.init_wandb_logger()
 
         total_eps = len(seeds) * episodes_per_seed
-        progress_iv = int(self.config.get("test_progress_log_interval", 500))
+        log_iv = int(self.config.get("test_progress_log_interval", self.log_interval))
+        n_target = int(self.config.get("train_n_products", 16))
         stream = EvalStream(
             output_dir,
             t_budget=self.max_episodic_steps,
             algo_name="flat",
             total_episodes=total_eps,
+            n_target=n_target,
+            log_interval=log_iv,
             local=None,
             use_wandb=self.use_wandb,
+            num_envs=self.num_actors,
         )
 
         results = run_eval_episodes(
@@ -194,9 +198,7 @@ class FlatTPA:
             episodes_per_seed=episodes_per_seed,
             max_episodic_steps=self.max_episodic_steps,
             epsilon=eval_epsilon,
-            on_episode_done=stream.on_episode_done,
-            on_progress=stream.on_progress,
-            progress_log_interval=progress_iv,
+            stream=stream,
         )
         payload = build_eval_payload(
             algo_name="flat",

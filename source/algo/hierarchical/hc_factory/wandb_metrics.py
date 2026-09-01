@@ -121,15 +121,8 @@ def define_shared_metrics(*, rl: bool = False, curriculum: bool = False, test: b
         if test:
             wandb.define_metric(f"MetricTest/{key}", step_metric="MetricTest/episode")
     if test:
-        wandb.define_metric("MetricTest/eval_step")
-        for key in (
-            "progress_ep_len",
-            "progress_n_finished",
-            "progress_nmk",
-            "progress_seed",
-            "progress_episode_idx",
-        ):
-            wandb.define_metric(f"MetricTest/{key}", step_metric="MetricTest/eval_step")
+        wandb.define_metric("Eval/seed")
+        wandb.define_metric("Eval/seed_episode_idx")
 
     for key in (
         "01_producing",
@@ -430,7 +423,7 @@ def build_eval_episode_payload(
     success_ms: list[int],
     n_success: int,
 ) -> dict[str, Any]:
-    """One eval episode row under MetricTest/* with running aggregates."""
+    """One eval episode row under MetricCore/* (same namespace as train)."""
     n_fin = _eval_n_finished(row)
     mean_ms = sum(makespans) / len(makespans)
     mean_ok = sum(success_ms) / len(success_ms) if success_ms else None
@@ -446,15 +439,37 @@ def build_eval_episode_payload(
         success_rate=float(n_success) / float(episode),
         mean_makespan=mean_ms,
         mean_makespan_success=mean_ok,
-        prefix="MetricTest",
+        prefix="MetricCore",
     )
     seed = getattr(row, "seed", None)
     ep_idx = getattr(row, "episode_idx", None)
     if seed is not None:
-        payload["MetricTest/seed"] = int(seed)
+        payload["Eval/seed"] = int(seed)
     if ep_idx is not None:
-        payload["MetricTest/seed_episode_idx"] = int(ep_idx)
+        payload["Eval/seed_episode_idx"] = int(ep_idx)
     return payload
+
+
+def log_eval_progress(
+    *,
+    eval_step: int,
+    ep_len: int,
+    n_finished: int,
+    t_budget: int,
+    seed: int,
+    episode_idx: int,
+    local: LocalMetricsWriter | None = None,
+    use_wandb: bool = True,
+) -> None:
+    """Legacy heartbeat; prefer EvalMetricsTracker step logs (Train/step axis)."""
+    del eval_step, seed, episode_idx
+    t_budget = max(1, int(t_budget))
+    payload = {
+        "Train/step": int(ep_len),
+        "MetricCore/06_n_finished": int(n_finished),
+        "MetricCore/01_normalized_makespan": float(ep_len) / float(t_budget),
+    }
+    log_metrics(payload, local=local, use_wandb=use_wandb)
 
 
 def log_eval_episode_row(
@@ -480,30 +495,6 @@ def log_eval_episode_row(
     return payload
 
 
-def log_eval_progress(
-    *,
-    eval_step: int,
-    ep_len: int,
-    n_finished: int,
-    t_budget: int,
-    seed: int,
-    episode_idx: int,
-    local: LocalMetricsWriter | None = None,
-    use_wandb: bool = True,
-) -> None:
-    """In-episode heartbeat for long eval rollouts (MetricTest/eval_step)."""
-    t_budget = max(1, int(t_budget))
-    payload = {
-        "MetricTest/eval_step": int(eval_step),
-        "MetricTest/progress_ep_len": int(ep_len),
-        "MetricTest/progress_n_finished": int(n_finished),
-        "MetricTest/progress_nmk": float(ep_len) / float(t_budget),
-        "MetricTest/progress_seed": int(seed),
-        "MetricTest/progress_episode_idx": int(episode_idx),
-    }
-    log_metrics(payload, local=local, use_wandb=use_wandb)
-
-
 def log_eval_episodes(
     results: list,
     *,
@@ -512,7 +503,7 @@ def log_eval_episodes(
     local: LocalMetricsWriter | None = None,
     use_wandb: bool = True,
 ) -> None:
-    """Log eval episodes under MetricTest/* (batch; prefer EvalStream for live runs)."""
+    """Log eval episodes under MetricCore/* (batch; prefer EvalStream for live runs)."""
     if use_wandb and wandb.run is None and local is None:
         return
     makespans: list[int] = []
