@@ -8,19 +8,24 @@ from typing import Any
 import torch
 from torch.nn import functional as F
 
+from factory_bn_shared.causes import cause_ignore_ids
+
 
 @dataclass
 class MultiTaskLossConfig:
-    lambda_occurrence: float = 1.0
-    lambda_node: float = 1.0
-    lambda_time_to_start: float = 1.0
-    lambda_remain_score: float = 1.0
-    lambda_remain_hot: float = 1.0
-    lambda_remain_len: float = 0.3
-    lambda_cause: float = 0.4
-    hot_pos_weight: float = 32.0
-    near_remain_windows: int = 60
-    remain_loss_tau: float = 20.0
+    lambda_remain_score: float = 0.0
+    lambda_remain_hot: float = 0.5
+    lambda_remain_len: float = 0.4
+    lambda_cause: float = 0.1
+    lambda_event_will: float = 2.5
+    lambda_event_start: float = 1.5
+    lambda_event_duration: float = 1.0
+    hot_pos_weight: float = 4.0
+    event_will_pos_weight: float = 3.0
+    event_will_fp_weight: float = 2.0
+    event_will_upcoming_pos_weight: float = 4.0
+    near_remain_windows: int = 15
+    remain_loss_tau: float = 40.0
     prediction_horizon: float = 180.0
 
     def __post_init__(self) -> None:
@@ -36,7 +41,7 @@ class MultiTaskLossConfig:
 
 
 def _zero_from(outputs: dict[str, torch.Tensor]) -> torch.Tensor:
-    return outputs["occurrence_logit"].sum() * 0.0
+    return outputs["remain_hot_logit"].sum() * 0.0
 
 
 def compute_multitask_loss(
@@ -45,12 +50,7 @@ def compute_multitask_loss(
     config: MultiTaskLossConfig,
     pos_weight: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-    occurrence = F.binary_cross_entropy_with_logits(
-        outputs["occurrence_logit"],
-        batch["y_occurrence"].float(),
-        pos_weight=pos_weight,
-    )
-    positive = batch["positive_mask"].bool()
+    del pos_weight
     zero = _zero_from(outputs)
 
     remain_mask = batch["remain_mask"].float()
@@ -80,6 +80,8 @@ def compute_multitask_loss(
         torch.log1p(batch["target_remain_len"].float()),
     )
     valid_cause = batch["y_cause"] >= 0
+    for cause_id in cause_ignore_ids():
+        valid_cause = valid_cause & (batch["y_cause"] != int(cause_id))
     cause = (
         F.cross_entropy(
             outputs["cause_logits"][valid_cause], batch["y_cause"][valid_cause]
@@ -88,34 +90,61 @@ def compute_multitask_loss(
         else zero
     )
 
-    if positive.any():
-        node = F.cross_entropy(
-            outputs["node_logits"][positive], batch["y_node"][positive]
+    occ_mask = batch["occ_node_mask"].bool()
+    event_will_target = batch["event_will"].float()
+    hist_hot = batch["hist_last_hot"].bool()
+    upcoming = (event_will_target > 0.5) & ~hist_hot & occ_mask
+    ongoing = (event_will_target > 0.5) & hist_hot & occ_mask
+    event_weight = torch.where(
+        event_will_target > 0.5,
+        torch.full_like(event_will_target, config.event_will_pos_weight),
+        torch.full_like(event_will_target, config.event_will_fp_weight),
+    )
+    event_weight = torch.where(
+        upcoming,
+        torch.full_like(event_weight, config.event_will_upcoming_pos_weight),
+        event_weight,
+    )
+    event_will_raw = F.binary_cross_entropy_with_logits(
+        outputs["event_will_logit"], event_will_target, reduction="none"
+    )
+    event_will = (event_will_raw * event_weight * occ_mask.float()).sum() / (
+        event_weight * occ_mask.float()
+    ).sum().clamp_min(1.0)
+    event_start = (
+        F.cross_entropy(
+            outputs["event_start_logit"][upcoming],
+            batch["event_start"][upcoming].long(),
         )
-        time_to_start = F.smooth_l1_loss(
-            outputs["time_to_start"][positive] / config.prediction_horizon,
-            batch["y_time_to_start"][positive].float() / config.prediction_horizon,
+        if upcoming.any()
+        else zero
+    )
+    positive_event = (upcoming | ongoing) & occ_mask
+    event_duration = (
+        F.smooth_l1_loss(
+            outputs["event_duration"][positive_event],
+            batch["event_duration"][positive_event].float(),
         )
-    else:
-        node = zero
-        time_to_start = zero
+        if positive_event.any()
+        else zero
+    )
 
     components = {
-        "occurrence": occurrence,
-        "node": node,
-        "time_to_start": time_to_start,
         "remain_score": remain_score,
         "remain_hot": remain_hot,
         "remain_len": remain_len,
         "cause": cause,
+        "event_will": event_will,
+        "event_start": event_start,
+        "event_duration": event_duration,
     }
     total = (
-        config.lambda_occurrence * occurrence
-        + config.lambda_node * node
-        + config.lambda_time_to_start * time_to_start
-        + config.lambda_remain_score * remain_score
+        config.lambda_remain_score * remain_score
         + config.lambda_remain_hot * remain_hot
         + config.lambda_remain_len * remain_len
         + config.lambda_cause * cause
+        + config.lambda_event_will * event_will
+        + config.lambda_event_start * event_start
+        + config.lambda_event_duration * event_duration
     )
     return total, components

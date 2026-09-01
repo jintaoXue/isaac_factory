@@ -39,6 +39,14 @@ class TestB2XGBoost(unittest.TestCase):
                 ],
                 dtype=torch.bool,
             ),
+            "occ_node_mask": torch.tensor(
+                [
+                    [1, 1, 1, 1, 0],
+                    [1, 1, 1, 1, 1],
+                    [1, 1, 0, 1, 1],
+                ],
+                dtype=torch.float32,
+            ),
             "observation_mask": torch.ones(3, 4, 5, dtype=torch.bool),
             "global_features": torch.empty(3, 4, 0),
             "jobs_remaining": torch.tensor([3.0, 2.0, 1.0]),

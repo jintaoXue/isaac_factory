@@ -29,7 +29,6 @@ import time
 
 from .hc_single_env import HcSingleEnv
 
-from .env_asset_cfg.perception.cfg_camera import has_registered_cameras
 from .env_asset_cfg.cfg_hc_env import HcRenderCfg
 from .hc_render import apply_hc_render_settings
 
@@ -44,7 +43,8 @@ class HcVectorEnvBase(DirectRLEnv):
         self.cuda_device = torch.device(self.cfg_vector_env.cuda_device_str)
         self.env_list : list[type[HcSingleEnv]] = []
         super().__init__(cfg, render_mode, **kwargs)
-        if has_registered_cameras() or render_mode == "rgb_array":
+        # Only apply RTX render settings when RTX sensors exist (requires --enable_cameras).
+        if self.sim.has_rtx_sensors() or render_mode == "rgb_array":
             apply_hc_render_settings(HcRenderCfg())
         self.reward_buf = torch.zeros(self.num_envs, dtype=torch.float32, device=self.sim.device)
         self._setup_rendering_resolution()
@@ -100,7 +100,7 @@ class HcVectorEnvBase(DirectRLEnv):
         obs: list[dict] = []
         for env in self.env_list:
             obs.append(env.reset_env())
-        if self.sim.has_rtx_sensors() or has_registered_cameras():
+        if self.sim.has_rtx_sensors():
             if self.cfg.rerender_on_reset:
                 self.sim.render()
             if self.cfg.wait_for_textures:
@@ -123,7 +123,9 @@ class HcVectorEnvBase(DirectRLEnv):
 
     def step_env_logic(self, action: list[dict] | None = None, action_extra: list[dict] | None = None) -> None:
         for env_id, single_env in enumerate(self.env_list):
-            single_env.step_env_logic(action[env_id], action_extra[env_id])
+            act_i = action[env_id] if action is not None else None
+            extra_i = action_extra[env_id] if action_extra is not None else None
+            single_env.step_env_logic(act_i, extra_i)
 
     def step_env_physics(self) -> None:
         self.apply_data_to_sim()
@@ -147,6 +149,7 @@ class HcVectorEnvBase(DirectRLEnv):
     
 
     def get_env_info(self):
-        env_info = {}
-        env_info["cuda_device"] = self.cuda_device
-        return env_info
+        return {
+            "cuda_device": self.cuda_device,
+            "num_envs": int(self.num_envs),
+        }

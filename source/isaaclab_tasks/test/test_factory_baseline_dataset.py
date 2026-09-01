@@ -44,7 +44,10 @@ class TestFactoryBaselineDataset(unittest.TestCase):
         for episode_id in range(6):
             raw_dir = run_dir / f"episode_{episode_id:02d}" / "env_00"
             derived_dir = (
-                run_dir / "shared_bn_agg_v1" / f"episode_{episode_id:02d}" / "env_00"
+                run_dir
+                / "shared_bn_agg_unsupervised_v2"
+                / f"episode_{episode_id:02d}"
+                / "env_00"
             )
             config = {
                 "run_id": "run_seed42",
@@ -77,8 +80,8 @@ class TestFactoryBaselineDataset(unittest.TestCase):
             (derived_dir / "shared_metadata.json").write_text(
                 json.dumps(
                     {
-                        "derived_contract_version": "tyx_bn_agg_v1",
-                        "label_version": "tyx_bn_agg_event_v1",
+                        "derived_contract_version": "tyx_bn_agg_unsupervised_v2",
+                        "label_version": "factory_ops_hot_v1",
                         "raw_contract_version": "tyx_raw_v0.3",
                         "scenario_id": f"scenario_{episode_id % 2}",
                     }
@@ -154,7 +157,7 @@ class TestFactoryBaselineDataset(unittest.TestCase):
             job_rows = [
                 {
                     "job_id": job_id,
-                    "complete_s": 1140 + job_id,
+                    "complete_s": 2000 + job_id,
                     "completed": 1,
                 }
                 for job_id in range(2)
@@ -180,7 +183,7 @@ class TestFactoryBaselineDataset(unittest.TestCase):
             manifest = result["manifest"]
 
             self.assertEqual(payload["x"].shape[:3], (48, 12, 2))
-            self.assertEqual(payload["x"].shape[-1], len(CONTINUOUS_FEATURES) + 2)
+            self.assertEqual(payload["x"].shape[-1], len(CONTINUOUS_FEATURES) + 6)
             self.assertEqual(payload["global_features"].shape, (48, 12, 0))
             self.assertEqual(payload["adjacency"].shape, (48, 2, 2))
             self.assertEqual(payload["target_node_mask"].shape, (48, 2))
@@ -192,18 +195,25 @@ class TestFactoryBaselineDataset(unittest.TestCase):
             self.assertTrue(payload["target_node_mask"][:, machine_index].all())
             self.assertFalse(payload["target_node_mask"][:, buffer_index].any())
             self.assertTrue(torch.isfinite(payload["x"]).all())
-            self.assertEqual(manifest["dataset_version"], "bstan_tyxbn_dataset_v2")
+            self.assertEqual(manifest["dataset_version"], "factory_baseline_dataset_v3")
             self.assertEqual(
-                manifest["prediction_target_version"], "factory_a1a3_remain_v1"
+                manifest["prediction_target_version"],
+                "factory_ops_event_30m_to_15m_v1",
             )
-            self.assertEqual(manifest["dataset_contract"], "tyx_bn_agg_v1")
-            self.assertEqual(manifest["label_version"], "tyx_bn_agg_event_v1")
-            self.assertEqual(manifest["target_node_category"], "process")
-            self.assertEqual(manifest["positive_samples"], 5)
+            self.assertEqual(
+                manifest["dataset_contract"], "tyx_bn_agg_unsupervised_v2"
+            )
+            self.assertEqual(manifest["label_version"], "factory_ops_hot_v1")
+            self.assertEqual(manifest["target_node_category"], "machine_gantry_agv")
+            self.assertEqual(manifest["event_positive_samples"], 6)
             for row in result["sample_rows"]:
                 history = json.loads(row["input_window_indices"])
                 self.assertEqual(len(history), 12)
-                self.assertLess(max(history), row["anchor_window_index"])
+                self.assertEqual(max(history), row["anchor_window_index"])
+                self.assertEqual(
+                    float(row["first_future_start_s"]),
+                    (row["anchor_window_index"] + 1) * 60,
+                )
             self.assertEqual(
                 manifest["episode_counts"], {"train": 4, "validation": 1, "test": 1}
             )
@@ -228,9 +238,10 @@ class TestFactoryBaselineDataset(unittest.TestCase):
             batch = next(iter(loader))
             self.assertEqual(batch["x"].shape[1:], payload["x"].shape[1:])
             self.assertEqual(batch["adjacency"].dtype, torch.bool)
-            self.assertEqual(batch["y_score"].shape[1:], (512, 2, 1))
-            self.assertEqual(batch["y_hot"].shape[1:], (512, 2))
-            self.assertEqual(batch["remain_mask"].shape[1:], (512,))
+            self.assertEqual(batch["y_score"].shape[1:], (15, 2, 1))
+            self.assertEqual(batch["y_hot"].shape[1:], (15, 2))
+            self.assertEqual(batch["remain_mask"].shape[1:], (15,))
+            self.assertEqual(batch["event_will"].shape[1:], (2,))
 
             expected_files = {
                 "dataset.pt",

@@ -22,7 +22,7 @@ class B4ModelConfig:
     gru_layers: int = 1
     dropout: float = 0.2
     prediction_horizon: float = 180.0
-    max_remain_windows: int = 512
+    max_remain_windows: int = 15
     num_causes: int = 10
 
     def __post_init__(self) -> None:

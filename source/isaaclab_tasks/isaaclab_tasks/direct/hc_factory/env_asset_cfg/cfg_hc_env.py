@@ -56,6 +56,19 @@ SingleEnvStateActionDictTemplate : dict = {
         "production_done": False,
         "ongoing_task_records": {},
     },
+    # RL signals written by TaskManager.update_rl_signals each step
+    "rl": {
+        "reward": 0.0,
+        "done": False,
+        "truncated": False,
+        "success": False,
+        "reward_parts": {
+            "step": 0.0,
+            "finish": 0.0,
+            "task": 0.0,
+            "success": 0.0,
+        },
+    },
     "agent_action_mask": {
         "agent_A_product_sequencer": torch.Tensor([]),
         "agent_B_product_selector": torch.Tensor([]),
@@ -79,6 +92,8 @@ SingleEnvStateActionDictTemplate : dict = {
     },
     "action": {
         "product_sequencing": torch.Tensor([]),
+        "product_priority": torch.Tensor([]),
+        "dispatch_list": [],
         "product_selection": torch.Tensor([]),
         "process_task_planning": torch.Tensor([]),
         "human_robot_allocation": torch.Tensor([]),
@@ -167,7 +182,7 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     #asset path, include machine, human, robot
     asset_path = os.path.expanduser("~") + "/work/Dataset/HC_data/final_for_isaac/HC_import.usd"
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=3, env_spacing=120.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=1, env_spacing=120.0, replicate_physics=True)
     # cuda decive
     cuda_device_str = "cuda:0"
     #train_cfg will be update when running train.py
@@ -176,11 +191,18 @@ class HcVectorEnvCfg(DirectRLEnvCfg):
     rendering_resolution = (1920, 1080)
 
     single_env_parallel_producing_limit = 5
-    human_number_upper_bound = 10
-    robot_upper_bound = 2
-    material_batch_upper_bound = 15
+    human_number_upper_bound = 6
+    robot_upper_bound = 4
+    material_batch_upper_bound = 18
     # None = run until manually stopped; 1 = single episode then exit.
     max_episodes: int | None = None
+    # Collect horizon for 10 pipes + real nav. RL yaml may override to 25000.
+    max_episodic_steps = 80000
+    # Reward v2 (written by TaskManager.update_rl_signals)
+    rl_step_penalty = 0.05
+    rl_finish_bonus = 2.0
+    rl_task_bonus = 0.1
+    rl_success_bonus = 50.0
 
 
 

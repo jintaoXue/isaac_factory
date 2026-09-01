@@ -2,13 +2,13 @@
 
 CfgRegistrationInfos = {
     
-    "ProductWaterPipe": 18, #idx: 00-29 (G1 P01_order_scale)
+    "ProductWaterPipe": 18, # USD still has idx 00-17; order below uses the first 10
     
 }
 
 CfgProductOrder = {
-    # The production order is a map of product type to requested quantity.
-    "ProductWaterPipe": 18, # idx: 00-17 (G1 P01_order_scale)
+    # Short-order BN pack: 10 pipes, WIP cap 5 (see HcVectorEnvCfg).
+    "ProductWaterPipe": 10, # idx: 00-09
 }
 
 
@@ -43,6 +43,11 @@ CfgProductProcess = {
             "ongoing_task_record_index": None,
             "submaterials": {
                 # task_step tracks the current production stage, indexed by CfgProcessTaskGalleryInAll (see cfg_process_task_gallery.py)
+                # cube_raw_* : raw stock, reset into storage
+                "product_00_pipe_raw": {
+                    "storage_name": None,
+                },
+                # cube_* : after pipe_cutting; starts disappeared (not in storage)
                 "product_00_pipe": {
                     "storage_name": None,
                 },
@@ -64,6 +69,11 @@ CfgProductProcess = {
             # The asterisk (*) in the key denotes a placeholder for the product number. For example, "product_00_maded_00", "product_00_maded_01", etc., 
             # where the first "00" represents the product ID, and the second "*" represents the product number.
             #prim_paths_expr is the path in .usd file
+            "product_00_pipe_raw": {
+                "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/product_water_pipe_group/cubes/cube_raw_{idx}",
+                "name": "product_00_pipe_raw_{idx}",
+                "requried_number": 1,
+            },
             "product_00_pipe": {
                 "prim_paths_expr": "/World/envs/env_{i}/obj/HC_factory/product_water_pipe_group/cubes/cube_{idx}",
                 "name": "product_00_pipe_{idx}",

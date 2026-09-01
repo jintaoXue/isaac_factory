@@ -1,0 +1,24 @@
+{
+    "traffic_state_pred": {
+        "allowed_model": [
+            "PDFormer",
+            "BNPDFormer"
+        ],
+        "allowed_dataset": [
+            "PeMS04", "PeMS07", "PeMS08",
+            "NYCTaxi", "T-Drive", "CHIBike",
+            "FactoryBN"
+        ],
+        "PDFormer": {
+            "dataset_class": "PDFormerDataset",
+            "executor": "PDFormerExecutor",
+            "evaluator": "TrafficStateEvaluator"
+        },
+        "BNPDFormer": {
+            "dataset_class": "PDFormerDataset",
+            "executor": "PDFormerExecutor",
+            "evaluator": "TrafficStateEvaluator",
+            "note": "Preferred entrypoint is python -m factory_bn.train (multi-task event heads)."
+        }
+    }
+}

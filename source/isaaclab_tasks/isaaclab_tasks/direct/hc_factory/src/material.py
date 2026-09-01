@@ -4,7 +4,6 @@ from ..env_asset_cfg.cfg_material_product import CfgProductProcess, CfgProductOr
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskGalleryDetailedClassified
 from ..env_asset_cfg.cfg_machine import CfgMachine
 from ..env_asset_cfg.cfg_robot import CfgRobot
-from .disturbance import should_skip_material_placement
 import copy
 import torch
 
@@ -12,6 +11,7 @@ import omni.usd
 
 # (subfolder, name_prefix) under product_water_pipe_group/
 _PRODUCT_PRIM_SPECS: tuple[tuple[str, str], ...] = (
+    ("cubes", "cube_raw"),
     ("cubes", "cube"),
     ("hoops", "hoop"),
     ("bending_tubes", "bending_tube"),
@@ -23,8 +23,8 @@ _PRODUCT_PRIM_SPECS: tuple[tuple[str, str], ...] = (
 def ensure_product_water_pipe_prims(env_id: int) -> None:
     """Clone missing product material prims when order > USD-authored instances.
 
-    HC_import.usd ships with batch indices 00-04 only. Higher ``CfgRegistrationInfos``
-    values are satisfied by duplicating the 00 template at runtime.
+    HC_import.usd currently authors batch indices 00-15. Higher ``CfgRegistrationInfos``
+    values (16-17 for an 18-order run) are satisfied by duplicating the 00 template.
     """
     required = int(CfgRegistrationInfos.get("ProductWaterPipe", 0) or 0)
     if required <= 0:
@@ -56,6 +56,55 @@ def ensure_product_water_pipe_prims(env_id: int) -> None:
 
 def _is_storage_location(storage_name: str | None) -> bool:
     return bool(storage_name and "Storage_" in storage_name)
+
+
+def next_gallery_task_name(product_type: str, finished_task: str) -> str:
+    keys = list(CfgProcessTaskGalleryDetailedClassified[product_type].keys())
+    assert finished_task in keys, f"Current task {finished_task} not found in the product's process task gallery."
+    nxt = keys.index(finished_task) + 1
+    if nxt >= len(keys):
+        return "none"
+    return keys[nxt]
+
+
+def task_required_materials_ready(
+    env_state_action_dict: dict,
+    product_type: str,
+    product_index: int,
+    task_name: str,
+) -> bool:
+    """False if a required part for this task is still hidden (shortage)."""
+    if not task_name or task_name == "none":
+        return True
+    task_meta = CfgProcessTaskGalleryDetailedClassified[product_type][task_name]
+    product_name = f"num_{product_index:02d}_{product_type}"
+    mat = (env_state_action_dict.get("material") or {}).get(product_name)
+    if mat is None:
+        return False
+    subs = mat.get("submaterials") or {}
+    needed: list[str] = []
+    log_m = task_meta.get("logistic_submaterial")
+    if log_m:
+        needed.append(log_m)
+    needed.extend(task_meta.get("processing_submaterials") or [])
+    for m in needed:
+        loc = (subs.get(m) or {}).get("storage_name")
+        if loc in (None, "disappear"):
+            return False
+    return True
+
+
+def maybe_release_unready_next_product(env_state_action_dict: dict) -> None:
+    """Drop staging if the reserved batch's first-task parts are still hidden."""
+    progress = env_state_action_dict.get("progress") or {}
+    product_type = progress.get("next_product")
+    product_index = progress.get("next_product_index")
+    if product_type is None or product_index is None:
+        return
+    next_task = next_gallery_task_name(product_type, "none")
+    if not task_required_materials_ready(env_state_action_dict, product_type, product_index, next_task):
+        progress["next_product"] = None
+        progress["next_product_index"] = None
 
 
 def _effective_storage_capacity(storage: dict) -> int:
@@ -137,6 +186,102 @@ def pick_free_storage(env_state_action_dict: dict, processed_material: str) -> s
     raise ValueError(f"No free storage found for {processed_material}")
 
 
+def effective_storage_capacity(storage: dict) -> int:
+    """Physical slot count: min(configured capacity, pose_list length)."""
+    cfg_cap = int(storage["key_variables"]["capacity"])
+    pose_list = storage["key_variables"]["placement_cfg"]["pose_list"]
+    if not pose_list:
+        return cfg_cap
+    return min(cfg_cap, len(pose_list))
+
+
+def _release_storage_slot(storage: dict, product_idx: int) -> None:
+    if product_idx not in storage["material_idx_list"]:
+        return
+    storage["material_idx_list"].remove(product_idx)
+    storage["num_material"] = max(0, int(storage["num_material"]) - 1)
+    if storage["num_material"] == 0:
+        storage["material_type"] = None
+        storage["state"] = "empty"
+    else:
+        cap = effective_storage_capacity(storage)
+        storage["state"] = "full" if storage["num_material"] >= cap else "partial"
+
+
+def find_free_storage(storages: dict, material_type: str) -> str:
+    """Return a storage name: prefer same-type partial bins (fill-first), then empty."""
+    empty_match: str | None = None
+    for storage_name, value in storages.items():
+        supporting_materials = value["key_variables"]["supporting_materials"]
+        capacity = effective_storage_capacity(value)
+        if material_type not in supporting_materials:
+            continue
+        if int(value["num_material"]) >= capacity:
+            continue
+        if int(value["num_material"]) > 0 and value["material_type"] not in (None, material_type):
+            continue
+        if int(value["num_material"]) > 0 and value["material_type"] == material_type:
+            return storage_name
+        if value["state"] == "empty" and empty_match is None:
+            empty_match = storage_name
+    if empty_match is not None:
+        return empty_match
+    raise ValueError(f"No free storage found for {material_type}")
+
+
+def reserve_storage_slot(storage: dict, material_type: str, product_idx: int) -> int:
+    """Reserve a storage slot at goal decision / reset. Returns slot index (idempotent)."""
+    pose_list = storage["key_variables"]["placement_cfg"]["pose_list"]
+    capacity = effective_storage_capacity(storage)
+    if product_idx in storage["material_idx_list"]:
+        slot_idx = storage["material_idx_list"].index(product_idx)
+        if slot_idx < capacity and slot_idx < len(pose_list):
+            return slot_idx
+        _release_storage_slot(storage, product_idx)
+    if int(storage["num_material"]) >= capacity:
+        raise ValueError(
+            f"Storage over capacity ({storage['num_material']}/{capacity}) "
+            f"for {material_type} product_idx={product_idx}"
+        )
+    storage["material_type"] = material_type
+    storage["num_material"] = int(storage["num_material"]) + 1
+    storage["material_idx_list"].append(product_idx)
+    storage["state"] = "full" if storage["num_material"] >= capacity else "partial"
+    return storage["num_material"] - 1
+
+
+def place_in_storage(
+    storages: dict,
+    storage_name: str,
+    material_type: str,
+    product_idx: int,
+) -> tuple[str, int]:
+    """Reserve in named storage, or pick next free storage if full/invalid."""
+    storage = storages[storage_name]
+    try:
+        slot_idx = reserve_storage_slot(storage, material_type, product_idx)
+        storage_slot_pose(storage, slot_idx)
+        return storage_name, slot_idx
+    except (IndexError, ValueError):
+        _release_storage_slot(storage, product_idx)
+        storage_name = find_free_storage(storages, material_type)
+        storage = storages[storage_name]
+        slot_idx = reserve_storage_slot(storage, material_type, product_idx)
+        storage_slot_pose(storage, slot_idx)
+        return storage_name, slot_idx
+
+
+def storage_slot_pose(storage: dict, slot_idx: int) -> tuple[torch.Tensor, torch.Tensor]:
+    pose_list = storage["key_variables"]["placement_cfg"]["pose_list"]
+    if slot_idx >= len(pose_list):
+        raise IndexError(
+            f"Storage slot {slot_idx} out of range (pose_list len={len(pose_list)}, "
+            f"num_material={storage.get('num_material')})"
+        )
+    slot_pose = pose_list[slot_idx]
+    return slot_pose["position"], slot_pose["orientation"]
+
+
 class ProductMaterialManager:
     def __init__(self, env_id: int, cuda_device: torch.device):
         self.env_id = env_id
@@ -177,9 +322,12 @@ class ProductMaterialManager:
                 continue
             product_type = material_batch.type_name
             finished_task = material_batch.state["finished_task"]
-            one_ProcessTaskGallery = CfgProcessTaskGalleryDetailedClassified[product_type]
-            next_allowing_task_index = self.find_product_next_allowing_task_index(finished_task, one_ProcessTaskGallery)
-            mask[material_batch_index][next_allowing_task_index] = 1
+            next_task = next_gallery_task_name(product_type, finished_task)
+            if next_task != "none" and not task_required_materials_ready(
+                env_state_action_dict, product_type, material_batch_index, next_task
+            ):
+                continue
+            mask[material_batch_index][CfgProcessTaskGalleryInAll[next_task]] = 1
         env_state_action_dict["agent_action_mask"]["material"]["task_availability_mask"] = mask
         return env_state_action_dict
     
@@ -244,6 +392,11 @@ class MaterialBatch:
             }
         return env_state_action_dict
 
+    def _occupy_storage_slot(self, storage: dict, material_type: str) -> tuple[torch.Tensor, torch.Tensor]:
+        """Reserve (if needed) and return slot pose for this product index."""
+        slot_idx = reserve_storage_slot(storage, material_type, self.idx)
+        return storage_slot_pose(storage, slot_idx)
+
     def reset_raw_materials_to_storage(self, env_state_action_dict: dict) -> dict:
         # The following code resets the placement of raw materials into appropriate storage slots,
         # based on storage capacity, type support, and current fill state. For each raw material type,
@@ -251,31 +404,13 @@ class MaterialBatch:
         # is partially filled with another material type, we skip it to only mix the same types.
         # We then update the storage's meta state and also register the material's position and orientation.
         material_prims : dict = self.iter_raw_material_prims()
+        storages : dict = env_state_action_dict["storage"]
         for material_type, material_prim in material_prims.items():
             material_name = f"num_{self.idx:02d}_{material_type}"
-            if should_skip_material_placement(self.idx, material_type):
-                # Shortage: park underground so kitting / downstream starve.
-                self.state["submaterials"][material_type]["storage_name"] = "disappear"
-                position = material_prim.get_local_poses()[0]
-                position[0][2] = -100
-                orientation = material_prim.get_local_poses()[1]
-                env_state_action_dict["rigid_prims"][material_name] = {
-                    "object": material_prim,
-                    "position": position,
-                    "orientation": orientation,
-                }
-                continue
-            try:
-                storage_name = pick_free_storage(env_state_action_dict, material_type)
-            except ValueError:
-                continue
+            storage_name = find_free_storage(storages, material_type)
+            value = storages[storage_name]
             self.state["submaterials"][material_type]["storage_name"] = storage_name
-            slot_idx = _occupy_storage_slot(
-                env_state_action_dict, storage_name, self.idx, material_type
-            )
-            pose_list = env_state_action_dict["storage"][storage_name]["key_variables"]["placement_cfg"]["pose_list"]
-            position = pose_list[slot_idx]["position"]
-            orientation = pose_list[slot_idx]["orientation"]
+            position, orientation = self._occupy_storage_slot(value, material_type)
             env_state_action_dict["rigid_prims"][material_name] = {
                 "object": material_prim,
                 "position": position,
@@ -308,18 +443,10 @@ class MaterialBatch:
         subtasks = task_record["subtasks_dict"]
         material_subtask = subtasks["material_states_in_subtasks"]
         ongoing_index = subtasks["ongoing_index"]
-        if ongoing_index == subtasks["num_subtasks"] - 1:
-            ## task done, set the finished task and ongoing task record index to none
-            if task_record["task_type"] == "processing":
-                if task_record["already_done_next_logistic_task"] == True:
-                    self.state["finished_task"] = task_record["next_logistic_task"]
-                else:
-                    self.state["finished_task"] = task_record["task"]
-            elif task_record["task_type"] == "logistic":
-                self.state["finished_task"] = task_record["task"]
-            else:
-                raise ValueError(f"Invalid task type: {task_record['task_type']}")
-            self.state["ongoing_task_record_index"] = None
+        # Do NOT finalize finished_task here when ongoing_index hits num_subtasks-1.
+        # Processing attaches outbound after the prefix last row; finalizing early clears
+        # ongoing_task_record_index and freezes storage_name / finished_task (dispatch deadlock).
+        # TaskManager finalizes material when the task record actually completes.
         all_materials = {**self.iter_raw_material_prims(), **self.iter_integrated_material_prims()}
         for material_type, material_prim in all_materials.items():
             material_name = f"num_{self.idx:02d}_{material_type}"
@@ -347,10 +474,14 @@ class MaterialBatch:
                 storage_name = "num07_gantry_group"
             elif material_state == "on_robot":
                 robot_name = task_record["robot"]
-                position = env_state_action_dict["rigid_prims"][robot_name]["position"].clone()
+                position = env_state_action_dict["rigid_prims"][robot_name]["position"].clone().to(
+                    self.cuda_device
+                )
                 position[0][2] = position[0][2] + 0.1
-                position += self.offset_for_AGV_placement
-                orientation = env_state_action_dict["rigid_prims"][robot_name]["orientation"].clone()
+                position += self.offset_for_AGV_placement.to(self.cuda_device)
+                orientation = env_state_action_dict["rigid_prims"][robot_name]["orientation"].clone().to(
+                    self.cuda_device
+                )
                 storage_name = robot_name
             elif (material_state == "on_goal_area" and (subtasks["material_goal_area"] in CfgMachine)) or \
                 (material_state == "on_machine"):
@@ -366,38 +497,49 @@ class MaterialBatch:
                 orientation = orientation.to(self.cuda_device).unsqueeze(0)
                 storage_name = workstation_key
             elif material_state == "on_goal_area" and "Storage" in subtasks["material_goal_area"]:
-                storage_name = subtasks["material_goal_area"]
-                if old_storage_name != storage_name:
-                    try:
-                        slot_idx = _occupy_storage_slot(
-                            env_state_action_dict, storage_name, self.idx, material_type
-                        )
-                    except ValueError:
-                        storage_name = pick_free_storage(env_state_action_dict, material_type)
-                        subtasks["material_goal_area"] = storage_name
-                        subtasks["goal_area_ids"] = env_state_action_dict["storage"][storage_name][
-                            "key_variables"
-                        ]["working_area_ids"]
-                        slot_idx = _occupy_storage_slot(
-                            env_state_action_dict, storage_name, self.idx, material_type
-                        )
-                    pose_list = env_state_action_dict["storage"][storage_name]["key_variables"]["placement_cfg"]["pose_list"]
-                    slot_pose = pose_list[slot_idx]
-                    position = slot_pose["position"]
-                    orientation = slot_pose["orientation"]
+                storage_name, slot_idx = place_in_storage(
+                    env_state_action_dict["storage"],
+                    subtasks["material_goal_area"],
+                    material_type,
+                    self.idx,
+                )
+                subtasks["material_goal_area"] = storage_name
+                storage = env_state_action_dict["storage"][storage_name]
+                position, orientation = storage_slot_pose(storage, slot_idx)
             else:
                 raise ValueError(f"Invalid material state: {material_state}")
 
             if old_storage_name != storage_name and _is_storage_location(old_storage_name):
-                _release_storage_slot(env_state_action_dict, old_storage_name, self.idx)
+                old_storage = env_state_action_dict["storage"].get(old_storage_name)
+                if old_storage is not None:
+                    _release_storage_slot(old_storage, self.idx)
 
             env_state_action_dict["rigid_prims"][material_name]["position"] = position
             env_state_action_dict["rigid_prims"][material_name]["orientation"] = orientation
             self.state["submaterials"][material_type]["storage_name"] = storage_name
 
+    def finalize_task_done(self, task_record: dict) -> None:
+        """Commit finished_task / clear ongoing after TaskManager completes the record."""
+        finalize_material_batch_task_done(self.state, task_record)
+
+
+def finalize_material_batch_task_done(material_state: dict, task_record: dict) -> None:
+    """Write finished_task on the material batch dict (shared with env state)."""
+    if task_record["task_type"] == "processing":
+        if task_record.get("already_done_next_logistic_task") is True:
+            material_state["finished_task"] = task_record["next_logistic_task"]
+        else:
+            material_state["finished_task"] = task_record["task"]
+    elif task_record["task_type"] == "logistic":
+        material_state["finished_task"] = task_record["task"]
+    else:
+        raise ValueError(f"Invalid task type: {task_record['task_type']}")
+    material_state["ongoing_task_record_index"] = None
+
 
 class ProductWaterPipe(MaterialBatch):
     def __init__(self, idx: int, cfg: dict, env_id: int, cuda_device: torch.device):
+        self.product_00_pipe_raw : RigidPrim = None
         self.product_00_pipe : RigidPrim = None
         self.product_00_flange : RigidPrim = None
         self.product_00_elbow : RigidPrim = None
@@ -406,14 +548,17 @@ class ProductWaterPipe(MaterialBatch):
         super().__init__(idx, cfg, env_id, cuda_device)
 
     def iter_raw_material_prims(self):
+        # Raw stock placed into storage on reset (cube_raw / hoop / bending_tube).
         return {
-            "product_00_pipe": self.product_00_pipe,
+            "product_00_pipe_raw": self.product_00_pipe_raw,
             "product_00_flange": self.product_00_flange,
             "product_00_elbow": self.product_00_elbow,
         }
 
     def iter_integrated_material_prims(self):
+        # Appear after processing; cube (cut pipe) must NOT start in storage.
         return {
+            "product_00_pipe": self.product_00_pipe,
             "product_00_semi": self.product_00_semi,
             "product_00_maded": self.product_00_maded,
         }

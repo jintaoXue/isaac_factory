@@ -24,10 +24,12 @@ def main() -> None:
     parser.add_argument("--run_dirs", type=Path, nargs="+", required=True)
     parser.add_argument("--out_dir", type=Path, required=True)
     parser.add_argument("--window_size", type=float, default=60.0)
-    parser.add_argument("--input_windows", type=int, default=12)
+    parser.add_argument("--input_windows", type=int, default=30)
     parser.add_argument("--horizon", type=float, default=180.0)
     parser.add_argument("--score_threshold", type=float, default=0.55)
-    parser.add_argument("--min_event_windows", type=int, default=1)
+    parser.add_argument("--min_event_windows", type=int, default=8)
+    parser.add_argument("--occupancy_horizon_windows", type=int, default=15)
+    parser.add_argument("--hot_gap_windows", type=int, default=1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
@@ -70,6 +72,7 @@ def main() -> None:
             score_threshold=args.score_threshold,
             min_event_windows=args.min_event_windows,
             closed_windows_only=True,
+            label_mode="supervised",
         )
         metadata = {
             "derived_contract_version": DERIVED_CONTRACT_VERSION,
@@ -85,6 +88,7 @@ def main() -> None:
             "score_threshold": args.score_threshold,
             "min_event_windows": args.min_event_windows,
             "closed_windows_only": True,
+            "target_mode": "unsupervised_operational_occupancy",
             "episode_end_s": audit["episode_end_s"],
         }
         (derived_dir / "shared_metadata.json").write_text(
@@ -101,8 +105,9 @@ def main() -> None:
         stride=args.window_size,
         input_windows=args.input_windows,
         horizon=args.horizon,
-        max_remain_windows=512,
-        hot_score_threshold=args.score_threshold,
+        max_remain_windows=args.occupancy_horizon_windows,
+        hot_min_windows=args.min_event_windows,
+        hot_gap_windows=args.hot_gap_windows,
         seed=args.seed,
         repo_root=Path(__file__).resolve().parents[6],
         allowed_group_ids={
@@ -121,8 +126,8 @@ def main() -> None:
                 "dataset_version",
                 "label_version",
                 "total_samples",
-                "positive_samples",
-                "positive_rate",
+                "event_positive_samples",
+                "event_positive_rate",
                 "sample_counts",
                 "episode_counts",
             )

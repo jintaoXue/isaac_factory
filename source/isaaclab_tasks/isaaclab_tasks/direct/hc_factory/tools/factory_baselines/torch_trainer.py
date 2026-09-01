@@ -19,9 +19,11 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
+from factory_bn_shared.remain import occupancy_event_metrics, station_report_metrics
+
 from .dataset import FactoryBaselineTensorDataset, load_shared_dataset
 from .torch_losses import MultiTaskLossConfig, compute_multitask_loss
-from .metrics import compute_metrics, select_f1_threshold
+from .metrics import compute_metrics
 from .b3_lstm import B3Lstm, B3ModelConfig
 from .b4_gcn_gru import B4GcnGru, B4ModelConfig
 from .b5_gat_gru import B5GatGru, B5ModelConfig
@@ -172,16 +174,6 @@ def _loaders(
     return loaders
 
 
-def _positive_weight(payload: dict[str, Any]) -> float:
-    train_indices = payload["split_indices"]["train"]
-    labels = payload["y_occurrence"][train_indices]
-    positives = float(labels.sum().item())
-    negatives = float(labels.numel() - positives)
-    if positives <= 0:
-        raise ValueError("Train split has no positive occurrence samples")
-    return negatives / positives
-
-
 def _run_train_epoch(
     model: nn.Module,
     loader: DataLoader,
@@ -246,7 +238,7 @@ def _evaluate_loader(
     pos_weight: torch.Tensor,
     device: torch.device,
     cause_class_count: int,
-    occurrence_threshold: float = 0.5,
+    event_threshold: float = 0.65,
 ) -> tuple[dict[str, Any], dict[str, np.ndarray], np.ndarray]:
     model.eval()
     collected: dict[str, list[np.ndarray]] = {}
@@ -269,17 +261,20 @@ def _evaluate_loader(
 
             values = {
                 "sample_index": batch["sample_index"],
-                "y_occurrence": batch["y_occurrence"],
-                "y_node": batch["y_node"],
-                "y_time_to_start": batch["y_time_to_start"],
                 "y_cause": batch["y_cause"],
                 "target_remain_len": batch["target_remain_len"],
-                "positive_mask": batch["positive_mask"],
-                "occurrence_probability": torch.sigmoid(outputs["occurrence_logit"]),
-                "node_probabilities": torch.softmax(outputs["node_logits"], dim=-1),
-                "time_to_start": outputs["time_to_start"],
                 "cause_predictions": outputs["cause_logits"].argmax(dim=-1),
                 "remain_len": outputs["remain_len"],
+                "y_hot_grid": batch["y_hot"],
+                "remain_mask_grid": batch["remain_mask"],
+                "occ_node_mask_grid": batch["occ_node_mask"],
+                "hist_last_hot_grid": batch["hist_last_hot"],
+                "hot_probability_grid": torch.sigmoid(outputs["remain_hot_logit"]),
+                "event_will_probability": torch.sigmoid(
+                    outputs["event_will_logit"]
+                ),
+                "event_start_index": outputs["event_start_logit"].argmax(dim=-1),
+                "event_duration_windows": outputs["event_duration"],
             }
             for name, value in values.items():
                 collected.setdefault(name, []).append(value.detach().cpu().numpy())
@@ -314,7 +309,10 @@ def _evaluate_loader(
             collected.setdefault("predicted_events_json", []).append(predicted_events)
             collected.setdefault("target_events_json", []).append(target_events)
 
-            valid = batch["remain_mask"].bool()[:, :, None]
+            valid = (
+                batch["remain_mask"].bool()[:, :, None]
+                & batch["occ_node_mask"].bool()[:, None, :]
+            )
             predicted_hot = torch.sigmoid(outputs["remain_hot_logit"]) >= 0.5
             target_hot = batch["y_hot"].bool()
             hot_tp += int((predicted_hot & target_hot & valid).sum().item())
@@ -329,9 +327,7 @@ def _evaluate_loader(
             score_count += int(score_valid.sum().item())
 
     arrays = {name: np.concatenate(values) for name, values in collected.items()}
-    metrics, confusion = compute_metrics(
-        arrays, cause_class_count, occurrence_threshold=occurrence_threshold
-    )
+    metrics, confusion = compute_metrics(arrays, cause_class_count)
     hot_precision = hot_tp / max(hot_tp + hot_fp, 1)
     hot_recall = hot_tp / max(hot_tp + hot_fn, 1)
     metrics["remain"] = {
@@ -347,6 +343,30 @@ def _evaluate_loader(
         ),
         "valid_node_windows": score_count,
     }
+    metrics["station_report"] = station_report_metrics(
+        arrays["y_hot_grid"],
+        arrays["event_will_probability"],
+        arrays["event_start_index"],
+        arrays["event_duration_windows"],
+        arrays["remain_mask_grid"],
+        arrays["occ_node_mask_grid"],
+        threshold=event_threshold,
+        min_windows=8,
+        start_tol_windows=3,
+        hist_last_hot=arrays["hist_last_hot_grid"],
+        force_ongoing_will=False,
+    )
+    metrics["occupancy_event"] = occupancy_event_metrics(
+        arrays["y_hot_grid"],
+        arrays["hot_probability_grid"],
+        arrays["remain_mask_grid"],
+        arrays["occ_node_mask_grid"],
+        [str(index) for index in range(arrays["y_hot_grid"].shape[-1])],
+        threshold=event_threshold,
+        min_windows=8,
+        iou_min=0.5,
+        window_size_s=60.0,
+    )
     metrics["loss"] = {name: value / sample_count for name, value in totals.items()}
     metrics["sample_count"] = sample_count
     return metrics, arrays, confusion
@@ -398,36 +418,20 @@ def load_checkpoint(
 def _prediction_rows(
     arrays: dict[str, np.ndarray],
     sample_lookup: dict[int, dict[str, str]],
-    node_ids: list[str],
     cause_classes: list[str],
-    occurrence_threshold: float,
 ) -> list[dict[str, Any]]:
     rows = []
     for position, raw_index in enumerate(arrays["sample_index"]):
         sample_index = int(raw_index)
-        node_target = int(arrays["y_node"][position])
-        node_prediction = int(arrays["node_probabilities"][position].argmax())
         cause_target = int(arrays["y_cause"][position])
         cause_prediction = int(arrays["cause_predictions"][position])
         rows.append(
             {
                 **sample_lookup[sample_index],
-                "occurrence_probability": float(
-                    arrays["occurrence_probability"][position]
-                ),
-                "occurrence_prediction": int(
-                    arrays["occurrence_probability"][position] >= occurrence_threshold
-                ),
-                "predicted_node_id": node_ids[node_prediction],
-                "target_node_id_indexed": (
-                    node_ids[node_target] if node_target >= 0 else ""
-                ),
                 "predicted_cause": cause_classes[cause_prediction],
                 "target_cause": (
                     cause_classes[cause_target] if cause_target >= 0 else ""
                 ),
-                "predicted_time_to_start_s": float(arrays["time_to_start"][position]),
-                "target_time_to_start_s": float(arrays["y_time_to_start"][position]),
                 "predicted_remain_len_windows": float(arrays["remain_len"][position]),
                 "target_remain_len_windows": int(arrays["target_remain_len"][position]),
             }
@@ -443,7 +447,6 @@ def _write_evaluation_artifacts(
     confusion: np.ndarray,
     dataset_dir: Path,
     manifest: dict[str, Any],
-    occurrence_threshold: float,
 ) -> None:
     _write_json(output_dir / f"metrics_{split_name}.json", metrics)
     sample_rows = _read_csv(dataset_dir / "model_sample_index.csv")
@@ -451,19 +454,11 @@ def _write_evaluation_artifacts(
     prediction_rows = _prediction_rows(
         arrays,
         sample_lookup,
-        manifest["node_ids"],
         manifest["cause_classes"],
-        occurrence_threshold,
     )
     prediction_fields = list(sample_rows[0]) + [
-        "occurrence_probability",
-        "occurrence_prediction",
-        "predicted_node_id",
-        "target_node_id_indexed",
         "predicted_cause",
         "target_cause",
-        "predicted_time_to_start_s",
-        "target_time_to_start_s",
         "predicted_remain_len_windows",
         "target_remain_len_windows",
     ]
@@ -476,7 +471,7 @@ def _write_evaluation_artifacts(
     window_size_s = float(manifest["window_size_s"])
     for position, raw_index in enumerate(arrays["sample_index"]):
         sample = sample_lookup[int(raw_index)]
-        first_future_start_s = float(sample["anchor_time_s"])
+        first_future_start_s = float(sample["first_future_start_s"])
         for source, field in (
             ("prediction", "predicted_events_json"),
             ("target", "target_events_json"),
@@ -585,7 +580,7 @@ def train_torch_baseline(
         weight_decay=train_config.weight_decay,
     )
     loaders = _loaders(payload, train_config)
-    pos_weight_value = _positive_weight(payload)
+    pos_weight_value = 1.0
     pos_weight = torch.tensor(pos_weight_value, device=device)
     manifest_path = dataset_dir / "dataset_manifest.json"
     metadata = {
@@ -638,20 +633,23 @@ def train_torch_baseline(
             device,
             model_config.num_causes,
         )
-        validation_score = validation_metrics["remain"]["hot_f1"]
-        score = float(validation_score) if validation_score is not None else -1.0
+        report = validation_metrics["station_report"]
+        validation_score = report["report_f1"]
+        score = (
+            float(validation_score)
+            if report["report_precision"] >= 0.80
+            else -1.0
+        )
         row = {"epoch": epoch}
         row.update({f"train_{name}": value for name, value in train_losses.items()})
         row.update(
             {
                 "validation_total_loss": validation_metrics["loss"]["total"],
                 "validation_hot_f1": validation_score,
-                "validation_pr_auc": validation_metrics["occurrence"]["pr_auc"],
-                "validation_roc_auc": validation_metrics["occurrence"]["roc_auc"],
-                "validation_f1_at_threshold": validation_metrics["occurrence"][
-                    "f1_at_threshold"
-                ],
-                "validation_decision_threshold": 0.5,
+                "validation_report_f1": report["report_f1"],
+                "validation_report_precision": report["report_precision"],
+                "validation_report_recall": report["report_recall"],
+                "validation_event_threshold": 0.65,
             }
         )
         history.append(row)
@@ -667,7 +665,7 @@ def train_torch_baseline(
             train_config,
             metadata,
         )
-        if score > best_score:
+        if epoch == 1 or score > best_score:
             best_score = score
             best_epoch = epoch
             epochs_without_improvement = 0
@@ -688,7 +686,8 @@ def train_torch_baseline(
         print(
             f"epoch={epoch:03d} train_loss={train_losses['total']:.6f} "
             f"val_loss={validation_metrics['loss']['total']:.6f} "
-            f"val_hot_f1={score:.6f}",
+            f"val_report_f1={report['report_f1']:.6f} "
+            f"val_report_precision={report['report_precision']:.6f}",
             flush=True,
         )
         if epochs_without_improvement >= train_config.patience:
@@ -704,25 +703,15 @@ def train_torch_baseline(
         device,
         model_config.num_causes,
     )
-    occurrence_threshold = select_f1_threshold(
-        validation_arrays["y_occurrence"],
-        validation_arrays["occurrence_probability"],
-    )
-    checkpoint["metadata"]["occurrence_threshold"] = occurrence_threshold
+    event_threshold = 0.65
+    checkpoint["metadata"]["event_report_threshold"] = event_threshold
     torch.save(checkpoint, output_dir / "best.pt")
-    config_payload["metadata"]["occurrence_threshold"] = occurrence_threshold
+    config_payload["metadata"]["event_report_threshold"] = event_threshold
     _write_json(output_dir / "config.json", config_payload)
-    threshold_metrics, validation_confusion = compute_metrics(
-        validation_arrays,
-        model_config.num_causes,
-        occurrence_threshold=occurrence_threshold,
+    validation_metrics = initial_validation_metrics
+    _, validation_confusion = compute_metrics(
+        validation_arrays, model_config.num_causes
     )
-    validation_metrics = {
-        **threshold_metrics,
-        "remain": initial_validation_metrics["remain"],
-        "loss": initial_validation_metrics["loss"],
-        "sample_count": initial_validation_metrics["sample_count"],
-    }
     test_metrics, test_arrays, test_confusion = _evaluate_loader(
         best_model,
         loaders["test"],
@@ -730,7 +719,7 @@ def train_torch_baseline(
         pos_weight,
         device,
         model_config.num_causes,
-        occurrence_threshold,
+        event_threshold,
     )
     evaluations = {
         "validation": (
@@ -751,7 +740,6 @@ def train_torch_baseline(
             confusion,
             dataset_dir,
             manifest,
-            occurrence_threshold,
         )
     _write_json(output_dir / "metrics.json", all_metrics)
     summary = {
@@ -764,12 +752,16 @@ def train_torch_baseline(
         "label_version": manifest["label_version"],
         "best_epoch": best_epoch,
         "epochs_trained": len(history),
-        "best_validation_hot_f1": best_score,
-        "best_validation_pr_auc": validation_metrics["occurrence"]["pr_auc"],
-        "test_pr_auc": all_metrics["test"]["occurrence"]["pr_auc"],
-        "occurrence_threshold": occurrence_threshold,
-        "test_f1_at_threshold": all_metrics["test"]["occurrence"]["f1_at_threshold"],
+        "best_validation_report_f1": best_score,
+        "event_report_threshold": event_threshold,
         "test_hot_f1": all_metrics["test"]["remain"]["hot_f1"],
+        "test_report_f1": all_metrics["test"]["station_report"]["report_f1"],
+        "test_report_precision": all_metrics["test"]["station_report"][
+            "report_precision"
+        ],
+        "test_report_recall": all_metrics["test"]["station_report"][
+            "report_recall"
+        ],
         "elapsed_seconds": time.time() - started_at,
         "checkpoint_epoch": checkpoint["epoch"],
         "output_dir": str(output_dir),
@@ -808,7 +800,7 @@ def evaluate_torch_checkpoint(
     loaders = _loaders(payload, train_config)
     loss_config = MultiTaskLossConfig.from_dict(checkpoint["loss_config"])
     pos_weight = torch.tensor(checkpoint["metadata"]["pos_weight"], device=device)
-    occurrence_threshold = float(checkpoint["metadata"]["occurrence_threshold"])
+    event_threshold = float(checkpoint["metadata"]["event_report_threshold"])
     metrics, arrays, confusion = _evaluate_loader(
         model,
         loaders[split_name],
@@ -816,7 +808,6 @@ def evaluate_torch_checkpoint(
         pos_weight,
         device,
         model.config.num_causes,
-        occurrence_threshold,
     )
     _write_evaluation_artifacts(
         output_dir,
@@ -826,7 +817,6 @@ def evaluate_torch_checkpoint(
         confusion,
         dataset_dir,
         manifest,
-        occurrence_threshold,
     )
     metrics_path = output_dir / "metrics.json"
     all_metrics = _read_json(metrics_path) if metrics_path.exists() else {}
@@ -850,9 +840,8 @@ def evaluate_torch_checkpoint(
     if split_name == "test":
         summary.update(
             {
-                "test_pr_auc": metrics["occurrence"]["pr_auc"],
-                "occurrence_threshold": occurrence_threshold,
-                "test_f1_at_threshold": metrics["occurrence"]["f1_at_threshold"],
+                "event_report_threshold": event_threshold,
+                "test_report_f1": metrics["station_report"]["report_f1"],
                 "test_hot_f1": metrics["remain"]["hot_f1"],
             }
         )

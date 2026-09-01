@@ -10,19 +10,20 @@ def robot_central_point_offset_from_footprint_bounds(
 ) -> torch.Tensor:
     """Geometric center of the robot footprint in local (x, y), as offset from pose origin.
 
-    Local footprint is defined relative to the robot pose origin. For AGV bounds
-    with origin at one corner (``min_*=0``), this returns mid-box ``(cx, cy, 0)``.
+    Local footprint is relative to the robot pose origin. With a centroid-aligned
+    model (symmetric bounds about 0), this is approximately ``(0, 0, 0)``.
     """
     cx = 0.5 * (float(local_bounds["min_x"]) + float(local_bounds["max_x"]))
     cy = 0.5 * (float(local_bounds["min_y"]) + float(local_bounds["max_y"]))
     return torch.tensor([cx, cy, 0.0], dtype=torch.float32, device=device)
 
 
+# AGV body size 1.8 x 0.8 m; pose origin at geometric center (centroid-aligned USD).
 _AGV_FOOTPRINT_LOCAL_BOUNDS = {
-    "min_x": 0.0,
-    "max_x": 1.8,
-    "min_y": 0.0,
-    "max_y": 0.8,
+    "min_x": -0.9,
+    "max_x": 0.9,
+    "min_y": -0.4,
+    "max_y": 0.4,
 }
 
 CfgRobot = {
@@ -54,18 +55,22 @@ CfgRobot = {
             "yield_blocker_key": None,
         },
         "offset_for_material_placement": {
-            "position": torch.tensor([-1, -0.4, 0.2]),
+            "position": torch.tensor([0, 0, 0.2]),
         },
         "robot_footprint_local_bounds": _AGV_FOOTPRINT_LOCAL_BOUNDS,
         "robot_central_point_offset": robot_central_point_offset_from_footprint_bounds(
             _AGV_FOOTPRINT_LOCAL_BOUNDS
         ),
+        # Route waypoints advanced per env step; loaded moves at half unloaded speed.
+        "waypoints_per_step_unloaded": 8,
+        "waypoints_per_step_loaded": 4,
+        "loaded_subtasks": ("carry_to_goal_area",),
     }
 }
 
 
 CfgRobotRegistrationInfos = {
-    "AGV": 2, #idx: 00-01
+    "AGV": 4,  # idx: 00-03 (HC_import.usd authors robot_AGV_00..03)
 }
 
 RobotIdAppearance = {
@@ -79,6 +84,14 @@ RobotIdAppearance = {
         "num_01": {
             "color": "purple",
             "rgb_hint": (0.50, 0.10, 0.50),
+        },
+        "num_02": {
+            "color": "cyan",
+            "rgb_hint": (0.10, 0.75, 0.85),
+        },
+        "num_03": {
+            "color": "orange",
+            "rgb_hint": (0.95, 0.55, 0.10),
         },
     }
 }

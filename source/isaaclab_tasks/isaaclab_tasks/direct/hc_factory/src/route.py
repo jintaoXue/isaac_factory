@@ -8,8 +8,13 @@ from pathlib import Path
 import torch
 from ..env_asset_cfg.cfg_human import CfgHuman
 from ..env_asset_cfg.cfg_machine import CfgMachine
+from ..env_asset_cfg.cfg_robot import CfgRobot
 
 _CPU_DEVICE = torch.device("cpu")
+_HUMAN_WP = int(CfgHuman["NormalHuman"]["waypoints_per_step"])
+_ROBOT_WP_UNLOADED = int(CfgRobot["AGV"]["waypoints_per_step_unloaded"])
+_ROBOT_WP_LOADED = int(CfgRobot["AGV"]["waypoints_per_step_loaded"])
+_ROBOT_LOADED_SUBTASKS = tuple(CfgRobot["AGV"]["loaded_subtasks"])
 
 
 class _RoadmapGraph:
@@ -283,7 +288,11 @@ class _RoadmapGraph:
 
 
 class RouteManagerVectorEnv:
-    """Route manager for human and robot using map_routes_*.json precomputed roadmap data."""
+    """Route manager for human and robot using map_routes_*.json precomputed roadmap data.
+
+    - Human + gantry parking XY: ``map_points_human`` / human occupancy.
+    - AGV: ``map_points_robot`` / robot occupancy (different valid points & free space).
+    """
 
     def __init__(self, cuda_device: torch.device):
         self.cuda_device = cuda_device
@@ -320,16 +329,29 @@ class RouteManagerVectorEnv:
         self._generate_working_agent_routes(env_state_action_dict["robot"], self.generate_working_robot_route)
         self.agents_collision_check(env_state_action_dict)
         self._step_next_pose(
-            env_state_action_dict["rigid_prims"], env_state_action_dict["human"], self.default_z_human
+            env_state_action_dict["rigid_prims"],
+            env_state_action_dict["human"],
+            self.default_z_human,
+            env_state_action_dict=env_state_action_dict,
+            agent_kind="human",
         )
         self._step_next_pose(
-            env_state_action_dict["rigid_prims"], env_state_action_dict["robot"], self.default_z_robot
+            env_state_action_dict["rigid_prims"],
+            env_state_action_dict["robot"],
+            self.default_z_robot,
+            env_state_action_dict=env_state_action_dict,
+            agent_kind="robot",
         )
         self._step_gantry(env_state_action_dict)
         return env_state_action_dict
 
     def _step_gantry(self, env_state_action_dict: dict) -> None:
-        """Resolve per-gantry target_area_xy from map point id."""
+        """Resolve per-gantry target_area_xy from map point id.
+
+        Gantry parking ids always use the human point map (``human_roadmap`` /
+        ``map_points_human.json``), not the AGV robot map. AGV keeps a separate
+        occupancy/point set because its free space differs.
+        """
         gantry_state = env_state_action_dict["machine"]["num07_gantry_group"]
         active_indices = CfgMachine["num07_gantry_group"]["active_gantry_indices"]
         for gantry_index in active_indices:
@@ -338,6 +360,7 @@ class RouteManagerVectorEnv:
                 continue
 
             area_id = int(target_area_id)
+            # Intentionally human map — do not switch to robot_roadmap.
             x, y = self.human_roadmap.get_xy_at_area_id(area_id)
             gantry_state["target_area_xy"][gantry_index] = torch.tensor(
                 [x, y],
@@ -348,10 +371,18 @@ class RouteManagerVectorEnv:
     def reset(self, env_state_action_dict: dict) -> dict:
         pass
 
-    def _step_next_pose(self, agent_prims_dict: dict, agent_states: dict, default_z: float) -> dict:
+    def _step_next_pose(
+        self,
+        agent_prims_dict: dict,
+        agent_states: dict,
+        default_z: float,
+        env_state_action_dict: dict | None = None,
+        agent_kind: str | None = None,
+    ) -> dict:
         """Write ``generated_route[route_index]`` to rigid_prims and increment route_index.
 
         Called after ``agents_collision_check`` adjusts routes.
+        Human/robot may advance multiple waypoints per env step (see cfg).
         """
         for agent_name, agent_state in agent_states.items():
             route_index = agent_state["route_index"]
@@ -363,8 +394,10 @@ class RouteManagerVectorEnv:
                 assert agent_state["current_area_id"] is not None, "The current area id should be set before the agent arrives at the target area"
                 agent_state["current_area_id"] = agent_state["target_area_id"]
                 continue
+            step_size = self._route_step_size(agent_state, env_state_action_dict, agent_kind)
             route = agent_state["generated_route"]
-            waypoint = route[route_index]
+            target_wp_index = min(route_index + step_size - 1, route_length - 1)
+            waypoint = route[target_wp_index]
             agent_prims_dict[agent_name]["position"] = torch.tensor(
                 [waypoint["x"], waypoint["y"], default_z],
                 dtype=torch.float32,
@@ -374,7 +407,27 @@ class RouteManagerVectorEnv:
             if orientation.dim() == 1:
                 orientation = orientation.unsqueeze(0)
             agent_prims_dict[agent_name]["orientation"] = orientation
-            agent_state["route_index"] += 1
+            agent_state["route_index"] = min(route_index + step_size, route_length)
+
+    def _route_step_size(
+        self,
+        agent_state: dict,
+        env_state_action_dict: dict | None,
+        agent_kind: str | None,
+    ) -> int:
+        if agent_kind == "human":
+            return _HUMAN_WP
+        if agent_kind != "robot" or env_state_action_dict is None:
+            return 1
+        task_record_index = agent_state.get("ongoing_task_record_index")
+        if task_record_index is None:
+            return _ROBOT_WP_UNLOADED
+        task_record = env_state_action_dict["progress"]["ongoing_task_records"][task_record_index]
+        ongoing = task_record["subtasks_dict"]["ongoing"]
+        robot_subtask = ongoing[3] if len(ongoing) > 3 else None
+        if robot_subtask in _ROBOT_LOADED_SUBTASKS:
+            return _ROBOT_WP_LOADED
+        return _ROBOT_WP_UNLOADED
 
     def _move_route_to_device(self, route: list[dict]) -> list[dict]:
         gpu_route: list[dict] = []
@@ -529,7 +582,7 @@ class RouteManagerVectorEnv:
     def _robot_footprint_at_pose(self, x: float, y: float, orientation: torch.Tensor) -> dict:
         """Robot point footprint: yaw-oriented rectangle.
 
-        Local origin at one end of the vehicle; length and width from
+        Local bounds are pose-relative (AGV centroid at origin); length/width from
         ``collision_cfg["robot_footprint_local_bounds"]``. Determined by (x, y) and orientation yaw.
         """
         yaw = self._yaw_from_orientation(orientation)

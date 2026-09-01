@@ -7,29 +7,36 @@ import hashlib
 import inspect
 import json
 import math
-import random
 import subprocess
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
+import numpy as np
 import torch
 from torch.utils.data import Dataset
 
 from .graph_builder import build_static_graph
 from factory_bn_shared.causes import ROOT_CAUSE_CLASSES, encode_root_cause
-from factory_bn_shared.remain import node_hot_mask, pack_remain_target
+from factory_bn_shared.remain import (
+    ensure_labor_saturated_feature,
+    node_event_targets,
+    occupancy_node_mask,
+    ops_hot_mask,
+    pack_remain_target,
+)
 from .schema import (
     COLLECTOR_VERSION,
     CONTINUOUS_FEATURES,
     DATASET_CONTRACT,
     DATASET_VERSION,
     GLOBAL_FEATURES,
+    LABOR_FEATURE,
     LABEL_VERSION,
     PREDICTION_TARGET_VERSION,
+    RESOURCE_TYPES,
     TARGET_NODE_CATEGORY,
     feature_is_applicable,
-    is_buffer,
 )
 
 
@@ -122,6 +129,7 @@ def _discover_groups(
                         _group_id(run_id, env_id, episode_id)
                     ),
                     "run_dir": run_dir,
+                    "run_name": run_dir.name,
                     "raw_dir": raw_dir,
                     "derived_dir": feature_path.parent,
                     "run_id": run_id,
@@ -186,73 +194,32 @@ def _build_node_catalog(
     return node_ids, node_types
 
 
-def _target_split_sizes(n_groups: int) -> dict[str, int]:
-    if n_groups < 3:
-        raise ValueError(
-            "At least 3 episode groups are required for train/validation/test"
-        )
-    validation = max(1, round(n_groups * 0.15))
-    test = max(1, round(n_groups * 0.15))
-    while validation + test >= n_groups:
-        if validation >= test and validation > 1:
-            validation -= 1
-        elif test > 1:
-            test -= 1
-        else:
-            break
-    return {
-        "train": n_groups - validation - test,
-        "validation": validation,
-        "test": test,
-    }
-
-
 def _split_groups(
     group_sample_indices: dict[str, list[int]],
-    group_scenarios: dict[str, str],
-    y_occurrence: torch.Tensor,
+    group_run_names: dict[str, str],
     seed: int,
 ) -> dict[str, list[str]]:
-    sizes = _target_split_sizes(len(group_sample_indices))
-    rng = random.Random(seed)
-    group_ids = sorted(group_sample_indices)
-    rng.shuffle(group_ids)
-    positive_unordered = [
-        group_id
-        for group_id in group_ids
-        if bool(y_occurrence[group_sample_indices[group_id]].bool().any())
-    ]
-    non_positive = [
-        group_id for group_id in group_ids if group_id not in positive_unordered
-    ]
-    positive_by_scenario: dict[str, list[str]] = defaultdict(list)
-    for group_id in positive_unordered:
-        positive_by_scenario[group_scenarios[group_id]].append(group_id)
-    positive = []
-    while any(positive_by_scenario.values()):
-        for scenario_id in sorted(positive_by_scenario):
-            if positive_by_scenario[scenario_id]:
-                positive.append(positive_by_scenario[scenario_id].pop())
-    if len(positive) < 3:
-        raise ValueError(
-            "At least three episode groups with positive labels are required "
-            "so every split has positives"
-        )
-
-    result = {
-        "train": [positive[2]],
-        "validation": [positive[0]],
-        "test": [positive[1]],
-    }
-    remaining = positive[3:] + non_positive
-    rng.shuffle(remaining)
-
-    for split_name in ("validation", "test"):
-        while len(result[split_name]) < sizes[split_name]:
-            result[split_name].append(remaining.pop())
-    result["train"].extend(remaining)
-    if len(result["train"]) != sizes["train"]:
-        raise RuntimeError("Episode split size calculation failed")
+    """Match factory_bn: shuffle and split whole episodes within each raw run."""
+    rng = np.random.default_rng(seed)
+    by_run: dict[str, list[str]] = defaultdict(list)
+    for group_id in sorted(group_sample_indices):
+        by_run[group_run_names[group_id]].append(group_id)
+    result: dict[str, list[str]] = {"train": [], "validation": [], "test": []}
+    for run_name in sorted(by_run):
+        group = list(by_run[run_name])
+        rng.shuffle(group)
+        n = len(group)
+        if n < 3:
+            raise ValueError(
+                f"Raw run {run_name!r} needs at least 3 accepted episodes, got {n}"
+            )
+        n_train = max(1, int(n * 0.70))
+        n_validation = max(1, int(n * 0.15))
+        if n_train + n_validation >= n:
+            n_validation = max(1, n - n_train - 1)
+        result["train"].extend(group[:n_train])
+        result["validation"].extend(group[n_train : n_train + n_validation])
+        result["test"].extend(group[n_train + n_validation :])
     return {name: sorted(values) for name, values in result.items()}
 
 
@@ -310,22 +277,12 @@ def _validate_dataset(
     if bool((payload["target_node_mask"] & ~payload["node_mask"]).any()):
         raise ValueError("Target node mask contains inactive graph nodes")
     if not bool(payload["target_node_mask"].any(dim=1).all()):
-        raise ValueError("Every sample must have at least one process target node")
+        raise ValueError("Every sample must have at least one occupancy target node")
     if (
         not torch.isfinite(x).all()
         or not torch.isfinite(payload["global_features"]).all()
     ):
         raise ValueError("Dataset contains non-finite model inputs")
-
-    positive_indices = payload["positive_mask"].nonzero(as_tuple=False).flatten()
-    for sample_index in positive_indices.tolist():
-        node_index = int(payload["y_node"][sample_index])
-        if node_index < 0 or node_index >= node_count:
-            raise ValueError("Positive sample target node is outside node catalog")
-        if not bool(payload["node_mask"][sample_index, node_index]):
-            raise ValueError("Positive sample target node is masked")
-        if not bool(payload["target_node_mask"][sample_index, node_index]):
-            raise ValueError("Positive sample target node is not a process target")
 
     all_indices: list[int] = []
     split_group_sets: dict[str, set[str]] = {}
@@ -336,11 +293,6 @@ def _validate_dataset(
         split_group_sets[split_name] = {
             sample_rows[index]["group_id"] for index in indices
         }
-        labels = payload["y_occurrence"][indices]
-        if not bool(labels.bool().any()) or not bool((labels == 0).any()):
-            raise ValueError(
-                f"{split_name} split must contain positive and negative samples"
-            )
     if sorted(all_indices) != list(range(sample_count)):
         raise ValueError("Split indices do not cover each sample exactly once")
     split_names = list(split_group_sets)
@@ -359,16 +311,14 @@ class FactoryBaselineTensorDataset(Dataset):
         "node_mask",
         "observation_mask",
         "target_node_mask",
+        "occ_node_mask",
+        "hist_last_hot",
         "global_features",
-        "y_occurrence",
-        "y_node",
-        "y_time_to_start",
         "y_cause",
         "jobs_remaining",
         "jobs_total",
         "target_start_position",
         "target_remain_len",
-        "positive_mask",
         "sample_group_id",
     )
 
@@ -387,15 +337,27 @@ class FactoryBaselineTensorDataset(Dataset):
         group_number = str(int(sample["sample_group_id"]))
         series = self.payload["remain_series"][group_number]
         y_score, y_hot, remain_mask, _ = pack_remain_target(
-            series["score"],
-            series["hot"],
-            int(sample["target_start_position"]),
-            int(sample["target_start_position"] + sample["target_remain_len"]),
-            int(self.payload["max_remain_windows"]),
+            series["score"].numpy(),
+            series["hot"].numpy(),
+            t=int(sample["target_start_position"]),
+            done_ti=int(
+                sample["target_start_position"] + sample["target_remain_len"]
+            ),
+            max_remain_windows=int(self.payload["max_remain_windows"]),
+            occupancy_horizon_windows=int(self.payload["max_remain_windows"]),
         )
-        sample["y_score"] = y_score
-        sample["y_hot"] = y_hot
-        sample["remain_mask"] = remain_mask
+        event_will, event_start, event_duration = node_event_targets(
+            y_hot,
+            min_windows=int(self.payload["event_min_windows"]),
+            remain_mask=remain_mask,
+            occ_node_mask=sample["occ_node_mask"].numpy(),
+        )
+        sample["y_score"] = torch.from_numpy(y_score)
+        sample["y_hot"] = torch.from_numpy(y_hot)
+        sample["remain_mask"] = torch.from_numpy(remain_mask)
+        sample["event_will"] = torch.from_numpy(event_will)
+        sample["event_start"] = torch.from_numpy(event_start)
+        sample["event_duration"] = torch.from_numpy(event_duration)
         sample["sample_index"] = torch.tensor(sample_index, dtype=torch.int64)
         return sample
 
@@ -430,10 +392,12 @@ def load_shared_dataset(dataset_dir: Path) -> tuple[dict[str, Any], dict[str, An
         "adjacency",
         "node_mask",
         "target_node_mask",
+        "occ_node_mask",
+        "hist_last_hot",
         "global_features",
-        "y_occurrence",
         "remain_series",
         "max_remain_windows",
+        "event_min_windows",
         "split_indices",
     }
     missing = required.difference(payload)
@@ -445,18 +409,19 @@ def load_shared_dataset(dataset_dir: Path) -> tuple[dict[str, Any], dict[str, An
 def build_factory_baseline_dataset(
     run_dirs: Iterable[Path],
     out_dir: Path,
-    derived_dir_name: str = "shared_bn_agg_v1",
+    derived_dir_name: str = "shared_bn_agg_unsupervised_v2",
     window_size: float = 60.0,
     stride: float = 60.0,
-    input_windows: int = 12,
+    input_windows: int = 30,
     horizon: float = 180.0,
     seed: int = 42,
     repo_root: Path | None = None,
     allowed_group_ids: set[str] | None = None,
-    max_remain_windows: int = 512,
-    hot_score_threshold: float = 0.55,
+    max_remain_windows: int = 15,
+    hot_min_windows: int = 8,
+    hot_gap_windows: int = 1,
 ) -> dict[str, Any]:
-    """Build B2-B5 tensors from the shared dev_tyx bn_agg contract."""
+    """Build B2-B5 tensors using the main experiment's operational targets."""
     if input_windows <= 0:
         raise ValueError("input_windows must be positive")
     if max_remain_windows <= 0:
@@ -496,10 +461,14 @@ def build_factory_baseline_dataset(
 
     node_ids, node_types = _build_node_catalog(groups)
     node_index = {node_id: index for index, node_id in enumerate(node_ids)}
-    resource_types = sorted(set(node_types.values()))
+    unknown_types = sorted(set(node_types.values()).difference(RESOURCE_TYPES))
+    if unknown_types:
+        raise ValueError(f"Unsupported resource types: {unknown_types}")
+    resource_types = list(RESOURCE_TYPES)
     resource_type_index = {name: index for index, name in enumerate(resource_types)}
 
     continuous_samples: list[torch.Tensor] = []
+    labor_samples: list[torch.Tensor] = []
     applicability_samples: list[torch.Tensor] = []
     type_samples: list[torch.Tensor] = []
     global_samples: list[torch.Tensor] = []
@@ -524,13 +493,6 @@ def build_factory_baseline_dataset(
         node_mask = torch.tensor(
             [node_id in active_nodes for node_id in node_ids], dtype=torch.bool
         )
-        target_node_mask = torch.tensor(
-            [
-                node_id in active_nodes and not is_buffer(node_id, node_types[node_id])
-                for node_id in node_ids
-            ],
-            dtype=torch.bool,
-        )
         adjacency, group_edges = build_static_graph(
             node_ids, node_types, active_nodes, group["config"]
         )
@@ -543,7 +505,7 @@ def build_factory_baseline_dataset(
                 }
             )
 
-        window_indices = sorted(set(by_window).intersection(labels))
+        window_indices = sorted(by_window)
         raw_features = torch.zeros(
             (len(window_indices), len(node_ids), len(CONTINUOUS_FEATURES)),
             dtype=torch.float32,
@@ -551,6 +513,15 @@ def build_factory_baseline_dataset(
         raw_scores = torch.zeros(
             (len(window_indices), len(node_ids), 1), dtype=torch.float32
         )
+        raw_types = torch.zeros(
+            (len(window_indices), len(node_ids), len(resource_types)),
+            dtype=torch.float32,
+        )
+        for node_id in active_nodes:
+            catalog_index = node_index[node_id]
+            raw_types[
+                :, catalog_index, resource_type_index[node_types[node_id]]
+            ] = 1.0
         window_starts = []
         for time_index, window_index_value in enumerate(window_indices):
             rows = by_window[window_index_value]
@@ -563,7 +534,20 @@ def build_factory_baseline_dataset(
                 raw_scores[time_index, catalog_index, 0] = _f(
                     row.get("bottleneck_score_s")
                 )
-        raw_hot = node_hot_mask(raw_features, raw_scores, hot_score_threshold)
+        canonical_features = ensure_labor_saturated_feature(
+            torch.cat((raw_features, raw_types), dim=-1).numpy()
+        )
+        raw_hot = torch.from_numpy(
+            ops_hot_mask(
+                canonical_features,
+                window_size_s=window_size,
+                min_hot_windows=hot_min_windows,
+                gap_windows=hot_gap_windows,
+            )
+        )
+        target_node_mask = torch.from_numpy(
+            occupancy_node_mask(canonical_features).astype(np.bool_)
+        ) & node_mask
         remain_series[str(group["group_number"])] = {
             "score": raw_scores,
             "hot": raw_hot,
@@ -590,10 +574,6 @@ def build_factory_baseline_dataset(
                 current != previous + 1
                 for previous, current in zip(sequence_indices, sequence_indices[1:])
             ):
-                continue
-            anchor_index = window_indices[position]
-            label = labels[anchor_index]
-            if _i(label.get("label_horizon_ready")) != 1:
                 continue
             remain_len = done_position - position
             if remain_len <= 0:
@@ -622,6 +602,9 @@ def build_factory_baseline_dataset(
             )
             observation_mask = torch.zeros(
                 (input_windows, len(node_ids)), dtype=torch.bool
+            )
+            x_labor = torch.from_numpy(
+                canonical_features[position - input_windows : position, :, -1:].copy()
             )
             for time_index, rows in enumerate(sequence_rows):
                 first_row = next(iter(rows.values()))
@@ -652,22 +635,33 @@ def build_factory_baseline_dataset(
                         resource_type_index[resource_type],
                     ] = 1.0
 
-            occurrence = _i(label.get("will_bottleneck"))
-            target_node_id = label.get("future_bottleneck_object_id") or ""
-            target_type = (
-                node_types[target_node_id] if target_node_id in node_types else ""
+            _y_score, y_hot_np, remain_mask_np, _ = pack_remain_target(
+                raw_scores.numpy(),
+                raw_hot.numpy(),
+                t=position,
+                done_ti=done_position,
+                max_remain_windows=max_remain_windows,
+                occupancy_horizon_windows=max_remain_windows,
             )
-            if occurrence == 1:
-                if target_node_id not in node_index:
-                    raise ValueError(
-                        f"Positive target {target_node_id!r} is absent from node catalog"
-                    )
-                if is_buffer(target_node_id, node_types[target_node_id]):
-                    raise ValueError(
-                        f"Positive target {target_node_id!r} is not a process node"
-                    )
+            event_will, event_start, _event_duration = node_event_targets(
+                y_hot_np,
+                min_windows=hot_min_windows,
+                remain_mask=remain_mask_np,
+                occ_node_mask=target_node_mask.numpy(),
+            )
+            event_nodes = np.flatnonzero(event_will > 0.5)
+            occurrence = int(event_nodes.size > 0)
+            if occurrence:
+                event_node = min(event_nodes, key=lambda index: int(event_start[index]))
+                target_node_id = node_ids[int(event_node)]
+            else:
+                target_node_id = ""
+            target_type = node_types.get(target_node_id, "")
+            anchor_index = sequence_indices[-1]
+            label = labels.get(anchor_index, {})
             sample_index = len(continuous_samples)
             continuous_samples.append(x_continuous)
+            labor_samples.append(x_labor)
             applicability_samples.append(applicability)
             type_samples.append(x_type)
             global_samples.append(x_global)
@@ -677,9 +671,7 @@ def build_factory_baseline_dataset(
             target_node_masks.append(target_node_mask)
             targets.append(
                 {
-                    "occurrence": occurrence,
-                    "node": node_index.get(target_node_id, -1),
-                    "time_to_start": _f(label.get("time_to_start")),
+                    "event_positive": occurrence,
                     "cause": encode_root_cause(label.get("root_cause_reason")),
                     "jobs_remaining": jobs_remaining[position],
                     "jobs_total": jobs_total,
@@ -698,10 +690,11 @@ def build_factory_baseline_dataset(
                     "scenario_id": group["scenario_id"],
                     "input_window_indices": json.dumps(sequence_indices),
                     "anchor_window_index": anchor_index,
-                    "anchor_time_s": _f(label.get("window_start_s")),
-                    "will_bottleneck": occurrence,
-                    "target_node_id": target_node_id,
-                    "target_type": target_type,
+                    "anchor_time_s": starts[-1],
+                    "first_future_start_s": window_starts[position],
+                    "event_will_any": occurrence,
+                    "first_event_node_id": target_node_id,
+                    "first_event_node_type": target_type,
                 }
             )
             group_sample_indices[group["group_id"]].append(sample_index)
@@ -710,6 +703,7 @@ def build_factory_baseline_dataset(
         raise ValueError("No horizon-ready causal samples were generated")
 
     x_continuous = torch.stack(continuous_samples)
+    x_labor = torch.stack(labor_samples)
     applicability = torch.stack(applicability_samples)
     x_type = torch.stack(type_samples)
     global_features = torch.stack(global_samples)
@@ -717,14 +711,13 @@ def build_factory_baseline_dataset(
     node_mask = torch.stack(node_masks)
     observation_mask = torch.stack(observation_masks)
     target_node_mask = torch.stack(target_node_masks)
-    y_occurrence = torch.tensor(
-        [target["occurrence"] for target in targets], dtype=torch.float32
+    event_positive = torch.tensor(
+        [target["event_positive"] for target in targets], dtype=torch.float32
     )
 
     group_scenarios = {group["group_id"]: group["scenario_id"] for group in groups}
-    split_groups = _split_groups(
-        group_sample_indices, group_scenarios, y_occurrence, seed
-    )
+    group_run_names = {group["group_id"]: group["run_name"] for group in groups}
+    split_groups = _split_groups(group_sample_indices, group_run_names, seed)
     split_indices = {
         split_name: sorted(
             index for group_id in group_ids for index in group_sample_indices[group_id]
@@ -752,19 +745,21 @@ def build_factory_baseline_dataset(
     ) / normalization["global_std"].view(1, 1, -1)
 
     payload: dict[str, Any] = {
-        "x": torch.cat((normalized_continuous, x_type), dim=-1),
+        "x": torch.cat((normalized_continuous, x_type, x_labor), dim=-1),
         "adjacency": adjacency,
         "node_mask": node_mask,
         "observation_mask": observation_mask,
         "target_node_mask": target_node_mask,
+        "occ_node_mask": target_node_mask.float(),
+        "hist_last_hot": torch.stack(
+            [
+                remain_series[str(target["group_number"])]["hot"] [
+                    target["target_start_position"] - 1
+                ]
+                for target in targets
+            ]
+        ),
         "global_features": normalized_global,
-        "y_occurrence": y_occurrence,
-        "y_node": torch.tensor(
-            [target["node"] for target in targets], dtype=torch.int64
-        ),
-        "y_time_to_start": torch.tensor(
-            [target["time_to_start"] for target in targets], dtype=torch.float32
-        ),
         "y_cause": torch.tensor(
             [target["cause"] for target in targets], dtype=torch.int64
         ),
@@ -782,7 +777,7 @@ def build_factory_baseline_dataset(
         ),
         "remain_series": remain_series,
         "max_remain_windows": max_remain_windows,
-        "positive_mask": y_occurrence.bool(),
+        "event_min_windows": hot_min_windows,
         "sample_group_id": torch.tensor(
             [target["group_number"] for target in targets], dtype=torch.int64
         ),
@@ -853,9 +848,10 @@ def build_factory_baseline_dataset(
             "input_window_indices",
             "anchor_window_index",
             "anchor_time_s",
-            "will_bottleneck",
-            "target_node_id",
-            "target_type",
+            "first_future_start_s",
+            "event_will_any",
+            "first_event_node_id",
+            "first_event_node_type",
         ],
     )
     split_json = {
@@ -868,6 +864,7 @@ def build_factory_baseline_dataset(
     normalization_json = {
         "fit_split": "train",
         "continuous_features": list(CONTINUOUS_FEATURES),
+        "binary_context_features": [LABOR_FEATURE],
         "feature_mean": normalization["feature_mean"].tolist(),
         "feature_std": normalization["feature_std"].tolist(),
         "global_features": list(GLOBAL_FEATURES),
@@ -881,7 +878,7 @@ def build_factory_baseline_dataset(
     collector_versions = sorted({group["collector_version"] for group in groups})
     feature_names = list(CONTINUOUS_FEATURES) + [
         f"resource_type__{resource_type}" for resource_type in resource_types
-    ]
+    ] + [LABOR_FEATURE]
     manifest = {
         "dataset_version": DATASET_VERSION,
         "dataset_contract": DATASET_CONTRACT,
@@ -903,9 +900,14 @@ def build_factory_baseline_dataset(
         "stride_s": stride,
         "input_windows": input_windows,
         "prediction_horizon_s": horizon,
+        "occupancy_horizon_windows": max_remain_windows,
+        "occupancy_horizon_s": max_remain_windows * window_size,
         "remain_to_jobs_done": True,
         "max_remain_windows": max_remain_windows,
-        "hot_score_threshold": hot_score_threshold,
+        "label_mode": "unsupervised_operational_occupancy",
+        "hot_min_windows": hot_min_windows,
+        "hot_gap_windows": hot_gap_windows,
+        "event_min_windows": hot_min_windows,
         "cause_classes": list(ROOT_CAUSE_CLASSES),
         "feature_names": feature_names,
         "global_feature_names": list(GLOBAL_FEATURES),
@@ -916,8 +918,8 @@ def build_factory_baseline_dataset(
             name: len(indices) for name, indices in split_indices.items()
         },
         "total_samples": len(sample_rows),
-        "positive_samples": int(y_occurrence.sum().item()),
-        "positive_rate": float(y_occurrence.mean().item()),
+        "event_positive_samples": int(event_positive.sum().item()),
+        "event_positive_rate": float(event_positive.mean().item()),
         "episode_counts": {
             name: len(group_ids) for name, group_ids in split_groups.items()
         },

@@ -8,12 +8,14 @@ from factory_bn_shared.contract import (
     SHARED_LABEL_VERSION,
 )
 
-DATASET_VERSION = "bstan_tyxbn_dataset_v2"
-PREDICTION_TARGET_VERSION = "factory_a1a3_remain_v1"
+DATASET_VERSION = "factory_baseline_dataset_v3"
+PREDICTION_TARGET_VERSION = "factory_ops_event_30m_to_15m_v1"
 LABEL_VERSION = SHARED_LABEL_VERSION
 COLLECTOR_VERSION = RAW_COLLECTOR_VERSION
 DATASET_CONTRACT = DERIVED_CONTRACT_VERSION
-TARGET_NODE_CATEGORY = "process"
+TARGET_NODE_CATEGORY = "machine_gantry_agv"
+
+RESOURCE_TYPES = ("machine", "gantry", "human", "transport_robot", "buffer")
 
 CONTINUOUS_FEATURES = (
     "queue_length_s",
@@ -40,6 +42,7 @@ CONTINUOUS_FEATURES = (
 )
 
 GLOBAL_FEATURES: tuple[str, ...] = ()
+LABOR_FEATURE = "labor_saturated"
 
 
 def is_buffer(resource_id: str, resource_type: str) -> bool:

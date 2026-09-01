@@ -13,13 +13,14 @@ from factory_baselines import build_factory_baseline_dataset
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run_dirs", type=Path, nargs="+", required=True)
-    parser.add_argument("--derived_dir_name", default="shared_bn_agg_v1")
+    parser.add_argument("--derived_dir_name", default="shared_bn_agg_unsupervised_v2")
     parser.add_argument("--window_size", type=float, default=60.0)
     parser.add_argument("--stride", type=float, default=60.0)
-    parser.add_argument("--input_windows", type=int, default=12)
+    parser.add_argument("--input_windows", type=int, default=30)
     parser.add_argument("--horizon", type=float, default=180.0)
-    parser.add_argument("--max_remain_windows", type=int, default=512)
-    parser.add_argument("--hot_score_threshold", type=float, default=0.55)
+    parser.add_argument("--max_remain_windows", type=int, default=15)
+    parser.add_argument("--hot_min_windows", type=int, default=8)
+    parser.add_argument("--hot_gap_windows", type=int, default=1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--out_dir", type=Path, required=True)
     args = parser.parse_args()
@@ -34,7 +35,8 @@ def main() -> None:
         input_windows=args.input_windows,
         horizon=args.horizon,
         max_remain_windows=args.max_remain_windows,
-        hot_score_threshold=args.hot_score_threshold,
+        hot_min_windows=args.hot_min_windows,
+        hot_gap_windows=args.hot_gap_windows,
         seed=args.seed,
         repo_root=repo_root,
     )
@@ -46,8 +48,8 @@ def main() -> None:
                 "dataset_contract": manifest["dataset_contract"],
                 "label_version": manifest["label_version"],
                 "total_samples": manifest["total_samples"],
-                "positive_samples": manifest["positive_samples"],
-                "positive_rate": manifest["positive_rate"],
+                "event_positive_samples": manifest["event_positive_samples"],
+                "event_positive_rate": manifest["event_positive_rate"],
                 "sample_counts": manifest["sample_counts"],
                 "episode_counts": manifest["episode_counts"],
                 "nodes": len(manifest["node_ids"]),

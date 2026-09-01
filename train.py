@@ -21,13 +21,45 @@ parser.add_argument("--video_interval", type=int, default=200, help="Interval be
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--algo", type=str, default=None, help="Name of the algorithm.")
-parser.add_argument("--test", action="store_true", default=False, help="load model and test.")
-parser.add_argument("--test_times", type=int, default=None, help="test times for one setting.")
+parser.add_argument("--test", action="store_true", default=False, help="Run evaluation (Makespan / Success / Truncation) instead of training.")
+parser.add_argument("--test_times", type=int, default=None, help="Episodes per seed during --test.")
+parser.add_argument("--test_seeds", type=str, default=None, help="Comma-separated seeds for --test, e.g. 42,43,44,45,46.")
 parser.add_argument("--test_all_settings", action="store_true", default=False, help="test all settings.")
 parser.add_argument("--load_dir", type=str, default=None, help="dir to model checkpoint.")
 parser.add_argument("--load_name", type=str, default=None, help="name of model checkpoint.")
 parser.add_argument("--wandb_activate", action="store_true", default=None, help="Activate wandb logging.")
 parser.add_argument("--wandb_project", type=str, default=None, help="name of wandb project.")
+parser.add_argument("--wandb_name", type=str, default=None, help="Optional wandb run name override.")
+parser.add_argument(
+    "--max_parallel_cd_dispatch",
+    type=int,
+    default=None,
+    help="Max C/D dispatches per step (1=single-product, >1=multi-product).",
+)
+parser.add_argument(
+    "--explore",
+    action="store_true",
+    default=False,
+    help="Masked-random catalog collection (hier, epsilon=1, no DQN backward).",
+)
+parser.add_argument(
+    "--warmstart",
+    type=str,
+    default=None,
+    help="Path to an env checkpoint pkl (Tier-A).",
+)
+parser.add_argument(
+    "--curriculum",
+    action="store_true",
+    default=False,
+    help="Enable product-count curriculum (1→16, T_max scales with N).",
+)
+parser.add_argument(
+    "--max_sim_episodes",
+    type=int,
+    default=None,
+    help="Max environment simulation episodes (stop after this many completed rounds; rule_based / hier).",
+)
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument(
     "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
@@ -68,8 +100,9 @@ parser.add_argument(
     "--disturbance_dim",
     type=str,
     default="none",
-    choices=["none", "material", "human", "logistics", "machine"],
-    help="Primary bottleneck disturbance dimension to inject this run.",
+    help="Bottleneck dim(s): none|machine|human|logistics|material, "
+    "or comma/+ mixes (2/3/4-dim, e.g. human,logistics or machine+human+material). "
+    "I=1.0 train stays one dim; mixes are OOD collect only.",
 )
 parser.add_argument(
     "--disturbance_intensity",
@@ -113,6 +146,16 @@ parser.add_argument(
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli, hydra_args = parser.parse_known_args()
+
+
+def _set_hc_process_title(algo: str | None = None, device: str | None = None) -> None:
+    """nvidia-smi / ps display: HcFactory-<algo>-xjt cuda:N"""
+    algo_tag = algo or args_cli.algo or "unknown"
+    device_tag = device or args_cli.device or "cuda:0"
+    setproctitle.setproctitle(f"HcFactory-{algo_tag}-xjt {device_tag}")
+
+
+_set_hc_process_title()
 
 
 def _has_registered_cameras() -> bool:
@@ -171,8 +214,9 @@ from source.isaaclab_rl.isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnv
 from rl_games.common import env_configurations, vecenv
 from rl_games.common.algo_observer import IsaacAlgoObserver
 from rl_games.torch_runner import Runner
-from source.algo.multiagent.hc_factory import rule_based
-from source.algo.multiagent.hc_factory import MARL
+from source.algo.hierarchical.hc_factory import flat_tpa
+from source.algo.hierarchical.hc_factory import hierarchical_tpa
+from source.algo.hierarchical.hc_factory import rule_based
 
 from isaaclab.envs import (
     DirectMARLEnv,
@@ -213,8 +257,8 @@ from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.hc_render import HcV
 @hydra_task_config(args_cli.task, args_cli.algo)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo_cfg: dict):
 
-    '''process name'''
-    setproctitle.setproctitle("HcFactory")
+    '''process name: HcFactory-<algo>-xjt cuda:N (visible in nvidia-smi)'''
+    _set_hc_process_title(args_cli.algo, args_cli.device)
     '''update args'''
     if args_cli.wandb_activate:
         algo_cfg["params"]["config"]['wandb_activate'] = args_cli.wandb_activate
@@ -222,6 +266,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         algo_cfg["params"]["config"]['test'] = args_cli.test
     if args_cli.test_times:
         algo_cfg["params"]["config"]['test_times'] = args_cli.test_times
+    if args_cli.test_seeds:
+        algo_cfg["params"]["config"]["test_seeds"] = [
+            int(s.strip()) for s in args_cli.test_seeds.split(",") if s.strip()
+        ]
     if args_cli.test_all_settings:
         algo_cfg["params"]["config"]['test_all_settings'] = args_cli.test_all_settings
     if args_cli.load_dir:
@@ -230,6 +278,20 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         algo_cfg["params"]["config"]['load_name'] = args_cli.load_name
     if args_cli.wandb_project:
         algo_cfg["params"]["config"]['wandb_project'] = args_cli.wandb_project
+    if args_cli.wandb_name:
+        algo_cfg["params"]["config"]["wandb_name"] = args_cli.wandb_name
+    if args_cli.max_parallel_cd_dispatch is not None:
+        algo_cfg["params"]["config"]["max_parallel_cd_dispatch"] = int(args_cli.max_parallel_cd_dispatch)
+    if args_cli.max_sim_episodes is not None:
+        algo_cfg["params"]["config"]["max_sim_episodes"] = int(args_cli.max_sim_episodes)
+    if getattr(args_cli, "explore", False):
+        algo_cfg["params"]["config"]["explore"] = True
+        algo_cfg["params"]["config"]["explore_catalog"] = True
+    warmstart = (getattr(args_cli, "warmstart", None) or "").strip() or os.environ.get("HC_WARMSTART", "").strip()
+    if warmstart:
+        algo_cfg["params"]["config"]["warmstart"] = warmstart
+    if getattr(args_cli, "curriculum", False):
+        algo_cfg["params"]["config"]["curriculum"] = True
     if args_cli.use_fatigue_mask:
         algo_cfg["params"]["config"]['use_fatigue_mask'] = args_cli.use_fatigue_mask
     if args_cli.other_filters:
@@ -251,9 +313,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         args_cli.seed = random.randint(0, 10000)
 
     algo_cfg["params"]["seed"] = args_cli.seed if args_cli.seed is not None else algo_cfg["params"]["seed"]
-    algo_cfg["params"]["config"]["max_epochs"] = (
-        args_cli.max_iterations if args_cli.max_iterations is not None else algo_cfg["params"]["config"]["max_epochs"]
-    )
+    # Legacy RL algos read max_epochs; rule/hier/flat use max_sim_episodes instead.
+    if args_cli.max_iterations is not None:
+        algo_cfg["params"]["config"]["max_epochs"] = args_cli.max_iterations
     if args_cli.checkpoint is not None:
         resume_path = retrieve_file_path(args_cli.checkpoint)
         algo_cfg["params"]["load_checkpoint"] = True
@@ -269,6 +331,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         algo_cfg["params"]["config"]["multi_gpu"] = True
         # update env config device
         env_cfg.sim.device = f"cuda:{app_launcher.local_rank}"
+        _set_hc_process_title(args_cli.algo, f"cuda:{app_launcher.local_rank}")
+    else:
+        _set_hc_process_title(
+            args_cli.algo,
+            algo_cfg["params"]["config"].get("device") or args_cli.device,
+        )
 
     # set the environment seed (after multi-gpu config for updated rank from agent seed)
     # note: certain randomizations occur in the environment initialization so we set the seed here
@@ -302,8 +370,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     if algo_cfg["params"]["config"]["test"]:
         if algo_cfg["params"]["config"]['env_rule_based_exploration']:
             log_dir = 'test_rule_'+ log_dir
-        else:
+        elif algo_cfg["params"]["config"]['load_name']:
             log_dir= 'test'+ '_'.join(algo_cfg["params"]["config"]['load_name'].split('_')[1:3]) + '_' + algo_cfg["params"]["config"]['load_dir'][-22:-3] + '_' + log_dir
+        else:
+            log_dir = 'test_' + algo_cfg["params"]["algo"]["name"] + '_' + log_dir
     else:
         log_dir = algo_cfg["params"]["algo"]["name"] + '_' + log_dir
     # set directory into agent config
@@ -362,8 +432,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     # create runner from rl-games
     runner = Runner(IsaacAlgoObserver())
     # runner.algo_factory.register_builder('rl_filter', lambda **kwargs: rl_filter.SafeRlFilterAgent(**kwargs))
-    runner.algo_factory.register_builder('rule_based', lambda **kwargs: rule_based.RuleBasedMultiAgent(**kwargs))
-    runner.algo_factory.register_builder('marl', lambda **kwargs: MARL.MARLMultiAgent(**kwargs))
+    runner.algo_factory.register_builder('rule_based', lambda **kwargs: rule_based.RuleBasedHierarchical(**kwargs))
+    runner.algo_factory.register_builder('hier', lambda **kwargs: hierarchical_tpa.HierarchicalTPA(**kwargs))
+    runner.algo_factory.register_builder('flat', lambda **kwargs: flat_tpa.FlatTPA(**kwargs))
 
     runner.load(algo_cfg)
     # reset the agent and env
@@ -380,11 +451,20 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
                 run_name = f"test_{algo_cfg['params']['algo']['name']}_{load_name}" + '_' + fatigue_str + '_' + num_particles_str + '_' + measure_noise_sigma_str
         else:
             run_name = f"{algo_cfg['params']['algo']['name']}_{time_str}"
+        if algo_cfg["params"]["config"].get("wandb_name"):
+            run_name = str(algo_cfg["params"]["config"]["wandb_name"])
+
+        wandb_cfg = dict(env_cfg.__dict__)
+        wandb_cfg["algo"] = algo_cfg["params"]["algo"]["name"]
+        wandb_cfg["max_parallel_cd_dispatch"] = algo_cfg["params"]["config"].get(
+            "max_parallel_cd_dispatch"
+        )
+        wandb_cfg["max_sim_episodes"] = algo_cfg["params"]["config"].get("max_sim_episodes")
 
         wandb.init(
             project=algo_cfg["params"]["config"]['wandb_project'],
             group='',
-            config=env_cfg.__dict__,
+            config=wandb_cfg,
             sync_tensorboard=False,
             name=run_name,
             resume="allow",

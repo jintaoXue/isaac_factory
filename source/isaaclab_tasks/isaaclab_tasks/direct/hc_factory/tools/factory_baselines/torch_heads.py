@@ -20,12 +20,9 @@ class FactoryPredictionHeads(nn.Module):
         self.node_hidden_dim = node_hidden_dim
         self.global_dim = global_dim
         self.num_nodes = num_nodes
-        self.prediction_horizon = prediction_horizon
+        del prediction_horizon
         self.max_remain_windows = max_remain_windows
         graph_dim = node_hidden_dim + global_dim
-        self.node_head = nn.Linear(node_hidden_dim, 1)
-        self.occurrence_head = nn.Linear(graph_dim, 1)
-        self.time_to_start_head = nn.Linear(graph_dim, 1)
         self.remain_time_embedding = nn.Embedding(max_remain_windows, node_hidden_dim)
         self.remain_score_head = nn.Sequential(
             nn.Linear(node_hidden_dim * 2, node_hidden_dim),
@@ -36,6 +33,23 @@ class FactoryPredictionHeads(nn.Module):
             nn.Linear(node_hidden_dim * 2, node_hidden_dim),
             nn.GELU(),
             nn.Linear(node_hidden_dim, 1),
+        )
+        self.event_will_head = nn.Sequential(
+            nn.Linear(node_hidden_dim, node_hidden_dim),
+            nn.GELU(),
+            nn.Linear(node_hidden_dim, 1),
+        )
+        nn.init.constant_(self.event_will_head[-1].bias, -1.5)
+        self.event_start_head = nn.Sequential(
+            nn.Linear(node_hidden_dim, node_hidden_dim),
+            nn.GELU(),
+            nn.Linear(node_hidden_dim, max_remain_windows),
+        )
+        self.event_duration_head = nn.Sequential(
+            nn.Linear(node_hidden_dim, node_hidden_dim),
+            nn.GELU(),
+            nn.Linear(node_hidden_dim, 1),
+            nn.Softplus(),
         )
         self.remain_len_head = nn.Sequential(
             nn.Linear(graph_dim + 2, node_hidden_dim),
@@ -62,8 +76,7 @@ class FactoryPredictionHeads(nn.Module):
                 f"got {tuple(node_hidden.shape)}"
             )
         node_hidden = node_hidden * node_mask[:, :, None].to(node_hidden.dtype)
-        node_logits = self.node_head(node_hidden).squeeze(-1)
-        node_logits = node_logits.masked_fill(~target_node_mask.bool(), -1.0e9)
+        del target_node_mask
         mask_float = node_mask[:, :, None].to(node_hidden.dtype)
         graph_embedding = (node_hidden * mask_float).sum(dim=1) / mask_float.sum(
             dim=1
@@ -80,14 +93,11 @@ class FactoryPredictionHeads(nn.Module):
         future_context = torch.cat((future_nodes, future_time), dim=-1)
         jobs_context = torch.stack((jobs_remaining, jobs_total), dim=-1)
         return {
-            "occurrence_logit": self.occurrence_head(graph_context).squeeze(-1),
-            "node_logits": node_logits,
-            "time_to_start": torch.sigmoid(
-                self.time_to_start_head(graph_context).squeeze(-1)
-            )
-            * self.prediction_horizon,
             "remain_score": self.remain_score_head(future_context),
             "remain_hot_logit": self.remain_hot_head(future_context).squeeze(-1),
+            "event_will_logit": self.event_will_head(node_hidden).squeeze(-1),
+            "event_start_logit": self.event_start_head(node_hidden),
+            "event_duration": self.event_duration_head(node_hidden).squeeze(-1),
             "remain_len": self.remain_len_head(
                 torch.cat((graph_context, jobs_context), dim=-1)
             ).squeeze(-1),

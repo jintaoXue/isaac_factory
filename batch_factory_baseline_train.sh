@@ -7,7 +7,7 @@
 #   RUN_MODE=smoke ./batch_factory_baseline_train.sh ALL
 #
 # Environment overrides:
-#   BENCHMARK_TAG=shared_bstan_machine_human_v1
+#   BENCHMARK_TAG=factory_main_aligned_v1
 #   DEVICE=cuda:0 SEED=42 MAX_EPOCHS=100 PATIENCE=15 N_JOBS=8
 
 set -euo pipefail
@@ -15,7 +15,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_ROOT="${ROOT}/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset"
 TOOLS_DIR="${ROOT}/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools"
-BENCHMARK_TAG="${BENCHMARK_TAG:-shared_bstan_machine_human_v1}"
+BENCHMARK_TAG="${BENCHMARK_TAG:-factory_main_aligned_v1}"
 DATASET_DIR="${DATA_ROOT}/experiments/${BENCHMARK_TAG}"
 MODEL_ROOT="${DATASET_DIR}/models"
 

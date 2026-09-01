@@ -42,6 +42,7 @@ class TestB5GatGru(unittest.TestCase):
         )
 
     def _batch(self, positive: bool = True) -> dict[str, torch.Tensor]:
+        del positive
         batch_size, time_steps, node_count = 4, 4, self.config.num_nodes
         node_mask = torch.ones(batch_size, node_count, dtype=torch.bool)
         node_mask[:, -1] = False
@@ -50,7 +51,6 @@ class TestB5GatGru(unittest.TestCase):
         adjacency = torch.ones(batch_size, node_count, node_count, dtype=torch.bool)
         adjacency[:, -1, :] = False
         adjacency[:, :, -1] = False
-        occurrence = torch.ones(batch_size) if positive else torch.zeros(batch_size)
         return {
             "x": torch.randn(batch_size, time_steps, node_count, self.config.input_dim),
             "adjacency": adjacency,
@@ -61,15 +61,16 @@ class TestB5GatGru(unittest.TestCase):
             ),
             "jobs_remaining": torch.full((batch_size,), 2.0),
             "jobs_total": torch.full((batch_size,), 2.0),
-            "y_occurrence": occurrence,
-            "y_node": torch.zeros(batch_size, dtype=torch.int64),
-            "y_time_to_start": torch.full((batch_size,), 30.0),
-            "positive_mask": occurrence.bool(),
             "y_cause": torch.zeros(batch_size, dtype=torch.int64),
             "target_remain_len": torch.full((batch_size,), 4, dtype=torch.int64),
-            "remain_mask": torch.ones(batch_size, 512),
-            "y_score": torch.rand(batch_size, 512, node_count, 1),
-            "y_hot": torch.zeros(batch_size, 512, node_count),
+            "remain_mask": torch.ones(batch_size, 15),
+            "y_score": torch.rand(batch_size, 15, node_count, 1),
+            "y_hot": torch.zeros(batch_size, 15, node_count),
+            "occ_node_mask": target_node_mask.float(),
+            "hist_last_hot": torch.zeros(batch_size, node_count),
+            "event_will": torch.zeros(batch_size, node_count),
+            "event_start": torch.zeros(batch_size, node_count, dtype=torch.int64),
+            "event_duration": torch.zeros(batch_size, node_count),
         }
 
     @staticmethod
@@ -91,16 +92,11 @@ class TestB5GatGru(unittest.TestCase):
         model = B5GatGru(self.config)
         batch = self._batch()
         outputs = model(**self._inputs(batch))
-        self.assertEqual(outputs["occurrence_logit"].shape, (4,))
-        self.assertEqual(outputs["node_logits"].shape, (4, 5))
         self.assertEqual(outputs["node_hidden"].shape, (4, 5, 8))
-        self.assertTrue((outputs["node_logits"][:, -1] < -1.0e8).all())
-        self.assertTrue((outputs["node_logits"][:, -2] < -1.0e8).all())
-        probabilities = torch.softmax(outputs["node_logits"], dim=-1)
-        self.assertTrue(torch.equal(probabilities[:, -1], torch.zeros(4)))
-        self.assertTrue(torch.equal(probabilities[:, -2], torch.zeros(4)))
-        self.assertEqual(outputs["remain_score"].shape, (4, 512, 5, 1))
-        self.assertEqual(outputs["remain_hot_logit"].shape, (4, 512, 5))
+        self.assertEqual(outputs["remain_score"].shape, (4, 15, 5, 1))
+        self.assertEqual(outputs["remain_hot_logit"].shape, (4, 15, 5))
+        self.assertEqual(outputs["event_will_logit"].shape, (4, 5))
+        self.assertEqual(outputs["event_start_logit"].shape, (4, 5, 15))
         self.assertEqual(outputs["cause_logits"].shape, (4, 10))
 
     def test_forward_accepts_shared_contract_without_global_features(self) -> None:
@@ -117,7 +113,7 @@ class TestB5GatGru(unittest.TestCase):
         batch = self._batch()
         batch["global_features"] = torch.empty(4, 4, 0)
         outputs = model(**self._inputs(batch))
-        self.assertEqual(outputs["occurrence_logit"].shape, (4,))
+        self.assertEqual(outputs["event_will_logit"].shape, (4, 5))
 
     def test_loss_without_positive_samples_is_finite(self) -> None:
         model = B5GatGru(self.config)
@@ -127,7 +123,7 @@ class TestB5GatGru(unittest.TestCase):
             outputs, batch, MultiTaskLossConfig(), pos_weight=torch.tensor(1.0)
         )
         self.assertTrue(torch.isfinite(loss))
-        self.assertEqual(float(components["node"]), 0.0)
+        self.assertTrue(torch.isfinite(components["event_will"]))
         self.assertTrue(torch.isfinite(components["remain_hot"]))
         loss.backward()
 
@@ -135,12 +131,13 @@ class TestB5GatGru(unittest.TestCase):
         model = B5GatGru(self.config)
         batch = self._batch(positive=True)
         config = MultiTaskLossConfig(
-            lambda_node=0.0,
-            lambda_time_to_start=0.0,
             lambda_remain_score=0.0,
-            lambda_remain_hot=0.0,
+            lambda_remain_hot=1.0,
             lambda_remain_len=0.0,
             lambda_cause=0.0,
+            lambda_event_will=0.0,
+            lambda_event_start=0.0,
+            lambda_event_duration=0.0,
         )
         optimizer = torch.optim.Adam(model.parameters(), lr=0.03)
         with torch.no_grad():
@@ -166,7 +163,7 @@ class TestB5GatGru(unittest.TestCase):
         optimizer = torch.optim.AdamW(model.parameters())
         batch = self._batch()
         with torch.no_grad():
-            expected = model(**self._inputs(batch))["occurrence_logit"]
+            expected = model(**self._inputs(batch))["event_will_logit"]
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "checkpoint.pt"
             save_checkpoint(
@@ -184,27 +181,20 @@ class TestB5GatGru(unittest.TestCase):
             loaded, checkpoint = load_checkpoint(path, torch.device("cpu"))
             loaded.eval()
             with torch.no_grad():
-                actual = loaded(**self._inputs(batch))["occurrence_logit"]
+                actual = loaded(**self._inputs(batch))["event_will_logit"]
         self.assertEqual(checkpoint["epoch"], 2)
         self.assertTrue(torch.equal(expected, actual))
 
-    def test_no_event_baseline_pr_auc_equals_prevalence(self) -> None:
+    def test_ignored_cause_classes_are_excluded(self) -> None:
         import numpy as np
 
         arrays = {
-            "y_occurrence": np.array([0, 0, 1, 0, 1]),
-            "occurrence_probability": np.zeros(5),
-            "positive_mask": np.array([False, False, True, False, True]),
-            "node_probabilities": np.array([[0.6, 0.3, 0.1]] * 5, dtype=np.float64),
-            "y_node": np.array([-1, -1, 0, -1, 1]),
-            "time_to_start": np.array([0, 0, 20, 0, 40]),
-            "y_time_to_start": np.array([0, 0, 30, 0, 30]),
-            "y_cause": np.array([-1, -1, 1, -1, 1]),
-            "cause_predictions": np.array([0, 0, 1, 0, 1]),
+            "y_cause": np.array([-1, 0, 4, 4]),
+            "cause_predictions": np.array([0, 0, 4, 3]),
         }
-        metrics, confusion = compute_metrics(arrays, cause_class_count=2)
-        self.assertAlmostEqual(metrics["no_event_baseline"]["pr_auc"], 0.4)
+        metrics, confusion = compute_metrics(arrays, cause_class_count=10)
         self.assertEqual(confusion.sum(), 2)
+        self.assertEqual(metrics["cause"]["sample_count"], 2)
 
     def test_occurrence_threshold_is_selected_on_validation_predictions(self) -> None:
         import numpy as np

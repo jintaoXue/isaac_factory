@@ -15,8 +15,15 @@ from typing import Any, Iterable
 import numpy as np
 import torch
 
+from factory_bn_shared.causes import cause_ignore_ids
+from factory_bn_shared.remain import (
+    node_event_targets,
+    occupancy_event_metrics,
+    station_report_metrics,
+)
+
 from .dataset import FactoryBaselineTensorDataset, load_shared_dataset
-from .metrics import compute_metrics, select_f1_threshold
+from .metrics import compute_metrics
 
 
 @dataclass
@@ -204,7 +211,9 @@ def _training_cells(
         usable = min(len(hot), config.near_remain_windows)
         if usable <= 0:
             continue
-        valid_nodes = np.flatnonzero(payload["node_mask"][sample_index].numpy())
+        valid_nodes = np.flatnonzero(
+            payload["occ_node_mask"][sample_index].numpy() > 0.5
+        )
         offsets, node_indices = np.meshgrid(
             np.arange(usable, dtype=np.int64), valid_nodes, indexing="ij"
         )
@@ -366,7 +375,9 @@ def _predict_cells(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     target_score, target_hot = _sample_target(payload, sample_index)
     length, node_count = target_hot.shape
-    valid_nodes = np.flatnonzero(payload["node_mask"][sample_index].numpy())
+    valid_nodes = np.flatnonzero(
+        payload["occ_node_mask"][sample_index].numpy() > 0.5
+    )
     probabilities = np.zeros((length, node_count), dtype=np.float32)
     predicted_score = np.zeros((length, node_count), dtype=np.float32)
     offsets, nodes = np.meshgrid(
@@ -424,31 +435,15 @@ def train_b2_xgboost(
     }
     train_indices = split_indices["train"]
     train_X = _base_features(payload, train_indices)
-    occurrence_y = payload["y_occurrence"][train_indices].numpy().astype(np.int64)
-    positives = max(int(occurrence_y.sum()), 1)
-    occurrence_head = _fit_classifier(
-        train_X,
-        occurrence_y,
-        config,
-        scale_pos_weight=float(len(occurrence_y) - positives) / positives,
-    )
-    positive_mask = occurrence_y == 1
-    node_head = _fit_classifier(
-        train_X[positive_mask],
-        payload["y_node"][train_indices].numpy()[positive_mask],
-        config,
-    )
-    tts_head = _fit_regressor(
-        train_X[positive_mask],
-        payload["y_time_to_start"][train_indices].numpy()[positive_mask],
-        config,
-    )
     cause_values = payload["y_cause"][train_indices].numpy()
     cause_valid = cause_values >= 0
-    if not cause_valid.any():
-        raise ValueError("Train split has no valid A.3 cause labels")
-    cause_head = _fit_classifier(
-        train_X[cause_valid], cause_values[cause_valid], config
+    for cause_id in cause_ignore_ids():
+        cause_valid &= cause_values != int(cause_id)
+    cause_trained = bool(cause_valid.any())
+    cause_head = (
+        _fit_classifier(train_X[cause_valid], cause_values[cause_valid], config)
+        if cause_trained
+        else _Head(kind="constant", constant=0, classes=[0])
     )
     remain_len_head = _fit_regressor(
         train_X,
@@ -467,9 +462,6 @@ def train_b2_xgboost(
     )
     score_head = _fit_regressor(cell_X, cell_score_y, config)
     heads = {
-        "occurrence": occurrence_head,
-        "node": node_head,
-        "time_to_start": tts_head,
         "cause": cause_head,
         "remain_len": remain_len_head,
         "remain_hot": hot_head,
@@ -479,67 +471,20 @@ def train_b2_xgboost(
     def scalar_arrays(split_name: str) -> tuple[np.ndarray, dict[str, np.ndarray]]:
         indices = split_indices[split_name]
         X = _base_features(payload, indices)
-        node_predictions, node_probabilities = _predict_multiclass(
-            node_head, X, len(manifest["node_ids"])
-        )
-        del node_predictions
         cause_predictions, _ = _predict_multiclass(
             cause_head, X, len(manifest["cause_classes"])
         )
         arrays = {
             "sample_index": indices,
-            "y_occurrence": payload["y_occurrence"][indices].numpy(),
-            "y_node": payload["y_node"][indices].numpy(),
-            "y_time_to_start": payload["y_time_to_start"][indices].numpy(),
             "y_cause": payload["y_cause"][indices].numpy(),
             "target_remain_len": payload["target_remain_len"][indices].numpy(),
-            "positive_mask": payload["positive_mask"][indices].numpy(),
-            "occurrence_probability": _predict_probability(occurrence_head, X),
-            "node_probabilities": node_probabilities,
-            "time_to_start": np.maximum(_predict_regression(tts_head, X), 0.0),
             "cause_predictions": cause_predictions,
             "remain_len": np.maximum(_predict_regression(remain_len_head, X), 0.0),
         }
         return X, arrays
 
     _, validation_arrays = scalar_arrays("validation")
-    occurrence_threshold = select_f1_threshold(
-        validation_arrays["y_occurrence"],
-        validation_arrays["occurrence_probability"],
-    )
-
-    def hot_threshold() -> float:
-        bin_count = 1001
-        positive_bins = np.zeros(bin_count, dtype=np.int64)
-        negative_bins = np.zeros(bin_count, dtype=np.int64)
-        for sample_index in split_indices["validation"]:
-            _predicted, probability, _score, _target_score = _predict_cells(
-                payload, int(sample_index), hot_head, score_head, 0.5, config
-            )
-            _, target_hot = _sample_target(payload, int(sample_index))
-            valid_nodes = payload["node_mask"][sample_index].numpy().astype(bool)
-            labels = target_hot[:, valid_nodes].reshape(-1).astype(bool)
-            probabilities = probability[:, valid_nodes].reshape(-1)
-            bins = np.minimum(
-                (probabilities * (bin_count - 1)).astype(np.int64),
-                bin_count - 1,
-            )
-            positive_bins += np.bincount(bins[labels], minlength=bin_count)
-            negative_bins += np.bincount(bins[~labels], minlength=bin_count)
-        true_positive = np.cumsum(positive_bins[::-1])[::-1]
-        false_positive = np.cumsum(negative_bins[::-1])[::-1]
-        false_negative = positive_bins.sum() - true_positive
-        denominator = 2 * true_positive + false_positive + false_negative
-        f1 = np.divide(
-            2 * true_positive,
-            denominator,
-            out=np.zeros_like(true_positive, dtype=np.float64),
-            where=denominator > 0,
-        )
-        best = np.flatnonzero(f1 == f1.max())[-1]
-        return float(best / (bin_count - 1))
-
-    occupancy_threshold = hot_threshold()
+    occupancy_threshold = 0.65
 
     sample_rows = list(
         csv.DictReader(
@@ -555,14 +500,20 @@ def train_b2_xgboost(
             else scalar_arrays(split_name)
         )
         metrics, confusion = compute_metrics(
-            arrays,
-            len(manifest["cause_classes"]),
-            occurrence_threshold=occurrence_threshold,
+            arrays, len(manifest["cause_classes"])
         )
         hot_tp = hot_fp = hot_fn = score_count = 0
         score_abs_sum = 0.0
         predicted_event_json = []
         target_event_json = []
+        target_grids = []
+        probability_grids = []
+        remain_masks = []
+        occupancy_masks = []
+        history_hot = []
+        event_will_probabilities = []
+        event_start_indices = []
+        event_durations = []
         for position, sample_index in enumerate(arrays["sample_index"]):
             predicted_hot, _probability, predicted_score, target_score = _predict_cells(
                 payload,
@@ -573,7 +524,9 @@ def train_b2_xgboost(
                 config,
             )
             _, target_hot = _sample_target(payload, int(sample_index))
-            valid_nodes = payload["node_mask"][sample_index].numpy().astype(bool)
+            valid_nodes = (
+                payload["occ_node_mask"][sample_index].numpy() > 0.5
+            )
             predicted_valid = predicted_hot[:, valid_nodes]
             target_valid = target_hot[:, valid_nodes].astype(bool)
             hot_tp += int(np.logical_and(predicted_valid, target_valid).sum())
@@ -585,6 +538,30 @@ def train_b2_xgboost(
                 ).sum()
             )
             score_count += int(target_score[:, valid_nodes].size)
+            sample = FactoryBaselineTensorDataset(payload, [int(sample_index)])[0]
+            remain_mask = sample["remain_mask"].numpy()
+            occ_mask = sample["occ_node_mask"].numpy()
+            will, start, duration = node_event_targets(
+                _probability,
+                min_windows=8,
+                remain_mask=remain_mask,
+                occ_node_mask=occ_mask,
+            )
+            padded_target = np.zeros(
+                (int(payload["max_remain_windows"]), target_hot.shape[1]),
+                dtype=np.float32,
+            )
+            padded_probability = np.zeros_like(padded_target)
+            padded_target[: len(target_hot)] = target_hot
+            padded_probability[: len(_probability)] = _probability
+            target_grids.append(padded_target)
+            probability_grids.append(padded_probability)
+            remain_masks.append(remain_mask)
+            occupancy_masks.append(occ_mask)
+            history_hot.append(sample["hist_last_hot"].numpy())
+            event_will_probabilities.append(will)
+            event_start_indices.append(start)
+            event_durations.append(duration)
             predicted_length = int(round(float(arrays["remain_len"][position])))
             target_length = int(arrays["target_remain_len"][position])
             predicted_event_json.append(
@@ -616,6 +593,29 @@ def train_b2_xgboost(
             ),
             "valid_node_windows": score_count,
         }
+        metrics["station_report"] = station_report_metrics(
+            np.stack(target_grids),
+            np.stack(event_will_probabilities),
+            np.stack(event_start_indices),
+            np.stack(event_durations),
+            np.stack(remain_masks),
+            np.stack(occupancy_masks),
+            threshold=0.65,
+            min_windows=8,
+            start_tol_windows=3,
+            hist_last_hot=np.stack(history_hot),
+        )
+        metrics["occupancy_event"] = occupancy_event_metrics(
+            np.stack(target_grids),
+            np.stack(probability_grids),
+            np.stack(remain_masks),
+            np.stack(occupancy_masks),
+            manifest["node_ids"],
+            threshold=0.65,
+            min_windows=8,
+            iou_min=0.5,
+            window_size_s=float(manifest["window_size_s"]),
+        )
         metrics["sample_count"] = len(arrays["sample_index"])
         all_metrics[split_name] = metrics
         _write_json(output_dir / f"metrics_{split_name}.json", metrics)
@@ -623,23 +623,11 @@ def train_b2_xgboost(
         event_rows = []
         for position, sample_index in enumerate(arrays["sample_index"]):
             lookup = sample_lookup[int(sample_index)]
-            node_prediction = int(arrays["node_probabilities"][position].argmax())
             cause_prediction = int(arrays["cause_predictions"][position])
             prediction_rows.append(
                 {
                     **lookup,
-                    "occurrence_probability": float(
-                        arrays["occurrence_probability"][position]
-                    ),
-                    "occurrence_prediction": int(
-                        arrays["occurrence_probability"][position]
-                        >= occurrence_threshold
-                    ),
-                    "predicted_node_id": manifest["node_ids"][node_prediction],
                     "predicted_cause": manifest["cause_classes"][cause_prediction],
-                    "predicted_time_to_start_s": float(
-                        arrays["time_to_start"][position]
-                    ),
                     "predicted_remain_len_windows": float(
                         arrays["remain_len"][position]
                     ),
@@ -650,7 +638,7 @@ def train_b2_xgboost(
                 ("target", "target_events_json"),
             ):
                 for event in json.loads(str(arrays[field][position])):
-                    start_s = float(lookup["anchor_time_s"]) + (
+                    start_s = float(lookup["first_future_start_s"]) + (
                         event["start_offset_windows"] * float(manifest["window_size_s"])
                     )
                     duration_s = event["duration_windows"] * float(
@@ -674,11 +662,7 @@ def train_b2_xgboost(
             prediction_rows,
             list(sample_rows[0])
             + [
-                "occurrence_probability",
-                "occurrence_prediction",
-                "predicted_node_id",
                 "predicted_cause",
-                "predicted_time_to_start_s",
                 "predicted_remain_len_windows",
             ],
         )
@@ -735,10 +719,11 @@ def train_b2_xgboost(
         "prediction_target_version": manifest["prediction_target_version"],
         "config": asdict(config),
         "models": model_metadata,
-        "occurrence_threshold": occurrence_threshold,
+        "event_report_threshold": occupancy_threshold,
         "occupancy_threshold": occupancy_threshold,
         "training_cell_count": int(len(cell_hot_y)),
         "training_positive_cell_count": int(cell_hot_y.sum()),
+        "cause_head_trained": cause_trained,
     }
     _write_json(output_dir / "config.json", metadata)
     _write_json(output_dir / "metrics.json", all_metrics)
@@ -751,8 +736,11 @@ def train_b2_xgboost(
         "label_version": manifest["label_version"],
         "validation_hot_f1": all_metrics["validation"]["remain"]["hot_f1"],
         "test_hot_f1": all_metrics["test"]["remain"]["hot_f1"],
-        "test_pr_auc": all_metrics["test"]["occurrence"]["pr_auc"],
-        "occurrence_threshold": occurrence_threshold,
+        "validation_report_f1": all_metrics["validation"]["station_report"][
+            "report_f1"
+        ],
+        "test_report_f1": all_metrics["test"]["station_report"]["report_f1"],
+        "event_report_threshold": occupancy_threshold,
         "occupancy_threshold": occupancy_threshold,
         "elapsed_seconds": time.time() - started_at,
         "output_dir": str(output_dir),

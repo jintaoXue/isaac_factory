@@ -75,13 +75,12 @@ class TestB3B4Models(unittest.TestCase):
         ):
             with self.subTest(model=type(model).__name__):
                 outputs = model(**self.batch)
-                self.assertEqual(outputs["occurrence_logit"].shape, (3,))
-                self.assertEqual(outputs["node_logits"].shape, (3, 5))
                 self.assertEqual(outputs["remain_score"].shape, (3, 8, 5, 1))
                 self.assertEqual(outputs["remain_hot_logit"].shape, (3, 8, 5))
                 self.assertEqual(outputs["cause_logits"].shape, (3, 3))
-                self.assertTrue((outputs["node_logits"][:, -1] < -1.0e8).all())
-                self.assertTrue((outputs["node_logits"][:, -2] < -1.0e8).all())
+                self.assertEqual(outputs["event_will_logit"].shape, (3, 5))
+                self.assertEqual(outputs["event_start_logit"].shape, (3, 5, 8))
+                self.assertEqual(outputs["event_duration"].shape, (3, 5))
 
     def test_b3_ignores_adjacency(self) -> None:
         model = B3Lstm(self.configs["b3_lstm"]).eval()
@@ -110,7 +109,7 @@ class TestB3B4Models(unittest.TestCase):
                     path = Path(temp_dir) / f"{model_kind}.pt"
                     model.eval()
                     with torch.no_grad():
-                        expected = model(**self.batch)["occurrence_logit"]
+                        expected = model(**self.batch)["event_will_logit"]
                     save_checkpoint(
                         path=path,
                         model=model,
@@ -126,7 +125,7 @@ class TestB3B4Models(unittest.TestCase):
                     loaded, checkpoint = load_checkpoint(path, torch.device("cpu"))
                     loaded.eval()
                     with torch.no_grad():
-                        actual = loaded(**self.batch)["occurrence_logit"]
+                        actual = loaded(**self.batch)["event_will_logit"]
                     self.assertEqual(checkpoint["model_kind"], model_kind)
                     self.assertTrue(torch.equal(expected, actual))
 

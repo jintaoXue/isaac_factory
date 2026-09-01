@@ -8,12 +8,15 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
+from .cluster import cluster_derived_run
 from .constants import DEFAULT_MIN_EVENT_WINDOWS, DEFAULT_SCORE_THRESHOLD
 from .features import add_bottleneck_scores, compute_window_features
 from .io_util import _derived_out_dir, _discover_env_dirs, _f, _i, _read_csv, _read_jsonl, _write_csv
 from .kpi import build_job_kpis
 from .labels import build_labels_and_events, parse_disturbance_l2_intervals
 from .timelines import build_timelines
+
+LABEL_MODES = ("supervised", "unsupervised")
 
 def _max_timestamp(events: list, job_rows: list) -> float:
     times = []
@@ -33,6 +36,7 @@ def process_env_dir(
     min_event_windows: int,
     *,
     closed_windows_only: bool = False,
+    label_mode: str = "supervised",
 ) -> dict:
     events = _read_jsonl(env_dir / "resource_event_log.jsonl")
     job_rows = _read_csv(env_dir / "job_trace.csv")
@@ -82,15 +86,20 @@ def process_env_dir(
         )
         all_features.extend(feats)
 
-    all_features = add_bottleneck_scores(all_features)
-    labels, event_rows = build_labels_and_events(
-        all_features,
-        horizon,
-        score_threshold,
-        min_event_windows,
-        disturbance_rows=disturbance_rows,
-        as_of_s=as_of_s,
-    )
+    mode = str(label_mode or "supervised").strip().lower()
+    if mode not in LABEL_MODES:
+        raise ValueError(f"label_mode must be one of {LABEL_MODES}, got {label_mode!r}")
+    if mode == "supervised":
+        all_features = add_bottleneck_scores(all_features)
+        labels, event_rows = build_labels_and_events(
+            all_features,
+            horizon,
+            score_threshold,
+            min_event_windows,
+            as_of_s=as_of_s,
+        )
+    else:
+        labels, event_rows = [], []
     job_kpi_rows, order_kpi = build_job_kpis(
         job_rows,
         run_id=run_id,
@@ -142,9 +151,11 @@ def process_env_dir(
         "order_kpi": order_kpi,
         "window_sizes": window_sizes,
         "horizon_s": horizon,
-        "score_threshold": score_threshold,
+        "label_mode": mode,
+        "score_threshold": score_threshold if mode == "supervised" else None,
         "min_event_windows": min_event_windows,
         "n_disturbance_l2": len(dist_intervals),
+        # Sanity: L2 is input context only; this must stay 0 after 2026-08-19.
         "n_events_from_disturbance": sum(
             1
             for e in event_rows
@@ -176,6 +187,12 @@ def _run_once(
     score_threshold: float,
     min_event_windows: int,
     closed_windows_only: bool,
+    *,
+    label_mode: str = "supervised",
+    n_clusters: int = 8,
+    cluster_window_size: float | None = 60.0,
+    refit_clusters: bool = True,
+    cluster_mode: str = "vanilla",
 ) -> list[dict]:
     env_dirs = _discover_env_dirs(run_dir, env_id)
     if not env_dirs:
@@ -193,6 +210,7 @@ def _run_once(
             score_threshold=score_threshold,
             min_event_windows=min_event_windows,
             closed_windows_only=closed_windows_only,
+            label_mode=label_mode,
         )
         summaries.append(summary)
         print(
@@ -212,6 +230,31 @@ def _run_once(
             )
         for ps in summary["per_window_size"]:
             print(f"  ws={ps['window_size_s']}: hot_windows={ps['hot_windows']} top={ps['top_nodes'][:3]}")
+    if str(label_mode).strip().lower() == "unsupervised" and summaries:
+        model_path = out_root / "cluster_model.json"
+        do_refit = bool(refit_clusters)
+        try:
+            csum = cluster_derived_run(
+                out_root,
+                n_clusters=n_clusters,
+                window_size=cluster_window_size,
+                model_path=model_path,
+                refit=do_refit,
+                cluster_mode=cluster_mode,
+            )
+            print(
+                f"  [cluster] k={csum.get('n_clusters')} windows={csum.get('n_windows')} "
+                f"refit={csum.get('refit')} sizes={csum.get('window_cluster_sizes')}"
+            )
+            for s in summaries:
+                s["cluster"] = {
+                    "n_clusters": csum.get("n_clusters"),
+                    "n_window_clusters": csum.get("n_window_clusters"),
+                    "window_cluster_sizes": csum.get("window_cluster_sizes"),
+                    "inertia": csum.get("inertia"),
+                }
+        except (ValueError, FileNotFoundError) as exc:
+            print(f"  [cluster] skip: {exc}")
     return summaries
 
 
@@ -257,12 +300,54 @@ def main() -> None:
         action="store_true",
         help="One-shot: only emit fully closed windows (no short last window). Implied by --follow.",
     )
+    parser.add_argument(
+        "--label_mode",
+        type=str,
+        default="supervised",
+        choices=list(LABEL_MODES),
+        help="supervised: bottleneck-score / process labels. unsupervised: k-means, no scores.",
+    )
+    parser.add_argument(
+        "--n_clusters",
+        type=int,
+        default=8,
+        help="k-means k for unsupervised aggregation (station + window snapshots).",
+    )
+    parser.add_argument(
+        "--cluster_window_size",
+        type=float,
+        default=60.0,
+        help="Only cluster this window size (default 60). Set 0 to use every size.",
+    )
+    parser.add_argument(
+        "--assign_clusters",
+        action="store_true",
+        help="Only (re)fit clusters on existing derived/ tables; skip feature rebuild.",
+    )
+    parser.add_argument(
+        "--cluster_mode",
+        type=str,
+        default="vanilla",
+        choices=["vanilla", "cause_aligned"],
+        help="vanilla: k-means k. cause_aligned: normal + 6 process-cause centroids.",
+    )
     args = parser.parse_args()
 
     window_sizes = [float(x) for x in args.window_sizes.split(",") if x.strip()]
     run_dir = args.run_dir.resolve()
     out_root = (args.out_dir or (run_dir / "derived")).resolve()
     closed = bool(args.follow or args.closed_windows)
+    cluster_ws = None if float(args.cluster_window_size) <= 0 else float(args.cluster_window_size)
+    if args.assign_clusters:
+        summary = cluster_derived_run(
+            out_root,
+            n_clusters=int(args.n_clusters),
+            window_size=cluster_ws,
+            refit=True,
+            cluster_mode=str(args.cluster_mode),
+        )
+        print(f"[cluster] wrote {out_root / 'cluster_model.json'}  {summary}")
+        return
 
     if args.follow:
         print(f"[follow] {run_dir}  poll={args.poll}s  closed windows only  Ctrl-C to stop")
@@ -285,6 +370,11 @@ def main() -> None:
                             args.score_threshold,
                             args.min_event_windows,
                             closed_windows_only=True,
+                            label_mode=args.label_mode,
+                            n_clusters=int(args.n_clusters),
+                            cluster_window_size=cluster_ws,
+                            refit_clusters=not (out_root / "cluster_model.json").is_file(),
+                            cluster_mode=str(args.cluster_mode),
                         )
                         (out_root / "all_env_summary.json").write_text(
                             json.dumps(summaries, indent=2, ensure_ascii=False) + "\n",
@@ -307,6 +397,11 @@ def main() -> None:
         args.score_threshold,
         args.min_event_windows,
         closed_windows_only=closed,
+        label_mode=args.label_mode,
+        n_clusters=int(args.n_clusters),
+        cluster_window_size=cluster_ws,
+        refit_clusters=True,
+        cluster_mode=str(args.cluster_mode),
     )
     if not summaries:
         raise SystemExit(f"No env_* directories under {run_dir} (checked flat and episode_*/ layouts)")

@@ -4,18 +4,25 @@ from pathlib import Path
 
 import torch
 
+from ..cfg_robot import CfgRobot
+
 # Package-local assets (occupancy maps / map points) live next to this file.
 _ROUTE_DIR = Path(__file__).resolve().parent
 # Precomputed route graphs are external HC dataset files.
 _HC_MAP_DATA_DIR = Path.home() / "work" / "Dataset" / "HC_data" / "map_data"
 
 CfgRoute = {
+    # Human navigation: occupancy + points + precomputed routes.
     "map_path_human": str(_ROUTE_DIR / "occupancy_map4human.png"),
     "points_path_human": str(_ROUTE_DIR / "map_points_human.json"),
     "routes_path_human": str(_HC_MAP_DATA_DIR / "map_routes_human.json"),
+    # AGV navigation: separate occupancy/points/routes because AGV footprint and
+    # free space differ from human (see map_with_points_robot.png).
     "map_path_robot": str(_ROUTE_DIR / "occupancy_map4robot.png"),
     "points_path_robot": str(_ROUTE_DIR / "map_points_robot.json"),
     "routes_path_robot": str(_HC_MAP_DATA_DIR / "map_routes_robot.json"),
+    # Gantry does not use its own map: gantry_parking_areas_ids are resolved via
+    # map_points_human (RouteManagerVectorEnv._step_gantry → human_roadmap).
     "png_image_coordinates": {
         "top_left": [0, 0],
         "bottom_right": [2202, 1645],
@@ -36,13 +43,8 @@ CfgRoute = {
         },
         # Human collision footprint diameter (m); circle centered at current pose
         "human_safety_diameter": 0.3,
-        # Robot footprint local bounds (m); origin at one end, rotated by yaw
-        "robot_footprint_local_bounds": {
-            "min_x": 0.0,
-            "max_x": 1.8,
-            "min_y": 0.0,
-            "max_y": 0.8,
-        },
+        # Robot footprint in pose-local frame (m); pose origin = AGV centroid
+        "robot_footprint_local_bounds": dict(CfgRobot["AGV"]["robot_footprint_local_bounds"]),
         # Occupancy map: pixel grayscale >= threshold is walkable (yield/detour static checks)
         "occupancy_free_threshold": 250,
         # Predictive yield trigger: free agent within this distance of a working route (m)
@@ -77,7 +79,7 @@ CfgRoute = {
 # Optional init point ids from map points
 OptionalInitPointIds = {
     "human": [190, 191, 192, 193, 194, 195, 202, 203, 204, 205, 206, 207, 214, 215, 216, 217, 218, 219],
-    "robot": [236, 272],
+    "robot": [230, 237, 241, 271],
     "human_z": 0.13395,
     "robot_z": 0.13395,
 }

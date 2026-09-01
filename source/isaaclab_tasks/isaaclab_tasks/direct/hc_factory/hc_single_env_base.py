@@ -41,9 +41,8 @@ from .env_asset_cfg.cfg_bottleneck_data import CfgBottleneckData
 from .src.bottleneck_data import BottleneckDataCollector # added: for bottleneck data collection
 from .src.disturbance import DisturbanceInjector
 from .env_asset_cfg.perception.cfg_perception import CfgPerception
-from .src.algo_multiagent_masker import AlgoMultiAgentMasker
+from .src.algo_hierarchical_masker import AlgoHierarchicalMasker
 from .src.task_progress_manager import TaskManager
-from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.src import algo_multiagent_masker
 import time
 
 class HcSingleEnvBase():
@@ -85,8 +84,15 @@ class HcSingleEnvBase():
         self.disturbance_injector = DisturbanceInjector(
             env_id=self.env_id, collector=self.bottleneck_collector
         )
-        self.algo_multiagent_masker = AlgoMultiAgentMasker(self.cuda_device)
-        self.task_manager = TaskManager(self.cuda_device)
+        self.algo_hierarchical_masker = AlgoHierarchicalMasker(self.cuda_device)
+        self.task_manager = TaskManager(
+            self.cuda_device,
+            max_episodic_steps=int(HcVectorEnvCfg().max_episodic_steps),
+            step_penalty=float(HcVectorEnvCfg().rl_step_penalty),
+            finish_bonus=float(HcVectorEnvCfg().rl_finish_bonus),
+            task_bonus=float(HcVectorEnvCfg().rl_task_bonus),
+            success_bonus=float(HcVectorEnvCfg().rl_success_bonus),
+        )
         # self.route_manager = RouteManagerVectorEnv(cuda_device=self.cuda_device)
 
     def iter_managers(self):
@@ -99,7 +105,7 @@ class HcSingleEnvBase():
             self.route_manager,
             self.machine_manager,
             self.task_manager,
-            self.algo_multiagent_masker,
+            self.algo_hierarchical_masker,
         )
     
     # def update_task_availability_mask(self):
@@ -126,6 +132,11 @@ class HcSingleEnvBase():
         self.disturbance_injector.reset(self.env_state_action_dict)
         return self.env_state_action_dict
 
+    def restore_checkpoint(self, ckpt: dict) -> dict:
+        from .src.env_checkpoint import restore
+
+        return restore(self, ckpt)
+
     def apply_data_to_sim(self) -> None:
         #articulations
         articulations : dict = self.env_state_action_dict["articulations"]
@@ -142,8 +153,29 @@ class HcSingleEnvBase():
             rigid_prim.set_local_poses(translations=data["position"], orientations=data["orientation"])
             rigid_prim.set_velocities(torch.zeros((1,6), device=self.cuda_device))
 
+    def _round_xy(self, pos) -> tuple | None:
+        if pos is None:
+            return None
+        try:
+            if hasattr(pos, "detach"):
+                flat = pos.detach().reshape(-1)
+                if flat.numel() < 2:
+                    return (round(float(flat[0].item()), 2),)
+                return (round(float(flat[0].item()), 2), round(float(flat[1].item()), 2))
+            seq = list(pos)
+            if len(seq) >= 2:
+                return (round(float(seq[0]), 2), round(float(seq[1]), 2))
+        except Exception:
+            return None
+        return None
+
     def _progress_signature(self) -> tuple:
-        """Compact fingerprint of production progress for stall detection."""
+        """Compact fingerprint of production progress for stall detection.
+
+        Must include motion. After real-path ``go_to_*=None`` a gantry/human/AGV
+        can walk for well over 5000 steps without changing task/subtask flags;
+        omitting travel distance made the watchdog treat long hauls as deadlock.
+        """
         progress = self.env_state_action_dict.get("progress", {})
         finished = tuple(
             (k, tuple(v)) for k, v in sorted((progress.get("finished") or {}).items())
@@ -165,7 +197,29 @@ class HcSingleEnvBase():
         machines = []
         for name, mstate in sorted((self.env_state_action_dict.get("machine") or {}).items()):
             machines.append((name, tuple(mstate.get("state") or [])))
-        return (finished, tuple(ongoing), tuple(machines))
+
+        gantry_motion = ()
+        gantry = getattr(self.machine_manager, "num07_gantry_group", None)
+        anim = getattr(gantry, "animation_num07_gantry_group", None) if gantry is not None else None
+        if anim is not None:
+            gantry_motion = tuple(
+                round(float(d), 2) for d in (anim.distance_traveled or [])
+            )
+
+        movers = []
+        prims = self.env_state_action_dict.get("rigid_prims") or {}
+        for group in ("human", "robot"):
+            for name, state in sorted((self.env_state_action_dict.get(group) or {}).items()):
+                pos = (prims.get(name) or {}).get("position")
+                movers.append(
+                    (
+                        name,
+                        state.get("current_area_id"),
+                        state.get("target_area_id"),
+                        self._round_xy(pos),
+                    )
+                )
+        return (finished, tuple(ongoing), tuple(machines), gantry_motion, tuple(movers))
 
     def _maybe_watchdog_reset(self) -> bool:
         """Reset episode if logic state stops progressing for stall_timeout_steps."""
@@ -233,7 +287,7 @@ class HcSingleEnvBase():
         for m in managers[:-1]:
             m.step(self.env_state_action_dict)
         self.disturbance_injector.step(self.env_state_action_dict)
-        managers[-1].step(self.env_state_action_dict)  # algo_multiagent_masker
+        managers[-1].step(self.env_state_action_dict)  # algo_hierarchical_masker
         self.env_state_action_dict["time_step"] += 1
         self.perception_manager.step(self.env_state_action_dict)
         self.bottleneck_collector.step(self.env_state_action_dict)
@@ -241,9 +295,24 @@ class HcSingleEnvBase():
         if self._maybe_watchdog_reset():
             return
 
-        if self.env_state_action_dict["progress"]["production_done"]:
+        # Debug freeze dump (disabled for long training runs — re-enable when diagnosing deadlocks):
+        # try:
+        #     from .src import debug_env_dump
+        #     debug_env_dump.maybe_dump_freeze(
+        #         self.env_state_action_dict,
+        #         getattr(self.machine_manager, "num07_gantry_group", None),
+        #     )
+        # except Exception as exc:
+        #     print(f"[debug_env_dump] skipped: {exc!r}")
+
+        # Episode end: ENV resets here. Snapshot ``rl`` so callers can still read
+        # this step's reward/done after reset (DQN bootstrap uses done flag).
+        rl = self.env_state_action_dict.get("rl") or {}
+        if bool(rl.get("done")):
+            rl_snapshot = copy.deepcopy(rl)
             if self.max_episodes is not None and self.episode_num >= self.max_episodes:
                 self.env_state_action_dict["run_done"] = True
             else:
                 self.reset_env()
+                self.env_state_action_dict["rl"] = rl_snapshot
         return

@@ -26,7 +26,6 @@ params:
     schedule_type: standard
     kl_threshold: 0.016
     # score_to_win: 20000
-    max_epochs: 1.0e+11
     # save_best_after: 50
     # save_frequency: 100
     # print_stats: True
@@ -49,17 +48,23 @@ params:
     # cost_num_warmup_steps: 1.0e+4
     # use_cost_num_steps: 50.e+4
     test: False
+    test_times: 1
+    test_seeds: [42, 43, 44, 45, 46]
+    max_episodic_steps: 80000
+    parallel_producing_limit: 5
+    max_parallel_cd_dispatch: 5
+    log_interval: 100
+    makespan_window: 50
     env_rule_based_exploration: False
     test_all_settings: False
     use_prediction_net: False
     use_fatigue_mask: False
     other_filters: False
     max_num_worker: 3
-    max_num_robot: 3
+    max_num_robot: 4
     # test_one:
     acti_agv: 1
     acti_charc: 1
-    test_times: 10
     test_env_max_length: 2500
     only_train_cost: False
     wandb_activate: False

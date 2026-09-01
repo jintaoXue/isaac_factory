@@ -287,6 +287,9 @@ GroundStorage_example_flange_placement_cfg_absolute = _build_ground_storage_plac
 ###################################################################
 ###################################################################
 # 3. cfg storage for the environment
+# Area-id sources (same convention as cfg_machine working_area_ids):
+#   human_working_areas_ids / gantry_parking_areas_ids → map_points_human
+#   robot_parking_areas_ids → map_points_robot (AGV-only free space)
 ###################################################################
 ###################################################################
 CfgStorage = {
@@ -302,7 +305,7 @@ CfgStorage = {
                     "name": "black_storage_00",
                 },
                 "capacity": 6,
-                "supporting_materials": {"product_00_pipe", "product_00_semi"},
+                "supporting_materials": {"product_00_pipe_raw", "product_00_pipe", "product_00_semi"},
                 "human_working_areas_ids": [39],
                 "robot_parking_areas_ids": [38],
                 #same with human working areas ids
@@ -321,7 +324,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": {"product_00_pipe", "product_00_semi"},
+                "supporting_materials": {"product_00_pipe_raw", "product_00_pipe", "product_00_semi"},
                 "human_working_areas_ids": [42],
                 "robot_parking_areas_ids": [41],
                 "gantry_parking_areas_ids": [42],
@@ -339,10 +342,10 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": {"product_00_pipe", "product_00_semi"},
-                "human_working_areas_ids": [53],
+                "supporting_materials": {"product_00_pipe_raw", "product_00_pipe", "product_00_semi"},
+                "human_working_areas_ids": [51],
                 "robot_parking_areas_ids": [54],
-                "gantry_parking_areas_ids": [53],
+                "gantry_parking_areas_ids": [51],
                 "placement_type": "vertical, the storage is vertical to the material, the material should be rotated 90 degrees around the z axis",
                 "placement_cfg": BlackStorage_vertical_placement_cfg_relative,
             },
@@ -357,7 +360,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": {"product_00_pipe", "product_00_semi"},
+                "supporting_materials": {"product_00_pipe_raw", "product_00_pipe", "product_00_semi"},
                 "human_working_areas_ids": [221],
                 "robot_parking_areas_ids": [219],
                 "gantry_parking_areas_ids": [221],
@@ -375,7 +378,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": {"product_00_pipe", "product_00_semi"},
+                "supporting_materials": {"product_00_pipe_raw", "product_00_pipe", "product_00_semi"},
                 "human_working_areas_ids": [140],
                 "robot_parking_areas_ids": [139],
                 "gantry_parking_areas_ids": [140],
@@ -393,7 +396,7 @@ CfgStorage = {
                 }
                 ,
                 "capacity": 6,
-                "supporting_materials": {"product_00_pipe", "product_00_semi"},
+                "supporting_materials": {"product_00_pipe_raw", "product_00_pipe", "product_00_semi"},
                 "human_working_areas_ids": [142],
                 "robot_parking_areas_ids": [141],
                 "gantry_parking_areas_ids": [142],
@@ -416,8 +419,8 @@ CfgStorage = {
                     "name": "yellow_storage_00",
                 }
                 ,
-                "capacity": 6,
-                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
+                "capacity": 4,
+                "supporting_materials": {"product_00_maded"},
                 "human_working_areas_ids": [116],
                 "robot_parking_areas_ids": [272],
                 "gantry_parking_areas_ids": [116],
@@ -434,8 +437,8 @@ CfgStorage = {
                     "name": "yellow_storage_01",
                 }
                 ,
-                "capacity": 6,
-                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
+                "capacity": 4,
+                "supporting_materials": {"product_00_maded"},
                 "human_working_areas_ids": [116],
                 "robot_parking_areas_ids": [272],
                 "gantry_parking_areas_ids": [116],
@@ -452,8 +455,8 @@ CfgStorage = {
                     "name": "yellow_storage_02",
                 }
                 ,
-                "capacity": 6,
-                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
+                "capacity": 4,
+                "supporting_materials": {"product_00_maded"},
                 "human_working_areas_ids": [117],
                 "robot_parking_areas_ids": [272],
                 "gantry_parking_areas_ids": [117],
@@ -470,8 +473,8 @@ CfgStorage = {
                     "name": "yellow_storage_03",
                 }
                 ,
-                "capacity": 6,
-                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
+                "capacity": 4,
+                "supporting_materials": {"product_00_pipe_raw", "product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [118],
                 "robot_parking_areas_ids": [273],
                 "gantry_parking_areas_ids": [118],
@@ -488,8 +491,8 @@ CfgStorage = {
                     "name": "yellow_storage_04",
                 }
                 ,
-                "capacity": 6,
-                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
+                "capacity": 4,
+                "supporting_materials": {"product_00_pipe_raw", "product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [118],
                 "robot_parking_areas_ids": [273],
                 "gantry_parking_areas_ids": [118],
@@ -505,8 +508,8 @@ CfgStorage = {
                     "name": "yellow_storage_05",
                 }
                 ,
-                "capacity": 6,
-                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
+                "capacity": 4,
+                "supporting_materials": {"product_00_pipe_raw", "product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [144],
                 "robot_parking_areas_ids": [299],
                 "gantry_parking_areas_ids": [144],
@@ -522,8 +525,8 @@ CfgStorage = {
                     "name": "yellow_storage_06",
                 }
                 ,
-                "capacity": 6,
-                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
+                "capacity": 4,
+                "supporting_materials": {"product_00_pipe_raw", "product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [144],
                 "robot_parking_areas_ids": [299],
                 "gantry_parking_areas_ids": [144],
@@ -539,8 +542,8 @@ CfgStorage = {
                     "name": "yellow_storage_07",
                 }
                 ,
-                "capacity": 6,
-                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
+                "capacity": 4,
+                "supporting_materials": {"product_00_pipe_raw", "product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [144],
                 "robot_parking_areas_ids": [299],
                 "gantry_parking_areas_ids": [144],
@@ -556,8 +559,8 @@ CfgStorage = {
                     "name": "yellow_storage_08",
                 }
                 ,
-                "capacity": 6,
-                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
+                "capacity": 4,
+                "supporting_materials": {"product_00_pipe_raw", "product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [148],
                 "robot_parking_areas_ids": [299],
                 "gantry_parking_areas_ids": [148],
@@ -573,8 +576,8 @@ CfgStorage = {
                     "name": "yellow_storage_09",
                 }
                 ,
-                "capacity": 6,
-                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
+                "capacity": 4,
+                "supporting_materials": {"product_00_pipe_raw", "product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [148],
                 "robot_parking_areas_ids": [299],
                 "gantry_parking_areas_ids": [148],
@@ -590,8 +593,8 @@ CfgStorage = {
                     "name": "yellow_storage_10",
                 }
                 ,
-                "capacity": 6,
-                "supporting_materials": {"product_00_pipe", "product_00_semi", "product_00_maded"},
+                "capacity": 4,
+                "supporting_materials": {"product_00_pipe_raw", "product_00_pipe", "product_00_semi", "product_00_maded"},
                 "human_working_areas_ids": [148],
                 "robot_parking_areas_ids": [299],
                 "gantry_parking_areas_ids": [148],

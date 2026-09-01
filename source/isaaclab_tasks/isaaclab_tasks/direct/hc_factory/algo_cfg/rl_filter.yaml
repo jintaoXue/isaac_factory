@@ -55,7 +55,7 @@ params:
     use_fatigue_mask: False
     other_filters: False
     max_num_worker: 3
-    max_num_robot: 3
+    max_num_robot: 4
     # test_one:
     acti_agv: 1
     acti_charc: 1

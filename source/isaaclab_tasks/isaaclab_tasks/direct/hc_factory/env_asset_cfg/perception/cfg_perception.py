@@ -58,6 +58,7 @@ TaskVocab: list[str] = [t for t in TaskLabels if t != "none"]
 GantrySubtaskLabels = [
     "go_to_material",
     "carry_to_robot",
+    "go_to_goal_robot",
     "carry_to_goal_area",
     "move_to_goal_area",
     "go_to_processing_machine",
@@ -86,6 +87,7 @@ RobotSubtaskLabels = [
 # ---------------------------------------------------------------------------
 CoupledDoneRules: list[tuple[str, int, str]] = [
     ("control_gantry", AGENT_COL_GANTRY, "carry_to_robot"),
+    ("control_gantry", AGENT_COL_GANTRY, "go_to_goal_robot"),
     ("control_gantry", AGENT_COL_GANTRY, "carry_to_goal_area"),
     ("control_gantry", AGENT_COL_GANTRY, "go_to_processing_machine"),
     ("control_machine", AGENT_COL_MACHINE, "process"),

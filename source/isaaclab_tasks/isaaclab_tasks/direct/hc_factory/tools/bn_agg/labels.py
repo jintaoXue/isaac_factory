@@ -1,21 +1,39 @@
-"""Hot-window events, L2 disturbance events, and PDFormer will/mark labels."""
+"""Hot-window process events and PDFormer will/mark/cause labels.
+
+Disturbance intervals are environment context (see ``disturbance_active_s`` in
+features). They are not bottleneck onsets and do not drive will/mark/cause.
+"""
 
 from __future__ import annotations
 
 from collections import defaultdict
 from typing import Any
 
-from .constants import DISTURBANCE_L2_TYPES
+from .constants import (
+    DISTURBANCE_L2_TYPES,
+    HOT_BLOCK_FRAC,
+    HOT_EVENT_GAP_WINDOWS,
+    HOT_INBOUND_S,
+    HOT_QUEUE_CAUSE,
+    HOT_ROUTE_S,
+    HOT_SHORTAGE_PROP,
+    HOT_WAIT_CAUSE,
+)
 from .features import row_is_hot
 from .io_util import _f, _i
-from .resolve import resolve_feature_resource_id
-from .timelines import _intervals_overlap
+
 
 def _map_disturbance_resource_type(resource_id: str, raw_type: str) -> str:
     """Map disturbance_log target type onto feature-table resource_type."""
     rid = (resource_id or "").strip()
     rt = (raw_type or "").strip().lower()
-    if rid.startswith("gantry_") or rt in ("gantry", "logistics"):
+    if rid.startswith("gantry_") or rt == "gantry":
+        return "gantry"
+    if rid.startswith("robot_") or rid.startswith("agv_") or rt == "transport_robot":
+        return "transport_robot"
+    if rt == "logistics":
+        if rid.startswith("robot_") or rid.startswith("agv_"):
+            return "transport_robot"
         return "gantry"
     if rid.startswith("human_") or rt == "human":
         return "human"
@@ -31,11 +49,12 @@ def parse_disturbance_l2_intervals(
     *,
     open_end_s: float | None = None,
 ) -> list[dict[str, Any]]:
-    """Extract L2 intervals from disturbance_log.csv.
+    """Extract L2 intervals from disturbance_log.csv for *input* features.
 
     Collector writes a start row (no end) and an end row (with end_time_step).
     Completed intervals are always kept. If ``open_end_s`` is set, still-open
     disturbances are truncated there so live windows can see ``disturbance_active_s``.
+    These intervals never become STGNPP events or will/mark labels.
     """
     by_id: dict[str, dict[str, Any]] = {}
     for row in disturbance_rows:
@@ -86,83 +105,13 @@ def parse_disturbance_l2_intervals(
     return out
 
 
-def _disturbance_to_window_event(
-    interval: dict[str, Any],
-    window_size: float,
-    window_meta: dict[int, dict],
-    windows: dict[int, list[dict]],
-) -> dict[str, Any] | None:
-    """Snap a disturbance L2 interval onto feature windows for one window_size."""
-    if not window_meta:
-        return None
-    start_s = float(interval["start_s"])
-    end_s = float(interval["end_s"])
-    known_ids = {r["resource_id"] for rs in windows.values() for r in rs}
-    rid = resolve_feature_resource_id(interval["resource_id"], known_ids)
-    rtype = _map_disturbance_resource_type(rid, interval.get("resource_type") or "")
-
-    covering = [
-        wi
-        for wi, meta in window_meta.items()
-        if meta["window_start_s"] < end_s and meta["window_end_s"] > start_s
-    ]
-    if not covering:
-        # Fallback: nearest window by start time
-        wi = min(
-            window_meta.keys(),
-            key=lambda i: abs(window_meta[i]["window_start_s"] - start_s),
-        )
-        covering = [wi]
-
-    covering = sorted(covering)
-    start_wi, end_wi = covering[0], covering[-1]
-    max_score = 0.0
-    for wi in covering:
-        for r in windows.get(wi, []):
-            if r["resource_id"] == rid:
-                max_score = max(max_score, float(r.get("bottleneck_score_s") or 0.0))
-                break
-
-    meta0 = window_meta[start_wi]
-    meta1 = window_meta[end_wi]
-    return {
-        "run_id": interval.get("run_id") or meta0["run_id"],
-        "env_id": interval.get("env_id", meta0["env_id"]),
-        "window_size_s": window_size,
-        "resource_id": rid,
-        "resource_type": rtype,
-        "start_window_index": start_wi,
-        "end_window_index": end_wi,
-        "start_s": start_s,
-        "end_s": end_s,
-        "duration_s": end_s - start_s,
-        "max_score": round(max_score, 6),
-        "n_windows": len(covering),
-        "event_source": "disturbance_log",
-        "disturbance_id": interval.get("disturbance_id", ""),
-        "disturbance_type": interval.get("disturbance_type", ""),
-    }
-
-
-def _intervals_overlap(a0: float, a1: float, b0: float, b1: float) -> bool:
-    return a0 < b1 and b0 < a1
-
-
-def union_score_and_disturbance_events(
-    score_events: list[dict],
-    disturbance_events: list[dict],
-) -> list[dict]:
-    """Keep score and L2 events as separate onsets (STGNPP). Do not merge overlaps."""
-    merged: list[dict] = [dict(e) for e in score_events]
+def _assign_event_ids(events: list[dict]) -> list[dict]:
+    merged = [dict(e) for e in events]
     for e in merged:
         e.setdefault("event_source", "score")
         e.setdefault("disturbance_id", "")
         e.setdefault("disturbance_type", "")
-    for dist in disturbance_events:
-        row = dict(dist)
-        row.setdefault("event_source", "disturbance_log")
-        merged.append(row)
-    merged.sort(key=lambda e: (e["window_size_s"], e["start_s"], e["resource_id"], e.get("event_source") or ""))
+    merged.sort(key=lambda e: (e["window_size_s"], e["start_s"], e["resource_id"]))
     for i, ev in enumerate(merged):
         ev["event_id"] = i
     return merged
@@ -190,12 +139,13 @@ def _coalesce_per_node_score_events(
             hot = row_is_hot(row, score_threshold)
             if hot:
                 score = float(row["bottleneck_score_s"])
-                if cur is not None and wi == cur["end_window_index"] + 1:
+                gap = max(int(HOT_EVENT_GAP_WINDOWS), 0)
+                if cur is not None and wi <= cur["end_window_index"] + 1 + gap:
                     cur["end_window_index"] = wi
                     cur["end_s"] = meta["window_end_s"]
                     cur["duration_s"] = cur["end_s"] - cur["start_s"]
                     cur["max_score"] = max(cur["max_score"], score)
-                    cur["n_windows"] += 1
+                    cur["n_windows"] = cur["end_window_index"] - cur["start_window_index"] + 1
                 else:
                     if cur is not None and cur["n_windows"] >= min_event_windows:
                         score_events.append(cur)
@@ -225,6 +175,41 @@ def _coalesce_per_node_score_events(
     return score_events
 
 
+def _process_root_cause(nr: dict) -> str:
+    """Process-side cause. Uses operational features, never disturbance_log types.
+
+    TPM turning-points are starved by construction (TB−TS<0), so starved_upstream
+    must not win before shortage / inbound-wait / queue evidence.
+    """
+    wlen = max(
+        float(nr.get("window_end_s") or 0) - float(nr.get("window_start_s") or 0),
+        float(nr.get("window_size_s") or 0),
+        1.0,
+    )
+    shortage = float(nr.get("material_shortage_propagation_s") or 0)
+    inbound = float(nr.get("inbound_wait_s") or 0)
+    route = float(nr.get("route_delay_s") or 0)
+    q = float(nr.get("queue_length_s") or 0)
+    wait = float(nr.get("avg_waiting_time_s") or 0)
+    buf = float(nr.get("affiliated_buffer_occ_s") or 0)
+    blocked = float(nr.get("blocked_time_s") or 0)
+    starved = float(nr.get("starved_time_s") or 0)
+
+    if shortage >= HOT_SHORTAGE_PROP:
+        return "material_shortage"
+    if inbound >= HOT_INBOUND_S or route >= HOT_ROUTE_S:
+        return "transport_delay"
+    if q >= HOT_QUEUE_CAUSE or wait >= HOT_WAIT_CAUSE or buf >= 0.70:
+        return "queue_buildup"
+    if blocked >= starved and blocked > HOT_BLOCK_FRAC * wlen:
+        return "blocked_downstream"
+    if starved > 0:
+        return "starved_upstream"
+    if float(nr.get("active_pct_s") or 0) >= 0.8:
+        return "high_utilization"
+    return "score_threshold"
+
+
 def build_labels_and_events(
     feature_rows: list[dict],
     horizon: float,
@@ -233,31 +218,27 @@ def build_labels_and_events(
     disturbance_rows: list[dict[str, str]] | None = None,
     as_of_s: float | None = None,
 ) -> tuple[list[dict], list[dict]]:
-    """Window-level labels + bottleneck events for PDFormer / STGNPP.
+    """Window-level labels + process bottleneck events for PDFormer / STGNPP.
 
-    Events (per node, onsets not merged) — dual path:
-      PDFormer uses dense ``bottleneck_score_s`` on every node/window.
-      STGNPP uses sparse events only:
-        1) consecutive turning-point windows (TPM shift of constraint);
-        2) completed L2 disturbance intervals (own onset; not merged with 1).
-      Inventory, routine stall, window-peak and momentary BN are features only.
-    ``bottleneck_node_t`` prefers TP-hot, then L2-active, then momentary, else score argmax.
-    Graph-level ``will_bottleneck`` / ``future_bottleneck_object_id`` use the
-    earliest event in (t, t+H] (PDFormer will/mark heads).
+    Events are consecutive hot windows: machines (TPM, WIP pile, kitting
+    starve, inbound-wait starve, coupled stall, injected-and-STOP downtime)
+    or delayed gantry / AGV with stall. L2 is not copied as
+    ``disturbance_type``; a scheduled pulse with no STOP is not an onset.
+
+    ``bottleneck_node_t`` prefers TP-hot, then momentary, else score argmax.
+    ``will_bottleneck`` / ``future_bottleneck_object_id`` look at process events
+    in (t, t+H]. ``root_cause_reason`` is a process heuristic (queue / stall),
+    never ``machine_failure`` / ``human_unavailable`` / etc.
     """
+    del disturbance_rows  # kept on the signature; L2 is features-only
     by_ws: dict[float, list[dict]] = defaultdict(list)
     for r in feature_rows:
         by_ws[r["window_size_s"]].append(r)
-
-    dist_intervals = parse_disturbance_l2_intervals(
-        disturbance_rows or [], open_end_s=as_of_s
-    )
 
     label_rows: list[dict] = []
     event_rows: list[dict] = []
 
     for window_size, rows in by_ws.items():
-        # Per window: argmax resource
         windows: dict[int, list[dict]] = defaultdict(list)
         for r in rows:
             windows[r["window_index"]].append(r)
@@ -265,20 +246,17 @@ def build_labels_and_events(
         window_meta: dict[int, dict] = {}
         for wi, rs in sorted(windows.items()):
             hot = [r for r in rs if row_is_hot(r, score_threshold)]
-            l2 = [r for r in rs if float(r.get("disturbance_active_s") or 0) > 0]
             turning = [r for r in rs if int(r.get("is_turning_point") or 0)]
             momentary = [r for r in rs if int(r.get("is_momentary_bn") or 0)]
             if hot:
                 best = max(hot, key=lambda x: x["bottleneck_score_s"])
-            elif l2:
-                best = max(l2, key=lambda x: x["bottleneck_score_s"])
             elif turning:
                 best = max(turning, key=lambda x: x["bottleneck_score_s"])
             elif momentary:
                 best = max(momentary, key=lambda x: x["current_active_duration_s"])
             else:
                 best = max(rs, key=lambda x: x["bottleneck_score_s"])
-            hot_ids = {r["resource_id"] for r in hot} | {r["resource_id"] for r in l2}
+            hot_ids = {r["resource_id"] for r in hot}
             n_hot_nodes = len(hot_ids)
             window_meta[wi] = {
                 "window_index": wi,
@@ -297,19 +275,9 @@ def build_labels_and_events(
         score_events = _coalesce_per_node_score_events(
             windows, window_meta, score_threshold, min_event_windows
         )
-
-        dist_events: list[dict] = []
-        for interval in dist_intervals:
-            if interval.get("open"):
-                continue
-            ev = _disturbance_to_window_event(interval, window_size, window_meta, windows)
-            if ev is not None:
-                dist_events.append(ev)
-
-        events = union_score_and_disturbance_events(score_events, dist_events)
+        events = _assign_event_ids(score_events)
         event_rows.extend(events)
 
-        # Future labels per window (uses merged events, including disturbance L2)
         for wi, meta in sorted(window_meta.items()):
             t = meta["window_start_s"]
             horizon_ready = as_of_s is None or (t + horizon) <= float(as_of_s) + 1e-6
@@ -332,38 +300,15 @@ def build_labels_and_events(
                 tts = ""
                 dur = ""
 
-            # Heuristic root cause; prefer disturbance type when L2 overlaps this window.
-            # Class names must match factory_bn.causes.ROOT_CAUSE_CLASSES (A3 head).
             reason = ""
-            for ev in events:
-                if ev.get("event_source") == "disturbance_log" and _intervals_overlap(
-                    meta["window_start_s"],
-                    meta["window_end_s"],
-                    float(ev["start_s"]),
-                    float(ev["end_s"]),
-                ):
-                    reason = ev.get("disturbance_type") or "disturbance_l2"
-                    break
-            if not reason and meta["is_bottleneck_window"]:
+            if meta["is_bottleneck_window"]:
                 node_rows = [
                     r
                     for r in windows[wi]
                     if r["resource_id"] == meta["bottleneck_node_t"]
                 ]
                 if node_rows:
-                    nr = node_rows[0]
-                    if nr["blocked_time_s"] >= nr["starved_time_s"] and nr["blocked_time_s"] > 0:
-                        reason = "blocked_downstream"
-                    elif nr["starved_time_s"] > 0:
-                        reason = "starved_upstream"
-                    elif float(nr.get("unavailable_pct_s") or 0) >= 0.5:
-                        reason = "unavailable"
-                    elif nr["active_pct_s"] >= 0.8:
-                        reason = "high_utilization"
-                    elif nr["queue_length_s"] > 0 or nr["avg_waiting_time_s"] > 0:
-                        reason = "queue_buildup"
-                    else:
-                        reason = "score_threshold"
+                    reason = _process_root_cause(node_rows[0])
 
             label_rows.append(
                 {
