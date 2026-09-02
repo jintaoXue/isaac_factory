@@ -20,7 +20,11 @@ from factory_baselines.torch_losses import (  # noqa: E402
     compute_multitask_loss,
 )
 from factory_baselines.b5_gat_gru import B5GatGru, B5ModelConfig  # noqa: E402
-from factory_baselines.metrics import compute_metrics, select_f1_threshold  # noqa: E402
+from factory_baselines.metrics import (  # noqa: E402
+    _binary_metrics,
+    compute_metrics,
+    select_f1_threshold,
+)
 from factory_baselines.torch_trainer import (  # noqa: E402
     TorchTrainConfig,
     load_checkpoint,
@@ -256,6 +260,16 @@ class TestB5GatGru(unittest.TestCase):
         )
 
         self.assertEqual(threshold, 0.45)
+
+    def test_binary_roc_auc_uses_average_ranks_for_ties(self) -> None:
+        import numpy as np
+
+        metrics = _binary_metrics(
+            np.array([0, 1, 0, 1]),
+            np.array([0.1, 0.5, 0.5, 0.9]),
+        )
+
+        self.assertEqual(metrics["roc_auc"], 0.875)
 
 
 if __name__ == "__main__":

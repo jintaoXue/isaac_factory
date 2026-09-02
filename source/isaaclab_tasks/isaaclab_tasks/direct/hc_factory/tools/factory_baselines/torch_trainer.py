@@ -24,7 +24,7 @@ from factory_bn_shared.remain import occupancy_event_metrics, station_report_met
 
 from .dataset import FactoryBaselineTensorDataset, load_shared_dataset
 from .torch_losses import MultiTaskLossConfig, compute_multitask_loss
-from .metrics import compute_metrics
+from .metrics import _binary_metrics, compute_metrics
 from .b3_lstm import B3Lstm, B3ModelConfig
 from .b4_gcn_gru import B4GcnGru, B4ModelConfig
 from .b5_gat_gru import B5GatGru, B5ModelConfig
@@ -78,6 +78,32 @@ def _model_spec(model_kind: str) -> tuple[type[nn.Module], type, str, str]:
         raise ValueError(
             f"Unknown model_kind {model_kind!r}; expected one of {sorted(specs)}"
         ) from exc
+
+
+def _validation_checkpoint_rank(metrics: dict[str, Any]) -> tuple[float, ...]:
+    """Lexicographic validation rank used after the precision gate.
+
+    Report F1 remains primary. Hot F1 and lower validation loss only break ties,
+    so an all-zero report curve cannot pin the fallback checkpoint to epoch 1.
+    """
+    return (
+        float(metrics["station_report"]["report_f1"]),
+        float(metrics["remain"]["hot_f1"]),
+        -float(metrics["loss"]["total"]),
+    )
+
+
+def _rank_improved(
+    candidate: tuple[float, ...],
+    incumbent: tuple[float, ...],
+    epsilon: float = 1.0e-6,
+) -> bool:
+    for candidate_value, incumbent_value in zip(candidate, incumbent):
+        if candidate_value > incumbent_value + epsilon:
+            return True
+        if candidate_value < incumbent_value - epsilon:
+            return False
+    return False
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -332,6 +358,7 @@ def _evaluate_loader(
                 "occ_node_mask_grid": batch["occ_node_mask"],
                 "hist_last_hot_grid": batch["hist_last_hot"],
                 "hot_probability_grid": torch.sigmoid(outputs["remain_hot_logit"]),
+                "event_will_target": batch["event_will"],
                 "event_will_probability": torch.sigmoid(
                     outputs["event_will_logit"]
                 ),
@@ -421,6 +448,20 @@ def _evaluate_loader(
         hist_last_hot=arrays["hist_last_hot_grid"],
         force_ongoing_will=False,
     )
+    event_valid = arrays["occ_node_mask_grid"] > 0.5
+    event_labels = arrays["event_will_target"][event_valid]
+    event_probabilities = arrays["event_will_probability"][event_valid]
+    event_will_metrics = _binary_metrics(
+        event_labels,
+        event_probabilities,
+        threshold=event_threshold,
+    )
+    event_will_metrics["probability_quantiles"] = {
+        str(quantile): float(np.quantile(event_probabilities, quantile))
+        for quantile in (0.5, 0.9, 0.95, 0.99)
+    }
+    event_will_metrics["probability_max"] = float(event_probabilities.max())
+    metrics["event_will"] = event_will_metrics
     metrics["occupancy_event"] = occupancy_event_metrics(
         arrays["y_hot_grid"],
         arrays["hot_probability_grid"],
@@ -693,9 +734,16 @@ def train_torch_baseline(
     best_score = -1.0
     best_epoch = 0
     best_precision = 0.0
+    best_hot_f1 = -1.0
+    best_validation_loss = float("inf")
+    empty_rank = (float("-inf"),) * 3
+    best_rank = empty_rank
     fallback_score = -1.0
     fallback_epoch = 0
     fallback_precision = 0.0
+    fallback_hot_f1 = -1.0
+    fallback_validation_loss = float("inf")
+    fallback_rank = empty_rank
     checkpoint_constraint_met = False
     epochs_without_improvement = 0
     started_at = time.time()
@@ -724,12 +772,16 @@ def train_torch_baseline(
         report = validation_metrics["station_report"]
         validation_score = float(report["report_f1"])
         validation_precision = float(report["report_precision"])
+        validation_hot_f1 = float(validation_metrics["remain"]["hot_f1"])
+        validation_loss = float(validation_metrics["loss"]["total"])
+        validation_will_ap = validation_metrics["event_will"]["pr_auc"]
+        candidate_rank = _validation_checkpoint_rank(validation_metrics)
         feasible = (
             validation_precision
             >= train_config.checkpoint_min_report_precision
         )
-        fallback_improved = validation_score > fallback_score + 1.0e-12
-        feasible_improved = feasible and validation_score > best_score + 1.0e-12
+        fallback_improved = _rank_improved(candidate_rank, fallback_rank)
+        feasible_improved = feasible and _rank_improved(candidate_rank, best_rank)
         row = {"epoch": epoch}
         row.update({f"train_{name}": value for name, value in train_losses.items()})
         row.update(
@@ -741,15 +793,26 @@ def train_torch_baseline(
                 "validation_report_recall": report["report_recall"],
                 "validation_event_threshold": train_config.event_report_threshold,
                 "validation_hot_threshold": train_config.hot_eval_threshold,
+                "validation_event_will_pr_auc": validation_metrics["event_will"][
+                    "pr_auc"
+                ],
+                "validation_event_will_probability_q95": validation_metrics[
+                    "event_will"
+                ]["probability_quantiles"]["0.95"],
+                "fallback_checkpoint_improved": int(fallback_improved),
+                "feasible_checkpoint_improved": int(feasible_improved),
                 "checkpoint_precision_constraint_met": int(feasible),
                 "learning_rate": float(optimizer.param_groups[0]["lr"]),
             }
         )
         history.append(row)
         if fallback_improved:
+            fallback_rank = candidate_rank
             fallback_score = validation_score
             fallback_epoch = epoch
             fallback_precision = validation_precision
+            fallback_hot_f1 = validation_hot_f1
+            fallback_validation_loss = validation_loss
             save_checkpoint(
                 output_dir / "fallback_best.pt",
                 model,
@@ -764,9 +827,12 @@ def train_torch_baseline(
             )
         if feasible_improved:
             checkpoint_constraint_met = True
+            best_rank = candidate_rank
             best_score = validation_score
             best_epoch = epoch
             best_precision = validation_precision
+            best_hot_f1 = validation_hot_f1
+            best_validation_loss = validation_loss
             save_checkpoint(
                 output_dir / "best.pt",
                 model,
@@ -803,6 +869,8 @@ def train_torch_baseline(
             f"val_loss={validation_metrics['loss']['total']:.6f} "
             f"val_report_f1={report['report_f1']:.6f} "
             f"val_report_precision={report['report_precision']:.6f} "
+            f"val_hot_f1={validation_hot_f1:.6f} "
+            f"will_ap={float(validation_will_ap or 0.0):.6f} "
             f"feasible={int(feasible)}",
             flush=True,
         )
@@ -820,6 +888,8 @@ def train_torch_baseline(
         best_score = fallback_score
         best_epoch = fallback_epoch
         best_precision = fallback_precision
+        best_hot_f1 = fallback_hot_f1
+        best_validation_loss = fallback_validation_loss
     best_model, checkpoint = load_checkpoint(output_dir / "best.pt", device)
     initial_validation_metrics, validation_arrays, _ = _evaluate_loader(
         best_model,
@@ -895,14 +965,16 @@ def train_torch_baseline(
         "epochs_trained": len(history),
         "best_validation_report_f1": best_score,
         "best_validation_report_precision": best_precision,
+        "best_validation_hot_f1": best_hot_f1,
+        "best_validation_total_loss": best_validation_loss,
         "checkpoint_precision_constraint": (
             train_config.checkpoint_min_report_precision
         ),
         "checkpoint_constraint_met": checkpoint_constraint_met,
         "checkpoint_selection": (
-            "constrained_report_f1"
+            "constrained_report_f1_hot_f1_val_loss"
             if checkpoint_constraint_met
-            else "fallback_report_f1"
+            else "fallback_report_f1_hot_f1_val_loss"
         ),
         "event_report_threshold": event_threshold,
         "hot_eval_threshold": train_config.hot_eval_threshold,

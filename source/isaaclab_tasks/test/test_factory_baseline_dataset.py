@@ -22,6 +22,8 @@ from factory_baselines.torch_losses import MultiTaskLossConfig  # noqa: E402
 from factory_baselines.torch_trainer import (  # noqa: E402
     TorchTrainConfig,
     _occupancy_type_masks,
+    _rank_improved,
+    _validation_checkpoint_rank,
     train_torch_baseline,
 )
 from factory_baselines.dataset import (  # noqa: E402
@@ -203,6 +205,21 @@ class TestFactoryBaselineDataset(unittest.TestCase):
             self.assertEqual(torch.nonzero(masks["gantry"]).item(), 2)
             self.assertEqual(torch.nonzero(masks["agv"]).item(), 3)
 
+    def test_checkpoint_rank_breaks_zero_report_tie_with_hot_f1(self) -> None:
+        def metrics(report_f1: float, hot_f1: float, loss: float) -> dict:
+            return {
+                "station_report": {"report_f1": report_f1},
+                "remain": {"hot_f1": hot_f1},
+                "loss": {"total": loss},
+            }
+
+        epoch_one = _validation_checkpoint_rank(metrics(0.0, 0.0, 1.25))
+        epoch_later = _validation_checkpoint_rank(metrics(0.0, 0.21, 1.01))
+        lower_report = _validation_checkpoint_rank(metrics(0.01, 0.0, 2.0))
+
+        self.assertTrue(_rank_improved(epoch_later, epoch_one))
+        self.assertTrue(_rank_improved(lower_report, epoch_later))
+
     def test_builds_fixed_graph_sequences_and_group_splits(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -346,7 +363,8 @@ class TestFactoryBaselineDataset(unittest.TestCase):
                     self.assertIn("test_hot_f1", summary)
                     self.assertFalse(summary["checkpoint_constraint_met"])
                     self.assertEqual(
-                        summary["checkpoint_selection"], "fallback_report_f1"
+                        summary["checkpoint_selection"],
+                        "fallback_report_f1_hot_f1_val_loss",
                     )
                     self.assertGreaterEqual(
                         summary["best_validation_report_f1"], 0.0

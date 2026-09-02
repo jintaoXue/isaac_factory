@@ -165,8 +165,13 @@ patience 25、AdamW (`lr=1.5e-4`, `weight_decay=0.05`)和 cosine schedule
 checkpoint 主指标为 validation `report_f1`，并要求
 `report_precision >= 0.80`。达到约束后只在可行 epoch 中选最高 F1；若整轮均
 未达到 0.80，则明确记录 `checkpoint_constraint_met=false`，并使用 validation F1
-最佳 epoch 作诊断结果，不再默认保存 epoch 1。occupancy 评估阈值为 0.55，
+最佳 epoch 作诊断结果。report F1 打平时依次以更高的 occupancy hot F1 和更低的
+validation total loss 决胜，避免事件指标全零时错误固定在 epoch 1；early stopping
+使用同一排序。occupancy 评估阈值为 0.55，
 station report 阈值为 0.65，并在 test 阶段保持固定。
+
+`event_will` 同时记录不参与 checkpoint 选择的 PR-AUC、ROC-AUC 和预测概率分位数，
+用于区分“模型没有排序能力”和“概率整体尚未越过固定报告阈值”。
 正式报告至少输出：
 
 - occupancy precision/recall/F1；

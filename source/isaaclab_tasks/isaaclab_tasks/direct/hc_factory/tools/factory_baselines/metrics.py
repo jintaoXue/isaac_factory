@@ -43,15 +43,19 @@ def _binary_metrics(
         average_precision = None
 
     if positive_count and negative_count:
-        positive_scores = probabilities[positives][:, None]
-        negative_scores = probabilities[negatives][None, :]
-        roc_auc = float(
-            (
-                (positive_scores > negative_scores).sum()
-                + 0.5 * (positive_scores == negative_scores).sum()
-            )
-            / (positive_count * negative_count)
-        )
+        order = np.argsort(probabilities, kind="stable")
+        sorted_scores = probabilities[order]
+        sorted_positive = positives[order]
+        group_starts = np.r_[
+            0, np.flatnonzero(sorted_scores[1:] != sorted_scores[:-1]) + 1
+        ]
+        group_ends = np.r_[group_starts[1:], len(sorted_scores)]
+        average_ranks = (group_starts + 1 + group_ends) / 2.0
+        ranks = np.repeat(average_ranks, group_ends - group_starts)
+        positive_rank_sum = float(ranks[sorted_positive].sum())
+        roc_auc = (
+            positive_rank_sum - positive_count * (positive_count + 1) / 2.0
+        ) / (positive_count * negative_count)
     else:
         roc_auc = None
 
