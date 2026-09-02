@@ -74,6 +74,7 @@ run_hier_eval() {
 
 run_hier_hard_eval() {
     export HC_LOAD_DIR="${HC_HARD_LOAD_DIR}"
+    export HC_EVAL_VARIANT=hard
     EVAL_STEPS="${HC_HARD_EVAL_STEP}"
     echo "[journal] hier-hard eval: load=${HC_LOAD_DIR} step=${EVAL_STEPS} (~ep85 in 80-90 band)"
     run_hier_eval
@@ -81,6 +82,7 @@ run_hier_hard_eval() {
 
 run_hier_curr_eval() {
     export HC_LOAD_DIR="${HC_CURR_LOAD_DIR}"
+    export HC_EVAL_VARIANT=curr
     EVAL_STEPS="${HC_CURR_EVAL_STEP}"
     echo "[journal] hier-curr eval: load=${HC_LOAD_DIR} step=${EVAL_STEPS} (~ep185 in 180-190 band)"
     run_hier_eval

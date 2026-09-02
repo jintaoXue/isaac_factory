@@ -474,7 +474,8 @@ run_test_29() {
     fi
     _eval_n="${HC_TRAIN_N_PRODUCTS}"
     _eval_t=$([ "${_eval_n}" = "10" ] && echo "${HC_T_MAX_N10}" || echo "${HC_T_MAX_N16}")
-    echo "运行 29: hier test full-order N=${_eval_n} T_max=${_eval_t} load=${HC_LOAD_DIR}"
+    _eval_tag="${HC_EVAL_VARIANT:-eval}"
+    echo "运行 29: hier test (${_eval_tag}) full-order N=${_eval_n} T_max=${_eval_t} load=${HC_LOAD_DIR}"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -487,7 +488,7 @@ run_test_29() {
         --load_dir "${HC_LOAD_DIR}" \
         --wandb_activate \
         --wandb_project "${HC_WANDB_TEST_PROJECT}" \
-        --wandb_name "hier_eval_N${_eval_n}_step${HC_LOAD_STEP:-latest}_T${_eval_t}" \
+        --wandb_name "hier_eval_${_eval_tag}_N${_eval_n}_step${HC_LOAD_STEP:-latest}_T${_eval_t}" \
         $(hc_load_step_args) \
         $(hc_t_max_args) \
         ${DEVICE_ARG}
