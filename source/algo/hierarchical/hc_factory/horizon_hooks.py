@@ -15,6 +15,85 @@ _catalog = import_hc_module("src.explore_catalog")
 _curr = import_hc_module("src.curriculum")
 _dbg = import_hc_module("src.debug_env_dump")
 
+_CURRICULUM_NFIN_BUCKETS = (8, 6, 4, 2)
+
+
+class CatalogCollectStats:
+    """Per-run / per-episode catalog write counters for MetricCatalog/*."""
+
+    def __init__(self) -> None:
+        self.keys_at_run_start = 0
+        self.ep_new = 0
+        self.ep_updated = 0
+        self.ep_skipped = 0
+        self.run_new = 0
+        self.run_updated = 0
+        self.run_skipped = 0
+
+    def bind_catalog(self, catalog: _catalog.ExploreCatalog) -> None:
+        self.keys_at_run_start = len(catalog._by_key)
+
+    def record(self, status: str) -> None:
+        if status == "new":
+            self.ep_new += 1
+            self.run_new += 1
+        elif status == "updated":
+            self.ep_updated += 1
+            self.run_updated += 1
+        elif status == "skipped":
+            self.ep_skipped += 1
+            self.run_skipped += 1
+
+    def reset_episode(self) -> None:
+        self.ep_new = 0
+        self.ep_updated = 0
+        self.ep_skipped = 0
+
+    @staticmethod
+    def _nfin_buckets_covered(catalog: _catalog.ExploreCatalog) -> int:
+        present = {
+            int(r.get("n_finished", -1))
+            for r in catalog._rows
+            if int(r.get("n_finished", -1)) in _CURRICULUM_NFIN_BUCKETS
+        }
+        return len(present)
+
+    def step_payload(self, catalog: _catalog.ExploreCatalog) -> dict:
+        unique = len(catalog._by_key)
+        joined_run = self.run_new + self.run_updated
+        not_joined_run = self.run_skipped
+        return {
+            "MetricCatalog/01_unique_keys": int(unique),
+            "MetricCatalog/02_joined_cumulative": int(joined_run),
+            "MetricCatalog/03_not_joined_cumulative": int(not_joined_run),
+        }
+
+    def episode_payload(self, catalog: _catalog.ExploreCatalog, *, episode: int) -> dict:
+        unique = len(catalog._by_key)
+        new_since_run = max(0, unique - self.keys_at_run_start)
+        joined_ep = self.ep_new + self.ep_updated
+        not_joined_ep = self.ep_skipped
+        joined_run = self.run_new + self.run_updated
+        not_joined_run = self.run_skipped
+        attempts_ep = joined_ep + not_joined_ep
+        attempts_run = joined_run + not_joined_run
+        payload = {
+            "MetricCatalog/episode": int(episode),
+            "MetricCatalog/01_unique_keys": int(unique),
+            "MetricCatalog/02_new_keys": int(self.ep_new),
+            "MetricCatalog/03_joined": int(joined_ep),
+            "MetricCatalog/04_not_joined": int(not_joined_ep),
+            "MetricCatalog/05_new_keys_since_run": int(new_since_run),
+            "MetricCatalog/06_nfin_buckets_covered": int(self._nfin_buckets_covered(catalog)),
+            "MetricCatalog/07_joined_cumulative": int(joined_run),
+            "MetricCatalog/08_not_joined_cumulative": int(not_joined_run),
+        }
+        if attempts_ep > 0:
+            payload["MetricCatalog/09_join_fraction"] = float(joined_ep) / float(attempts_ep)
+        if attempts_run > 0:
+            payload["MetricCatalog/10_join_fraction_cumulative"] = float(joined_run) / float(attempts_run)
+        return payload
+
 
 def hc_env_list(vec_env):
     env = vec_env
@@ -36,11 +115,16 @@ class HorizonHooks:
         anchor = int(config.get("t_max_anchor", _curr.T_MAX_ANCHOR))
         explore_n = int(config.get("explore_n_products") or 0)
         self.explore_n_products = explore_n if explore_n > 0 else _curr.N_FULL_ORDER
+        self.catalog_collect = bool(config.get("catalog_collect"))
         self.explore_save_catalog = bool(config.get("explore_save_catalog", True))
+        self.save_catalog = self.explore_save_catalog and (self.explore or self.catalog_collect)
+        self.catalog_stats = CatalogCollectStats()
+        collect_mode = "explore" if self.explore else ("policy_train" if self.catalog_collect else "readonly")
         print(
-            f"[Horizon] explore={self.explore} N={self.explore_n_products} "
+            f"[Horizon] explore={self.explore} catalog_collect={self.catalog_collect} "
+            f"N={self.explore_n_products} "
             f"T_max={_curr.t_max_for(self.explore_n_products, anchor)} "
-            f"save_catalog={self.explore_save_catalog}"
+            f"save_catalog={self.save_catalog} collect_mode={collect_mode}"
         )
         self.curriculum = _curr.CurriculumScheduler(
             enabled=bool(config.get("curriculum")),
@@ -61,8 +145,9 @@ class HorizonHooks:
             catalog_root,
             n_products=catalog_n,
             t_max=catalog_t,
-            create_round=self.explore and self.explore_save_catalog,
+            create_round=self.save_catalog,
         )
+        self.catalog_stats.bind_catalog(self.catalog)
         print(
             f"[Horizon] catalog={self.catalog.root} "
             f"entries={len(self.catalog._rows)} curriculum={self.curriculum.enabled}"
@@ -76,15 +161,31 @@ class HorizonHooks:
         self.env_list = None
         self.stall_counts = {"L1": 0, "L2": 0, "L3": 0}
         self.last_restore_info: dict[int, dict] = {}
-        mode_dir = "collect" if self.explore else "train"
+        mode_dir = "collect" if (self.explore or self.catalog_collect) else "train"
         self.stall_root = Path("env_checkpoints") / "stagnation" / mode_dir
         self.stall_root.mkdir(parents=True, exist_ok=True)
-        if self.explore and self.explore_save_catalog:
-            self.catalog.write_round_meta(
-                epsilon=1.0,
-                t_max=_curr.t_max_for(self.explore_n_products, anchor),
-                n_products=self.explore_n_products,
-            )
+        if self.save_catalog:
+            meta = {
+                "epsilon": 1.0 if self.explore else None,
+                "t_max": _curr.t_max_for(
+                    self.explore_n_products if self.explore else _curr.N_TRAIN_TARGET, anchor
+                ),
+                "n_products": self.explore_n_products if self.explore else _curr.N_TRAIN_TARGET,
+                "mode": "explore" if self.explore else "catalog_collect",
+            }
+            self.catalog.write_round_meta(**{k: v for k, v in meta.items() if v is not None})
+
+    @property
+    def catalog_metrics_enabled(self) -> bool:
+        return bool(self.save_catalog)
+
+    def catalog_step_metrics(self) -> dict:
+        return self.catalog_stats.step_payload(self.catalog)
+
+    def catalog_episode_metrics(self, *, episode: int) -> dict:
+        payload = self.catalog_stats.episode_payload(self.catalog, episode=episode)
+        self.catalog_stats.reset_episode()
+        return payload
 
     def explore_t_max(self) -> int:
         return _curr.t_max_for(self.explore_n_products, self.curriculum.anchor)
@@ -206,8 +307,11 @@ class HorizonHooks:
         n_ong = len((env.get("progress") or {}).get("ongoing_task_records") or {})
         t = int(env.get("time_step", 0) or 0)
         self.rings[env_id].append({"key": key, "ckpt": ckpt, "n_finished": nfin, "t": t})
-        if self.explore and self.explore_save_catalog:
-            self.catalog.save_if_new(ckpt, key=key, n_finished=nfin, time_step=t, n_ongoing=n_ong)
+        if self.save_catalog:
+            _, status = self.catalog.save_if_new(
+                ckpt, key=key, n_finished=nfin, time_step=t, n_ongoing=n_ong
+            )
+            self.catalog_stats.record(status)
 
     def after_step(self, env_id: int, env: dict) -> str | None:
         level = self.detectors[env_id].update(env)

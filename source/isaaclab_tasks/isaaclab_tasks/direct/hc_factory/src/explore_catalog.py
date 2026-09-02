@@ -67,11 +67,15 @@ class ExploreCatalog:
     def has_key(self, key: str) -> bool:
         return key in self._by_key
 
-    def save_if_new(self, ckpt: dict, *, key: str, n_finished: int, time_step: int, n_ongoing: int) -> Path | None:
-        """Append only if key is new, or this snapshot finished more products."""
+    def save_if_new(self, ckpt: dict, *, key: str, n_finished: int, time_step: int, n_ongoing: int) -> tuple[Path | None, str]:
+        """Append only if key is new, or this snapshot finished more products.
+
+        Returns ``(path, status)`` where status is ``new`` | ``updated`` | ``skipped``.
+        """
         prev = self._by_key.get(key)
         if prev is not None and int(prev.get("n_finished", 0)) >= n_finished:
-            return None
+            return None, "skipped"
+        is_update = prev is not None
         name = f"nfin{n_finished:02d}_ong{n_ongoing:02d}_t{time_step:06d}_{key}.pkl"
         path = self.round_dir / "ckpts" / name
         with path.open("wb") as f:
@@ -100,7 +104,7 @@ class ExploreCatalog:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
         self._rows.append(row)
         self._by_key[key] = row
-        return path
+        return path, ("updated" if is_update else "new")
 
     def pick_by_nfin(self, n_finished: int) -> Path | None:
         """Latest catalog row with ``n_finished == n`` (fallback: closest below)."""

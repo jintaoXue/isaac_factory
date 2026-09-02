@@ -15,6 +15,9 @@ HC_T_MAX_ANCHOR="${HC_T_MAX_ANCHOR:-64000}"
 HC_PER_T_MAX=$(( (HC_T_MAX_ANCHOR + 8) / 16 ))
 HC_T_MAX_N10=$(( HC_PER_T_MAX * 10 ))
 HC_T_MAX_N16="${HC_T_MAX_ANCHOR}"
+HC_EXPLORE_EPISODES="${HC_EXPLORE_EPISODES:-20}"
+HC_POLICY_CATALOG_EPISODES="${HC_POLICY_CATALOG_EPISODES:-80}"
+HC_WANDB_CATALOG_PROJECT="${HC_WANDB_CATALOG_PROJECT:-HcFactory_Catalog}"
 
 # 用法:
 #   ./batch_train.sh 22 cuda:0
@@ -29,7 +32,7 @@ HC_T_MAX_N16="${HC_T_MAX_ANCHOR}"
 #   22 采库 → 23 采库debug → 24/25 N10 rule → 26 N10 random
 #   → 27 hier课程 → 28 hier硬训 → 29 N16评测 → 30/31/32 N16 基线
 if [ $# -eq 0 ]; then
-    echo "用法: $0 <A|B|C|D|E|序号...> [cuda:N]"
+    echo "用法: $0 <A|B|C|D|E|T1|序号...> [cuda:N]"
     echo "  A: 运行A组训练 (1-5)"
     echo "  B: 运行B组训练 (6-10)"
     echo "  C: N=10 主路径 (22采库 → 24/25 rule → 26 random → 27 curriculum)"
@@ -37,7 +40,7 @@ if [ $# -eq 0 ]; then
     echo "  E: 基线矩阵 (24 25 26 | 30 31 32)"
     echo "  1-21: 旧 RL / Perception 序号"
     echo "  ---- HcFactory Hierarchical TPA（按流程编号）----"
-    echo "  22: explore 采库 (--explore, N=10, T_max=${HC_T_MAX_N10}, ε=1, 写 catalog)"
+    echo "  22: explore 采库 (--explore, ep=${HC_EXPLORE_EPISODES}, wandb=${HC_WANDB_CATALOG_PROJECT}, MetricCatalog/*)"
     echo "  23: explore debug（N=10, T_max=${HC_T_MAX_N10}, 可视化+warmstart，不录视频不启wandb）"
     echo "  24: rule 单产品 eval (K=1, N=10, T_max=${HC_T_MAX_N10}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
     echo "  25: rule 多产品 eval (K=${HC_MULTI_K}, N=10, T_max=${HC_T_MAX_N10}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
@@ -48,8 +51,16 @@ if [ $# -eq 0 ]; then
     echo "  30: rule 单产品 eval (K=1, N=16, T_max=${HC_T_MAX_N16}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
     echo "  31: rule 多产品 eval (K=${HC_MULTI_K}, N=16, T_max=${HC_T_MAX_N16}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
     echo "  32: hier random eval (ε=1, N=16, T_max=${HC_T_MAX_N16}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
+    echo "  33: policy catalog hard train (catalog_collect, ep=${HC_POLICY_CATALOG_EPISODES:-80}, wandb catalog project)"
+    echo "  T1: T1 流水线 (22 random explore → 28 hard train，同一 HC_CATALOG_TAG)"
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
     echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 22/23/27/28 的 --warmstart"
+    echo "  环境变量 HC_CATALOG_TAG: catalog 实验标签（例 T2_random_ep10），22 写库与 27 读库须一致"
+    echo "  环境变量 HC_CATALOG_SOURCE: random_explore | policy_explore（默认 random_explore）"
+    echo "  环境变量 HC_EXPLORE_CATALOG_DIR: 显式 catalog 根路径（覆盖 TAG 拼接）"
+    echo "  环境变量 HC_EXPLORE_EPISODES: job 22 采库 episode 数（默认 ${HC_EXPLORE_EPISODES}）"
+    echo "  环境变量 HC_WANDB_CATALOG_PROJECT: 采库/ policy catalog 专用 wandb project（默认 HcFactory_Catalog）"
+    echo "  环境变量 HC_POLICY_CATALOG_EPISODES: job 33 policy catalog 训练 episode 数（默认 80）"
     echo "  环境变量 HC_LOAD_DIR: 29 号评测的实验目录（含 nn/）"
     echo "  环境变量 HC_RULE_EPISODES: rule 基线 episode 数（默认 ${HC_RULE_EPISODES}）"
     echo "  环境变量 HC_RANDOM_EPISODES: job 26 HierRandom episode 数（默认 ${HC_RANDOM_EPISODES}）"
@@ -65,7 +76,7 @@ JOBS=()
 for arg in "$@"; do
     if [[ "$arg" =~ ^cuda:[0-9]+$ ]]; then
         DEVICE="$arg"
-    elif [[ "$arg" =~ ^([1-9]|1[0-9]|2[0-9]|3[0-2])$ ]] || [ "$arg" = "A" ] || [ "$arg" = "B" ] || [ "$arg" = "C" ] || [ "$arg" = "D" ] || [ "$arg" = "E" ]; then
+    elif [[ "$arg" =~ ^([1-9]|1[0-9]|2[0-9]|3[0-3])$ ]] || [ "$arg" = "A" ] || [ "$arg" = "B" ] || [ "$arg" = "C" ] || [ "$arg" = "D" ] || [ "$arg" = "E" ] || [ "$arg" = "T1" ]; then
         JOBS+=("$arg")
     else
         echo "错误: 无法识别参数 '$arg'"
@@ -91,6 +102,14 @@ HC_WANDB_BASELINE_PROJECT="${HC_WANDB_BASELINE_PROJECT:-${HC_WANDB_TEST_PROJECT}
 HC_RUN_SEED="${HC_RUN_SEED:-}"
 HC_NUM_ENVS=1
 HC_WARMSTART="${HC_WARMSTART:-}"
+# Catalog 命名与规模（job 22 写库 / job 27 读库须用同一 HC_CATALOG_TAG 或 HC_EXPLORE_CATALOG_DIR）
+HC_CATALOG_SOURCE="${HC_CATALOG_SOURCE:-random_explore}"   # random_explore | policy_explore
+HC_CATALOG_TAG="${HC_CATALOG_TAG:-}"                       # 例: T2_random_ep10；空=legacy 默认路径
+HC_EXPLORE_EPISODES="${HC_EXPLORE_EPISODES:-20}"           # job 22 采库 episode 数（默认见脚本顶部）
+HC_EXPLORE_N_PRODUCTS="${HC_EXPLORE_N_PRODUCTS:-10}"
+HC_EXPLORE_CATALOG_DIR="${HC_EXPLORE_CATALOG_DIR:-}"       # 显式绝对/相对路径，优先级最高
+HC_WANDB_CATALOG_PROJECT="${HC_WANDB_CATALOG_PROJECT:-HcFactory_Catalog}"
+HC_POLICY_CATALOG_EPISODES="${HC_POLICY_CATALOG_EPISODES:-80}"
 
 # wandb: 默认 online 边训边上云；metrics.jsonl 始终写本地。网络不稳可 HC_WANDB_MODE=offline
 # 本地 metrics.jsonl 始终写入 logs/rl_games/HcFactory/<exp>/
@@ -172,6 +191,36 @@ hc_test_args() {
 # 统一 T_max anchor（22–32 共用；可用 HC_T_MAX_ANCHOR 覆盖做极限探测）
 hc_t_max_args() {
     echo "+t_max_anchor=${HC_T_MAX_ANCHOR}"
+}
+
+# Catalog 根目录：HC_EXPLORE_CATALOG_DIR > HC_CATALOG_TAG > legacy N{n}_T{t}
+hc_catalog_root() {
+    if [ -n "${HC_EXPLORE_CATALOG_DIR}" ]; then
+        echo "${HC_EXPLORE_CATALOG_DIR}"
+        return
+    fi
+    local _n="${HC_EXPLORE_N_PRODUCTS}"
+    local _t="${HC_T_MAX_N10}"
+    if [ -n "${HC_CATALOG_TAG}" ]; then
+        echo "env_checkpoints/${HC_CATALOG_SOURCE}/N${_n}_T${_t}__${HC_CATALOG_TAG}"
+    else
+        echo "env_checkpoints/${HC_CATALOG_SOURCE}/N${_n}_T${_t}"
+    fi
+}
+
+hc_catalog_args() {
+    echo "+explore_catalog_dir=$(hc_catalog_root)"
+}
+
+hc_print_catalog_hint() {
+    local root
+    root="$(hc_catalog_root)"
+    echo "[catalog] root=${root}"
+    if [ -z "${HC_CATALOG_TAG}" ] && [ -z "${HC_EXPLORE_CATALOG_DIR}" ]; then
+        echo "[catalog] 提示: 并行多组实验请设置 HC_CATALOG_TAG，避免写入默认 N10_T40000 互相覆盖"
+        echo "[catalog] 示例: HC_CATALOG_TAG=T2_random_ep10 ./batch_train.sh 22 cuda:0"
+    fi
+    echo "[catalog] 训练读库请复用: HC_CATALOG_TAG=${HC_CATALOG_TAG:-'(unset)'} HC_EXPLORE_CATALOG_DIR=${HC_EXPLORE_CATALOG_DIR:-'(unset)'} ./batch_train.sh 27 cuda:0"
 }
 
 # 定义训练函数（run_one_job 在文件末尾调用）
@@ -332,20 +381,23 @@ run_test_21() {
 # 旧映射: 25→22, 27→23, 22→24, 23→25, 29→26, 26→27, 24→28, 28→29; 30–32 不变
 
 run_test_22() {
-    # N=10 masked random 采集库：ε=1，无 DQN backward；L2/L3 死锁回退 + progress key 去重
-    echo "运行 22: explore catalog (N=10, T_max=${HC_T_MAX_N10}, epsilon=1, 10 episodes)"
+    # N=10 masked random 采集库：ε=1，无 DQN backward；progress key 去重；MetricCatalog/* → HC_WANDB_CATALOG_PROJECT
+    hc_print_catalog_hint
+    local _wp="${HC_WANDB_CATALOG_PROJECT}"
+    echo "运行 22: explore catalog (N=${HC_EXPLORE_N_PRODUCTS}, T_max=${HC_T_MAX_N10}, epsilon=1, episodes=${HC_EXPLORE_EPISODES}, wandb=${_wp})"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
         --num_envs "${HC_NUM_ENVS}" \
         --headless \
         --explore \
-        --explore_n_products 10 \
-        --max_sim_episodes 10 \
+        --explore_n_products "${HC_EXPLORE_N_PRODUCTS}" \
+        --max_sim_episodes "${HC_EXPLORE_EPISODES}" \
         --wandb_activate \
-        --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "explore_N10_T${HC_T_MAX_N10}" \
+        --wandb_project "${_wp}" \
+        --wandb_name "explore_N${HC_EXPLORE_N_PRODUCTS}_T${HC_T_MAX_N10}__${HC_CATALOG_TAG:-legacy}" \
         $(hc_t_max_args) \
+        $(hc_catalog_args) \
         $(hc_warmstart_args) \
         ${DEVICE_ARG}
 }
@@ -432,7 +484,8 @@ run_test_26() {
 
 run_test_27() {
     # 倒序课程：target=10；T_budget=ΔN×per_T_max；catalog 按 start_nfin 切片
-    echo "运行 27: hier curriculum (reverse ΔN →10, per_T=${HC_PER_T_MAX}, wandb)"
+    hc_print_catalog_hint
+    echo "运行 27: hier curriculum (reverse ΔN →10, per_T=${HC_PER_T_MAX}, catalog entries at bind)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -441,16 +494,18 @@ run_test_27() {
         --curriculum \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "hier_curriculum_K${HC_MULTI_K}_T${HC_T_MAX_N10}" \
+        --wandb_name "hier_curriculum_K${HC_MULTI_K}_T${HC_T_MAX_N10}__${HC_CATALOG_TAG:-legacy}" \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         $(hc_t_max_args) \
+        $(hc_catalog_args) \
         $(hc_warmstart_args) \
         ${DEVICE_ARG}
 }
 
 run_test_28() {
-    # hier N=10 硬训对照：与 27 同 K / T_anchor / wandb / warmstart，无 --curriculum（整单 0→10）
-    echo "运行 28: hier hard train (no curriculum, N=10, T_max=${HC_T_MAX_N10}, wandb)"
+    # hier N=10 硬训对照：与 27 同 K / T_anchor，无 --curriculum（整单 0→10）
+    hc_print_catalog_hint
+    echo "运行 28: hier hard train (no curriculum, N=10, T_max=${HC_T_MAX_N10}, wandb=${HC_WANDB_PROJECT})"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -458,9 +513,10 @@ run_test_28() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "hier_hard_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}" \
+        --wandb_name "hier_hard_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}__${HC_CATALOG_TAG:-legacy}" \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         $(hc_t_max_args) \
+        $(hc_catalog_args) \
         $(hc_warmstart_args) \
         ${DEVICE_ARG}
 }
@@ -549,6 +605,43 @@ run_test_32() {
         ${DEVICE_ARG}
 }
 
+run_test_33() {
+    # Policy-guided catalog: hard train + catalog_collect，MetricCatalog/* + MetricTrain/* + MetricLoss/*
+    hc_print_catalog_hint
+    local _wp="${HC_WANDB_CATALOG_PROJECT}"
+    local _tag="${HC_CATALOG_TAG:-T3_policy_ep80}"
+    local _ep="${HC_POLICY_CATALOG_EPISODES}"
+    HC_CATALOG_SOURCE="${HC_CATALOG_SOURCE:-policy_explore}"
+    export HC_CATALOG_SOURCE
+    echo "运行 33: policy catalog hard train (catalog_collect, ep=${_ep}, wandb=${_wp}, tag=${_tag})"
+    python train.py \
+        --task "${HC_TASK}" \
+        --algo hier \
+        --num_envs "${HC_NUM_ENVS}" \
+        --headless \
+        --catalog_collect \
+        --max_sim_episodes "${_ep}" \
+        --wandb_activate \
+        --wandb_project "${_wp}" \
+        --wandb_name "policy_catalog_K${HC_MULTI_K}_ep${_ep}__${_tag}" \
+        --max_parallel_cd_dispatch "${HC_MULTI_K}" \
+        $(hc_t_max_args) \
+        $(hc_catalog_args) \
+        $(hc_warmstart_args) \
+        ${DEVICE_ARG}
+}
+
+run_t1() {
+    # T1 Phase A: random explore 采库 (HcFactory_Catalog) → Phase B: hard train (HcFactory_TPA)
+    export HC_CATALOG_TAG="${HC_CATALOG_TAG:-T1_random_ep20}"
+    export HC_CATALOG_SOURCE="${HC_CATALOG_SOURCE:-random_explore}"
+    export HC_EXPLORE_EPISODES="${HC_EXPLORE_EPISODES:-20}"
+    echo "=== T1 流水线: 22 explore → 28 hard train (tag=${HC_CATALOG_TAG}) ==="
+    run_test_22
+    run_test_28
+    echo "=== T1 流水线完成（Phase B ORU 待实现；当前 28 为 online hard train）==="
+}
+
 # 调度：按序号 / A / B / C 调用上面的 run_test_*
 run_one_job() {
     local id=$1
@@ -585,6 +678,8 @@ run_one_job() {
         30) run_test_30 ;;
         31) run_test_31 ;;
         32) run_test_32 ;;
+        33) run_test_33 ;;
+        T1) run_t1 ;;
         A)
             echo "=== 运行A组训练 (1-5) ==="
             run_test_1; run_test_2; run_test_3; run_test_4; run_test_5; run_test_6
@@ -632,7 +727,7 @@ for job in "${JOBS[@]}"; do
     echo ">>> 开始任务: $job"
     run_one_job "$job" || exit 1
     # HcFactory 22–32：offline 跑完后尝试上传到云端
-    if [[ "$job" =~ ^(2[2-9]|3[0-2]|C|D|E)$ ]]; then
+    if [[ "$job" =~ ^(2[2-9]|3[0-3]|C|D|E|T1)$ ]]; then
         hc_wandb_sync_latest
     fi
 done

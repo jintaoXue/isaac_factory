@@ -85,6 +85,12 @@ parser.add_argument(
     default=False,
     help="Explore mode: do not write env_checkpoints/random_explore catalog pkls.",
 )
+parser.add_argument(
+    "--catalog_collect",
+    action="store_true",
+    default=False,
+    help="Hard train: write decision-equivalent checkpoints to catalog while learning (policy-guided catalog).",
+)
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument(
     "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
@@ -268,6 +274,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         algo_cfg["params"]["config"]["explore_n_products"] = int(args_cli.explore_n_products)
     if getattr(args_cli, "no_explore_save_catalog", False):
         algo_cfg["params"]["config"]["explore_save_catalog"] = False
+    if getattr(args_cli, "catalog_collect", False):
+        algo_cfg["params"]["config"]["catalog_collect"] = True
     warmstart = (getattr(args_cli, "warmstart", None) or "").strip() or os.environ.get("HC_WARMSTART", "").strip()
     if warmstart:
         algo_cfg["params"]["config"]["warmstart"] = warmstart

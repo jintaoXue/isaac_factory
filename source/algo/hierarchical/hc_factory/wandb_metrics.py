@@ -108,7 +108,9 @@ _DEFAULT_NUM_HUMAN = 5
 _DEFAULT_FATIGUE_EMA_ALPHA = 0.02
 
 
-def define_shared_metrics(*, rl: bool = False, curriculum: bool = False, test: bool = False) -> None:
+def define_shared_metrics(
+    *, rl: bool = False, curriculum: bool = False, test: bool = False, catalog: bool = False
+) -> None:
     wandb.define_metric("Train/step")
     wandb.define_metric("MetricCore/episode")
     wandb.define_metric("MetricFullorderCore/episode")
@@ -172,6 +174,24 @@ def define_shared_metrics(*, rl: bool = False, curriculum: bool = False, test: b
     if curriculum:
         for key in ("01_stage", "02_target_nfin", "03_start_nfin", "04_delta_n", "05_t_budget"):
             wandb.define_metric(f"Curriculum/{key}", step_metric="MetricCore/episode")
+
+    if catalog:
+        wandb.define_metric("MetricCatalog/episode")
+        for key in ("01_unique_keys", "02_joined_cumulative", "03_not_joined_cumulative"):
+            wandb.define_metric(f"MetricCatalog/{key}", step_metric="Train/step")
+        for key in (
+            "01_unique_keys",
+            "02_new_keys",
+            "03_joined",
+            "04_not_joined",
+            "05_new_keys_since_run",
+            "06_nfin_buckets_covered",
+            "07_joined_cumulative",
+            "08_not_joined_cumulative",
+            "09_join_fraction",
+            "10_join_fraction_cumulative",
+        ):
+            wandb.define_metric(f"MetricCatalog/{key}", step_metric="MetricCatalog/episode")
 
 
 def _human_idx_from_entity(key: str, ent: dict) -> int | None:

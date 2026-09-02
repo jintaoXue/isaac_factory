@@ -251,16 +251,23 @@ class HierarchicalTPA:
             # Hard train: same N/T as curriculum final stage (N_TRAIN_TARGET), not N16 anchor.
             anchor = int(config.get("t_max_anchor", _curr.T_MAX_ANCHOR))
             self.max_episodic_steps = _curr.t_max_for(_curr.N_TRAIN_TARGET, anchor)
-            print(
-                f"[Hier] hard train: N={_curr.N_TRAIN_TARGET} T_max={self.max_episodic_steps} "
-                f"(no curriculum)"
-            )
+            if self.horizon.catalog_collect:
+                print(
+                    f"[Hier] hard train + catalog_collect: N={_curr.N_TRAIN_TARGET} "
+                    f"T_max={self.max_episodic_steps} catalog={self.horizon.catalog.root}"
+                )
+            else:
+                print(
+                    f"[Hier] hard train: N={_curr.N_TRAIN_TARGET} T_max={self.max_episodic_steps} "
+                    f"(no curriculum)"
+                )
 
     def init_wandb_logger(self):
         define_shared_metrics(
             rl=True,
-            curriculum=True,
+            curriculum=bool(self.horizon.curriculum.enabled),
             test=bool(self.config.get("test")),
+            catalog=bool(self.horizon.catalog_metrics_enabled),
         )
 
     def _log_metrics(self, payload: dict) -> None:
@@ -844,6 +851,10 @@ class HierarchicalTPA:
                     payload["Stagnation/resets_per_episode"] = float(
                         self.horizon.ep_stalled[env_id]
                     )
+                    if self.horizon.catalog_metrics_enabled:
+                        payload.update(
+                            self.horizon.catalog_episode_metrics(episode=self.episodes_done)
+                        )
                     self._log_metrics(payload)
                     episode_reward[env_id] = 0.0
                     episode_len[env_id] = 0
@@ -966,6 +977,8 @@ class HierarchicalTPA:
                     )
                 )
                 payload.update(loss_payload)
+                if self.horizon.catalog_metrics_enabled:
+                    payload.update(self.horizon.catalog_step_metrics())
                 self._log_metrics(payload)
 
             if crossed_interval(last_saved_env_steps, env_step, self.save_interval):
@@ -991,6 +1004,8 @@ class HierarchicalTPA:
         finish_payload = axis_payload(
             env_steps(self.global_step, self.num_actors), wall, spm
         )
+        if self.horizon.catalog_metrics_enabled:
+            finish_payload.update(self.horizon.catalog_step_metrics())
         self._log_metrics(finish_payload)
         self.local_metrics.close()
         if self.use_wandb:

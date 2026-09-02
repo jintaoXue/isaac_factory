@@ -80,6 +80,7 @@ params:
     explore_catalog_dir: ''
     explore_n_products: 0
     explore_save_catalog: True
+    catalog_collect: False
     warmstart: ''
     curriculum: False
     curriculum_start_stage: 0
