@@ -246,9 +246,15 @@ def _fit_normalization(
         stds.append(std if std > 1e-8 else torch.tensor(1.0))
 
     train_global = global_features[train]
-    global_mean = train_global.mean(dim=(0, 1))
-    global_std = train_global.std(dim=(0, 1), unbiased=False)
-    global_std = torch.where(global_std > 1e-8, global_std, torch.ones_like(global_std))
+    if train_global.shape[-1] == 0:
+        global_mean = train_global.new_empty((0,))
+        global_std = train_global.new_empty((0,))
+    else:
+        global_mean = train_global.mean(dim=(0, 1))
+        global_std = train_global.std(dim=(0, 1), unbiased=False)
+        global_std = torch.where(
+            global_std > 1e-8, global_std, torch.ones_like(global_std)
+        )
     return {
         "feature_mean": torch.stack(means),
         "feature_std": torch.stack(stds),
