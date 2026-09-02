@@ -8,7 +8,7 @@
 #
 # Environment overrides:
 #   BENCHMARK_TAG=factory_main_aligned_v1
-#   DEVICE=cuda:0 SEED=42 MAX_EPOCHS=100 PATIENCE=15 N_JOBS=8
+#   DEVICE=cuda:0 SEED=42 MAX_EPOCHS=50 PATIENCE=25 N_JOBS=8
 
 set -euo pipefail
 
@@ -21,8 +21,17 @@ MODEL_ROOT="${DATASET_DIR}/models"
 
 DEVICE="${DEVICE:-cuda:0}"
 SEED="${SEED:-42}"
-MAX_EPOCHS="${MAX_EPOCHS:-100}"
-PATIENCE="${PATIENCE:-15}"
+MAX_EPOCHS="${MAX_EPOCHS:-50}"
+PATIENCE="${PATIENCE:-25}"
+MIN_EPOCHS="${MIN_EPOCHS:-25}"
+BATCH_SIZE="${BATCH_SIZE:-16}"
+LEARNING_RATE="${LEARNING_RATE:-0.00015}"
+WEIGHT_DECAY="${WEIGHT_DECAY:-0.05}"
+LR_MIN="${LR_MIN:-0.000001}"
+LR_SCHEDULE="${LR_SCHEDULE:-cosine}"
+HOT_EVAL_THRESHOLD="${HOT_EVAL_THRESHOLD:-0.55}"
+EVENT_REPORT_THRESHOLD="${EVENT_REPORT_THRESHOLD:-0.65}"
+CHECKPOINT_MIN_REPORT_PRECISION="${CHECKPOINT_MIN_REPORT_PRECISION:-0.80}"
 N_JOBS="${N_JOBS:-8}"
 RUN_MODE="${RUN_MODE:-formal}"
 
@@ -35,6 +44,7 @@ fi
 if [ "$RUN_MODE" = "smoke" ]; then
     MAX_EPOCHS=1
     PATIENCE=1
+    MIN_EPOCHS=1
     XGB_ESTIMATORS=5
     OUTPUT_SUFFIX="_smoke"
 elif [ "$RUN_MODE" = "formal" ]; then
@@ -80,18 +90,22 @@ mkdir -p "$MODEL_ROOT"
 echo "Dataset: ${DATASET_DIR}"
 echo "Models: ${MODELS[*]}"
 echo "Mode: ${RUN_MODE}  seed=${SEED}  device=${DEVICE}"
+echo "Neural protocol: epochs=${MAX_EPOCHS} min_epochs=${MIN_EPOCHS} patience=${PATIENCE} batch=${BATCH_SIZE} lr=${LEARNING_RATE}"
+echo "Evaluation: hot_threshold=${HOT_EVAL_THRESHOLD} report_threshold=${EVENT_REPORT_THRESHOLD} checkpoint_min_precision=${CHECKPOINT_MIN_REPORT_PRECISION}"
 
 train_one() {
     local model=$1
     case "$model" in
         B2)
-            python -c "import xgboost; print('xgboost', xgboost.__version__)"
+            python -c "import sklearn, xgboost; print('xgboost', xgboost.__version__, 'scikit-learn', sklearn.__version__)"
             python "${TOOLS_DIR}/train_b2_xgboost.py" \
                 --dataset_dir "$DATASET_DIR" \
                 --output_dir "${MODEL_ROOT}/b2_xgboost_seed${SEED}${OUTPUT_SUFFIX}" \
                 --seed "$SEED" \
                 --n_estimators "$XGB_ESTIMATORS" \
-                --n_jobs "$N_JOBS"
+                --n_jobs "$N_JOBS" \
+                --hot_eval_threshold "$HOT_EVAL_THRESHOLD" \
+                --event_report_threshold "$EVENT_REPORT_THRESHOLD"
             ;;
         B3)
             python "${TOOLS_DIR}/train_b3_lstm.py" \
@@ -99,8 +113,17 @@ train_one() {
                 --output_dir "${MODEL_ROOT}/b3_lstm_seed${SEED}${OUTPUT_SUFFIX}" \
                 --device "$DEVICE" \
                 --seed "$SEED" \
+                --batch_size "$BATCH_SIZE" \
                 --max_epochs "$MAX_EPOCHS" \
-                --patience "$PATIENCE"
+                --patience "$PATIENCE" \
+                --min_epochs "$MIN_EPOCHS" \
+                --learning_rate "$LEARNING_RATE" \
+                --weight_decay "$WEIGHT_DECAY" \
+                --lr_min "$LR_MIN" \
+                --lr_schedule "$LR_SCHEDULE" \
+                --hot_eval_threshold "$HOT_EVAL_THRESHOLD" \
+                --event_report_threshold "$EVENT_REPORT_THRESHOLD" \
+                --checkpoint_min_report_precision "$CHECKPOINT_MIN_REPORT_PRECISION"
             ;;
         B4)
             python "${TOOLS_DIR}/train_b4_gcn_gru.py" \
@@ -108,8 +131,17 @@ train_one() {
                 --output_dir "${MODEL_ROOT}/b4_gcn_gru_seed${SEED}${OUTPUT_SUFFIX}" \
                 --device "$DEVICE" \
                 --seed "$SEED" \
+                --batch_size "$BATCH_SIZE" \
                 --max_epochs "$MAX_EPOCHS" \
-                --patience "$PATIENCE"
+                --patience "$PATIENCE" \
+                --min_epochs "$MIN_EPOCHS" \
+                --learning_rate "$LEARNING_RATE" \
+                --weight_decay "$WEIGHT_DECAY" \
+                --lr_min "$LR_MIN" \
+                --lr_schedule "$LR_SCHEDULE" \
+                --hot_eval_threshold "$HOT_EVAL_THRESHOLD" \
+                --event_report_threshold "$EVENT_REPORT_THRESHOLD" \
+                --checkpoint_min_report_precision "$CHECKPOINT_MIN_REPORT_PRECISION"
             ;;
         B5)
             python "${TOOLS_DIR}/train_b5_gat_gru.py" \
@@ -117,8 +149,17 @@ train_one() {
                 --output_dir "${MODEL_ROOT}/b5_gat_gru_seed${SEED}${OUTPUT_SUFFIX}" \
                 --device "$DEVICE" \
                 --seed "$SEED" \
+                --batch_size "$BATCH_SIZE" \
                 --max_epochs "$MAX_EPOCHS" \
-                --patience "$PATIENCE"
+                --patience "$PATIENCE" \
+                --min_epochs "$MIN_EPOCHS" \
+                --learning_rate "$LEARNING_RATE" \
+                --weight_decay "$WEIGHT_DECAY" \
+                --lr_min "$LR_MIN" \
+                --lr_schedule "$LR_SCHEDULE" \
+                --hot_eval_threshold "$HOT_EVAL_THRESHOLD" \
+                --event_report_threshold "$EVENT_REPORT_THRESHOLD" \
+                --checkpoint_min_report_precision "$CHECKPOINT_MIN_REPORT_PRECISION"
             ;;
     esac
 }

@@ -25,6 +25,8 @@ def main() -> None:
     parser.add_argument("--negative_cell_ratio", type=float, default=4.0)
     parser.add_argument("--empty_sample_negative_cells", type=int, default=32)
     parser.add_argument("--prediction_cell_chunk_size", type=int, default=65536)
+    parser.add_argument("--hot_eval_threshold", type=float, default=0.55)
+    parser.add_argument("--event_report_threshold", type=float, default=0.65)
     args = parser.parse_args()
     config = B2XGBoostConfig(
         seed=args.seed,
@@ -38,6 +40,8 @@ def main() -> None:
         negative_cell_ratio=args.negative_cell_ratio,
         empty_sample_negative_cells=args.empty_sample_negative_cells,
         prediction_cell_chunk_size=args.prediction_cell_chunk_size,
+        hot_eval_threshold=args.hot_eval_threshold,
+        event_report_threshold=args.event_report_threshold,
     )
     summary = train_b2_xgboost(
         dataset_dir=args.dataset_dir,

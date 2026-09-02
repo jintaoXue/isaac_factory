@@ -125,7 +125,58 @@ class TestB5GatGru(unittest.TestCase):
         self.assertTrue(torch.isfinite(loss))
         self.assertTrue(torch.isfinite(components["event_will"]))
         self.assertTrue(torch.isfinite(components["remain_hot"]))
+        self.assertTrue(torch.isfinite(components["remain_dice"]))
+        self.assertTrue(torch.isfinite(components["remain_iou"]))
         loss.backward()
+
+    def test_occupancy_loss_excludes_non_target_nodes(self) -> None:
+        batch = self._batch()
+        outputs = B5GatGru(self.config)(**self._inputs(batch))
+        _, original = compute_multitask_loss(
+            outputs, batch, MultiTaskLossConfig()
+        )
+        changed = dict(outputs)
+        changed["remain_hot_logit"] = outputs["remain_hot_logit"].clone()
+        changed["remain_hot_logit"][:, :, -2:] = 100.0
+        _, modified = compute_multitask_loss(
+            changed, batch, MultiTaskLossConfig()
+        )
+
+        for name in ("remain_hot", "remain_dice", "remain_iou"):
+            self.assertTrue(torch.equal(original[name], modified[name]))
+
+    def test_event_start_and_duration_match_main_experiment_losses(self) -> None:
+        batch = self._batch()
+        batch["event_will"][0, 0] = 1.0
+        batch["event_start"][0, 0] = 5
+        batch["event_duration"][0, 0] = 9.0
+        outputs = B5GatGru(self.config)(**self._inputs(batch))
+        start_logits = torch.zeros_like(
+            outputs["event_start_logit"], requires_grad=True
+        )
+        outputs["event_start_logit"] = start_logits
+        outputs["event_duration"] = torch.ones_like(outputs["event_duration"])
+        config = MultiTaskLossConfig(
+            lambda_remain_hot=0.0,
+            lambda_remain_dice=0.0,
+            lambda_remain_iou=0.0,
+            lambda_remain_len=0.0,
+            lambda_cause=0.0,
+            lambda_event_will=0.0,
+            lambda_event_start=1.0,
+            lambda_event_duration=0.0,
+        )
+
+        loss, components = compute_multitask_loss(outputs, batch, config)
+        loss.backward()
+
+        self.assertLess(float(start_logits.grad[0, 0, 4]), 0.0)
+        expected_duration = torch.nn.functional.smooth_l1_loss(
+            torch.log1p(torch.tensor(1.0)), torch.log1p(torch.tensor(9.0))
+        )
+        self.assertTrue(
+            torch.allclose(components["event_duration"], expected_duration)
+        )
 
     def test_two_epoch_synthetic_overfit_smoke(self) -> None:
         model = B5GatGru(self.config)
@@ -171,7 +222,7 @@ class TestB5GatGru(unittest.TestCase):
                 model,
                 optimizer,
                 epoch=2,
-                best_validation_hot_f1=0.5,
+                best_validation_report_f1=0.5,
                 model_kind="b5_gat_gru",
                 model_config=self.config,
                 loss_config=MultiTaskLossConfig(),

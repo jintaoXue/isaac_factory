@@ -2,7 +2,7 @@
 
 ## 1. 当前状态
 
-- 状态：已按主实验最新口径实现，等待服务器重建与 smoke test
+- 状态：共享 dataset 和首轮 smoke 已通过；主实验 loss/checkpoint 对齐修订已通过本地回归，等待服务器二次 smoke
 - 主实验参考：`dev_tyx@7b2fc02`
 - raw 契约：`collector_version=v0.3`
 - derived 契约：`tyx_bn_agg_unsupervised_v2`
@@ -126,10 +126,12 @@ split 不读取正负标签或原因分布。连续特征归一化、类别权�
 
 ## 7. 训练与评分
 
-PyTorch B3-B5 的主 loss 权重与主实验一致：
+PyTorch B3-B5 的任务 loss 权重与 PDFormer `unsup_best` 一致：
 
 ```text
 occupancy hot       0.5
+occupancy Dice      0.25
+occupancy IoU       0.25
 remain length       0.4
 cause               0.1
 event will          2.5
@@ -137,7 +139,34 @@ event start         1.5
 event duration      1.0
 ```
 
-checkpoint 主指标为 validation `report_f1`，并要求 `report_precision >= 0.80`。
+occupancy loss 只在 `remain_mask & occ_node_mask` 上计算，human/buffer 不再
+充当负样本。BCE/Dice/IoU 按 machine、workbench、gantry、AGV 分类取均值，
+并使用主实验的类型权重：
+
+```text
+positive: machine=4, workbench=2, gantry=1, AGV=4
+negative: machine=1, workbench=2, gantry=2, AGV=2
+```
+
+event will loss 同样按四类资源分别归一化后取均值；start 使用与主实验一致的
+`sigma=1` 高斯软标签，duration 对窗口数执行 `log1p` 后计算 Smooth L1。
+
+PDFormer 的 reconstruction、contrastive loss、encoder warm-start 属于主模型专属能力，
+不移植到 baseline。
+
+当前 `modelnote.md` 记录的同口径 PDFormer test 锚点为 report
+`precision=0.817`、`recall=0.447`、`F1=0.578`。该数值用于正式实验后的横向核对；
+最终表格仍应从同一份 134-episode dataset 对应的模型产物中自动汇总，不能只引用文档数字。
+
+B3-B5 正式训练预设为 batch 16、最多 50 epochs、最少 25 epochs、
+patience 25、AdamW (`lr=1.5e-4`, `weight_decay=0.05`)和 cosine schedule
+(`lr_min=1e-6`)。
+
+checkpoint 主指标为 validation `report_f1`，并要求
+`report_precision >= 0.80`。达到约束后只在可行 epoch 中选最高 F1；若整轮均
+未达到 0.80，则明确记录 `checkpoint_constraint_met=false`，并使用 validation F1
+最佳 epoch 作诊断结果，不再默认保存 epoch 1。occupancy 评估阈值为 0.55，
+station report 阈值为 0.65，并在 test 阶段保持固定。
 正式报告至少输出：
 
 - occupancy precision/recall/F1；
@@ -184,7 +213,8 @@ smoke 通过后正式训练：
 
 ```bash
 BENCHMARK_TAG=factory_pdformer_134_v1 RUN_MODE=formal DEVICE=cuda:0 \
-  MAX_EPOCHS=100 PATIENCE=15 ./batch_factory_baseline_train.sh ALL
+  MAX_EPOCHS=50 MIN_EPOCHS=25 PATIENCE=25 \
+  ./batch_factory_baseline_train.sh ALL
 ```
 
 ## 9. 验收条件

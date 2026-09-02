@@ -115,7 +115,7 @@ class TestB3B4Models(unittest.TestCase):
                         model=model,
                         optimizer=None,
                         epoch=1,
-                        best_validation_hot_f1=0.2,
+                        best_validation_report_f1=0.2,
                         model_kind=model_kind,
                         model_config=model.config,
                         loss_config=MultiTaskLossConfig(),

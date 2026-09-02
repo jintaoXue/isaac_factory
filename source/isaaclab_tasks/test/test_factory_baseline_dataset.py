@@ -21,6 +21,7 @@ sys.path.insert(0, str(TOOLS_DIR))
 from factory_baselines.torch_losses import MultiTaskLossConfig  # noqa: E402
 from factory_baselines.torch_trainer import (  # noqa: E402
     TorchTrainConfig,
+    _occupancy_type_masks,
     train_torch_baseline,
 )
 from factory_baselines.dataset import (  # noqa: E402
@@ -165,6 +166,43 @@ class TestFactoryBaselineDataset(unittest.TestCase):
             self._write_csv(derived_dir / "job_kpi.csv", list(job_rows[0]), job_rows)
         return run_dir
 
+    def test_occupancy_type_masks_match_main_experiment_categories(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            rows = [
+                ("machine_a", "machine"),
+                ("num08_workbench_ws0", "machine"),
+                ("gantry_0", "gantry"),
+                ("agv_0", "transport_robot"),
+                ("human_0", "human"),
+                ("storage_0", "buffer"),
+            ]
+            self._write_csv(
+                root / "node_catalog.csv",
+                ["node_index", "resource_id", "resource_type"],
+                [
+                    {
+                        "node_index": index,
+                        "resource_id": resource_id,
+                        "resource_type": resource_type,
+                    }
+                    for index, (resource_id, resource_type) in enumerate(rows)
+                ],
+            )
+            payload = {
+                "x": torch.zeros(1, 1, len(rows), 1),
+                "target_node_mask": torch.tensor(
+                    [[1, 1, 1, 1, 0, 0]], dtype=torch.bool
+                ),
+            }
+
+            masks = _occupancy_type_masks(root, payload, torch.device("cpu"))
+
+            self.assertEqual(torch.nonzero(masks["machine"]).item(), 0)
+            self.assertEqual(torch.nonzero(masks["workbench"]).item(), 1)
+            self.assertEqual(torch.nonzero(masks["gantry"]).item(), 2)
+            self.assertEqual(torch.nonzero(masks["agv"]).item(), 3)
+
     def test_builds_fixed_graph_sequences_and_group_splits(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -306,6 +344,13 @@ class TestFactoryBaselineDataset(unittest.TestCase):
                     self.assertEqual(summary["status"], "completed")
                     self.assertEqual(summary["model_kind"], model_kind)
                     self.assertIn("test_hot_f1", summary)
+                    self.assertFalse(summary["checkpoint_constraint_met"])
+                    self.assertEqual(
+                        summary["checkpoint_selection"], "fallback_report_f1"
+                    )
+                    self.assertGreaterEqual(
+                        summary["best_validation_report_f1"], 0.0
+                    )
                     self.assertTrue((model_dir / "occupancy_events_test.csv").is_file())
 
 

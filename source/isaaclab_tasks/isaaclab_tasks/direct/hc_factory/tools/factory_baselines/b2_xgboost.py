@@ -43,6 +43,8 @@ class B2XGBoostConfig:
     negative_cell_ratio: float = 4.0
     empty_sample_negative_cells: int = 32
     prediction_cell_chunk_size: int = 65536
+    hot_eval_threshold: float = 0.55
+    event_report_threshold: float = 0.65
 
     def __post_init__(self) -> None:
         for name in (
@@ -59,6 +61,10 @@ class B2XGBoostConfig:
             raise ValueError("learning_rate must be positive")
         if self.negative_cell_ratio <= 0:
             raise ValueError("negative_cell_ratio must be positive")
+        for name in ("hot_eval_threshold", "event_report_threshold"):
+            value = float(getattr(self, name))
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be in [0, 1]")
 
 
 @dataclass
@@ -484,7 +490,8 @@ def train_b2_xgboost(
         return X, arrays
 
     _, validation_arrays = scalar_arrays("validation")
-    occupancy_threshold = 0.65
+    occupancy_threshold = config.hot_eval_threshold
+    event_report_threshold = config.event_report_threshold
 
     sample_rows = list(
         csv.DictReader(
@@ -542,7 +549,7 @@ def train_b2_xgboost(
             remain_mask = sample["remain_mask"].numpy()
             occ_mask = sample["occ_node_mask"].numpy()
             will, start, duration = node_event_targets(
-                _probability,
+                (_probability >= event_report_threshold).astype(np.float32),
                 min_windows=8,
                 remain_mask=remain_mask,
                 occ_node_mask=occ_mask,
@@ -600,7 +607,7 @@ def train_b2_xgboost(
             np.stack(event_durations),
             np.stack(remain_masks),
             np.stack(occupancy_masks),
-            threshold=0.65,
+            threshold=event_report_threshold,
             min_windows=8,
             start_tol_windows=3,
             hist_last_hot=np.stack(history_hot),
@@ -611,7 +618,7 @@ def train_b2_xgboost(
             np.stack(remain_masks),
             np.stack(occupancy_masks),
             manifest["node_ids"],
-            threshold=0.65,
+            threshold=event_report_threshold,
             min_windows=8,
             iou_min=0.5,
             window_size_s=float(manifest["window_size_s"]),
@@ -719,7 +726,7 @@ def train_b2_xgboost(
         "prediction_target_version": manifest["prediction_target_version"],
         "config": asdict(config),
         "models": model_metadata,
-        "event_report_threshold": occupancy_threshold,
+        "event_report_threshold": event_report_threshold,
         "occupancy_threshold": occupancy_threshold,
         "training_cell_count": int(len(cell_hot_y)),
         "training_positive_cell_count": int(cell_hot_y.sum()),
@@ -740,7 +747,7 @@ def train_b2_xgboost(
             "report_f1"
         ],
         "test_report_f1": all_metrics["test"]["station_report"]["report_f1"],
-        "event_report_threshold": occupancy_threshold,
+        "event_report_threshold": event_report_threshold,
         "occupancy_threshold": occupancy_threshold,
         "elapsed_seconds": time.time() - started_at,
         "output_dir": str(output_dir),

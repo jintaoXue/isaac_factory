@@ -8,6 +8,7 @@ import inspect
 import json
 import math
 import random
+import shutil
 import subprocess
 import time
 from dataclasses import asdict, dataclass
@@ -31,22 +32,38 @@ from .b5_gat_gru import B5GatGru, B5ModelConfig
 
 @dataclass
 class TorchTrainConfig:
-    batch_size: int = 32
-    max_epochs: int = 100
-    patience: int = 15
-    learning_rate: float = 1.0e-3
-    weight_decay: float = 1.0e-4
+    batch_size: int = 16
+    max_epochs: int = 50
+    patience: int = 25
+    min_epochs: int = 25
+    learning_rate: float = 1.5e-4
+    weight_decay: float = 5.0e-2
+    lr_min: float = 1.0e-6
+    lr_schedule: str = "cosine"
     gradient_clip_norm: float = 1.0
     seed: int = 42
     num_workers: int = 0
     device: str = "auto"
+    hot_eval_threshold: float = 0.55
+    event_report_threshold: float = 0.65
+    checkpoint_min_report_precision: float = 0.80
 
     def __post_init__(self) -> None:
-        for name in ("batch_size", "max_epochs", "patience"):
+        for name in ("batch_size", "max_epochs", "patience", "min_epochs"):
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be positive")
         if self.num_workers < 0:
             raise ValueError("num_workers must be non-negative")
+        if self.lr_schedule not in {"none", "cosine"}:
+            raise ValueError("lr_schedule must be 'none' or 'cosine'")
+        for name in (
+            "hot_eval_threshold",
+            "event_report_threshold",
+            "checkpoint_min_report_precision",
+        ):
+            value = float(getattr(self, name))
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be in [0, 1]")
 
 
 def _model_spec(model_kind: str) -> tuple[type[nn.Module], type, str, str]:
@@ -174,6 +191,40 @@ def _loaders(
     return loaders
 
 
+def _occupancy_type_masks(
+    dataset_dir: Path,
+    payload: dict[str, Any],
+    device: torch.device,
+) -> dict[str, torch.Tensor]:
+    rows = _read_csv(dataset_dir / "node_catalog.csv")
+    node_count = int(payload["x"].shape[-2])
+    masks = {
+        name: torch.zeros(node_count, dtype=torch.float32, device=device)
+        for name in ("machine", "workbench", "gantry", "agv")
+    }
+    for row in rows:
+        index = int(row["node_index"])
+        resource_id = str(row["resource_id"]).lower()
+        resource_type = str(row["resource_type"]).lower()
+        if "workbench" in resource_id:
+            name = "workbench"
+        elif resource_type == "machine":
+            name = "machine"
+        elif resource_type == "gantry":
+            name = "gantry"
+        elif resource_type in {"transport_robot", "agv"}:
+            name = "agv"
+        else:
+            continue
+        masks[name][index] = 1.0
+    tagged = torch.stack(list(masks.values())).sum(dim=0) > 0
+    target = payload["target_node_mask"].any(dim=0).to(device=device)
+    if bool((target & ~tagged).any()):
+        missing = torch.nonzero(target & ~tagged, as_tuple=False).reshape(-1).tolist()
+        raise ValueError(f"Occupancy target nodes lack type masks: {missing}")
+    return masks
+
+
 def _run_train_epoch(
     model: nn.Module,
     loader: DataLoader,
@@ -182,6 +233,7 @@ def _run_train_epoch(
     pos_weight: torch.Tensor,
     device: torch.device,
     gradient_clip_norm: float,
+    occupancy_type_masks: dict[str, torch.Tensor],
 ) -> dict[str, float]:
     model.train()
     totals: dict[str, float] = {}
@@ -191,7 +243,11 @@ def _run_train_epoch(
         optimizer.zero_grad(set_to_none=True)
         outputs = model(**_model_inputs(batch))
         loss, components = compute_multitask_loss(
-            outputs, batch, loss_config, pos_weight
+            outputs,
+            batch,
+            loss_config,
+            pos_weight,
+            occupancy_type_masks=occupancy_type_masks,
         )
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip_norm)
@@ -239,6 +295,8 @@ def _evaluate_loader(
     device: torch.device,
     cause_class_count: int,
     event_threshold: float = 0.65,
+    hot_threshold: float = 0.55,
+    occupancy_type_masks: dict[str, torch.Tensor] | None = None,
 ) -> tuple[dict[str, Any], dict[str, np.ndarray], np.ndarray]:
     model.eval()
     collected: dict[str, list[np.ndarray]] = {}
@@ -252,7 +310,11 @@ def _evaluate_loader(
             batch = _move_batch(cpu_batch, device)
             outputs = model(**_model_inputs(batch))
             loss, components = compute_multitask_loss(
-                outputs, batch, loss_config, pos_weight
+                outputs,
+                batch,
+                loss_config,
+                pos_weight,
+                occupancy_type_masks=occupancy_type_masks,
             )
             batch_size = int(batch["x"].shape[0])
             sample_count += batch_size
@@ -280,7 +342,7 @@ def _evaluate_loader(
                 collected.setdefault(name, []).append(value.detach().cpu().numpy())
 
             predicted_grid = (
-                (torch.sigmoid(outputs["remain_hot_logit"]) >= 0.5)
+                (torch.sigmoid(outputs["remain_hot_logit"]) >= hot_threshold)
                 .detach()
                 .cpu()
                 .numpy()
@@ -313,7 +375,9 @@ def _evaluate_loader(
                 batch["remain_mask"].bool()[:, :, None]
                 & batch["occ_node_mask"].bool()[:, None, :]
             )
-            predicted_hot = torch.sigmoid(outputs["remain_hot_logit"]) >= 0.5
+            predicted_hot = (
+                torch.sigmoid(outputs["remain_hot_logit"]) >= hot_threshold
+            )
             target_hot = batch["y_hot"].bool()
             hot_tp += int((predicted_hot & target_hot & valid).sum().item())
             hot_fp += int((predicted_hot & ~target_hot & valid).sum().item())
@@ -331,6 +395,7 @@ def _evaluate_loader(
     hot_precision = hot_tp / max(hot_tp + hot_fp, 1)
     hot_recall = hot_tp / max(hot_tp + hot_fn, 1)
     metrics["remain"] = {
+        "hot_threshold": hot_threshold,
         "hot_precision": hot_precision,
         "hot_recall": hot_recall,
         "hot_f1": 2
@@ -377,7 +442,7 @@ def save_checkpoint(
     model: nn.Module,
     optimizer: torch.optim.Optimizer | None,
     epoch: int,
-    best_validation_hot_f1: float,
+    best_validation_report_f1: float,
     model_kind: str,
     model_config: Any,
     loss_config: MultiTaskLossConfig,
@@ -392,7 +457,7 @@ def save_checkpoint(
                 optimizer.state_dict() if optimizer is not None else None
             ),
             "epoch": epoch,
-            "best_validation_hot_f1": best_validation_hot_f1,
+            "best_validation_report_f1": best_validation_report_f1,
             "model_config": model_config.to_dict(),
             "loss_config": loss_config.to_dict(),
             "train_config": asdict(train_config),
@@ -579,7 +644,17 @@ def train_torch_baseline(
         lr=train_config.learning_rate,
         weight_decay=train_config.weight_decay,
     )
+    scheduler = (
+        torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=max(train_config.max_epochs, 1),
+            eta_min=train_config.lr_min,
+        )
+        if train_config.lr_schedule == "cosine"
+        else None
+    )
     loaders = _loaders(payload, train_config)
+    occupancy_type_masks = _occupancy_type_masks(dataset_dir, payload, device)
     pos_weight_value = 1.0
     pos_weight = torch.tensor(pos_weight_value, device=device)
     manifest_path = dataset_dir / "dataset_manifest.json"
@@ -601,6 +676,10 @@ def train_torch_baseline(
         "torch_version": str(torch.__version__),
         "device": str(device),
         "pos_weight": pos_weight_value,
+        "occupancy_type_masks": {
+            name: torch.nonzero(mask > 0.5, as_tuple=False).reshape(-1).tolist()
+            for name, mask in occupancy_type_masks.items()
+        },
     }
     config_payload = {
         "model": model_config.to_dict(),
@@ -613,6 +692,11 @@ def train_torch_baseline(
     history: list[dict[str, Any]] = []
     best_score = -1.0
     best_epoch = 0
+    best_precision = 0.0
+    fallback_score = -1.0
+    fallback_epoch = 0
+    fallback_precision = 0.0
+    checkpoint_constraint_met = False
     epochs_without_improvement = 0
     started_at = time.time()
     for epoch in range(1, train_config.max_epochs + 1):
@@ -624,6 +708,7 @@ def train_torch_baseline(
             pos_weight,
             device,
             train_config.gradient_clip_norm,
+            occupancy_type_masks,
         )
         validation_metrics, _, _ = _evaluate_loader(
             model,
@@ -632,43 +717,56 @@ def train_torch_baseline(
             pos_weight,
             device,
             model_config.num_causes,
+            event_threshold=train_config.event_report_threshold,
+            hot_threshold=train_config.hot_eval_threshold,
+            occupancy_type_masks=occupancy_type_masks,
         )
         report = validation_metrics["station_report"]
-        validation_score = report["report_f1"]
-        score = (
-            float(validation_score)
-            if report["report_precision"] >= 0.80
-            else -1.0
+        validation_score = float(report["report_f1"])
+        validation_precision = float(report["report_precision"])
+        feasible = (
+            validation_precision
+            >= train_config.checkpoint_min_report_precision
         )
+        fallback_improved = validation_score > fallback_score + 1.0e-12
+        feasible_improved = feasible and validation_score > best_score + 1.0e-12
         row = {"epoch": epoch}
         row.update({f"train_{name}": value for name, value in train_losses.items()})
         row.update(
             {
                 "validation_total_loss": validation_metrics["loss"]["total"],
-                "validation_hot_f1": validation_score,
+                "validation_hot_f1": validation_metrics["remain"]["hot_f1"],
                 "validation_report_f1": report["report_f1"],
                 "validation_report_precision": report["report_precision"],
                 "validation_report_recall": report["report_recall"],
-                "validation_event_threshold": 0.65,
+                "validation_event_threshold": train_config.event_report_threshold,
+                "validation_hot_threshold": train_config.hot_eval_threshold,
+                "checkpoint_precision_constraint_met": int(feasible),
+                "learning_rate": float(optimizer.param_groups[0]["lr"]),
             }
         )
         history.append(row)
-        save_checkpoint(
-            output_dir / "last.pt",
-            model,
-            optimizer,
-            epoch,
-            max(best_score, score),
-            model_kind,
-            model_config,
-            loss_config,
-            train_config,
-            metadata,
-        )
-        if epoch == 1 or score > best_score:
-            best_score = score
+        if fallback_improved:
+            fallback_score = validation_score
+            fallback_epoch = epoch
+            fallback_precision = validation_precision
+            save_checkpoint(
+                output_dir / "fallback_best.pt",
+                model,
+                optimizer,
+                epoch,
+                fallback_score,
+                model_kind,
+                model_config,
+                loss_config,
+                train_config,
+                metadata,
+            )
+        if feasible_improved:
+            checkpoint_constraint_met = True
+            best_score = validation_score
             best_epoch = epoch
-            epochs_without_improvement = 0
+            best_precision = validation_precision
             save_checkpoint(
                 output_dir / "best.pt",
                 model,
@@ -681,19 +779,47 @@ def train_torch_baseline(
                 train_config,
                 metadata,
             )
+        selection_improved = (
+            feasible_improved if checkpoint_constraint_met else fallback_improved
+        )
+        if selection_improved:
+            epochs_without_improvement = 0
         else:
             epochs_without_improvement += 1
+        save_checkpoint(
+            output_dir / "last.pt",
+            model,
+            optimizer,
+            epoch,
+            best_score if checkpoint_constraint_met else fallback_score,
+            model_kind,
+            model_config,
+            loss_config,
+            train_config,
+            metadata,
+        )
         print(
             f"epoch={epoch:03d} train_loss={train_losses['total']:.6f} "
             f"val_loss={validation_metrics['loss']['total']:.6f} "
             f"val_report_f1={report['report_f1']:.6f} "
-            f"val_report_precision={report['report_precision']:.6f}",
+            f"val_report_precision={report['report_precision']:.6f} "
+            f"feasible={int(feasible)}",
             flush=True,
         )
-        if epochs_without_improvement >= train_config.patience:
+        if scheduler is not None:
+            scheduler.step()
+        if (
+            epoch >= min(train_config.min_epochs, train_config.max_epochs)
+            and epochs_without_improvement >= train_config.patience
+        ):
             break
 
     _write_csv(output_dir / "history.csv", history, list(history[0]))
+    if not checkpoint_constraint_met:
+        shutil.copy2(output_dir / "fallback_best.pt", output_dir / "best.pt")
+        best_score = fallback_score
+        best_epoch = fallback_epoch
+        best_precision = fallback_precision
     best_model, checkpoint = load_checkpoint(output_dir / "best.pt", device)
     initial_validation_metrics, validation_arrays, _ = _evaluate_loader(
         best_model,
@@ -702,11 +828,24 @@ def train_torch_baseline(
         pos_weight,
         device,
         model_config.num_causes,
+        event_threshold=train_config.event_report_threshold,
+        hot_threshold=train_config.hot_eval_threshold,
+        occupancy_type_masks=occupancy_type_masks,
     )
-    event_threshold = 0.65
+    event_threshold = train_config.event_report_threshold
     checkpoint["metadata"]["event_report_threshold"] = event_threshold
+    checkpoint["metadata"]["hot_eval_threshold"] = train_config.hot_eval_threshold
+    checkpoint["metadata"]["checkpoint_constraint_met"] = (
+        checkpoint_constraint_met
+    )
     torch.save(checkpoint, output_dir / "best.pt")
     config_payload["metadata"]["event_report_threshold"] = event_threshold
+    config_payload["metadata"]["hot_eval_threshold"] = (
+        train_config.hot_eval_threshold
+    )
+    config_payload["metadata"]["checkpoint_constraint_met"] = (
+        checkpoint_constraint_met
+    )
     _write_json(output_dir / "config.json", config_payload)
     validation_metrics = initial_validation_metrics
     _, validation_confusion = compute_metrics(
@@ -719,7 +858,9 @@ def train_torch_baseline(
         pos_weight,
         device,
         model_config.num_causes,
-        event_threshold,
+        event_threshold=event_threshold,
+        hot_threshold=train_config.hot_eval_threshold,
+        occupancy_type_masks=occupancy_type_masks,
     )
     evaluations = {
         "validation": (
@@ -753,7 +894,18 @@ def train_torch_baseline(
         "best_epoch": best_epoch,
         "epochs_trained": len(history),
         "best_validation_report_f1": best_score,
+        "best_validation_report_precision": best_precision,
+        "checkpoint_precision_constraint": (
+            train_config.checkpoint_min_report_precision
+        ),
+        "checkpoint_constraint_met": checkpoint_constraint_met,
+        "checkpoint_selection": (
+            "constrained_report_f1"
+            if checkpoint_constraint_met
+            else "fallback_report_f1"
+        ),
         "event_report_threshold": event_threshold,
+        "hot_eval_threshold": train_config.hot_eval_threshold,
         "test_hot_f1": all_metrics["test"]["remain"]["hot_f1"],
         "test_report_f1": all_metrics["test"]["station_report"]["report_f1"],
         "test_report_precision": all_metrics["test"]["station_report"][
@@ -801,6 +953,8 @@ def evaluate_torch_checkpoint(
     loss_config = MultiTaskLossConfig.from_dict(checkpoint["loss_config"])
     pos_weight = torch.tensor(checkpoint["metadata"]["pos_weight"], device=device)
     event_threshold = float(checkpoint["metadata"]["event_report_threshold"])
+    hot_threshold = float(checkpoint["metadata"].get("hot_eval_threshold", 0.55))
+    occupancy_type_masks = _occupancy_type_masks(dataset_dir, payload, device)
     metrics, arrays, confusion = _evaluate_loader(
         model,
         loaders[split_name],
@@ -808,6 +962,9 @@ def evaluate_torch_checkpoint(
         pos_weight,
         device,
         model.config.num_causes,
+        event_threshold=event_threshold,
+        hot_threshold=hot_threshold,
+        occupancy_type_masks=occupancy_type_masks,
     )
     _write_evaluation_artifacts(
         output_dir,
@@ -832,7 +989,9 @@ def evaluate_torch_checkpoint(
             "model_name": checkpoint["metadata"]["model_name"],
             "model_kind": checkpoint["model_kind"],
             "best_epoch": checkpoint["epoch"],
-            "best_validation_hot_f1": checkpoint["best_validation_hot_f1"],
+            "best_validation_report_f1": checkpoint[
+                "best_validation_report_f1"
+            ],
             "checkpoint": str(checkpoint_path.resolve()),
             "output_dir": str(output_dir),
         }
