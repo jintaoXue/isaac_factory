@@ -7,8 +7,11 @@ set -euo pipefail
 #   HC_LOAD_DIR=... ./run_2026_journal_experiments.sh eval [cuda:0]
 #   ./run_2026_journal_experiments.sh rule-n16 [cuda:0]   # server: K1+K10, N=16
 #   ./run_2026_journal_experiments.sh rule-n10 [cuda:0]   # server: K1+K10, N=10
+#   HC_LOAD_DIR=... ./run_2026_journal_experiments.sh hier-eval [cuda:0]      # N16 → N10
 #   HC_LOAD_DIR=... ./run_2026_journal_experiments.sh hier-eval-n16 [cuda:0]
 #   HC_LOAD_DIR=... ./run_2026_journal_experiments.sh hier-eval-n10 [cuda:0]
+#   ./run_2026_journal_experiments.sh hier-eval-hard [cuda:0]   # job 28 hard train
+#   ./run_2026_journal_experiments.sh hier-eval-curr [cuda:0]   # job 27 curriculum
 #
 # Default protocol: 5 seeds (42–46) × 2 episodes = 10 episodes per run.
 # Live eval writes under <test_exp>/eval/: episodes.jsonl, eval_summary_partial.json;
@@ -16,20 +19,22 @@ set -euo pipefail
 
 MODE="${1:-next}"
 DEVICE="${2:-cuda:0}"
-EVAL_STEPS="${HC_EVAL_STEPS:-2445000 2450000 3315000}"
-BASELINE_SEEDS="${HC_BASELINE_SEEDS:-42 43 44 45 46}"
+# hier_curriculum (job 27, yrmr4uxp stage4): ep180≈2330k, ep185≈2415k, ep190≈2500k (wandb history)
+HC_CURR_LOAD_DIR="${HC_CURR_LOAD_DIR:-logs/rl_games/HcFactory/hier_2026-08-27_23-18-44}"
+HC_CURR_EVAL_STEP="${HC_CURR_EVAL_STEP:-2415000}"
+EVAL_STEPS="${HC_EVAL_STEPS:-${HC_CURR_EVAL_STEP}}"
+# hier_hard (job 28, zynalxhz): step/ep ≈ 18781 @ ep59/1.11M → ep80≈1.50M, ep85≈1.60M, ep90≈1.69M
+HC_HARD_LOAD_DIR="${HC_HARD_LOAD_DIR:-logs/rl_games/HcFactory/hier_2026-08-27_23-17-41}"
+HC_HARD_EVAL_STEP="${HC_HARD_EVAL_STEP:-1600000}"
 export HC_WANDB_TRAIN_PROJECT="${HC_WANDB_TRAIN_PROJECT:-HcFactory_TPA}"
 export HC_WANDB_TEST_PROJECT="${HC_WANDB_TEST_PROJECT:-HcFactory_TPA_Eval}"
 export HC_WANDB_BASELINE_PROJECT="${HC_WANDB_BASELINE_PROJECT:-${HC_WANDB_TEST_PROJECT}}"
 export HC_TEST_SEEDS="${HC_TEST_SEEDS:-42,43,44,45,46}"
 export HC_TEST_TIMES="${HC_TEST_TIMES:-2}"
-export HC_RANDOM_EPISODES="${HC_RANDOM_EPISODES:-2}"
-export HC_N16_RANDOM_EPISODES="${HC_N16_RANDOM_EPISODES:-2}"
-export HC_RULE_EPISODES="${HC_RULE_EPISODES:-2}"
-
-_episodes_per_seed() {
-    echo "${HC_RULE_EPISODES}"
-}
+# Legacy aliases; baselines now use HC_TEST_TIMES for all N.
+export HC_RANDOM_EPISODES="${HC_RANDOM_EPISODES:-${HC_TEST_TIMES}}"
+export HC_N16_RANDOM_EPISODES="${HC_N16_RANDOM_EPISODES:-${HC_TEST_TIMES}}"
+export HC_RULE_EPISODES="${HC_RULE_EPISODES:-${HC_TEST_TIMES}}"
 
 run_train() {
     echo "[journal] train run_test_27 on ${DEVICE}"
@@ -61,37 +66,49 @@ run_hier_eval_n10() {
     run_hier_eval_for_n 10
 }
 
+run_hier_eval() {
+    echo "[journal] hier eval: N=16 then N=10, steps=${EVAL_STEPS}, seeds=${HC_TEST_SEEDS}, repeats=${HC_TEST_TIMES}"
+    run_hier_eval_n16
+    run_hier_eval_n10
+}
+
+run_hier_hard_eval() {
+    export HC_LOAD_DIR="${HC_HARD_LOAD_DIR}"
+    EVAL_STEPS="${HC_HARD_EVAL_STEP}"
+    echo "[journal] hier-hard eval: load=${HC_LOAD_DIR} step=${EVAL_STEPS} (~ep85 in 80-90 band)"
+    run_hier_eval
+}
+
+run_hier_curr_eval() {
+    export HC_LOAD_DIR="${HC_CURR_LOAD_DIR}"
+    EVAL_STEPS="${HC_CURR_EVAL_STEP}"
+    echo "[journal] hier-curr eval: load=${HC_LOAD_DIR} step=${EVAL_STEPS} (~ep185 in 180-190 band)"
+    run_hier_eval
+}
+
 run_random_n10() {
-    for seed in ${BASELINE_SEEDS}; do
-        echo "[journal] Random N=10 seed=${seed}, $(_episodes_per_seed) episodes"
-        HC_RUN_SEED="${seed}" ./batch_train.sh 26 "${DEVICE}"
-    done
+    echo "[journal] Random N=10, seeds=${HC_TEST_SEEDS}, repeats=${HC_TEST_TIMES}"
+    ./batch_train.sh 26 "${DEVICE}"
 }
 
 run_random_n16() {
-    for seed in ${BASELINE_SEEDS}; do
-        echo "[journal] Random N=16 seed=${seed}, ${HC_N16_RANDOM_EPISODES} episodes"
-        HC_RUN_SEED="${seed}" ./batch_train.sh 32 "${DEVICE}"
-    done
+    echo "[journal] Random N=16, seeds=${HC_TEST_SEEDS}, repeats=${HC_TEST_TIMES}"
+    ./batch_train.sh 32 "${DEVICE}"
 }
 
 run_rule_k1_for_jobs() {
     local -a jobs=("$@")
-    for seed in ${BASELINE_SEEDS}; do
-        for job in "${jobs[@]}"; do
-            echo "[journal] Rule job=${job} seed=${seed}, $(_episodes_per_seed) episodes"
-            HC_RUN_SEED="${seed}" ./batch_train.sh "${job}" "${DEVICE}"
-        done
+    for job in "${jobs[@]}"; do
+        echo "[journal] Rule job=${job}, seeds=${HC_TEST_SEEDS}, repeats=${HC_TEST_TIMES}"
+        ./batch_train.sh "${job}" "${DEVICE}"
     done
 }
 
 run_rule_k10_for_jobs() {
     local -a jobs=("$@")
-    for seed in ${BASELINE_SEEDS}; do
-        for job in "${jobs[@]}"; do
-            echo "[journal] Rule job=${job} seed=${seed}, $(_episodes_per_seed) episodes"
-            HC_RUN_SEED="${seed}" ./batch_train.sh "${job}" "${DEVICE}"
-        done
+    for job in "${jobs[@]}"; do
+        echo "[journal] Rule job=${job}, seeds=${HC_TEST_SEEDS}, repeats=${HC_TEST_TIMES}"
+        ./batch_train.sh "${job}" "${DEVICE}"
     done
 }
 
@@ -129,6 +146,9 @@ run_baselines() {
 case "${MODE}" in
     train) run_train ;;
     eval) run_eval ;;
+    hier-eval) run_hier_eval ;;
+    hier-eval-hard) run_hier_hard_eval ;;
+    hier-eval-curr) run_hier_curr_eval ;;
     hier-eval-n16) run_hier_eval_n16 ;;
     hier-eval-n10) run_hier_eval_n10 ;;
     random) run_random_n10; run_random_n16 ;;
@@ -149,7 +169,7 @@ case "${MODE}" in
         run_train
         ;;
     *)
-        echo "用法: $0 <train|eval|hier-eval-n16|hier-eval-n10|rule-n16|rule-n10|random|rule|baselines|next|all> [cuda:N]"
+        echo "用法: $0 <train|eval|hier-eval|hier-eval-curr|hier-eval-hard|hier-eval-n16|hier-eval-n10|rule-n16|rule-n10|random|rule|baselines|next|all> [cuda:N]"
         exit 1
         ;;
 esac

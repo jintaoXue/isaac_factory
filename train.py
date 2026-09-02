@@ -24,6 +24,12 @@ parser.add_argument("--algo", type=str, default=None, help="Name of the algorith
 parser.add_argument("--test", action="store_true", default=False, help="Run evaluation (Makespan / Success / Truncation) instead of training.")
 parser.add_argument("--test_times", type=int, default=None, help="Episodes per seed during --test.")
 parser.add_argument("--test_seeds", type=str, default=None, help="Comma-separated seeds for --test, e.g. 42,43,44,45,46.")
+parser.add_argument(
+    "--test_epsilon",
+    type=float,
+    default=None,
+    help="Action epsilon during --test (e.g. 1.0 for masked-random baseline).",
+)
 parser.add_argument("--test_all_settings", action="store_true", default=False, help="test all settings.")
 parser.add_argument("--load_dir", type=str, default=None, help="dir to model checkpoint.")
 parser.add_argument("--load_name", type=str, default=None, help="name of model checkpoint.")
@@ -235,6 +241,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         algo_cfg["params"]["config"]["test_seeds"] = [
             int(s.strip()) for s in args_cli.test_seeds.split(",") if s.strip()
         ]
+    if args_cli.test_epsilon is not None:
+        algo_cfg["params"]["config"]["test_epsilon"] = float(args_cli.test_epsilon)
     if args_cli.test_all_settings:
         algo_cfg["params"]["config"]['test_all_settings'] = args_cli.test_all_settings
     if args_cli.load_dir:

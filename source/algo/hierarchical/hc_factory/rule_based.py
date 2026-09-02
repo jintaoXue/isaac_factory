@@ -78,10 +78,8 @@ class RuleBasedHierarchical():
         self.t_max_anchor = int(config.get("t_max_anchor", _curr.T_MAX_ANCHOR))
         self.product_type = str(config.get("product_type", "ProductWaterPipe"))
         if config.get("test"):
-            self.train_n_products = _curr.N_FULL_ORDER
-            self.max_episodic_steps = int(
-                config.get("max_episodic_steps", _curr.t_max_for(_curr.N_FULL_ORDER, self.t_max_anchor))
-            )
+            self.train_n_products = int(config.get("train_n_products", _curr.N_FULL_ORDER))
+            self.max_episodic_steps = _curr.t_max_for(self.train_n_products, self.t_max_anchor)
         else:
             self.train_n_products = int(config.get("train_n_products", _curr.N_TRAIN_TARGET))
             self.max_episodic_steps = _curr.t_max_for(self.train_n_products, self.t_max_anchor)
@@ -129,9 +127,20 @@ class RuleBasedHierarchical():
         )
 
     def _apply_eval_order_all(self) -> int:
-        t_max = _curr.t_max_for(_curr.N_FULL_ORDER, self.t_max_anchor)
+        n_products = int(self.train_n_products)
+        t_max = _curr.t_max_for(n_products, self.t_max_anchor)
         for env in self._env_list():
-            t_max = _curr.apply_eval_order(env, product_type=self.product_type, anchor=self.t_max_anchor)
+            if n_products >= _curr.N_FULL_ORDER:
+                t_max = _curr.apply_eval_order(
+                    env, product_type=self.product_type, anchor=self.t_max_anchor
+                )
+            else:
+                t_max = _curr.apply_train_order(
+                    env,
+                    n_products=n_products,
+                    product_type=self.product_type,
+                    anchor=self.t_max_anchor,
+                )
         self.max_episodic_steps = t_max
         return t_max
 

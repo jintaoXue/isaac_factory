@@ -39,15 +39,15 @@ if [ $# -eq 0 ]; then
     echo "  ---- HcFactory Hierarchical TPA（按流程编号）----"
     echo "  22: explore 采库 (--explore, N=10, T_max=${HC_T_MAX_N10}, ε=1, 写 catalog)"
     echo "  23: explore debug（N=10, T_max=${HC_T_MAX_N10}, 可视化+warmstart，不录视频不启wandb）"
-    echo "  24: rule 单产品 (K=1, N=10, T_max=${HC_T_MAX_N10}, ${HC_RULE_EPISODES} ep)"
-    echo "  25: rule 多产品 (K=${HC_MULTI_K}, N=10, T_max=${HC_T_MAX_N10}, ${HC_RULE_EPISODES} ep)"
-    echo "  26: hier random 基线 (ε=1, N=10, T_max=${HC_T_MAX_N10}, ${HC_RANDOM_EPISODES} ep, 不写 catalog)"
+    echo "  24: rule 单产品 eval (K=1, N=10, T_max=${HC_T_MAX_N10}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
+    echo "  25: rule 多产品 eval (K=${HC_MULTI_K}, N=10, T_max=${HC_T_MAX_N10}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
+    echo "  26: hier random eval (ε=1, N=10, T_max=${HC_T_MAX_N10}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
     echo "  27: hier 倒序课程 (--curriculum → target=10)"
     echo "  28: hier N=10 硬训对照 (同 27 设置，无课程, T_max=${HC_T_MAX_N10})"
     echo "  29: hier 评测 (加载 nn/, 全量 N=16, T_max=${HC_T_MAX_N16})"
-    echo "  30: rule 单产品 (K=1, N=16, T_max=${HC_T_MAX_N16})"
-    echo "  31: rule 多产品 (K=${HC_MULTI_K}, N=16, T_max=${HC_T_MAX_N16})"
-    echo "  32: hier random 基线 (ε=1, N=16, T_max=${HC_T_MAX_N16}, 不写 catalog)"
+    echo "  30: rule 单产品 eval (K=1, N=16, T_max=${HC_T_MAX_N16}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
+    echo "  31: rule 多产品 eval (K=${HC_MULTI_K}, N=16, T_max=${HC_T_MAX_N16}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
+    echo "  32: hier random eval (ε=1, N=16, T_max=${HC_T_MAX_N16}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
     echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 22/23/27/28 的 --warmstart"
     echo "  环境变量 HC_LOAD_DIR: 29 号评测的实验目录（含 nn/）"
@@ -161,6 +161,11 @@ hc_seed_args() {
     if [ -n "${HC_RUN_SEED}" ]; then
         echo "--seed ${HC_RUN_SEED}"
     fi
+}
+
+# Unified eval protocol: one wandb run = all test_seeds × test_times episodes.
+hc_test_args() {
+    echo "--test --test_times ${HC_TEST_TIMES} --test_seeds ${HC_TEST_SEEDS}"
 }
 
 
@@ -372,57 +377,55 @@ run_test_23() {
 
 run_test_24() {
     # rule_based + 单产品决策（max_parallel_cd_dispatch=1），N=10
-    echo "运行 24: rule_based single-product (K=1, N=10, T_max=${HC_T_MAX_N10}, ${HC_RULE_EPISODES} episodes, wandb)"
+    echo "运行 24: rule_based single-product eval (K=1, N=10, T_max=${HC_T_MAX_N10}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES}, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo rule_based \
         --num_envs "${HC_NUM_ENVS}" \
         --headless \
         --wandb_activate \
-        --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "rule_K1_single_N10_T${HC_T_MAX_N10}_${HC_RULE_EPISODES}ep" \
+        --wandb_project "${HC_WANDB_BASELINE_PROJECT}" \
+        --wandb_name "rule_K1_N10_T${HC_T_MAX_N10}_5seed_x${HC_TEST_TIMES}" \
         --train_n_products 10 \
         --max_parallel_cd_dispatch 1 \
-        --max_sim_episodes "${HC_RULE_EPISODES}" \
+        $(hc_test_args) \
         $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
 
 run_test_25() {
     # rule_based + 多产品并行决策（K=10），N=10
-    echo "运行 25: rule_based multi-product (K=${HC_MULTI_K}, N=10, T_max=${HC_T_MAX_N10}, ${HC_RULE_EPISODES} episodes, wandb)"
+    echo "运行 25: rule_based multi-product eval (K=${HC_MULTI_K}, N=10, T_max=${HC_T_MAX_N10}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES}, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo rule_based \
         --num_envs "${HC_NUM_ENVS}" \
         --headless \
         --wandb_activate \
-        --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "rule_K${HC_MULTI_K}_multi_N10_T${HC_T_MAX_N10}_${HC_RULE_EPISODES}ep" \
+        --wandb_project "${HC_WANDB_BASELINE_PROJECT}" \
+        --wandb_name "rule_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}_5seed_x${HC_TEST_TIMES}" \
         --train_n_products 10 \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
-        --max_sim_episodes "${HC_RULE_EPISODES}" \
+        $(hc_test_args) \
         $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
 
 run_test_26() {
-    # hier masked-random makespan 基线：N=10, ε=1, 无 DQN 学习, 不写 catalog
-    echo "运行 26: hier RL random baseline (ε=1, N=10, T=${HC_T_MAX_N10}, ${HC_RANDOM_EPISODES} episodes, wandb)"
+    # hier masked-random makespan 基线：N=10, ε=1, 无 DQN 学习
+    echo "运行 26: hier random baseline eval (ε=1, N=10, T=${HC_T_MAX_N10}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES}, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
         --num_envs "${HC_NUM_ENVS}" \
         --headless \
-        --explore \
-        --max_sim_episodes "${HC_RANDOM_EPISODES}" \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         --wandb_activate \
         --wandb_project "${HC_WANDB_BASELINE_PROJECT}" \
-        --wandb_name "random_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}_seed${HC_RUN_SEED:-default}_${HC_RANDOM_EPISODES}ep" \
-        --explore_n_products 10 \
-        --no_explore_save_catalog \
-        $(hc_seed_args) \
+        --wandb_name "random_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}_5seed_x${HC_TEST_TIMES}" \
+        --train_n_products 10 \
+        --test_epsilon 1 \
+        $(hc_test_args) \
         $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
@@ -492,7 +495,7 @@ run_test_29() {
 
 run_test_30() {
     # rule_based + 单产品决策，N=16 全量订单
-    echo "运行 30: rule_based single-product (K=1, N=16, T_max=${HC_T_MAX_N16}, ${HC_RULE_EPISODES} episodes, wandb)"
+    echo "运行 30: rule_based single-product eval (K=1, N=16, T_max=${HC_T_MAX_N16}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES}, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo rule_based \
@@ -500,18 +503,17 @@ run_test_30() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_BASELINE_PROJECT}" \
-        --wandb_name "rule_K1_single_N16_T${HC_T_MAX_N16}_seed${HC_RUN_SEED:-default}_${HC_RULE_EPISODES}ep" \
+        --wandb_name "rule_K1_N16_T${HC_T_MAX_N16}_5seed_x${HC_TEST_TIMES}" \
         --train_n_products 16 \
         --max_parallel_cd_dispatch 1 \
-        --max_sim_episodes "${HC_RULE_EPISODES}" \
-        $(hc_seed_args) \
+        $(hc_test_args) \
         $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
 
 run_test_31() {
     # rule_based + 多产品并行决策，N=16 全量订单
-    echo "运行 31: rule_based multi-product (K=${HC_MULTI_K}, N=16, T_max=${HC_T_MAX_N16}, ${HC_RULE_EPISODES} episodes, wandb)"
+    echo "运行 31: rule_based multi-product eval (K=${HC_MULTI_K}, N=16, T_max=${HC_T_MAX_N16}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES}, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo rule_based \
@@ -519,32 +521,29 @@ run_test_31() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_BASELINE_PROJECT}" \
-        --wandb_name "rule_K${HC_MULTI_K}_multi_N16_T${HC_T_MAX_N16}_seed${HC_RUN_SEED:-default}_${HC_RULE_EPISODES}ep" \
+        --wandb_name "rule_K${HC_MULTI_K}_N16_T${HC_T_MAX_N16}_5seed_x${HC_TEST_TIMES}" \
         --train_n_products 16 \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
-        --max_sim_episodes "${HC_RULE_EPISODES}" \
-        $(hc_seed_args) \
+        $(hc_test_args) \
         $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
 
 run_test_32() {
-    # hier masked-random makespan 基线：N=16, ε=1, 无 DQN 学习, 不写 catalog
-    echo "运行 32: hier RL random baseline (ε=1, N=16, T=${HC_T_MAX_N16}, ${HC_N16_RANDOM_EPISODES} episodes, wandb)"
+    # hier masked-random makespan 基线：N=16, ε=1, 无 DQN 学习
+    echo "运行 32: hier random baseline eval (ε=1, N=16, T=${HC_T_MAX_N16}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES}, wandb)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
         --num_envs "${HC_NUM_ENVS}" \
         --headless \
-        --explore \
-        --max_sim_episodes "${HC_N16_RANDOM_EPISODES}" \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         --wandb_activate \
         --wandb_project "${HC_WANDB_BASELINE_PROJECT}" \
-        --wandb_name "random_K${HC_MULTI_K}_N16_T${HC_T_MAX_N16}_seed${HC_RUN_SEED:-default}_${HC_N16_RANDOM_EPISODES}ep" \
-        --explore_n_products 16 \
-        --no_explore_save_catalog \
-        $(hc_seed_args) \
+        --wandb_name "random_K${HC_MULTI_K}_N16_T${HC_T_MAX_N16}_5seed_x${HC_TEST_TIMES}" \
+        --train_n_products 16 \
+        --test_epsilon 1 \
+        $(hc_test_args) \
         $(hc_t_max_args) \
         ${DEVICE_ARG}
 }
