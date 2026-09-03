@@ -91,6 +91,12 @@ parser.add_argument(
     default=False,
     help="Hard train: write decision-equivalent checkpoints to catalog while learning (policy-guided catalog).",
 )
+parser.add_argument(
+    "--oru",
+    action="store_true",
+    default=False,
+    help="T1/T2 ORU: offline warmup from catalog offline_replay/, then decaying offline mix into online train.",
+)
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument(
     "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
@@ -276,9 +282,18 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         algo_cfg["params"]["config"]["explore_save_catalog"] = False
     if getattr(args_cli, "catalog_collect", False):
         algo_cfg["params"]["config"]["catalog_collect"] = True
+    if getattr(args_cli, "oru", False):
+        algo_cfg["params"]["config"]["oru"] = True
     warmstart = (getattr(args_cli, "warmstart", None) or "").strip() or os.environ.get("HC_WARMSTART", "").strip()
     if warmstart:
         algo_cfg["params"]["config"]["warmstart"] = warmstart
+    # Optional ORU schedule overrides from env (batch_train.sh).
+    if os.environ.get("HC_ORU_WARMUP_UPDATES", "").strip():
+        algo_cfg["params"]["config"]["oru_warmup_updates"] = int(os.environ["HC_ORU_WARMUP_UPDATES"])
+    if os.environ.get("HC_ORU_MIX_DECAY_ENV_STEPS", "").strip():
+        algo_cfg["params"]["config"]["oru_mix_decay_env_steps"] = int(
+            os.environ["HC_ORU_MIX_DECAY_ENV_STEPS"]
+        )
     if getattr(args_cli, "curriculum", False):
         algo_cfg["params"]["config"]["curriculum"] = True
     if args_cli.use_fatigue_mask:

@@ -152,12 +152,12 @@ job **33** 另含常规训练指标：`MetricTrain/*`、`MetricLoss/*`、`Metric
 ## 2. 长时域训练 Ablation（T0–T4）
 
 > 论文目标：**explore 建 catalog → offline replay update →（可选）curriculum 分段**。  
-> 当前代码：**仅 Phase A 采库（job 22）+ legacy 仿真 reset（job 27）**；**ORU 与完整 T1/T2 均未实现**。
+> 当前代码：**T1 ORU 已实现**（job 22 dump `offline_replay/` → job 28 `--oru`）；T2 curriculum+ORU 仍待接。
 
 | ID | 名称 | 流程概要 | 代码状态 |
 |----|------|----------|----------|
 | **T0** | Hard train | 空车间 → 整单 N=10 在线 RL | ✅ job **28** |
-| **T1** | Explore catalog + offline replay update | 随机采库 → 离线数据驱动 loss 更新 + hard train | 🔲 未实现 |
+| **T1** | Explore catalog + offline replay update | 随机采库 → 离线数据驱动 loss 更新 + hard train | ✅ job **22→28 --oru** |
 | **T2** | Explore catalog + offline replay update + curriculum | 随机采库 → ORU + 倒序 curriculum | 🔲 **未实现**（论文 proposed） |
 | **T3** | Policy-guided catalog + offline replay update | 策略引导采库 → ORU + hard train | 🔲 未实现 |
 | **T4** | Policy-guided catalog + offline replay update + curriculum | 策略引导采库 → ORU + curriculum | 🔲 未实现 |
@@ -193,24 +193,25 @@ python train.py --task HRTPaHC-v1 --algo hier --headless \
 
 ### 2.2 T1 — Explore catalog + ORU（一键命令）
 
-**Phase A（已实现）**：job **22**，20 episode，wandb → `HcFactory_Catalog`，记录 `MetricCatalog/*`。
+**Phase A**：job **22**，ε=1 explore，写 catalog ckpt **并** dump `offline_replay/`（各 head Transition）。
 
-**Phase B（ORU 未实现）**：当前 job **28** 为 online hard train（`HcFactory_TPA`）。
+**Phase B**：job **28** + `--oru`：
+1. **ORU warmup**：纯 offline gradient（次数默认按 offline 规模自动估：≈5 epoch，夹在 2k–15k）
+2. **Online hard train**：`mix_ratio` 从 1.0 线性降到 0（默认 300k env steps），并按比例缩小 offline buffer
 
 ```bash
-# 一键：采库 → hard train（连续）
 export HC_CATALOG_TAG=T1_random_ep20
 ./batch_train.sh T1 cuda:0
 
-# 仅 Phase A 采库
-export HC_CATALOG_TAG=T1_random_ep20
+# 仅 Phase A（会写 offline_replay）
 ./batch_train.sh 22 cuda:0
 
-# Policy-guided catalog（80 ep，同一 catalog wandb project）
-export HC_CATALOG_TAG=T3_policy_ep80
-export HC_CATALOG_SOURCE=policy_explore
-./batch_train.sh 33 cuda:0
+# 仅 Phase B（需已有 offline_replay）
+HC_ORU=1 HC_CATALOG_TAG=T1_random_ep20 ./batch_train.sh 28 cuda:0
 ```
+
+> 已有旧 catalog（无 `offline_replay/`）时必须重跑 job 22，否则 `--oru` 会报错。
+> 调 warmup：`HC_ORU_WARMUP_UPDATES=8000`；调衰减：`HC_ORU_MIX_DECAY_ENV_STEPS=300000`。
 
 ---
 
@@ -372,7 +373,7 @@ python train.py --task HRTPaHC-v1 --algo hier --headless --test \
 | 实验 | 命令 | 备注 |
 |------|------|------|
 | T0 | `./batch_train.sh 28 cuda:0` | ✅ 下界 |
-| T1 | 22 → ORU hard train | 🔲 未实现 |
+| T1 | `./batch_train.sh T1 cuda:0` | ✅ explore + ORU + hard train |
 | T2 | 22 → ORU + curriculum | 🔲 **论文 proposed，未实现** |
 | T3 / T4 | policy 采库 + ORU（+ curriculum） | 🔲 未实现 |
 | Legacy | `22 → 27` | 仅 catalog reset，**勿标 T2** |

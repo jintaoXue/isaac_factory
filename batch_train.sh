@@ -46,19 +46,22 @@ if [ $# -eq 0 ]; then
     echo "  25: rule 多产品 eval (K=${HC_MULTI_K}, N=10, T_max=${HC_T_MAX_N10}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
     echo "  26: hier random eval (ε=1, N=10, T_max=${HC_T_MAX_N10}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
     echo "  27: hier 倒序课程 (--curriculum → target=10)"
-    echo "  28: hier N=10 硬训对照 (同 27 设置，无课程, T_max=${HC_T_MAX_N10})"
+    echo "  28: hier N=10 硬训 (默认 T0；HC_ORU=1 时为 T1 Phase B + ORU)"
     echo "  29: hier 评测 (加载 nn/, 全量 N=16, T_max=${HC_T_MAX_N16})"
     echo "  30: rule 单产品 eval (K=1, N=16, T_max=${HC_T_MAX_N16}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
     echo "  31: rule 多产品 eval (K=${HC_MULTI_K}, N=16, T_max=${HC_T_MAX_N16}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
     echo "  32: hier random eval (ε=1, N=16, T_max=${HC_T_MAX_N16}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
     echo "  33: policy catalog hard train (catalog_collect, ep=${HC_POLICY_CATALOG_EPISODES:-80}, wandb catalog project)"
-    echo "  T1: T1 流水线 (22 random explore → 28 hard train，同一 HC_CATALOG_TAG)"
+    echo "  T1: 22 explore(+offline_replay) → 28 hard+ORU（同一 HC_CATALOG_TAG）"
     echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
     echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 22/23/27/28 的 --warmstart"
     echo "  环境变量 HC_CATALOG_TAG: catalog 实验标签（例 T2_random_ep10），22 写库与 27 读库须一致"
     echo "  环境变量 HC_CATALOG_SOURCE: random_explore | policy_explore（默认 random_explore）"
     echo "  环境变量 HC_EXPLORE_CATALOG_DIR: 显式 catalog 根路径（覆盖 TAG 拼接）"
     echo "  环境变量 HC_EXPLORE_EPISODES: job 22 采库 episode 数（默认 ${HC_EXPLORE_EPISODES}）"
+    echo "  环境变量 HC_ORU: 1=启用 ORU（T1/job28）；0=关闭（默认）"
+    echo "  环境变量 HC_ORU_WARMUP_UPDATES: 覆盖自动 warmup update 次数"
+    echo "  环境变量 HC_ORU_MIX_DECAY_ENV_STEPS: offline mix 线性降到 0 的 env steps（默认 300000）"
     echo "  环境变量 HC_WANDB_CATALOG_PROJECT: 采库/ policy catalog 专用 wandb project（默认 HcFactory_Catalog）"
     echo "  环境变量 HC_POLICY_CATALOG_EPISODES: job 33 policy catalog 训练 episode 数（默认 80）"
     echo "  环境变量 HC_LOAD_DIR: 29 号评测的实验目录（含 nn/）"
@@ -503,9 +506,15 @@ run_test_27() {
 }
 
 run_test_28() {
-    # hier N=10 硬训对照：与 27 同 K / T_anchor，无 --curriculum（整单 0→10）
+    # hier N=10 硬训：HC_ORU=1 开启 ORU（T1 Phase B）；默认 0 = 纯 T0 hard train
     hc_print_catalog_hint
-    echo "运行 28: hier hard train (no curriculum, N=10, T_max=${HC_T_MAX_N10}, wandb=${HC_WANDB_PROJECT})"
+    local _oru_flag=""
+    local _oru_tag="noORU"
+    if [ "${HC_ORU:-0}" = "1" ]; then
+        _oru_flag="--oru"
+        _oru_tag="ORU"
+    fi
+    echo "运行 28: hier hard train (N=10, T_max=${HC_T_MAX_N10}, ${_oru_tag}, wandb=${HC_WANDB_PROJECT})"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -513,12 +522,25 @@ run_test_28() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "hier_hard_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}__${HC_CATALOG_TAG:-legacy}" \
+        --wandb_name "hier_hard_${_oru_tag}_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}__${HC_CATALOG_TAG:-legacy}" \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
+        ${_oru_flag} \
         $(hc_t_max_args) \
         $(hc_catalog_args) \
         $(hc_warmstart_args) \
         ${DEVICE_ARG}
+}
+
+run_t1() {
+    # T1: explore(+offline replay dump) → ORU warmup + hard train with decaying offline mix
+    export HC_CATALOG_TAG="${HC_CATALOG_TAG:-T1_random_ep20}"
+    export HC_CATALOG_SOURCE="${HC_CATALOG_SOURCE:-random_explore}"
+    export HC_EXPLORE_EPISODES="${HC_EXPLORE_EPISODES:-20}"
+    export HC_ORU="${HC_ORU:-1}"
+    echo "=== T1 流水线: 22 explore(+offline_replay) → 28 hard+ORU (tag=${HC_CATALOG_TAG}) ==="
+    run_test_22
+    run_test_28
+    echo "=== T1 流水线完成 ==="
 }
 
 run_test_29() {
@@ -629,17 +651,6 @@ run_test_33() {
         $(hc_catalog_args) \
         $(hc_warmstart_args) \
         ${DEVICE_ARG}
-}
-
-run_t1() {
-    # T1 Phase A: random explore 采库 (HcFactory_Catalog) → Phase B: hard train (HcFactory_TPA)
-    export HC_CATALOG_TAG="${HC_CATALOG_TAG:-T1_random_ep20}"
-    export HC_CATALOG_SOURCE="${HC_CATALOG_SOURCE:-random_explore}"
-    export HC_EXPLORE_EPISODES="${HC_EXPLORE_EPISODES:-20}"
-    echo "=== T1 流水线: 22 explore → 28 hard train (tag=${HC_CATALOG_TAG}) ==="
-    run_test_22
-    run_test_28
-    echo "=== T1 流水线完成（Phase B ORU 待实现；当前 28 为 online hard train）==="
 }
 
 # 调度：按序号 / A / B / C 调用上面的 run_test_*

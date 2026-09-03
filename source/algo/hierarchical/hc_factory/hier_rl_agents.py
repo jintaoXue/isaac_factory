@@ -143,14 +143,46 @@ class MaskedDQNAgent:
         obs_key = "next_obs" if use_next else "obs"
         return torch.stack([getattr(transition, obs_key) for transition in transitions]).to(self.device)
 
+    def _sample_train_batch(
+        self,
+        *,
+        offline_buffer: ReplayBuffer | None = None,
+        mix_ratio: float = 0.0,
+    ) -> list[Transition] | None:
+        """Sample ``batch_size`` transitions, mixing online + optional offline ORU buffer."""
+        mix_ratio = max(0.0, min(1.0, float(mix_ratio)))
+        offline_n = 0
+        if offline_buffer is not None and len(offline_buffer) > 0 and mix_ratio > 0.0:
+            offline_n = min(len(offline_buffer), int(round(self.batch_size * mix_ratio)))
+        online_n = self.batch_size - offline_n
+        if online_n > len(self.buffer):
+            short = online_n - len(self.buffer)
+            online_n = len(self.buffer)
+            if offline_buffer is not None:
+                offline_n = min(len(offline_buffer), offline_n + short)
+        total = online_n + offline_n
+        if total <= 0:
+            return None
+        # Warmup / early online: allow slightly smaller batches once we have ≥1/4 batch.
+        if total < self.batch_size and total < max(1, self.batch_size // 4):
+            return None
+        batch: list[Transition] = []
+        if online_n > 0:
+            batch.extend(self.buffer.sample(online_n))
+        if offline_n > 0 and offline_buffer is not None:
+            batch.extend(offline_buffer.sample(offline_n))
+        return batch
+
     def compute_loss(
         self,
         encode_fn: Callable[[dict, Transition], torch.Tensor] | None = None,
+        *,
+        offline_buffer: ReplayBuffer | None = None,
+        mix_ratio: float = 0.0,
     ) -> torch.Tensor | None:
-        if len(self.buffer) < self.batch_size:
+        batch = self._sample_train_batch(offline_buffer=offline_buffer, mix_ratio=mix_ratio)
+        if batch is None:
             return None
-
-        batch = self.buffer.sample(self.batch_size)
         obs_batch = self._encode_batch(batch, encode_fn, use_next=False)
         action_batch = torch.tensor([t.action for t in batch], dtype=torch.long, device=self.device)
         reward_batch = torch.tensor([t.reward for t in batch], dtype=torch.float32, device=self.device)
@@ -246,7 +278,8 @@ class RLProductSequencingAgent:
         return self.dqn.act_tensor(obs, mask, epsilon)
 
     def observe_step(
-        self, env_state_action_dict, action, reward, next_env_state_action_dict, done, epsilon, *, discount=None, learn=True
+        self, env_state_action_dict, action, reward, next_env_state_action_dict, done, epsilon, *, discount=None, learn=True,
+        offline_buffer=None, mix_ratio: float = 0.0,
     ):
         del epsilon
         if action.sum() == 0:
@@ -266,7 +299,11 @@ class RLProductSequencingAgent:
         )
         if not learn:
             return None
-        return self.dqn.compute_loss(lambda pre, transition: self.obs_encoder.encode_A(pre))
+        return self.dqn.compute_loss(
+            lambda pre, transition: self.obs_encoder.encode_A(pre),
+            offline_buffer=offline_buffer,
+            mix_ratio=mix_ratio,
+        )
 
 
 class RLProductSelectionAgent:
@@ -365,6 +402,8 @@ class RLProductSelectionAgent:
         *,
         discount=None,
         learn=True,
+        offline_buffer=None,
+        mix_ratio: float = 0.0,
     ):
         del epsilon
         if action.sum() == 0:
@@ -386,7 +425,11 @@ class RLProductSelectionAgent:
         )
         if not learn:
             return None
-        return self.dqn.compute_loss(lambda pre, transition: self.obs_encoder.encode_B(pre, transition.context.to(self.device)))
+        return self.dqn.compute_loss(
+            lambda pre, transition: self.obs_encoder.encode_B(pre, transition.context.to(self.device)),
+            offline_buffer=offline_buffer,
+            mix_ratio=mix_ratio,
+        )
 
 
 class RLProcessTaskPlanningAgent:
@@ -456,6 +499,8 @@ class RLProcessTaskPlanningAgent:
         *,
         discount=None,
         learn=True,
+        offline_buffer=None,
+        mix_ratio: float = 0.0,
     ):
         del epsilon
         if action.sum() == 0:
@@ -477,7 +522,11 @@ class RLProcessTaskPlanningAgent:
         )
         if not learn:
             return None
-        return self.dqn.compute_loss(lambda pre, transition: self.obs_encoder.encode_C(pre, transition.context.to(self.device)))
+        return self.dqn.compute_loss(
+            lambda pre, transition: self.obs_encoder.encode_C(pre, transition.context.to(self.device)),
+            offline_buffer=offline_buffer,
+            mix_ratio=mix_ratio,
+        )
 
 
 class RLHumanRobotAllocatorAgent:
@@ -570,6 +619,9 @@ class RLHumanRobotAllocatorAgent:
         *,
         discount=None,
         learn=True,
+        offline_buffer_human=None,
+        offline_buffer_robot=None,
+        mix_ratio: float = 0.0,
     ):
         del epsilon
         if process_task_planning_action[0] == 1:
@@ -601,7 +653,9 @@ class RLHumanRobotAllocatorAgent:
                 context=c_plan,
             )
             if learn:
-                human_loss = self.human_dqn.compute_loss(encode_d)
+                human_loss = self.human_dqn.compute_loss(
+                    encode_d, offline_buffer=offline_buffer_human, mix_ratio=mix_ratio
+                )
         if action["robot"].sum() > 0:
             self.robot_dqn.store_pre(
                 env_state_action_dict,
@@ -615,5 +669,7 @@ class RLHumanRobotAllocatorAgent:
                 context=c_plan,
             )
             if learn:
-                robot_loss = self.robot_dqn.compute_loss(encode_d)
+                robot_loss = self.robot_dqn.compute_loss(
+                    encode_d, offline_buffer=offline_buffer_robot, mix_ratio=mix_ratio
+                )
         return human_loss, robot_loss

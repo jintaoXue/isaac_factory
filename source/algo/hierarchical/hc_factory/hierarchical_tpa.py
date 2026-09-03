@@ -27,6 +27,13 @@ from .hier_rl_agents import (
 )
 from .hier_utils import compute_team_reward, count_busy_agents, crossed_interval, env_steps, read_rl_done, steps_per_min
 from .horizon_hooks import HorizonHooks
+from .offline_replay import (
+    ORUController,
+    default_warmup_updates,
+    load_offline_replay,
+    offline_replay_dir,
+    save_offline_replay,
+)
 from .wandb_metrics import (
     HumanFatigueMonitor,
     LocalMetricsWriter,
@@ -183,6 +190,12 @@ class HierarchicalTPA:
             "reward_clip": config.get("reward_clip", 100.0),
             "q_target_clip": config.get("q_target_clip", 500.0),
         }
+        # Explore dumps the whole online buffer as offline replay — keep enough capacity.
+        if bool(config.get("explore") or config.get("explore_catalog")) and bool(
+            config.get("explore_save_offline_replay", True)
+        ):
+            offline_cap = int(config.get("offline_replay_capacity", 100000))
+            dqn_kwargs["buffer_capacity"] = max(int(dqn_kwargs["buffer_capacity"]), offline_cap)
 
         parallel_limit = config.get("parallel_producing_limit", 10)
         self.max_parallel_cd_dispatch = int(config.get("max_parallel_cd_dispatch", 1))
@@ -212,10 +225,22 @@ class HierarchicalTPA:
         dqn_kwargs_A = dict(dqn_kwargs)
         dqn_kwargs_A["batch_size"] = int(config.get("batch_size_A", 16))
         dqn_kwargs_A["buffer_capacity"] = int(config.get("replay_buffer_size_A", 5000))
+        if bool(config.get("explore") or config.get("explore_catalog")) and bool(
+            config.get("explore_save_offline_replay", True)
+        ):
+            dqn_kwargs_A["buffer_capacity"] = max(
+                dqn_kwargs_A["buffer_capacity"],
+                int(config.get("offline_replay_capacity_A", 20000)),
+            )
         self.agent_A = RLProductSequencingAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs_A)
         self.agent_B = RLProductSelectionAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
         self.agent_C = RLProcessTaskPlanningAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
         self.agent_D = RLHumanRobotAllocatorAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
+
+        self.oru: ORUController | None = None
+        self._oru_enabled = bool(config.get("oru", False)) and not bool(
+            config.get("explore") or config.get("explore_catalog")
+        )
 
         self.train_dir = config.get("train_dir", "runs")
         self.experiment_dir = os.path.join(self.train_dir, config["full_experiment_name"])
@@ -525,6 +550,8 @@ class HierarchicalTPA:
 
         explore = getattr(self, "horizon", None) is not None and self.horizon.explore
         should_learn = bool(learn) and not explore
+        mix = float(self.oru.mix_ratio) if self.oru is not None else 0.0
+        off = self.oru.offline if self.oru is not None else {}
         loss_entries: list[tuple[str, torch.Tensor, object | None]] = []
 
         loss_a = self.agent_A.observe_step(
@@ -536,6 +563,8 @@ class HierarchicalTPA:
             epsilon,
             discount=bootstrap_discount,
             learn=should_learn,
+            offline_buffer=off.get("A"),
+            mix_ratio=mix,
         )
         if loss_a is not None:
             loss_entries.append(("A", loss_a, self.agent_A.dqn))
@@ -565,6 +594,8 @@ class HierarchicalTPA:
                 epsilon,
                 discount=bootstrap_discount,
                 learn=should_learn,
+                offline_buffer=off.get("B"),
+                mix_ratio=mix,
             )
             if loss_b is not None:
                 loss_entries.append(("B", loss_b, self.agent_B.dqn))
@@ -579,6 +610,8 @@ class HierarchicalTPA:
                 epsilon,
                 discount=bootstrap_discount,
                 learn=should_learn,
+                offline_buffer=off.get("C"),
+                mix_ratio=mix,
             )
             if loss_c is not None:
                 loss_entries.append(("C", loss_c, self.agent_C.dqn))
@@ -593,6 +626,9 @@ class HierarchicalTPA:
                 epsilon,
                 discount=bootstrap_discount,
                 learn=should_learn,
+                offline_buffer_human=off.get("D_human"),
+                offline_buffer_robot=off.get("D_robot"),
+                mix_ratio=mix,
             )
             if loss_d_h is not None:
                 loss_entries.append(("D_human", loss_d_h, self.agent_D.human_dqn))
@@ -606,6 +642,168 @@ class HierarchicalTPA:
         for key, value in losses.items():
             self._loss_window[key].append(value)
         return losses
+
+    def _oru_head_specs(self):
+        """(name, dqn, encode_fn, offline_key) for ORU-only updates."""
+        return [
+            (
+                "A",
+                self.agent_A.dqn,
+                (lambda pre, transition: self.obs_encoder.encode_A(pre)),
+                "A",
+            ),
+            (
+                "B",
+                self.agent_B.dqn,
+                (
+                    lambda pre, transition: self.obs_encoder.encode_B(
+                        pre, transition.context.to(self.cuda_device)
+                    )
+                ),
+                "B",
+            ),
+            (
+                "C",
+                self.agent_C.dqn,
+                (
+                    lambda pre, transition: self.obs_encoder.encode_C(
+                        pre, transition.context.to(self.cuda_device)
+                    )
+                ),
+                "C",
+            ),
+            (
+                "D_human",
+                self.agent_D.human_dqn,
+                (
+                    lambda pre, transition: self.obs_encoder.encode_D(
+                        pre, transition.context.to(self.cuda_device)
+                    )
+                ),
+                "D_human",
+            ),
+            (
+                "D_robot",
+                self.agent_D.robot_dqn,
+                (
+                    lambda pre, transition: self.obs_encoder.encode_D(
+                        pre, transition.context.to(self.cuda_device)
+                    )
+                ),
+                "D_robot",
+            ),
+        ]
+
+    def _setup_oru(self) -> None:
+        """Load offline replay from catalog and build ORUController (train only)."""
+        if not self._oru_enabled:
+            self.oru = None
+            return
+        catalog_root = self.horizon.catalog.root
+        replay_path = offline_replay_dir(catalog_root)
+        if not replay_path.is_dir():
+            raise FileNotFoundError(
+                f"[ORU] enabled but offline replay missing: {replay_path}\n"
+                f"Re-run explore (job 22) with explore_save_offline_replay=True first."
+            )
+        offline = load_offline_replay(catalog_root)
+        n_max = max((len(b) for b in offline.values()), default=0)
+        batch = int(self.config.get("batch_size", 64))
+        configured = int(self.config.get("oru_warmup_updates", 0) or 0)
+        if configured > 0:
+            warmup = configured
+        else:
+            warmup = default_warmup_updates(
+                n_max,
+                batch_size=batch,
+                epochs=float(self.config.get("oru_warmup_epochs", 5.0)),
+                min_updates=int(self.config.get("oru_warmup_min", 2000)),
+                max_updates=int(self.config.get("oru_warmup_max", 15000)),
+            )
+        self.oru = ORUController(
+            offline,
+            enabled=True,
+            warmup_updates=warmup,
+            mix_start=float(self.config.get("oru_mix_start", 1.0)),
+            mix_decay_env_steps=int(self.config.get("oru_mix_decay_env_steps", 300000)),
+            shrink_offline=bool(self.config.get("oru_shrink_offline", True)),
+        )
+        print(
+            f"[ORU] enabled warmup_updates={warmup} (auto={configured <= 0}) "
+            f"mix_start={self.oru.mix_start} decay_env_steps={self.oru.mix_decay_env_steps} "
+            f"n_max_offline={n_max}"
+        )
+
+    def _run_oru_warmup(self) -> None:
+        """Pure offline gradient steps before online interaction."""
+        if self.oru is None or not self.oru.in_warmup:
+            return
+        total = self.oru.warmup_updates
+        log_every = max(1, total // 10)
+        print(f"[ORU] warmup start: {total} updates (mix=1.0, no env interaction)")
+        while self.oru.in_warmup:
+            mix = self.oru.mix_ratio
+            off = self.oru.offline
+            entries: list[tuple[str, torch.Tensor, object | None]] = []
+            for name, dqn, encode_fn, key in self._oru_head_specs():
+                if dqn is None:
+                    continue
+                loss = dqn.compute_loss(
+                    encode_fn, offline_buffer=off.get(key), mix_ratio=mix
+                )
+                if loss is not None:
+                    entries.append((name, loss, dqn))
+            if entries:
+                losses = self._joint_learn(entries)
+                for key, value in losses.items():
+                    self._loss_window[key].append(value)
+            self.oru.note_warmup_step()
+            if self.oru.warmup_done % log_every == 0 or not self.oru.in_warmup:
+                payload = axis_payload(0, self._wall_time_sec())
+                payload.update(self.oru.metrics_payload())
+                critic_vals = []
+                for name, window in self._loss_window.items():
+                    if window:
+                        m = sum(window) / len(window)
+                        loss_key = {
+                            "A": "MetricLoss/02_critic_A",
+                            "B": "MetricLoss/03_critic_B",
+                            "C": "MetricLoss/04_critic_C",
+                            "D_human": "MetricLoss/05_critic_D_human",
+                            "D_robot": "MetricLoss/06_critic_D_robot",
+                        }[name]
+                        payload[loss_key] = m
+                        critic_vals.append(m)
+                if critic_vals:
+                    payload["MetricLoss/01_critic_mean"] = sum(critic_vals) / len(critic_vals)
+                self._log_metrics(payload)
+                print(
+                    f"[ORU] warmup {self.oru.warmup_done}/{total} "
+                    f"mix={mix:.3f} heads={list(losses.keys()) if entries else []}"
+                )
+        self.oru.mark_online_started(0)
+        print("[ORU] warmup done → online hard train with decaying offline mix")
+
+    def _dump_explore_offline_replay(self) -> None:
+        if not (self.horizon.explore and bool(self.config.get("explore_save_offline_replay", True))):
+            return
+        buffers = {
+            "A": self.agent_A.dqn.buffer if self.agent_A.dqn is not None else None,
+            "B": self.agent_B.dqn.buffer if self.agent_B.dqn is not None else None,
+            "C": self.agent_C.dqn.buffer if self.agent_C.dqn is not None else None,
+            "D_human": self.agent_D.human_dqn.buffer if self.agent_D.human_dqn is not None else None,
+            "D_robot": self.agent_D.robot_dqn.buffer if self.agent_D.robot_dqn is not None else None,
+        }
+        save_offline_replay(
+            self.horizon.catalog.root,
+            buffers,
+            meta={
+                "epsilon": 1.0,
+                "explore_n_products": self.horizon.explore_n_products,
+                "episodes": self.episodes_done,
+                "catalog_root": str(self.horizon.catalog.root),
+            },
+        )
 
     def save_checkpoint(self, step: int) -> None:
         """``step`` is summed env-instance steps (global_step × num_envs)."""
@@ -651,6 +849,12 @@ class HierarchicalTPA:
         last_logged_env_steps = 0
         last_learned_env_steps = 0
 
+        # Init DQNs via one act, then optional ORU warmup (T1 Phase B).
+        self.act(obs, prev_pre_list=prev_pre_list)
+        if self._oru_enabled:
+            self._setup_oru()
+            self._run_oru_warmup()
+
         while not stop:
             epsilon = self.get_epsilon()
             actions, actions_extra = self.act(obs, prev_pre_list=prev_pre_list)
@@ -691,6 +895,8 @@ class HierarchicalTPA:
             self.global_step += 1
             self._maybe_apply_late_stability()
             env_step = env_steps(self.global_step, self.num_actors)
+            if self.oru is not None:
+                self.oru.on_env_step(env_step)
 
             for env_id in range(len(obs)):
                 self._update_concurrency_peaks(env_id, next_obs[env_id])
@@ -977,6 +1183,8 @@ class HierarchicalTPA:
                     )
                 )
                 payload.update(loss_payload)
+                if self.oru is not None:
+                    payload.update(self.oru.metrics_payload())
                 if self.horizon.catalog_metrics_enabled:
                     payload.update(self.horizon.catalog_step_metrics())
                 self._log_metrics(payload)
@@ -991,6 +1199,8 @@ class HierarchicalTPA:
             self.save_checkpoint(env_step)
             print(f"[Hier] checkpoint saved at step {env_step} (final)")
 
+        self._dump_explore_offline_replay()
+
         wall = self._wall_time_sec()
         spm = steps_per_min(self.global_step, wall, self.num_actors)
         spm_str = f"{spm:.1f}" if spm is not None else "n/a"
@@ -1004,6 +1214,8 @@ class HierarchicalTPA:
         finish_payload = axis_payload(
             env_steps(self.global_step, self.num_actors), wall, spm
         )
+        if self.oru is not None:
+            finish_payload.update(self.oru.metrics_payload())
         if self.horizon.catalog_metrics_enabled:
             finish_payload.update(self.horizon.catalog_step_metrics())
         self._log_metrics(finish_payload)

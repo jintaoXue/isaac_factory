@@ -40,3 +40,14 @@ class ReplayBuffer:
 
     def sample(self, batch_size: int) -> list[Transition]:
         return random.sample(self.buffer, batch_size)
+
+    def shrink_to(self, target_size: int) -> None:
+        """Randomly drop entries until ``len <= target_size`` (keeps relative diversity)."""
+        target = max(0, int(target_size))
+        if len(self.buffer) <= target:
+            return
+        if target == 0:
+            self.buffer.clear()
+            return
+        kept = random.sample(list(self.buffer), target)
+        self.buffer = deque(kept, maxlen=self.capacity)

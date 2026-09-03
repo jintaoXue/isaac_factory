@@ -80,11 +80,23 @@ params:
     explore_catalog_dir: ''
     explore_n_products: 0
     explore_save_catalog: True
+    explore_save_offline_replay: True
+    offline_replay_capacity: 100000
+    offline_replay_capacity_A: 20000
     catalog_collect: False
     warmstart: ''
     curriculum: False
     curriculum_start_stage: 0
     t_max_anchor: 64000
+    # ORU (T1/T2): offline warmup then decaying mix into online hard train
+    oru: False
+    oru_warmup_updates: 0          # 0 = auto from offline size (≈5 epochs, clipped)
+    oru_warmup_epochs: 5.0
+    oru_warmup_min: 2000
+    oru_warmup_max: 15000
+    oru_mix_start: 1.0             # right after warmup
+    oru_mix_decay_env_steps: 300000  # linear 1→0 over this many env steps
+    oru_shrink_offline: True       # shrink offline buffer with mix_ratio
     stagnation_l1: 400
     stagnation_l2: 600
     stagnation_l3: 800
