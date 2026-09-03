@@ -11,7 +11,10 @@ Example::
         --data_dir raw_data/old2.0 \\
         --save_dir libcity/cache/model_cache/old2.0 \\
         --max_epoch 5
-    python -m factory_bn.train --config factory_bn/configs/FactoryBN.json --wandb_activate
+    python -m factory_bn.train --config factory_bn/configs/FactoryBN_unsupervised_f1.json \\
+        --data_dir raw_data/n10_i1_all_usable \\
+        --save_dir libcity/cache/model_cache/n10_i1_all_usable_unsup_f1
+    # wandb is on by default; pass --no_wandb to disable.
 """
 
 from __future__ import annotations
@@ -126,6 +129,39 @@ def _jsonable_cfg(cfg: dict[str, Any], data_feature: dict[str, Any]) -> dict[str
 
 def _wandb_enabled(cfg: dict[str, Any]) -> bool:
     return bool(cfg.get("wandb_activate"))
+
+
+def _wandb_write_summary(te: dict[str, Any], *, extra: dict[str, Any] | None = None) -> None:
+    """Pin headline metrics on the wandb run overview."""
+    import wandb
+
+    keys = (
+        "report_precision",
+        "report_recall",
+        "report_f1",
+        "who_precision",
+        "who_recall",
+        "report_recall_ongoing",
+        "report_recall_upcoming",
+        "start_mae",
+        "dur_mae",
+        "remain_len_mae",
+        "score_mae",
+        "hot_f1",
+        "cause_macro_recall",
+        "loss",
+    )
+    for k in keys:
+        if k in te and te[k] is not None:
+            wandb.summary[f"test_{k}"] = te[k]
+    wandb.summary["test_will_acc"] = te.get("will_acc")
+    wandb.summary["test_will_f1"] = te.get("will_f1")
+    wandb.summary["test_will_ap"] = te.get("will_ap")
+    wandb.summary["test_cause_acc"] = te.get("cause_acc")
+    wandb.summary["test_nll"] = te.get("nll")
+    if extra:
+        for k, v in extra.items():
+            wandb.summary[k] = v
 
 
 def _init_wandb(cfg: dict[str, Any], data_feature: dict[str, Any]) -> Any:
@@ -751,6 +787,8 @@ def train(cfg: dict[str, Any]) -> Path:
                         "report_precision": float(va.get("report_precision", 0.0)),
                         "report_recall": float(va.get("report_recall", 0.0)),
                         "report_f1": float(va.get("report_f1", 0.0)),
+                        "report_recall_upcoming": float(va.get("report_recall_upcoming", 0.0)),
+                        "report_recall_ongoing": float(va.get("report_recall_ongoing", 0.0)),
                         "start_mae": float(va.get("start_mae", 0.0)),
                         "dur_mae": float(va.get("dur_mae", 0.0)),
                         "remain_len_mae": float(va.get("remain_len_mae", 0.0)),
@@ -786,6 +824,8 @@ def train(cfg: dict[str, Any]) -> Path:
                     f"rep_p={va.get('report_precision', 0):.3f} "
                     f"rep_r={va.get('report_recall', 0):.3f} "
                     f"rep_f1={va.get('report_f1', 0):.3f} "
+                    f"up_r={va.get('report_recall_upcoming', 0):.3f} "
+                    f"on_r={va.get('report_recall_ongoing', 0):.3f} "
                     f"st_mae={va.get('start_mae', 0):.2f} "
                     f"dur_mae={va.get('dur_mae', 0):.2f} "
                     f"type_h={va.get('hot_type_hmean', 0):.3f} "
@@ -820,9 +860,16 @@ def train(cfg: dict[str, Any]) -> Path:
                 elif ckpt_metric == "report_f1":
                     improved = (
                         (report_p + 1e-12 >= min_report_p)
+                        and (report_r + 1e-12 >= min_report_r)
                         and (report_f1 > best_hot_f1 + 1e-6)
                     )
                     ckpt_show = report_f1
+                elif ckpt_metric == "report_recall":
+                    improved = (
+                        (report_p + 1e-12 >= min_report_p)
+                        and (report_r > best_hot_f1 + 1e-6)
+                    )
+                    ckpt_show = report_r
                 elif ckpt_metric == "report_precision":
                     improved = (
                         (who_r + 1e-12 >= min_who_r)
@@ -850,6 +897,8 @@ def train(cfg: dict[str, Any]) -> Path:
                     best_mae = min(best_mae, mae)
                     if ckpt_metric == "report_f1":
                         best_hot_f1 = max(best_hot_f1, report_f1)
+                    elif ckpt_metric == "report_recall":
+                        best_hot_f1 = max(best_hot_f1, report_r)
                     elif ckpt_metric == "report_precision":
                         best_hot_f1 = max(best_hot_f1, report_p)
                     elif ckpt_metric == "event_precision":
@@ -874,6 +923,9 @@ def train(cfg: dict[str, Any]) -> Path:
 
                         wandb.summary["best_score_mae"] = best_mae
                         wandb.summary["best_hot_f1"] = best_hot_f1
+                        wandb.summary["best_report_f1"] = report_f1
+                        wandb.summary["best_report_precision"] = report_p
+                        wandb.summary["best_report_recall"] = report_r
                         wandb.summary["best_epoch"] = step
                         wandb.summary["phase"] = phase
                 else:
@@ -1085,6 +1137,8 @@ def train(cfg: dict[str, Any]) -> Path:
             f"rep_p={te.get('report_precision', 0):.3f} "
             f"rep_r={te.get('report_recall', 0):.3f} "
             f"rep_f1={te.get('report_f1', 0):.3f} "
+            f"up_r={te.get('report_recall_upcoming', 0):.3f} "
+            f"on_r={te.get('report_recall_ongoing', 0):.3f} "
             f"st_mae={te.get('start_mae', 0):.2f} "
             f"type_h={te.get('hot_type_hmean', 0):.3f} "
             f"remain_mae={te.get('remain_len_mae', 0):.1f} "
@@ -1124,15 +1178,14 @@ def train(cfg: dict[str, Any]) -> Path:
 
             log_epoch = last_epoch if last_epoch > 0 else int(ckpt.get("epoch") or 0)
             _wandb_log({"Test": te}, log_epoch)
-            wandb.summary["test_loss"] = te.get("loss")
-            wandb.summary["test_will_acc"] = te.get("will_acc")
-            wandb.summary["test_will_f1"] = te.get("will_f1")
-            wandb.summary["test_will_ap"] = te.get("will_ap")
-            wandb.summary["test_cause_acc"] = te.get("cause_acc")
-            wandb.summary["test_score_mae"] = te.get("score_mae")
-            wandb.summary["test_hot_f1"] = te.get("hot_f1")
-            wandb.summary["test_remain_len_mae"] = te.get("remain_len_mae")
-            wandb.summary["test_nll"] = te.get("nll")
+            _wandb_write_summary(
+                te,
+                extra={
+                    "val_best_score_mae": best_mae,
+                    "val_best_hot_f1": best_hot_f1,
+                    "best_epoch": int(ckpt.get("epoch") or 0),
+                },
+            )
             wandb.save(str(best_path))
             wandb.save(str(metrics_path))
     finally:
@@ -1176,7 +1229,12 @@ def main() -> None:
         "--wandb_activate",
         action="store_true",
         default=None,
-        help="Enable Weights & Biases logging (default off).",
+        help="Enable Weights & Biases logging (default: on unless --no_wandb).",
+    )
+    parser.add_argument(
+        "--no_wandb",
+        action="store_true",
+        help="Disable Weights & Biases logging for this run.",
     )
     parser.add_argument("--wandb_project", type=str, default=None, help="wandb project name.")
     parser.add_argument("--wandb_name", type=str, default=None, help="Optional wandb run name.")
@@ -1216,7 +1274,9 @@ def main() -> None:
         cfg["device"] = args.device
     if args.ckpt_min_hot_precision is not None:
         cfg["ckpt_min_hot_precision"] = float(args.ckpt_min_hot_precision)
-    if args.wandb_activate:
+    if args.no_wandb:
+        cfg["wandb_activate"] = False
+    else:
         cfg["wandb_activate"] = True
     if args.wandb_project:
         cfg["wandb_project"] = args.wandb_project

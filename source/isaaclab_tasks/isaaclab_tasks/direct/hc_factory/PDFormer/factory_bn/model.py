@@ -433,8 +433,26 @@ class BNPDFormer(nn.Module):
         self.event_will_ongoing_pos_weight = float(
             config.get("event_will_ongoing_pos_weight", self.event_will_pos_weight)
         )
+        self.event_will_precursor_pos_weight = float(
+            config.get("event_will_precursor_pos_weight", 0.0)
+        )
         self.force_ongoing_will = bool(config.get("force_ongoing_will", False))
         self.ongoing_will_floor = float(config.get("ongoing_will_floor", 0.62))
+        self.recall_lift_threshold = float(config.get("recall_lift_threshold", 0.0))
+        self.recall_lift_cluster_ids = [
+            int(x) for x in (config.get("recall_lift_cluster_ids") or [])
+        ]
+        self.recall_lift_types = [
+            str(x)
+            for x in (config.get("recall_lift_types") or [])
+            if str(x) in OCC_TYPE_NAMES
+        ]
+        raw_type_thr = config.get("event_report_threshold_by_type") or {}
+        self.event_report_threshold_by_type = {
+            str(k): float(v)
+            for k, v in raw_type_thr.items()
+            if str(k) in OCC_TYPE_NAMES
+        }
         self.split_will_heads = bool(config.get("split_will_heads", False))
         self.event_onset_threshold = float(
             config.get("event_onset_threshold", config.get("event_report_threshold", 0.70))
@@ -780,6 +798,97 @@ class BNPDFormer(nn.Module):
         lh = lh[:, : continue_logit.shape[-1]]
         return torch.where(lh > 0.5, continue_logit, onset_logit)
 
+    def _node_type_mask(self, name: str, n_nodes: int, device: torch.device) -> torch.Tensor | None:
+        buf = self._occ_type_masks().get(name)
+        if buf is None:
+            return None
+        node = buf.to(device=device).reshape(-1)[:n_nodes] > 0.5
+        return node.view(1, -1)
+
+    def _apply_type_thresholds(
+        self,
+        will_p: torch.Tensor,
+        last_hot: torch.Tensor | None,
+    ) -> torch.Tensor:
+        """Per-type report bar: lift high-P types, suppress low-P types (not ongoing)."""
+        by_type = self.event_report_threshold_by_type
+        if not by_type:
+            return will_p
+        report_thr = float(self.event_report_threshold)
+        hot = None
+        if last_hot is not None:
+            lh = last_hot.to(device=will_p.device, dtype=will_p.dtype)
+            if lh.dim() == 1:
+                lh = lh.view(1, -1).expand_as(will_p)
+            hot = lh[:, : will_p.shape[-1]] > 0.5
+        out = will_p
+        for name, thr in by_type.items():
+            node = self._node_type_mask(name, will_p.shape[-1], will_p.device)
+            if node is None:
+                continue
+            node = node.expand_as(out)
+            if float(thr) + 1e-6 < report_thr:
+                out = torch.where(node & (will_p >= float(thr)), out.clamp(min=report_thr), out)
+            elif float(thr) > report_thr + 1e-6:
+                drop = node & (will_p < float(thr))
+                if hot is not None:
+                    drop = drop & ~hot
+                out = torch.where(drop, torch.zeros_like(out), out)
+        return out
+
+    def _apply_recall_lift(
+        self,
+        will_p: torch.Tensor,
+        batch: dict[str, torch.Tensor],
+        last_hot: torch.Tensor | None,
+    ) -> torch.Tensor:
+        """Bump near-miss upcoming stations on selected causes / types only."""
+        lift_thr = float(self.recall_lift_threshold)
+        report_thr = float(self.event_report_threshold)
+        if lift_thr <= 0 or lift_thr >= report_thr:
+            return will_p
+        cold = None
+        if last_hot is not None:
+            lh = last_hot.to(device=will_p.device, dtype=will_p.dtype)
+            if lh.dim() == 1:
+                lh = lh.view(1, -1).expand_as(will_p)
+            cold = lh[:, : will_p.shape[-1]] <= 0.5
+        near = will_p >= lift_thr
+        bump = near
+        if cold is not None:
+            bump = bump & cold
+        if self.recall_lift_types:
+            type_ok = torch.zeros_like(will_p, dtype=torch.bool)
+            for name in self.recall_lift_types:
+                node = self._node_type_mask(name, will_p.shape[-1], will_p.device)
+                if node is not None:
+                    type_ok = type_ok | node.expand_as(will_p)
+            bump = bump & type_ok
+        hint = torch.zeros_like(will_p, dtype=torch.bool)
+        cid = batch.get("hist_cluster")
+        if cid is not None:
+            c = cid.to(device=will_p.device)
+            if c.dim() == 1:
+                c = c.view(1, -1).expand(will_p.shape[0], -1)
+            c = c[:, : will_p.shape[-1]]
+            allow = self.recall_lift_cluster_ids
+            if allow:
+                ok = torch.zeros_like(c, dtype=torch.bool)
+                for i in allow:
+                    ok = ok | (c == int(i))
+                hint = hint | ok
+            else:
+                hint = hint | ((c > 0) & (c < 7))
+        tpm = batch.get("hist_tpm")
+        if tpm is not None and not self.recall_lift_cluster_ids:
+            t = tpm.to(device=will_p.device, dtype=will_p.dtype)
+            if t.dim() == 1:
+                t = t.view(1, -1).expand_as(will_p)
+            hint = hint | (t[:, : will_p.shape[-1]] > 0.5)
+        if not bool(hint.any()):
+            return will_p
+        return torch.where(bump & hint, will_p.clamp(min=report_thr), will_p)
+
     def encode(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Returns skip (B, skip_dim, N, T), enc (B,T,N,D), h_last (B,N,D)."""
         B, T, N, _ = x.shape
@@ -1084,6 +1193,26 @@ class BNPDFormer(nn.Module):
         pos_w = torch.where(
             ongoing, torch.full_like(y_will, self.event_will_ongoing_pos_weight), pos_w
         )
+        if self.event_will_precursor_pos_weight > 0:
+            cid = batch.get("hist_cluster")
+            if cid is not None:
+                c = cid.to(device=y_will.device)
+                if c.dim() == 1:
+                    c = c.view(1, -1).expand_as(upcoming)
+                c = c[:, : upcoming.shape[-1]]
+                allow = self.recall_lift_cluster_ids
+                if allow:
+                    ok = torch.zeros_like(c, dtype=torch.bool)
+                    for i in allow:
+                        ok = ok | (c == int(i))
+                    precursor = upcoming & ok
+                else:
+                    precursor = upcoming & (c > 0) & (c < 7)
+                pos_w = torch.where(
+                    precursor,
+                    torch.full_like(y_will, self.event_will_precursor_pos_weight),
+                    pos_w,
+                )
         w = y_will * pos_w + (1.0 - y_will) * self.event_will_fp_weight
         if occ is not None:
             node = occ.float()
@@ -1473,6 +1602,8 @@ class BNPDFormer(nn.Module):
                 if self.split_will_heads and self.event_onset_threshold > self.event_report_threshold:
                     cold_weak = (lh <= 0.5) & (will_p < float(self.event_onset_threshold))
                     will_p = torch.where(cold_weak, torch.zeros_like(will_p), will_p)
+                will_p = self._apply_type_thresholds(will_p, last)
+                will_p = self._apply_recall_lift(will_p, batch, last)
                 if self.force_ongoing_will:
                     dur = out["event_dur"][:, : will_p.shape[-1]]
                     force = (

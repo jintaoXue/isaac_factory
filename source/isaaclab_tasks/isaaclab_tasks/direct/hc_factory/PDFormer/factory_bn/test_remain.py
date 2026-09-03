@@ -877,6 +877,27 @@ def test_combine_will_uses_onset_when_cold() -> None:
     assert float(out_cold[0, 0]) == -4.0
 
 
+def test_recall_lift_bumps_congested_cold() -> None:
+    import torch
+    from factory_bn.model import BNPDFormer
+
+    m = BNPDFormer.__new__(BNPDFormer)
+    m.recall_lift_threshold = 0.40
+    m.event_report_threshold = 0.55
+    m.recall_lift_cluster_ids = []
+    m.recall_lift_types = []
+    will = torch.tensor([[0.42, 0.42, 0.30, 0.80]])
+    last = torch.tensor([[0.0, 0.0, 0.0, 1.0]])
+    cluster = torch.tensor([[2, 0, 3, 2]])
+    out = BNPDFormer._apply_recall_lift(
+        m, will, {"hist_cluster": cluster}, last
+    )
+    assert float(out[0, 0]) >= 0.55
+    assert abs(float(out[0, 1]) - 0.42) < 1e-5
+    assert abs(float(out[0, 2]) - 0.30) < 1e-5
+    assert abs(float(out[0, 3]) - 0.80) < 1e-5
+
+
 if __name__ == "__main__":
     test_node_hot_includes_score()
     test_labor_saturated_appended_on_machines_only()
@@ -905,4 +926,5 @@ if __name__ == "__main__":
     test_split_episodes_by_name()
     test_cause_cluster_priority()
     test_combine_will_uses_onset_when_cold()
+    test_recall_lift_bumps_congested_cold()
     print("ok")
