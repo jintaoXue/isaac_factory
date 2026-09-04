@@ -425,8 +425,23 @@ class BNPDFormer(nn.Module):
         self.w_event_will = float(config.get("w_event_will", 0.0))
         self.w_event_start = float(config.get("w_event_start", 0.0))
         self.w_event_dur = float(config.get("w_event_dur", 0.0))
+        self.w_event_f1 = float(config.get("w_event_f1", 0.0))
         self.event_will_pos_weight = float(config.get("event_will_pos_weight", 2.0))
         self.event_will_fp_weight = float(config.get("event_will_fp_weight", 4.0))
+        self.event_will_fp_weight_by_type = {
+            str(k): float(v)
+            for k, v in (config.get("event_will_fp_weight_by_type") or {}).items()
+            if str(k) in OCC_TYPE_NAMES
+        }
+        self.event_will_upcoming_fp_weight_by_type = {
+            str(k): float(v)
+            for k, v in (config.get("event_will_upcoming_fp_weight_by_type") or {}).items()
+            if str(k) in OCC_TYPE_NAMES
+        }
+        self.event_will_hard_fp_mult = float(config.get("event_will_hard_fp_mult", 1.0))
+        self.event_will_hard_fp_thr = float(config.get("event_will_hard_fp_thr", 0.75))
+        self.event_f1_beta = float(config.get("event_f1_beta", 1.0))
+        self.w_event_onset = float(config.get("w_event_onset", 0.0))
         self.event_will_upcoming_pos_weight = float(
             config.get("event_will_upcoming_pos_weight", self.event_will_pos_weight)
         )
@@ -438,6 +453,9 @@ class BNPDFormer(nn.Module):
         )
         self.force_ongoing_will = bool(config.get("force_ongoing_will", False))
         self.ongoing_will_floor = float(config.get("ongoing_will_floor", 0.62))
+        self.event_union_occupancy = bool(config.get("event_union_occupancy", False))
+        self.event_union_hot_threshold = float(config.get("event_union_hot_threshold", 0.55))
+        self.event_union_upcoming = bool(config.get("event_union_upcoming", False))
         self.recall_lift_threshold = float(config.get("recall_lift_threshold", 0.0))
         self.recall_lift_cluster_ids = [
             int(x) for x in (config.get("recall_lift_cluster_ids") or [])
@@ -462,6 +480,15 @@ class BNPDFormer(nn.Module):
         self.event_min_windows = int(
             config.get("event_min_windows", config.get("hot_min_windows", 8))
         )
+        raw_max_start = config.get("event_max_start_windows")
+        self.event_max_start_windows = (
+            None if raw_max_start in (None, "", False) else int(raw_max_start)
+        )
+        self.event_will_focal_gamma = float(config.get("event_will_focal_gamma", 0.0))
+        self.event_will_near_start_pos_weight = float(
+            config.get("event_will_near_start_pos_weight", 0.0)
+        )
+        self.event_near_start_windows = int(config.get("event_near_start_windows", 2))
         self.event_start_sigma = float(config.get("event_start_sigma", 1.0))
         self.start_tol_windows = int(config.get("start_tol_windows", 3))
         self.w_contrast = float(config.get("w_contrast", 0.1))
@@ -759,6 +786,74 @@ class BNPDFormer(nn.Module):
                 n += 1
         return n
 
+    def freeze_except_event_heads(self, include_continue: bool = False) -> int:
+        """Freeze encoder; train onset / start / dur, optionally continue-will."""
+        n = 0
+        for p in self.parameters():
+            p.requires_grad = False
+            n += 1
+        kept = 0
+        mods = [self.event_will_onset_mlp, self.event_start_mlp, self.event_dur_mlp]
+        if include_continue:
+            mods.append(self.event_will_mlp)
+        for mod in mods:
+            if mod is None:
+                continue
+            for p in mod.parameters():
+                p.requires_grad = True
+                kept += 1
+        return kept
+
+    def freeze_for_recall_finetune(
+        self,
+        last_encoder_blocks: int = 2,
+        occupancy: bool = True,
+    ) -> int:
+        """Freeze early encoder; train last blocks, event heads, occupancy decoder."""
+        for p in self.parameters():
+            p.requires_grad = False
+        kept = 0
+        mods: list[nn.Module | None] = [
+            self.event_will_mlp,
+            self.event_will_onset_mlp,
+            self.event_start_mlp,
+            self.event_dur_mlp,
+            self.cluster_emb,
+        ]
+        if occupancy:
+            mods.extend(
+                [
+                    getattr(self, "remain_hot_mlp", None),
+                    getattr(self, "remain_fuse", None),
+                    getattr(self, "remain_score_mlp", None),
+                    getattr(self, "jobs_mlp", None),
+                    getattr(self, "remain_len_head", None),
+                ]
+            )
+        for mod in mods:
+            if mod is None:
+                continue
+            for p in mod.parameters():
+                p.requires_grad = True
+                kept += 1
+        if occupancy:
+            for name in ("hot_type_scale", "hot_type_bias"):
+                p = getattr(self, name, None)
+                if p is None or not isinstance(p, nn.Parameter):
+                    continue
+                p.requires_grad = True
+                kept += 1
+        n_blocks = len(self.encoder_blocks)
+        start = max(0, n_blocks - max(int(last_encoder_blocks), 0))
+        for i in range(start, n_blocks):
+            for p in self.encoder_blocks[i].parameters():
+                p.requires_grad = True
+                kept += 1
+            for p in self.skip_convs[i].parameters():
+                p.requires_grad = True
+                kept += 1
+        return kept
+
     def set_loss_weights(self, **weights: float) -> None:
         for key, val in weights.items():
             if not hasattr(self, key):
@@ -888,6 +983,46 @@ class BNPDFormer(nn.Module):
         if not bool(hint.any()):
             return will_p
         return torch.where(bump & hint, will_p.clamp(min=report_thr), will_p)
+
+    def _apply_occupancy_union(
+        self,
+        will_p: torch.Tensor,
+        start_idx: torch.Tensor,
+        hot_logit: torch.Tensor,
+        last_hot: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Lift stations whose occupancy run is long enough onto the report bar."""
+        if not self.event_union_occupancy:
+            return will_p, start_idx
+        n = will_p.shape[-1]
+        hot_p = torch.sigmoid(hot_logit)
+        run = hot_p[:, :, :n] >= float(self.event_union_hot_threshold)
+        prefix = run.cumprod(dim=1).float().sum(dim=1)
+        occ_ok = prefix >= float(self.event_min_windows)
+        if last_hot is None:
+            union = occ_ok
+            upcoming = torch.zeros_like(occ_ok)
+        else:
+            lh = last_hot.to(device=will_p.device, dtype=will_p.dtype)
+            if lh.dim() == 1:
+                lh = lh.view(1, -1).expand_as(will_p)
+            lh = lh[:, :n]
+            hot_st = lh > 0.5
+            union = occ_ok & hot_st
+            remain_len = run.float().sum(dim=1)
+            upcoming = (remain_len >= float(self.event_min_windows)) & (lh <= 0.5)
+            if self.event_union_upcoming:
+                union = union | upcoming
+        report_thr = float(self.event_report_threshold)
+        will_p = torch.where(
+            union,
+            torch.maximum(will_p, torch.full_like(will_p, report_thr)),
+            will_p,
+        )
+        if self.event_union_upcoming and bool(upcoming.any()):
+            first = run.float().argmax(dim=1)
+            start_idx = torch.where(upcoming & union, first, start_idx)
+        return will_p, start_idx
 
     def encode(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Returns skip (B, skip_dim, N, T), enc (B,T,N,D), h_last (B,N,D)."""
@@ -1149,7 +1284,12 @@ class BNPDFormer(nn.Module):
         zero: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Per-station will / start / duration. Pos/FP weights come from config."""
-        if self.w_event_will <= 0 and self.w_event_start <= 0 and self.w_event_dur <= 0:
+        if (
+            self.w_event_will <= 0
+            and self.w_event_start <= 0
+            and self.w_event_dur <= 0
+            and self.w_event_f1 <= 0
+        ):
             return zero, zero, zero
         if "event_will_logit" not in out or "y_hot" not in batch:
             return zero, zero, zero
@@ -1161,6 +1301,7 @@ class BNPDFormer(nn.Module):
             min_windows=self.event_min_windows,
             remain_mask=None if rm is None else rm.detach().cpu().numpy(),
             occ_node_mask=None if occ is None else occ.detach().cpu().numpy(),
+            max_start_windows=self.event_max_start_windows,
         )
         y_will = torch.from_numpy(np.asarray(will_np, dtype=np.float32)).to(
             device=y_hot.device, dtype=y_hot.dtype
@@ -1171,6 +1312,12 @@ class BNPDFormer(nn.Module):
         )
         logit = out["event_will_logit"]
         bce = F.binary_cross_entropy_with_logits(logit, y_will, reduction="none")
+        if self.event_will_focal_gamma > 0:
+            prob = torch.sigmoid(logit).detach()
+            gamma = float(self.event_will_focal_gamma)
+            pos_mod = (1.0 - prob).clamp(min=0.0).pow(gamma)
+            neg_mod = prob.clamp(min=0.0).pow(gamma)
+            bce = bce * torch.where(y_will > 0.5, pos_mod, neg_mod)
         pos = y_will > 0.5
         if occ is not None:
             node = occ.float()
@@ -1213,7 +1360,31 @@ class BNPDFormer(nn.Module):
                     torch.full_like(y_will, self.event_will_precursor_pos_weight),
                     pos_w,
                 )
-        w = y_will * pos_w + (1.0 - y_will) * self.event_will_fp_weight
+        if self.event_will_near_start_pos_weight > 0:
+            near = upcoming & (y_start <= int(self.event_near_start_windows))
+            pos_w = torch.where(
+                near,
+                torch.full_like(y_will, self.event_will_near_start_pos_weight),
+                pos_w,
+            )
+        fp_w = torch.full_like(y_will, self.event_will_fp_weight)
+        for name, extra in self.event_will_fp_weight_by_type.items():
+            node = self._node_type_mask(name, y_will.shape[-1], y_will.device)
+            if node is not None:
+                fp_w = torch.where(node.expand_as(fp_w), torch.full_like(fp_w, extra), fp_w)
+        cold_neg = (~ongoing) & (y_will < 0.5)
+        for name, extra in self.event_will_upcoming_fp_weight_by_type.items():
+            node = self._node_type_mask(name, y_will.shape[-1], y_will.device)
+            if node is None:
+                continue
+            hit = node.expand_as(fp_w) & cold_neg
+            fp_w = torch.where(hit, torch.full_like(fp_w, extra), fp_w)
+        if self.event_will_hard_fp_mult > 1.0:
+            hard = (torch.sigmoid(logit).detach() >= self.event_will_hard_fp_thr) & (
+                y_will < 0.5
+            )
+            fp_w = torch.where(hard, fp_w * self.event_will_hard_fp_mult, fp_w)
+        w = y_will * pos_w + (1.0 - y_will) * fp_w
         if occ is not None:
             node = occ.float()
             if node.dim() == 1:
@@ -1229,6 +1400,57 @@ class BNPDFormer(nn.Module):
             loss_will = torch.stack(parts).mean()
         else:
             loss_will = (bce * w).sum() / w.sum().clamp_min(1.0)
+        if self.w_event_f1 > 0:
+            prob = torch.sigmoid(logit)
+            fw = w.detach()
+            if float(fw.sum()) <= 0:
+                fw = torch.ones_like(prob)
+            tp = (prob * y_will * fw).sum()
+            fp = (prob * (1.0 - y_will) * fw).sum()
+            fn = ((1.0 - prob) * y_will * fw).sum()
+            prec = tp / (tp + fp + 1e-6)
+            rec = tp / (tp + fn + 1e-6)
+            # Upcoming-only F1: the Linux gap is not-yet-started stations.
+            if bool(upcoming.any()):
+                uw = fw * upcoming.float()
+                tp_u = (prob * uw).sum()
+                fp_u = (prob * (1.0 - y_will) * fw * (~ongoing).float()).sum()
+                fn_u = ((1.0 - prob) * uw).sum()
+                prec_u = tp_u / (tp_u + fp_u + 1e-6)
+                rec_u = tp_u / (tp_u + fn_u + 1e-6)
+                f1_u = 2.0 * prec_u * rec_u / (prec_u + rec_u + 1e-6)
+            else:
+                f1_u = prec * rec * 0.0
+            beta = max(float(self.event_f1_beta), 0.1)
+            b2 = beta * beta
+            f_beta = (1.0 + b2) * prec * rec / (b2 * prec + rec + 1e-6)
+            if bool(upcoming.any()):
+                f_beta_u = (1.0 + b2) * prec_u * rec_u / (b2 * prec_u + rec_u + 1e-6)
+            else:
+                f_beta_u = f_beta
+            loss_will = loss_will + self.w_event_f1 * (1.0 - 0.5 * (f_beta + f_beta_u))
+        if (
+            self.split_will_heads
+            and "event_will_onset_logit" in out
+            and self.w_event_onset > 0
+        ):
+            on_logit = out["event_will_onset_logit"]
+            bce_on = F.binary_cross_entropy_with_logits(on_logit, y_will, reduction="none")
+            cold = ~ongoing
+            w_on = (
+                y_will * torch.full_like(y_will, self.event_will_upcoming_pos_weight)
+                + (1.0 - y_will) * fp_w
+            )
+            w_on = w_on * cold.float()
+            if occ is not None:
+                node = occ.float()
+                if node.dim() == 1:
+                    node = node.view(1, -1)
+                w_on = w_on * node[:, : w_on.shape[-1]]
+            if float(w_on.sum()) > 0:
+                loss_will = loss_will + self.w_event_onset * (
+                    (bce_on * w_on).sum() / w_on.sum().clamp_min(1.0)
+                )
         loss_start = zero
         loss_dur = zero
         if bool(upcoming.any()) and "event_start_logit" in out:
@@ -1611,7 +1833,20 @@ class BNPDFormer(nn.Module):
                         & (dur >= float(self.event_min_windows))
                         & (will_p >= float(self.ongoing_will_floor))
                     )
-                    will_p = torch.where(force, torch.ones_like(will_p), will_p)
+                    # Raise to the report bar only — never force to 1.0, or high
+                    # threshold sweeps cannot suppress false ongoing positives.
+                    will_p = torch.where(
+                        force,
+                        torch.maximum(
+                            will_p,
+                            torch.full_like(will_p, float(self.event_report_threshold)),
+                        ),
+                        will_p,
+                    )
+            if "hot_logit" in out:
+                will_p, start_idx = self._apply_occupancy_union(
+                    will_p, start_idx, out["hot_logit"], last
+                )
             out["event_will_prob"] = will_p
             if "tpm_logit" in out:
                 out["tpm_prob"] = torch.sigmoid(out["tpm_logit"])

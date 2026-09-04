@@ -1,5 +1,7 @@
 # PDFormer-BSTAN 共享实验七点设计评审
 
+> 2026-09-04 对照最新 `factory_bn`：下列 7 点里，1/3/6/7 已在 PDFormer 侧落地；第 2 点现行采用「全图输入、生产资源作 A.1 目标」；第 4、5 点标签语义仍按评审建议执行（L2 不自动当正例；事件头锚在输入结束边界 `t`）。指标与 baseline 颗粒度以 [`模型评估指标.md`](./模型评估指标.md) 为准。
+
 ## 1. 文档目的
 
 本文用于讨论 PDFormer 与 BSTAN-style GAT-GRU 的共享实验设计。评审基于：
@@ -9,6 +11,7 @@ dev_tyx = c101eff
 dev_xwt = 9c928b3
 shared derived = dev_tyx tools/bn_agg
 prediction target = factory_a1a3_remain_v1
+current PDFormer eval = station_report_metrics (report_f1)
 ```
 
 当前两条模型链路都已经具备 A.1 未来占用预测和 A.3 原因分类接口，但“代码可运行”
@@ -29,15 +32,15 @@ baseline。
 
 ## 2. 结论摘要
 
-| 编号 | 问题 | 当前判断 | 推荐动作 | 是否重采 raw |
-| --- | --- | --- | --- | --- |
-| 1 | split 不一致 | 正式对比阻塞项 | 两边共用 episode-level split manifest | 否 |
-| 2 | A.1 目标节点范围不明确 | 任务语义未冻结 | 图保留全部节点；正式 A.1 推荐只预测生产执行资源 | 否 |
-| 3 | `node_mask` 未完整应用 | 固定布局影响小，跨布局会错误监督 | loss、metrics、事件恢复统一应用有效节点 mask | 否 |
-| 4 | 辅助头时间锚点偏移 | `will/mark/tts` 存在至多一窗口边界泄漏 | 未来辅助头统一以输入结束边界 `t` 为 anchor | 否 |
-| 5 | 扰动和瓶颈事件合并 | 原因与结果混淆 | disturbance 作为 cause/context，运行影响确认 bottleneck | 否，只重建 derived |
-| 6 | majority baseline 使用评估集分布 | 对照指标不规范 | 只从 train 确定多数类，固定评估 val/test | 否 |
-| 7 | A.1 只有占用格指标 | 不能完整评价最终事件输出 | 增加共享事件匹配与事件级指标 | 否 |
+| 编号 | 问题 | 当前判断 | 推荐动作 | 2026-09-04 PDFormer 状态 | 是否重采 raw |
+| --- | --- | --- | --- | --- | --- |
+| 1 | split 不一致 | 正式对比阻塞项 | 两边共用 episode-level split manifest | **已落地**：`split_episodes_by_name`，按 run 分层 | 否 |
+| 2 | A.1 目标节点范围不明确 | 任务语义未冻结 | 图保留全部节点；正式 A.1 推荐只预测生产执行资源 | **已按推荐**：`occ_node_mask` = 机台/工作台/龙门/AGV | 否 |
+| 3 | `node_mask` 未完整应用 | 固定布局影响小，跨布局会错误监督 | loss、metrics、事件恢复统一应用有效节点 mask | **已落地**：loss / `hot_*` / `report_*` / `event_*` 都乘 mask | 否 |
+| 4 | 辅助头时间锚点偏移 | `will/mark/tts` 存在至多一窗口边界泄漏 | 未来辅助头统一以输入结束边界 `t` 为 anchor | 事件头与占用 y 已从 `t` 起；180s will/mark 已关 | 否 |
+| 5 | 扰动和瓶颈事件合并 | 原因与结果混淆 | disturbance 作为 cause/context，运行影响确认 bottleneck | **已按推荐**：L2 只进 X；占用 y 用过程启发式 | 否，只重建 derived |
+| 6 | majority baseline 使用评估集分布 | 对照指标不规范 | 只从 train 确定多数类，固定评估 val/test | **已落地**：`cause_majority` 来自 train | 否 |
+| 7 | A.1 只有占用格指标 | 不能完整评价最终事件输出 | 增加共享事件匹配与事件级指标 | **已落地**：`station_report_metrics` 为主，IoU 事件为附录 | 否 |
 
 优先级建议：先统一 1、3、4、6、7；第 2 和第 5 涉及标签语义，需要双方确认后一起
 修改。任何一方都不应单独改变共享标签，否则 BSTAN 与 PDFormer 将再次变成不同任务。
@@ -46,9 +49,9 @@ baseline。
 
 ### 3.1 当前实现
 
-BSTAN 按 episode 划分 train、validation、test，同一个 episode 不跨 split。
-PDFormer 当前将所有窗口样本打散后按比例切分，因此一个 episode 的相邻窗口可能分别
-进入 train 和 test。
+两边现在都应按 episode 划分。PDFormer 已用 `dataset.split_episodes_by_name`：按 run
+前缀分层，`train/val/test ≈ 0.7/0.15/0.15`，`seed=42`。正式对照仍建议导出一份
+`shared_split_manifest.json`，避免各自重切。
 
 制造业时序窗口高度重叠。例如两个相邻样本可能共享 11/12 的输入窗口，也可能共享
 绝大多数未来占用目标。随机窗口切分会让测试集包含与训练样本近乎重复的序列。
@@ -295,9 +298,9 @@ train-derived majority accuracy
 
 ### 9.1 当前指标覆盖范围
 
-PDFormer 当前主要使用未来 `hot[K,N]` 的 cell-level precision、recall、F1，以及
-`remain_len` MAE。它们可以评价未来时间窗口乘节点的占用格，但不能完整评价
-`04.期望输出.md` 要求的：
+PDFormer 现已实现工位事件主指标（`who_*` / `report_*` / `start_mae` / `dur_mae`），
+占用格与 IoU 事件只作附录。完整键名见 [`模型评估指标.md`](./模型评估指标.md)。
+仍需双方共用同一套匹配函数，才能评价 `04.期望输出.md` 要求的：
 
 ```text
 是否发生
@@ -356,7 +359,7 @@ IoU、最短事件长度和 merge gap 只能在 validation 上选定，test 固�
 ## 10. 推荐统一后的任务契约
 
 ```text
-输入：过去 12 个完整 60 秒窗口
+输入：过去 30 个完整 60 秒窗口
 anchor：最后一个输入窗口的结束边界 t
 
 A.1：

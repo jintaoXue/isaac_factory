@@ -479,8 +479,8 @@ def export_runs(
 ) -> Path:
     """Export one or more bottleneck runs into a single FactoryBN training bundle.
 
-    Multiple runs get episode names ``{run_id}__episode_XX`` to avoid collisions.
-    Nodes / adjacency are the union across all runs.
+    Episode names are always ``{run_id}__episode_XX`` (run folder name) so
+    train/val/test can stratify by run. Nodes / adjacency are the union across runs.
     """
     if not run_dirs:
         raise ValueError("At least one run_dir is required")
@@ -489,7 +489,6 @@ def export_runs(
     for p in run_dirs:
         p = Path(p)
         labeled.append((p.name, p.resolve()))
-    multi = len(labeled) > 1
 
     all_ids: dict[str, str] = {}
     per_ep_rows: list[
@@ -502,11 +501,12 @@ def export_runs(
         ]
     ] = []
     for prefix_name, run_dir in labeled:
-        prefix = prefix_name if multi else None
+        # Always prefix with run folder so episode split stratifies correctly
+        # (bare episode_XX names each become a 1-ep "run" and leak into val/test).
         ids, rows = _collect_run_episodes(
             run_dir,
             window_size,
-            name_prefix=prefix,
+            name_prefix=prefix_name,
             require_complete=require_complete,
             skip_deadlock=skip_deadlock,
         )

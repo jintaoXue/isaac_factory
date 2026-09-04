@@ -110,6 +110,7 @@ def eval_loader(
     start_tol_windows: int = 3,
     ongoing_will_floor: float = 0.62,
     force_ongoing_will: bool = False,
+    max_start_windows: int | None = None,
 ) -> dict[str, float]:
     if not samples:
         return {}
@@ -129,6 +130,7 @@ def eval_loader(
         start_tol_windows=start_tol_windows,
         ongoing_will_floor=ongoing_will_floor,
         force_ongoing_will=force_ongoing_will,
+        max_start_windows=max_start_windows,
     )
 
 
@@ -212,6 +214,11 @@ def main() -> None:
         start_tol_windows=int(cfg.get("start_tol_windows", 3)),
         ongoing_will_floor=float(cfg.get("ongoing_will_floor", 0.62)),
         force_ongoing_will=bool(cfg.get("force_ongoing_will", False)),
+        max_start_windows=(
+            None
+            if cfg.get("event_max_start_windows") in (None, "", False)
+            else int(cfg.get("event_max_start_windows"))
+        ),
     )
 
     by_run: dict[str, list[dict[str, Any]]] = defaultdict(list)

@@ -33,7 +33,7 @@
 
 **时间怎么换算（后面所有「分钟」都用这一套）：** 调度/采集 1 step = 1 逻辑秒 = **1 秒厂时**。墙钟大约 0.08 秒跑完 1 逻辑秒；PhysX 每步只走 1/120 秒，和工序无关。
 
-**这篇笔记怎么用：** 任务、短单、扰动表是底座。窗、指标、采集、标签、loss **以现行代码为准**（精度优先 `FactoryBN_unsupervised_s9.json`，现行可用无监督 `FactoryBN_unsupervised_best.json`；`factory_bn/model.py`、`remain.py`、`cfg_disturbance.py`）。改代码后同步改对应小节，不要留下「存盘还看格子 F1 / AGV 行驶也算堵 / 龙门速度 0.30」这种过时结论。
+**这篇笔记怎么用：** 任务、短单、扰动表是底座。窗、指标、采集、标签、loss **以现行代码为准**（唯一配方 `FactoryBN_dense_f1_p80.json`；`factory_bn/model.py`、`remain.py`、`cfg_disturbance.py`）。组员对照指标见 [`模型评估指标.md`](./模型评估指标.md)。改代码后同步改对应小节，不要留下「存盘还看格子 F1 / AGV 行驶也算堵 / 龙门速度 0.30」这种过时结论。
 
 **两套扰动不要混：** `cfg_disturbance.py` **现在**是 L2 下限 10 分钟、物流每局至少冻一台 AGV。已经训完的 77 局生产包、以及物料重采 seed 43，是 **改代码之前**采的（L2 下限 6 分钟、物流随机抽吊车/AGV）。extra seed 44 才走新配方。厂线本体（10 根、WIP 5、按维 L0/L1）两边一样。
 
@@ -193,7 +193,7 @@
 
 **历史多长和预报多远，本来就不必谁大谁小。** 历史回答「现在是什么局」，预报回答「现场要提前几分钟被提醒」。12 < 15 在预报里说得通，不必为了对称去砍 H。
 
-但 12 格是从交通论文抄的步数，那边一格 5 分钟、历史其实是 **60 分钟**。这里一格是 1 分钟，12 格只剩 12 分钟，相对一根水管约 50 分钟、故障 10–15 分钟，偏紧。所以历史加长到 **30 格 = 30 分钟**（`FactoryBN.json` 的 `input_window=30`），预报仍钉 **15 分钟**。现在是历史长于预报。
+但 12 格是从交通论文抄的步数，那边一格 5 分钟、历史其实是 **60 分钟**。这里一格是 1 分钟，12 格只剩 12 分钟，相对一根水管约 50 分钟、故障 10–15 分钟，偏紧。所以历史加长到 **30 格 = 30 分钟**（`FactoryBN_dense_f1_p80.json` 的 `input_window=30`），预报仍钉 **15 分钟**。现在是历史长于预报。
 
 
 | 拿来比的量      | 多长        | 30 分钟历史在干什么           | 15 分钟预报在干什么      |
@@ -280,11 +280,13 @@ L2 也 **不是** STGNPP 事件：`n_events_from_disturbance` 必须为 0。扰�
 | 堵在哪 | `who_precision` / `who_recall` | 报出来的工位有多少是真会堵 / 真会堵的工位报出了多少 | 工位错了整条失败 |
 | 何时开始 | `start_mae`（只在 who 对的工位上） | 开始时间平均差几分钟；**差 > 3 分钟 = 这条报告失败** | 进行中事件真值 start=0，不猜开始 |
 | 堵多久 | `dur_mae`（只在 who 对的工位上） | 持续时间平均差几分钟 | 进行中训的是**剩余**时长 |
-| **主分数** | `report_precision` / `report_recall` / `report_f1` | 工位对 **且** start 误差 ≤ 3 分钟 | s9 先看 P（召回低于 0.12 不存盘）；**unsup_best 存盘看 `report_f1`，P≥0.80** |
+| **主分数** | `report_precision` / `report_recall` / `report_f1` | 工位对 **且** start 误差 ≤ 3 分钟 | **现行 p80 存盘看 `report_f1`，P≥0.80 且 R≥0.42**；unsup_best 同样看 F1 且 P≥0.80；s9 先看 P（召回低于 0.12 不存盘） |
 | 拆开看 | ongoing vs upcoming | 已经在堵 vs 还没开始 | unsup9 Test 几乎只会报 ongoing |
 
 
-存盘分两套配方：s9 用 `ckpt_metric=report_precision`，`who_recall` / `report_recall` 都至少 **0.12** 才存，will 阈值 **0.70**。unsup_best 用 `ckpt_metric=report_f1`，will 阈值 **0.65**，正例×3 / 尚未发生×4 / 负例×2，**P < 0.80 不存**。最短事件都是 **8 分钟**。从未达标则不写 junk ckpt。remain MAE **不抢存盘**。
+组员对照请直接抄 [`模型评估指标.md`](./模型评估指标.md) 的公式和检查清单，不要各写各的匹配。
+
+存盘：现行唯一配方 `FactoryBN_dense_f1_p80.json` 用 `ckpt_metric=report_f1`，P≥0.80、R≥0.35，τ=0.68。最短事件 **8 分钟**。从未达标则不写 junk ckpt。remain MAE **不抢存盘**。
 
 格子占用 P/F1（`hot_p` / `m_p` / `g_p` / `a_p`）和 IoU≥0.5 的 `event_*` 每个 epoch 仍打，**只当附录**。不要把格子 F1 或 IoU F1 说成主任务已经过关。IoU≥0.5 对 6 分钟真事件过严（开始偏 2 分钟 IoU 就掉到 0.5）。
 
@@ -415,7 +417,7 @@ python train.py --task HRTPaHC-v1 --algo rule_based --num_envs 1 \
 
 #### 当前代码里 loss 实际怎么算
 
-精度优先看 `FactoryBN_unsupervised_s9.json`；现行可用无监督看 `FactoryBN_unsupervised_best.json`。实现在 `factory_bn/model.py`。不要拿默认的 `FactoryBN_unsupervised.json` / `FactoryBN.json` 当现行主任务（里面还是 `hot_min_windows=2`、`ckpt_metric=hot_f1`）。`remain_to_jobs_done=true`。unsup_best 事件头整段 warmup（`event_head_warmup_epochs=50`）。
+现行唯一配方是 `FactoryBN_dense_f1_p80.json`。实现在 `factory_bn/model.py`。s9 / unsup_best 等历史 json **已经从 configs/ 删掉**，下面数字只记录当时跑出来的权重，不要再按那些文件名重训。
 
 
 L = 2.0 L_{\text{event\_will}} + 1.0 L_{\text{event\_start}} + 1.0 L_{\text{event\_dur}} + 0.5 L_{\text{hot}} + 0.25 L_{\text{dice}} + 0.25 L_{\text{IoU}} + 0.4 L_{\text{remain}} + 0.1 L_{\text{cause}} + 0.05 L_{\text{contrast}} + 0.25 L_{\text{recon}}
@@ -502,7 +504,7 @@ L = 2.0 L_{\text{event\_will}} + 1.0 L_{\text{event\_start}} + 1.0 L_{\text{even
 配方 **s9（精度优先，2026-08-28）**：unsup8 热启动；标签最短 8 分钟、AGV 只冻/等、start 软标签、存盘 `report_precision`。现有 77 局包上已训完。
 
 ```text
-python -m factory_bn.train --config factory_bn/configs/FactoryBN_unsupervised_s9.json \
+python -m factory_bn.train --config factory_bn/configs/FactoryBN_dense_f1_p80.json \
   --data_dir raw_data/n10_i1_20ep_unsup \
   --save_dir libcity/cache/model_cache/n10_i1_20ep_unsup9
 ```
@@ -517,10 +519,10 @@ tmux：`bn_n10_unsup9`。**不覆盖** unsup5 / unsup8 / s9。
 - 本包 AGV 真值热率 = 0（8 分钟 + 冻/等过滤后，77 局里几乎没有合格 AGV 事件）
 - remain MAE **5.4**；cause macro recall **0.69**（transport/starve/shortage≈0.90，queue 0.74，blocked_downstream 无样本）
 
-**unsup_best**（134 局 all-usable；配置 `FactoryBN_unsupervised_best.json`）：阈值 0.65；正例×3、尚未发生×4、负例×2；存盘 `report_f1` 且 **P≥0.80**；事件头整段 warmup。ckpt：`n10_i1_all_usable_unsup_best`。**不覆盖** unsup5 / unsup8 / unsup9 / s9。
+**unsup_best**（134 局 all-usable，历史权重）：当时阈值 0.65；正例×3、尚未发生×4、负例×2；存盘 `report_f1` 且 **P≥0.80**。ckpt：`n10_i1_all_usable_unsup_best`。配置文件已删，不要按旧 json 重训。
 
 ```text
-python -m factory_bn.train --config factory_bn/configs/FactoryBN_unsupervised_best.json \
+python -m factory_bn.train --config factory_bn/configs/FactoryBN_dense_f1_p80.json \
   --data_dir raw_data/n10_i1_all_usable \
   --save_dir libcity/cache/model_cache/n10_i1_all_usable_unsup_best
 ```

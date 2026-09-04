@@ -493,3 +493,5 @@ python source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/perception.py 
 - [Isaac Sim Livestream client](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/manual_livestream_clients.html)
 - Development notes: `coding_note.md`
 - Paper / experiment notes: `2026_Journal_Paper.md`
+- Bottleneck eval / baseline protocol: [`模型评估指标.md`](./模型评估指标.md)
+- Bottleneck collect / train: [`00.运行方式.md`](./00.运行方式.md), [`04.期望输出.md`](./04.期望输出.md)

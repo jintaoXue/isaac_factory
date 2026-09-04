@@ -217,7 +217,7 @@ fi
 (
     cd "${PDFORMER}"
     python -m factory_bn.train \
-        --config factory_bn/configs/FactoryBN.json \
+        --config factory_bn/configs/FactoryBN_dense_f1_p80.json \
         --data_dir "${OUT_DIR}" \
         --save_dir "${SAVE_DIR}" \
         --max_epoch "${MAX_EPOCH}" \

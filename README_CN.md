@@ -472,3 +472,5 @@ python .../perception.py eval --task subtask \
 - [Isaac Sim Livestream 客户端](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/manual_livestream_clients.html)
 - 开发笔记：`coding_note.md`
 - 论文 / 实验笔记：`2026_Journal_Paper.md`
+- 瓶颈模型评测与 baseline 对齐：[`模型评估指标.md`](./模型评估指标.md)
+- 瓶颈采集 / 训练：[`00.运行方式.md`](./00.运行方式.md)、[`04.期望输出.md`](./04.期望输出.md)

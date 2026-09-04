@@ -2,9 +2,9 @@
 
 The model never sees raw ``job_trace.csv``. Input is Stage-C
 ``window_feature_table.csv`` (60s). With ``remain_to_jobs_done`` (default in
-FactoryBN.json) the head predicts occupancy from now until remaining jobs
-finish (A.1: start / duration / station). Old checkpoints without that flag
-still forecast the next 60s window.
+FactoryBN_dense_f1_p80.json) the head predicts the next 15 min station
+events (A.1: who / start / duration) plus remain_len. Old checkpoints without
+that flag still forecast the next 60s window.
 
 Example (PDFormer dir, ``bn_pdformer``)::
 

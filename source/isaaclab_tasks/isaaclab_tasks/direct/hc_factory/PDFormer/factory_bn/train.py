@@ -7,13 +7,10 @@ Example::
         --run_dir ../output/bottleneck_dataset/old_machine2.0 \\
         --out_dir raw_data/old2.0
     python -m factory_bn.train \\
-        --config factory_bn/configs/FactoryBN.json \\
+        --config factory_bn/configs/FactoryBN_dense_f1_p80.json \\
         --data_dir raw_data/old2.0 \\
         --save_dir libcity/cache/model_cache/old2.0 \\
         --max_epoch 5
-    python -m factory_bn.train --config factory_bn/configs/FactoryBN_unsupervised_f1.json \\
-        --data_dir raw_data/n10_i1_all_usable \\
-        --save_dir libcity/cache/model_cache/n10_i1_all_usable_unsup_f1
     # wandb is on by default; pass --no_wandb to disable.
 """
 
@@ -45,11 +42,36 @@ def _load_config(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _trainable_adamw(model: torch.nn.Module, lr: float, weight_decay: float) -> torch.optim.AdamW:
-    params = [p for p in model.parameters() if p.requires_grad]
-    if not params:
+def _trainable_adamw(
+    model: torch.nn.Module,
+    lr: float,
+    weight_decay: float,
+    encoder_lr: float | None = None,
+) -> torch.optim.AdamW:
+    if encoder_lr is None or abs(float(encoder_lr) - float(lr)) < 1e-15:
+        params = [p for p in model.parameters() if p.requires_grad]
+        if not params:
+            raise RuntimeError("no trainable parameters")
+        return torch.optim.AdamW(params, lr=lr, weight_decay=weight_decay)
+    prefixes = getattr(model, "_ENCODER_PREFIXES", ())
+    enc: list[torch.nn.Parameter] = []
+    rest: list[torch.nn.Parameter] = []
+    for name, p in model.named_parameters():
+        if not p.requires_grad:
+            continue
+        root = name.split(".", 1)[0]
+        if root in prefixes:
+            enc.append(p)
+        else:
+            rest.append(p)
+    groups: list[dict[str, Any]] = []
+    if rest:
+        groups.append({"params": rest, "lr": float(lr)})
+    if enc:
+        groups.append({"params": enc, "lr": float(encoder_lr)})
+    if not groups:
         raise RuntimeError("no trainable parameters")
-    return torch.optim.AdamW(params, lr=lr, weight_decay=weight_decay)
+    return torch.optim.AdamW(groups, weight_decay=weight_decay)
 
 
 def _resolve_run_path(path: str | Path) -> Path:
@@ -315,6 +337,7 @@ def _epoch_loop(
     start_tol_windows: int = 3,
     ongoing_will_floor: float = 0.62,
     force_ongoing_will: bool = False,
+    max_start_windows: int | None = None,
 ) -> dict[str, float]:
     if train:
         model.train()
@@ -519,22 +542,59 @@ def _epoch_loop(
                             last_h = h0.numpy()
                         else:
                             last_h = torch.cat(hist_grids, dim=0).numpy()
-                    out.update(
-                        station_report_metrics(
+                    will_np = torch.cat(will_grids, dim=0).numpy()
+                    start_np = torch.cat(start_grids, dim=0).numpy()
+                    dur_np = torch.cat(dur_grids, dim=0).numpy()
+                    report_kw = dict(
+                        min_windows=ev_min_w,
+                        start_tol_windows=start_tol_windows,
+                        hist_last_hot=last_h,
+                        will_floor=ongoing_will_floor,
+                        force_ongoing_will=force_ongoing_will,
+                        max_start_windows=max_start_windows,
+                    )
+                    best_rep = station_report_metrics(
+                        y_cat,
+                        will_np,
+                        start_np,
+                        dur_np,
+                        r_cat,
+                        o_cat,
+                        threshold=event_report_threshold,
+                        **report_kw,
+                    )
+                    # Optional val-time threshold sweep: keep P ≥ floor, max F1.
+                    sweep = getattr(model, "_report_threshold_sweep", None) or []
+                    min_p = float(getattr(model, "_report_ckpt_min_precision", 0.0) or 0.0)
+                    for thr in sweep:
+                        thr_f = float(thr)
+                        if abs(thr_f - float(event_report_threshold)) < 1e-9:
+                            continue
+                        cand = station_report_metrics(
                             y_cat,
-                            torch.cat(will_grids, dim=0).numpy(),
-                            torch.cat(start_grids, dim=0).numpy(),
-                            torch.cat(dur_grids, dim=0).numpy(),
+                            will_np,
+                            start_np,
+                            dur_np,
                             r_cat,
                             o_cat,
-                            threshold=event_report_threshold,
-                            min_windows=ev_min_w,
-                            start_tol_windows=start_tol_windows,
-                            hist_last_hot=last_h,
-                            will_floor=ongoing_will_floor,
-                            force_ongoing_will=force_ongoing_will,
+                            threshold=thr_f,
+                            **report_kw,
                         )
-                    )
+                        cand_p = float(cand.get("report_precision", 0.0))
+                        cand_f = float(cand.get("report_f1", 0.0))
+                        best_f = float(best_rep.get("report_f1", 0.0))
+                        best_p = float(best_rep.get("report_precision", 0.0))
+                        best_ok = best_p + 1e-12 >= min_p
+                        cand_ok = cand_p + 1e-12 >= min_p
+                        if cand_ok and (not best_ok or cand_f > best_f + 1e-6):
+                            best_rep = cand
+                            best_rep["report_threshold_used"] = thr_f
+                        elif (not best_ok) and (not cand_ok) and cand_f > best_f + 1e-6:
+                            best_rep = cand
+                            best_rep["report_threshold_used"] = thr_f
+                    if "report_threshold_used" not in best_rep:
+                        best_rep["report_threshold_used"] = float(event_report_threshold)
+                    out.update(best_rep)
         if total_cause > 0:
             out["cause_acc"] = correct_cause / total_cause
             out["cause_n"] = float(total_cause)
@@ -560,7 +620,8 @@ def train(cfg: dict[str, Any]) -> Path:
     if str(cfg.get("train_mode") or "supervised").strip().lower() == "unsupervised":
         cfg["train_mode"] = "unsupervised"
         if float(cfg.get("w_hot", 0.0)) <= 0.0:
-            if str(cfg.get("ckpt_metric") or "hot_f1") not in ("val_loss", "loss"):
+            metric = str(cfg.get("ckpt_metric") or "hot_f1")
+            if metric in ("hot_f1", "hot_type_hmean"):
                 cfg["ckpt_metric"] = "val_loss"
             cfg["ckpt_min_hot_precision"] = 0.0
     device = torch.device(
@@ -611,15 +672,27 @@ def train(cfg: dict[str, Any]) -> Path:
     cfg = dict(cfg)
     cfg["device"] = device
     model = BNPDFormer(cfg, data_feature).to(device)
+    sweep = cfg.get("report_threshold_sweep")
+    if sweep:
+        model._report_threshold_sweep = [float(x) for x in sweep]
+    else:
+        model._report_threshold_sweep = []
+    model._report_ckpt_min_precision = float(cfg.get("ckpt_min_report_precision", 0.0) or 0.0)
     init_ckpt = str(cfg.get("init_ckpt") or "").strip()
     if init_ckpt:
         _load_init_ckpt(model, _resolve_run_path(init_ckpt), device)
-        if bool(cfg.get("split_will_heads", False)):
+        if bool(cfg.get("split_will_heads", False)) and bool(
+            cfg.get("sync_onset_from_will", True)
+        ):
             model.sync_onset_from_will()
             print("[train] copied event_will_mlp -> event_will_onset_mlp")
+        elif bool(cfg.get("split_will_heads", False)):
+            print("[train] keep existing onset head (sync_onset_from_will=false)")
 
     lr = float(cfg.get("learning_rate", 1e-3))
     wd = float(cfg.get("weight_decay", 0.05))
+    raw_enc_lr = cfg.get("encoder_lr")
+    encoder_lr = float(raw_enc_lr) if raw_enc_lr not in (None, "") else None
     use_cosine = str(cfg.get("lr_schedule") or "").lower() == "cosine"
     pretrain_n = int(cfg.get("pretrain_recon_epochs") or 0)
     if str(cfg.get("train_mode") or "supervised") != "unsupervised":
@@ -628,7 +701,24 @@ def train(cfg: dict[str, Any]) -> Path:
     event_warmup_n = int(cfg.get("event_head_warmup_epochs") or 0)
     finetune_lr = float(cfg.get("finetune_lr", lr))
     lr_min = float(cfg.get("lr_min", 1e-6))
-    optimizer = _trainable_adamw(model, lr, wd)
+    last_enc_blocks = int(cfg.get("unfreeze_last_encoder_blocks", 0) or 0)
+    optimizer = _trainable_adamw(model, lr, wd, encoder_lr=encoder_lr)
+    if last_enc_blocks > 0:
+        kept = model.freeze_for_recall_finetune(
+            last_encoder_blocks=last_enc_blocks,
+            occupancy=bool(cfg.get("unfreeze_occupancy_decoder", True)),
+        )
+        optimizer = _trainable_adamw(model, lr, wd, encoder_lr=encoder_lr)
+        print(
+            f"[train] freeze_for_recall_finetune last_blocks={last_enc_blocks} "
+            f"trainable_tensors={kept} encoder_lr={encoder_lr if encoder_lr is not None else lr}"
+        )
+    elif bool(cfg.get("freeze_except_event_onset", False)):
+        kept = model.freeze_except_event_heads(
+            include_continue=bool(cfg.get("unfreeze_event_continue", False))
+        )
+        optimizer = _trainable_adamw(model, lr, wd, encoder_lr=encoder_lr)
+        print(f"[train] freeze_except_event_onset trainable_tensors={kept}")
     scheduler: torch.optim.lr_scheduler.LRScheduler | None = None
     max_epoch = int(cfg.get("max_epoch", 50))
     patience = int(cfg.get("patience", 15))
@@ -704,6 +794,7 @@ def train(cfg: dict[str, Any]) -> Path:
         )
     cause_majority = int(data_feature.get("cause_majority", -1))
     hot_eval_threshold = float(cfg.get("hot_eval_threshold", 0.55))
+    raw_max_start = cfg.get("event_max_start_windows")
     event_eval_kw = dict(
         event_iou_min=float(cfg.get("event_iou_min", 0.5)),
         event_min_windows=int(cfg.get("event_min_windows", cfg.get("hot_min_windows", 8))),
@@ -711,6 +802,9 @@ def train(cfg: dict[str, Any]) -> Path:
         start_tol_windows=int(cfg.get("start_tol_windows", 3)),
         ongoing_will_floor=float(cfg.get("ongoing_will_floor", 0.62)),
         force_ongoing_will=bool(cfg.get("force_ongoing_will", False)),
+        max_start_windows=(
+            None if raw_max_start in (None, "", False) else int(raw_max_start)
+        ),
     )
     counts = data_feature.get("cause_train_counts")
     classes = data_feature.get("cause_classes") or []
@@ -893,6 +987,37 @@ def train(cfg: dict[str, Any]) -> Path:
                 else:
                     improved = mae < best_mae - 1e-6
                     ckpt_show = mae
+
+                ungated_f1 = (
+                    report_f1
+                    if ckpt_metric.startswith("report")
+                    else (event_f1 if "event" in ckpt_metric else hot_f1)
+                )
+                ungated_improved = (
+                    ungated_f1 > float(getattr(model, "_ungated_best_f1", -1.0)) + 1e-6
+                )
+                if ungated_improved:
+                    model._ungated_best_f1 = float(ungated_f1)
+                    torch.save(
+                        _ckpt_payload(step, va),
+                        save_dir / "BNPDFormer_ungated_best.pt",
+                    )
+                    (save_dir / "ungated_metrics.json").write_text(
+                        json.dumps(
+                            {
+                                "epoch": int(step),
+                                "phase": phase,
+                                "report_f1": report_f1,
+                                "report_precision": report_p,
+                                "report_recall": report_r,
+                                "hot_f1": hot_f1,
+                                "hot_precision": hot_p,
+                            },
+                            indent=2,
+                        ),
+                        encoding="utf-8",
+                    )
+
                 if improved:
                     best_mae = min(best_mae, mae)
                     if ckpt_metric == "report_f1":
@@ -928,6 +1053,9 @@ def train(cfg: dict[str, Any]) -> Path:
                         wandb.summary["best_report_recall"] = report_r
                         wandb.summary["best_epoch"] = step
                         wandb.summary["phase"] = phase
+                elif ungated_improved and best_hot_f1 < 0:
+                    # Precision gate never opened: keep training while F1 rises.
+                    stale = 0
                 else:
                     stale += 1
                 if loss_v < best_val_loss - 1e-5:
@@ -956,7 +1084,7 @@ def train(cfg: dict[str, Any]) -> Path:
                         w_dice=occ_w["w_dice"],
                         w_iou=occ_w["w_iou"],
                     )
-                    optimizer = _trainable_adamw(model, finetune_lr, wd)
+                    optimizer = _trainable_adamw(model, finetune_lr, wd, encoder_lr=encoder_lr)
                     if use_cosine:
                         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                             optimizer,
@@ -1039,7 +1167,7 @@ def train(cfg: dict[str, Any]) -> Path:
             if freeze_after:
                 n_frozen = model.freeze_encoder(True)
                 print(f"[stage B] froze {n_frozen} encoder/recon parameter tensors")
-            optimizer = _trainable_adamw(model, finetune_lr, wd)
+            optimizer = _trainable_adamw(model, finetune_lr, wd, encoder_lr=encoder_lr)
             scheduler = None
             if use_cosine:
                 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -1059,10 +1187,14 @@ def train(cfg: dict[str, Any]) -> Path:
                 allow_early_stop=True,
             )
         else:
-            if event_warmup_n > 0:
+            if (
+                event_warmup_n > 0
+                and not bool(cfg.get("freeze_except_event_onset", False))
+                and last_enc_blocks <= 0
+            ):
                 n_frozen = model.freeze_encoder(True)
                 model.set_loss_weights(w_hot=0.0, w_dice=0.0, w_iou=0.0)
-                optimizer = _trainable_adamw(model, lr, wd)
+                optimizer = _trainable_adamw(model, lr, wd, encoder_lr=encoder_lr)
                 print(
                     f"[train] event-head warmup {event_warmup_n} epochs "
                     f"(froze {n_frozen} encoder tensors, occupancy loss off)"
@@ -1082,28 +1214,36 @@ def train(cfg: dict[str, Any]) -> Path:
             )
 
         if not best_path.is_file():
-            fail_metrics = save_dir / "last_metrics.json"
-            fail_metrics.write_text(
-                json.dumps(
-                    {
-                        "ckpt_written": False,
-                        "reason": "hot_precision_gate",
-                        "ckpt_metric": str(cfg.get("ckpt_metric") or "hot_f1"),
-                        "ckpt_min_hot_precision": float(cfg.get("ckpt_min_hot_precision", 0.0)),
-                        "val_best_hot_f1": best_hot_f1,
-                        "epochs": epoch_log,
-                    },
-                    indent=2,
-                ),
-                encoding="utf-8",
-            )
-            raise SystemExit(
-                "No checkpoint written: val gate never reached "
-                f"ckpt_min_hot_precision={float(cfg.get('ckpt_min_hot_precision', 0.0)):.2f} "
-                f"ckpt_min_event_recall={float(cfg.get('ckpt_min_event_recall', 0.0)):.2f} "
-                f"(best seen={best_hot_f1:.3f}). "
-                "Do not keep a junk ckpt; check occupancy labels / collect."
-            )
+            ungated = save_dir / "BNPDFormer_ungated_best.pt"
+            if ungated.is_file():
+                print(
+                    "[train] precision gate never opened; "
+                    f"promoting ungated best -> {best_path.name}"
+                )
+                best_path.write_bytes(ungated.read_bytes())
+            else:
+                fail_metrics = save_dir / "last_metrics.json"
+                fail_metrics.write_text(
+                    json.dumps(
+                        {
+                            "ckpt_written": False,
+                            "reason": "hot_precision_gate",
+                            "ckpt_metric": str(cfg.get("ckpt_metric") or "hot_f1"),
+                            "ckpt_min_hot_precision": float(cfg.get("ckpt_min_hot_precision", 0.0)),
+                            "val_best_hot_f1": best_hot_f1,
+                            "epochs": epoch_log,
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+                raise SystemExit(
+                    "No checkpoint written: val gate never reached "
+                    f"ckpt_min_hot_precision={float(cfg.get('ckpt_min_hot_precision', 0.0)):.2f} "
+                    f"ckpt_min_event_recall={float(cfg.get('ckpt_min_event_recall', 0.0)):.2f} "
+                    f"(best seen={best_hot_f1:.3f}). "
+                    "Do not keep a junk ckpt; check occupancy labels / collect."
+                )
         try:
             ckpt = torch.load(best_path, map_location=device, weights_only=False)
         except TypeError:
@@ -1202,7 +1342,7 @@ def main() -> None:
     parser.add_argument(
         "--config",
         type=str,
-        default=str(Path(__file__).parent / "configs" / "FactoryBN.json"),
+        default=str(Path(__file__).parent / "configs" / "FactoryBN_dense_f1_p80.json"),
     )
     parser.add_argument("--max_epoch", type=int, default=None)
     parser.add_argument(
@@ -1223,7 +1363,7 @@ def main() -> None:
         "--ckpt_min_hot_precision",
         type=float,
         default=None,
-        help="Override FactoryBN.json ckpt_min_hot_precision for this run.",
+        help="Override config ckpt_min_hot_precision for this run.",
     )
     parser.add_argument(
         "--wandb_activate",

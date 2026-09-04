@@ -583,11 +583,13 @@ def node_event_targets(
     min_windows: int = 8,
     remain_mask: np.ndarray | None = None,
     occ_node_mask: np.ndarray | None = None,
+    max_start_windows: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Longest occupancy run per node in H → will / start_idx / duration_windows.
 
     One event per station in the forecast window (who / when / how long).
     Runs shorter than ``min_windows`` are not reported.
+    ``max_start_windows`` drops runs that start too far into the horizon.
     """
     grid = np.asarray(y_hot, dtype=np.float32)
     squeeze = grid.ndim == 2
@@ -633,6 +635,8 @@ def node_event_targets(
                     best_i = i
                 i = j
             if best_len >= min_w:
+                if max_start_windows is not None and int(best_i) > int(max_start_windows):
+                    continue
                 will[b, n] = 1.0
                 start[b, n] = int(best_i)
                 dur[b, n] = float(best_len)
@@ -843,6 +847,7 @@ def station_report_metrics(
     hist_last_hot: np.ndarray | None = None,
     will_floor: float = 0.62,
     force_ongoing_will: bool = False,
+    max_start_windows: int | None = None,
 ) -> dict[str, float]:
     """Main A.1 score: station match and start error ≤ ``start_tol_windows`` min.
 
@@ -860,7 +865,11 @@ def station_report_metrics(
     rm = np.asarray(remain_mask, dtype=np.float32)
     occ = np.asarray(occ_node_mask, dtype=np.float32)
     y_will, y_start, y_dur = node_event_targets(
-        y, min_windows=min_windows, remain_mask=rm, occ_node_mask=occ
+        y,
+        min_windows=min_windows,
+        remain_mask=rm,
+        occ_node_mask=occ,
+        max_start_windows=max_start_windows,
     )
     pred_start = np.asarray(sp, dtype=np.int64)
     pred_dur = np.asarray(dp, dtype=np.float32)
