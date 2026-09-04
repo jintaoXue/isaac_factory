@@ -240,7 +240,7 @@ python train.py --task HRTPaHC-v1 --algo hier --headless \
   --wandb_activate --wandb_project HcFactory_TPA \
   --wandb_name "T0_hard_train" \
   --max_parallel_cd_dispatch 10 \
-  +t_max_anchor=64000 \
+  agent.params.config.t_max_anchor=64000 \
   --device cuda:0
 ```
 
@@ -416,7 +416,7 @@ python train.py --task HRTPaHC-v1 --algo hier --headless --test \
   --max_parallel_cd_dispatch 1 \
   --train_n_products 10 \
   --test_seeds 42,43,44,45,46 --test_times 2 \
-  +t_max_anchor=64000 --device cuda:0
+  agent.params.config.t_max_anchor=64000 --device cuda:0
 ```
 
 ---

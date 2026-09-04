@@ -172,8 +172,9 @@ hc_test_args() {
 
 
 # 统一 T_max anchor（22–32 共用；可用 HC_T_MAX_ANCHOR 覆盖做极限探测）
+# Hydra root is {env, agent}; must set under agent.params.config (not top-level +t_max_anchor).
 hc_t_max_args() {
-    echo "+t_max_anchor=${HC_T_MAX_ANCHOR}"
+    echo "agent.params.config.t_max_anchor=${HC_T_MAX_ANCHOR}"
 }
 
 # Catalog 根目录：HC_EXPLORE_CATALOG_DIR > HC_CATALOG_TAG > legacy N{n}_T{t}
@@ -192,7 +193,8 @@ hc_catalog_root() {
 }
 
 hc_catalog_args() {
-    echo "+explore_catalog_dir=$(hc_catalog_root)"
+    # Must nest under agent.params.config — top-level +explore_catalog_dir is ignored by Horizon/ORU.
+    echo "agent.params.config.explore_catalog_dir=$(hc_catalog_root)"
 }
 
 hc_print_catalog_hint() {
