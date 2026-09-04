@@ -43,6 +43,22 @@ params:
     grad_clip_norm: 10.0
     reward_clip: 100.0
     q_target_clip: 500.0
+    # T1R: Rainbow subset — Double (on) + PER + Dueling (Noisy optional, default off)
+    prioritized_replay: False
+    per_alpha: 0.6
+    per_beta_start: 0.4
+    per_beta_frames: 1000000
+    per_eps: 1.0e-6
+    dueling_dqn: False
+    noisy_net: False
+    noisy_std: 0.5
+    # T1RH: layered credit + B-score RL emphasis
+    hierarchical_credit: False
+    credit_scale_A: 2.0
+    credit_scale_B: 1.5
+    credit_scale_CD: 1.0
+    b_score_rl: False
+    algo_variant: T0
     # required by rl_games Runner.load (unused by HierarchicalTPA)
     reward_shaper:
       scale_value: 1.0

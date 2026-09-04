@@ -189,7 +189,21 @@ class HierarchicalTPA:
             "huber_delta": float(config.get("huber_delta", 1.0)),
             "reward_clip": config.get("reward_clip", 100.0),
             "q_target_clip": config.get("q_target_clip", 500.0),
+            "prioritized_replay": bool(config.get("prioritized_replay", False)),
+            "per_alpha": float(config.get("per_alpha", 0.6)),
+            "per_beta_start": float(config.get("per_beta_start", 0.4)),
+            "per_beta_frames": int(config.get("per_beta_frames", 1_000_000)),
+            "per_eps": float(config.get("per_eps", 1e-6)),
+            "dueling": bool(config.get("dueling_dqn", False)),
+            "noisy": bool(config.get("noisy_net", False)),
+            "noisy_std": float(config.get("noisy_std", 0.5)),
         }
+        self.algo_variant = str(config.get("algo_variant") or "T0")
+        self.hierarchical_credit = bool(config.get("hierarchical_credit", False))
+        self.credit_scale_A = float(config.get("credit_scale_A", 2.0 if self.hierarchical_credit else 1.0))
+        self.credit_scale_B = float(config.get("credit_scale_B", 1.5 if self.hierarchical_credit else 1.0))
+        self.credit_scale_CD = float(config.get("credit_scale_CD", 1.0))
+        self.b_score_rl = bool(config.get("b_score_rl", self.hierarchical_credit))
         # Explore dumps the whole online buffer as offline replay — keep enough capacity.
         if bool(config.get("explore") or config.get("explore_catalog")) and bool(
             config.get("explore_save_offline_replay", True)
@@ -234,8 +248,17 @@ class HierarchicalTPA:
             )
         self.agent_A = RLProductSequencingAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs_A)
         self.agent_B = RLProductSelectionAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
+        self.agent_B.b_score_rl = self.b_score_rl
         self.agent_C = RLProcessTaskPlanningAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
         self.agent_D = RLHumanRobotAllocatorAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
+        print(
+            f"[Hier] variant={self.algo_variant} "
+            f"PER={dqn_kwargs['prioritized_replay']} "
+            f"dueling={dqn_kwargs['dueling']} noisy={dqn_kwargs['noisy']} "
+            f"hier_credit={self.hierarchical_credit} "
+            f"(A={self.credit_scale_A} B={self.credit_scale_B} CD={self.credit_scale_CD}) "
+            f"b_score_rl={self.b_score_rl}"
+        )
 
         self.oru: ORUController | None = None
         self._oru_enabled = bool(config.get("oru", False)) and not bool(
@@ -557,7 +580,7 @@ class HierarchicalTPA:
         loss_a = self.agent_A.observe_step(
             prev_obs,
             action["product_sequencing"],
-            reward,
+            reward * self.credit_scale_A,
             next_obs,
             done,
             epsilon,
@@ -588,7 +611,7 @@ class HierarchicalTPA:
                 prev_obs,
                 action["product_sequencing"],
                 selection,
-                reward,
+                reward * self.credit_scale_B,
                 next_obs,
                 done,
                 epsilon,
@@ -604,7 +627,7 @@ class HierarchicalTPA:
                 prev_obs,
                 selection,
                 planning,
-                reward,
+                reward * self.credit_scale_CD,
                 next_obs,
                 done,
                 epsilon,
@@ -620,7 +643,7 @@ class HierarchicalTPA:
                 prev_obs,
                 planning,
                 allocation,
-                reward,
+                reward * self.credit_scale_CD,
                 next_obs,
                 done,
                 epsilon,
@@ -1180,6 +1203,27 @@ class HierarchicalTPA:
                         buffer_C=_buffer_len(self.agent_C),
                         buffer_D_human=buf_d_h,
                         buffer_D_robot=buf_d_r,
+                        algo_variant=self.algo_variant,
+                        prioritized_replay=bool(
+                            self.agent_B.dqn is not None
+                            and getattr(self.agent_B.dqn, "prioritized_replay", False)
+                        ),
+                        hierarchical_credit=self.hierarchical_credit,
+                        b_score_rl=self.b_score_rl,
+                        per_beta=(
+                            float(self.agent_B.dqn.buffer.beta)
+                            if (
+                                self.agent_B.dqn is not None
+                                and getattr(self.agent_B.dqn, "prioritized_replay", False)
+                            )
+                            else None
+                        ),
+                        dueling_dqn=bool(
+                            self.agent_B.dqn is not None and getattr(self.agent_B.dqn, "dueling", False)
+                        ),
+                        noisy_net=bool(
+                            self.agent_B.dqn is not None and getattr(self.agent_B.dqn, "noisy", False)
+                        ),
                     )
                 )
                 payload.update(loss_payload)

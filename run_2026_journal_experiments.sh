@@ -1,44 +1,49 @@
 #!/bin/bash
 set -euo pipefail
 
-# 2026 Journal Paper reproducible experiment entry point.
-# Usage:
-#   ./run_2026_journal_experiments.sh train [cuda:0]
-#   HC_LOAD_DIR=... ./run_2026_journal_experiments.sh eval [cuda:0]
-#   ./run_2026_journal_experiments.sh rule-n16 [cuda:0]   # server: K1+K10, N=16
-#   ./run_2026_journal_experiments.sh rule-n10 [cuda:0]   # server: K1+K10, N=10
-#   HC_LOAD_DIR=... ./run_2026_journal_experiments.sh hier-eval [cuda:0]      # N16 → N10
-#   HC_LOAD_DIR=... ./run_2026_journal_experiments.sh hier-eval-n16 [cuda:0]
-#   HC_LOAD_DIR=... ./run_2026_journal_experiments.sh hier-eval-n10 [cuda:0]
-#   ./run_2026_journal_experiments.sh hier-eval-hard [cuda:0]   # job 28 hard train
-#   ./run_2026_journal_experiments.sh hier-eval-curr [cuda:0]   # job 27 curriculum
+# Hier4TPA journal entry — versions T0 / T1 / T1R / T1RH (+ baselines / eval).
+# See docs/experiment_protocol.md §1c.
 #
-# Default protocol: 5 seeds (42–46) × 2 episodes = 10 episodes per run.
-# Live eval writes under <test_exp>/eval/: episodes.jsonl, eval_summary_partial.json;
-# metrics.jsonl + wandb MetricTest/* update each episode (~500-step heartbeat).
+# Usage:
+#   ./run_2026_journal_experiments.sh T0|T1|T1R|T1RH [cuda:0]
+#   HC_LOAD_DIR=... ./run_2026_journal_experiments.sh eval-T1 [cuda:0]
+#   ./run_2026_journal_experiments.sh baselines [cuda:0]
+#   HC_LOAD_DIR=... HC_LOAD_STEP=... ./run_2026_journal_experiments.sh hier-eval [cuda:0]
 
-MODE="${1:-next}"
+MODE="${1:-}"
 DEVICE="${2:-cuda:0}"
-# hier_curriculum (job 27, yrmr4uxp stage4): ep180≈2330k, ep185≈2415k, ep190≈2500k (wandb history)
-HC_CURR_LOAD_DIR="${HC_CURR_LOAD_DIR:-logs/rl_games/HcFactory/hier_2026-08-27_23-18-44}"
-HC_CURR_EVAL_STEP="${HC_CURR_EVAL_STEP:-2415000}"
-EVAL_STEPS="${HC_EVAL_STEPS:-${HC_CURR_EVAL_STEP}}"
-# hier_hard (job 28, zynalxhz): step/ep ≈ 18781 @ ep59/1.11M → ep80≈1.50M, ep85≈1.60M, ep90≈1.69M
-HC_HARD_LOAD_DIR="${HC_HARD_LOAD_DIR:-logs/rl_games/HcFactory/hier_2026-08-27_23-17-41}"
-HC_HARD_EVAL_STEP="${HC_HARD_EVAL_STEP:-1600000}"
+
 export HC_WANDB_TRAIN_PROJECT="${HC_WANDB_TRAIN_PROJECT:-HcFactory_TPA}"
 export HC_WANDB_TEST_PROJECT="${HC_WANDB_TEST_PROJECT:-HcFactory_TPA_Eval}"
 export HC_WANDB_BASELINE_PROJECT="${HC_WANDB_BASELINE_PROJECT:-${HC_WANDB_TEST_PROJECT}}"
 export HC_TEST_SEEDS="${HC_TEST_SEEDS:-42,43,44,45,46}"
 export HC_TEST_TIMES="${HC_TEST_TIMES:-2}"
-# Legacy aliases; baselines now use HC_TEST_TIMES for all N.
-export HC_RANDOM_EPISODES="${HC_RANDOM_EPISODES:-${HC_TEST_TIMES}}"
-export HC_N16_RANDOM_EPISODES="${HC_N16_RANDOM_EPISODES:-${HC_TEST_TIMES}}"
-export HC_RULE_EPISODES="${HC_RULE_EPISODES:-${HC_TEST_TIMES}}"
+export HC_CATALOG_TAG="${HC_CATALOG_TAG:-T1_random_ep20}"
 
-run_train() {
-    echo "[journal] train run_test_27 on ${DEVICE}"
-    ./batch_train.sh 27 "${DEVICE}"
+EVAL_STEPS="${HC_EVAL_STEPS:-}"
+
+usage() {
+    cat <<EOF
+用法: $0 <mode> [cuda:N]
+
+训练（主推版本）:
+  T0      hard train
+  T1      explore → ORU + hard
+  T1R     ORU + PER + Dueling（复用 catalog）
+  T1RH    T1R + hierarchical credit + B-score
+
+评测:
+  eval-T0 | eval-T1 | eval-T1R | eval-T1RH
+          需 HC_LOAD_DIR；可选 HC_LOAD_STEP / HC_EVAL_STEPS
+  hier-eval / hier-eval-n16 / hier-eval-n10
+          通用评测（HC_EVAL_VARIANT 默认 eval）
+
+基线:
+  baselines | rule-n10 | rule-n16 | random-n10 | random-n16 | random | rule
+
+其它:
+  train   同 T1（兼容旧入口）
+EOF
 }
 
 run_hier_eval_for_n() {
@@ -48,130 +53,68 @@ run_hier_eval_for_n() {
         exit 1
     fi
     export HC_TRAIN_N_PRODUCTS="${n_products}"
+    if [ -z "${EVAL_STEPS}" ]; then
+        echo "[journal] hier eval N=${n_products} step=latest, variant=${HC_EVAL_VARIANT:-eval}"
+        ./batch_train.sh 29 "${DEVICE}"
+        return
+    fi
     for step in ${EVAL_STEPS}; do
-        echo "[journal] hier eval N=${n_products} step=${step}, seeds=${HC_TEST_SEEDS}, repeats=${HC_TEST_TIMES}"
+        echo "[journal] hier eval N=${n_products} step=${step}, variant=${HC_EVAL_VARIANT:-eval}"
         HC_LOAD_STEP="${step}" ./batch_train.sh 29 "${DEVICE}"
     done
 }
 
-run_eval() {
+run_hier_eval() {
+    echo "[journal] hier eval N16→N10 variant=${HC_EVAL_VARIANT:-eval} load=${HC_LOAD_DIR:-}"
     run_hier_eval_for_n 16
-}
-
-run_hier_eval_n16() {
-    run_hier_eval_for_n 16
-}
-
-run_hier_eval_n10() {
     run_hier_eval_for_n 10
 }
 
-run_hier_eval() {
-    echo "[journal] hier eval: N=16 then N=10, steps=${EVAL_STEPS}, seeds=${HC_TEST_SEEDS}, repeats=${HC_TEST_TIMES}"
-    run_hier_eval_n16
-    run_hier_eval_n10
-}
-
-run_hier_hard_eval() {
-    export HC_LOAD_DIR="${HC_HARD_LOAD_DIR}"
-    export HC_EVAL_VARIANT=hard
-    EVAL_STEPS="${HC_HARD_EVAL_STEP}"
-    echo "[journal] hier-hard eval: load=${HC_LOAD_DIR} step=${EVAL_STEPS} (~ep85 in 80-90 band)"
+run_eval_variant() {
+    local variant="$1"
+    export HC_EVAL_VARIANT="${variant}"
+    if [ -z "${HC_LOAD_DIR:-}" ]; then
+        echo "错误: eval-${variant} 需要 HC_LOAD_DIR"
+        exit 1
+    fi
     run_hier_eval
-}
-
-run_hier_curr_eval() {
-    export HC_LOAD_DIR="${HC_CURR_LOAD_DIR}"
-    export HC_EVAL_VARIANT=curr
-    EVAL_STEPS="${HC_CURR_EVAL_STEP}"
-    echo "[journal] hier-curr eval: load=${HC_LOAD_DIR} step=${EVAL_STEPS} (~ep185 in 180-190 band)"
-    run_hier_eval
-}
-
-run_random_n10() {
-    echo "[journal] Random N=10, seeds=${HC_TEST_SEEDS}, repeats=${HC_TEST_TIMES}"
-    ./batch_train.sh 26 "${DEVICE}"
-}
-
-run_random_n16() {
-    echo "[journal] Random N=16, seeds=${HC_TEST_SEEDS}, repeats=${HC_TEST_TIMES}"
-    ./batch_train.sh 32 "${DEVICE}"
-}
-
-run_rule_k1_for_jobs() {
-    local -a jobs=("$@")
-    for job in "${jobs[@]}"; do
-        echo "[journal] Rule job=${job}, seeds=${HC_TEST_SEEDS}, repeats=${HC_TEST_TIMES}"
-        ./batch_train.sh "${job}" "${DEVICE}"
-    done
-}
-
-run_rule_k10_for_jobs() {
-    local -a jobs=("$@")
-    for job in "${jobs[@]}"; do
-        echo "[journal] Rule job=${job}, seeds=${HC_TEST_SEEDS}, repeats=${HC_TEST_TIMES}"
-        ./batch_train.sh "${job}" "${DEVICE}"
-    done
-}
-
-run_rule_n16() {
-    echo "[journal] Rule N=16: K=1 (job 30) then K=10 (job 31)"
-    run_rule_k1_for_jobs 30
-    run_rule_k10_for_jobs 31
-}
-
-run_rule_n10() {
-    echo "[journal] Rule N=10: K=1 (job 24) then K=10 (job 25)"
-    run_rule_k1_for_jobs 24
-    run_rule_k10_for_jobs 25
-}
-
-run_rule_k1() {
-    run_rule_k1_for_jobs 30
-}
-
-run_rule_k10() {
-    run_rule_k10_for_jobs 31
-}
-
-run_rule() {
-    run_rule_n16
-    run_rule_n10
-}
-
-run_baselines() {
-    run_random_n10
-    run_random_n16
-    run_rule
 }
 
 case "${MODE}" in
-    train) run_train ;;
-    eval) run_eval ;;
+    ""|-h|--help|help) usage; exit 0 ;;
+    T0) ./batch_train.sh T0 "${DEVICE}" ;;
+    T1|train) ./batch_train.sh T1 "${DEVICE}" ;;
+    T1R) ./batch_train.sh T1R "${DEVICE}" ;;
+    T1RH) ./batch_train.sh T1RH "${DEVICE}" ;;
+    eval-T0) run_eval_variant T0 ;;
+    eval-T1) run_eval_variant T1 ;;
+    eval-T1R) run_eval_variant T1R ;;
+    eval-T1RH) run_eval_variant T1RH ;;
     hier-eval) run_hier_eval ;;
-    hier-eval-hard) run_hier_hard_eval ;;
-    hier-eval-curr) run_hier_curr_eval ;;
-    hier-eval-n16) run_hier_eval_n16 ;;
-    hier-eval-n10) run_hier_eval_n10 ;;
-    random) run_random_n10; run_random_n16 ;;
-    random-n10) run_random_n10 ;;
-    random-n16) run_random_n16 ;;
-    rule-n16) run_rule_n16 ;;
-    rule-n10) run_rule_n10 ;;
-    rule-k1) run_rule_k1 ;;
-    rule-k10) run_rule_k10 ;;
-    rule) run_rule ;;
-    baselines) run_baselines ;;
-    next)
-        run_eval
-        run_baselines
+    hier-eval-n16) run_hier_eval_for_n 16 ;;
+    hier-eval-n10) run_hier_eval_for_n 10 ;;
+    # Legacy aliases (old curr/hard eval entry points)
+    hier-eval-hard)
+        export HC_LOAD_DIR="${HC_LOAD_DIR:-${HC_HARD_LOAD_DIR:-}}"
+        export HC_EVAL_VARIANT=T0
+        EVAL_STEPS="${HC_EVAL_STEPS:-${HC_HARD_EVAL_STEP:-}}"
+        run_hier_eval
         ;;
-    all)
-        echo "all 分两阶段运行：先 train；训练结束后将 HC_LOAD_DIR 指向新目录，再运行 eval/baselines。"
-        run_train
+    hier-eval-curr)
+        export HC_LOAD_DIR="${HC_LOAD_DIR:-${HC_CURR_LOAD_DIR:-}}"
+        export HC_EVAL_VARIANT=curr
+        EVAL_STEPS="${HC_EVAL_STEPS:-${HC_CURR_EVAL_STEP:-}}"
+        run_hier_eval
         ;;
+    random-n10) ./batch_train.sh 26 "${DEVICE}" ;;
+    random-n16) ./batch_train.sh 32 "${DEVICE}" ;;
+    random) ./batch_train.sh 26 32 "${DEVICE}" ;;
+    rule-n10) ./batch_train.sh 24 25 "${DEVICE}" ;;
+    rule-n16) ./batch_train.sh 30 31 "${DEVICE}" ;;
+    rule) ./batch_train.sh 24 25 30 31 "${DEVICE}" ;;
+    baselines) ./batch_train.sh E "${DEVICE}" ;;
     *)
-        echo "用法: $0 <train|eval|hier-eval|hier-eval-curr|hier-eval-hard|hier-eval-n16|hier-eval-n10|rule-n16|rule-n10|random|rule|baselines|next|all> [cuda:N]"
+        usage
         exit 1
         ;;
 esac

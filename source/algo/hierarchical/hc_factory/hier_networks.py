@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 def _human_mover_extra_dim() -> int:
@@ -27,21 +30,105 @@ def masked_mean(x: torch.Tensor, mask: torch.Tensor, dim: int) -> torch.Tensor:
     return num / den
 
 
-class QNetwork(nn.Module):
-    """MLP Q-network for masked discrete action selection."""
+class NoisyLinear(nn.Module):
+    """Factorised Gaussian NoisyLinear (Fortunato et al.)."""
 
-    def __init__(self, obs_dim: int, action_dim: int, hidden_dim: int = 128):
+    def __init__(self, in_features: int, out_features: int, std_init: float = 0.5):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(obs_dim, hidden_dim),
+        self.in_features = int(in_features)
+        self.out_features = int(out_features)
+        self.std_init = float(std_init)
+        self.weight_mu = nn.Parameter(torch.empty(out_features, in_features))
+        self.weight_sigma = nn.Parameter(torch.empty(out_features, in_features))
+        self.register_buffer("weight_epsilon", torch.empty(out_features, in_features))
+        self.bias_mu = nn.Parameter(torch.empty(out_features))
+        self.bias_sigma = nn.Parameter(torch.empty(out_features))
+        self.register_buffer("bias_epsilon", torch.empty(out_features))
+        self.reset_parameters()
+        self.reset_noise()
+
+    def reset_parameters(self) -> None:
+        mu_range = 1.0 / math.sqrt(self.in_features)
+        self.weight_mu.data.uniform_(-mu_range, mu_range)
+        self.weight_sigma.data.fill_(self.std_init / math.sqrt(self.in_features))
+        self.bias_mu.data.uniform_(-mu_range, mu_range)
+        self.bias_sigma.data.fill_(self.std_init / math.sqrt(self.out_features))
+
+    def _scale_noise(self, size: int) -> torch.Tensor:
+        x = torch.randn(size, device=self.weight_mu.device)
+        return x.sign().mul_(x.abs().sqrt_())
+
+    def reset_noise(self) -> None:
+        epsilon_in = self._scale_noise(self.in_features)
+        epsilon_out = self._scale_noise(self.out_features)
+        self.weight_epsilon.copy_(epsilon_out.ger(epsilon_in))
+        self.bias_epsilon.copy_(epsilon_out)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.training:
+            weight = self.weight_mu + self.weight_sigma * self.weight_epsilon
+            bias = self.bias_mu + self.bias_sigma * self.bias_epsilon
+        else:
+            weight = self.weight_mu
+            bias = self.bias_mu
+        return F.linear(x, weight, bias)
+
+
+class QNetwork(nn.Module):
+    """Q-network for masked discrete actions.
+
+    Supports optional **dueling** streams and **noisy** linear layers (Rainbow components).
+    """
+
+    def __init__(
+        self,
+        obs_dim: int,
+        action_dim: int,
+        hidden_dim: int = 128,
+        *,
+        dueling: bool = False,
+        noisy: bool = False,
+        noisy_std: float = 0.5,
+    ):
+        super().__init__()
+        self.obs_dim = int(obs_dim)
+        self.action_dim = int(action_dim)
+        self.hidden_dim = int(hidden_dim)
+        self.dueling = bool(dueling)
+        self.noisy = bool(noisy)
+        linear = (lambda i, o: NoisyLinear(i, o, std_init=noisy_std)) if self.noisy else nn.Linear
+
+        self.feature = nn.Sequential(
+            linear(obs_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
+            linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, action_dim),
         )
+        if self.dueling:
+            self.value = nn.Sequential(linear(hidden_dim, hidden_dim), nn.ReLU(), linear(hidden_dim, 1))
+            self.advantage = nn.Sequential(
+                linear(hidden_dim, hidden_dim), nn.ReLU(), linear(hidden_dim, action_dim)
+            )
+            self.net = None
+        else:
+            self.net = nn.Sequential(linear(hidden_dim, action_dim))
+            self.value = None
+            self.advantage = None
+
+    def reset_noise(self) -> None:
+        if not self.noisy:
+            return
+        for module in self.modules():
+            if isinstance(module, NoisyLinear):
+                module.reset_noise()
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
-        return self.net(obs)
+        feat = self.feature(obs)
+        if self.dueling:
+            value = self.value(feat)
+            adv = self.advantage(feat)
+            return value + adv - adv.mean(dim=-1, keepdim=True)
+        return self.net(feat)
 
 
 class StateEncoder(nn.Module):

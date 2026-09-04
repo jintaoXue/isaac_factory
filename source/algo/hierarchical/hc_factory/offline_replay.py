@@ -21,9 +21,21 @@ from typing import Any
 
 import torch
 
-from .hier_buffer import ReplayBuffer, Transition
+from .hier_buffer import PrioritizedReplayBuffer, ReplayBuffer, Transition
 
 HEADS = ("A", "B", "C", "D_human", "D_robot")
+
+
+def _buffer_transitions(
+    buf: ReplayBuffer | PrioritizedReplayBuffer | list[Transition] | None,
+) -> list[Transition]:
+    if buf is None:
+        return []
+    if isinstance(buf, ReplayBuffer):
+        return list(buf.buffer)
+    if isinstance(buf, PrioritizedReplayBuffer):
+        return [t for t in buf._data[: buf._size] if t is not None]
+    return list(buf)
 
 
 def offline_replay_dir(catalog_root: str | Path) -> Path:
@@ -84,7 +96,7 @@ def _transition_from_state(d: dict[str, Any]) -> Transition:
 
 def save_offline_replay(
     root: str | Path,
-    buffers: dict[str, ReplayBuffer | list[Transition] | None],
+    buffers: dict[str, ReplayBuffer | PrioritizedReplayBuffer | list[Transition] | None],
     *,
     meta: dict[str, Any] | None = None,
 ) -> Path:
@@ -93,13 +105,7 @@ def save_offline_replay(
     out.mkdir(parents=True, exist_ok=True)
     counts: dict[str, int] = {}
     for head in HEADS:
-        buf = buffers.get(head)
-        if buf is None:
-            transitions: list[Transition] = []
-        elif isinstance(buf, ReplayBuffer):
-            transitions = list(buf.buffer)
-        else:
-            transitions = list(buf)
+        transitions = _buffer_transitions(buffers.get(head))
         path = out / f"{head}.pt"
         payload = [_transition_to_state(t) for t in transitions]
         torch.save(payload, path)

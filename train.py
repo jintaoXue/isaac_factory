@@ -97,6 +97,42 @@ parser.add_argument(
     default=False,
     help="T1/T2 ORU: offline warmup from catalog offline_replay/, then decaying offline mix into online train.",
 )
+parser.add_argument(
+    "--prioritized_replay",
+    action="store_true",
+    default=False,
+    help="T1R/T1RH: enable prioritized experience replay (PER) on online buffers.",
+)
+parser.add_argument(
+    "--dueling_dqn",
+    action="store_true",
+    default=False,
+    help="T1R/T1RH: dueling Q-network (value + advantage streams).",
+)
+parser.add_argument(
+    "--noisy_net",
+    action="store_true",
+    default=False,
+    help="Optional: factorised noisy nets (replaces ε-greedy). Not part of default T1R.",
+)
+parser.add_argument(
+    "--hierarchical_credit",
+    action="store_true",
+    default=False,
+    help="T1RH: scale A/B vs C/D decision rewards (layered credit assignment).",
+)
+parser.add_argument(
+    "--b_score_rl",
+    action="store_true",
+    default=False,
+    help="T1RH: emphasize B-score RL ranking (lower ε on B).",
+)
+parser.add_argument(
+    "--algo_variant",
+    type=str,
+    default=None,
+    help="Version tag for wandb/metrics: T0|T1|T1R|T1RH|T2.",
+)
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument(
     "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
@@ -284,6 +320,19 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         algo_cfg["params"]["config"]["catalog_collect"] = True
     if getattr(args_cli, "oru", False):
         algo_cfg["params"]["config"]["oru"] = True
+    if getattr(args_cli, "prioritized_replay", False):
+        algo_cfg["params"]["config"]["prioritized_replay"] = True
+    if getattr(args_cli, "dueling_dqn", False):
+        algo_cfg["params"]["config"]["dueling_dqn"] = True
+    if getattr(args_cli, "noisy_net", False):
+        algo_cfg["params"]["config"]["noisy_net"] = True
+    if getattr(args_cli, "hierarchical_credit", False):
+        algo_cfg["params"]["config"]["hierarchical_credit"] = True
+        algo_cfg["params"]["config"]["b_score_rl"] = True
+    if getattr(args_cli, "b_score_rl", False):
+        algo_cfg["params"]["config"]["b_score_rl"] = True
+    if getattr(args_cli, "algo_variant", None):
+        algo_cfg["params"]["config"]["algo_variant"] = str(args_cli.algo_variant)
     warmstart = (getattr(args_cli, "warmstart", None) or "").strip() or os.environ.get("HC_WARMSTART", "").strip()
     if warmstart:
         algo_cfg["params"]["config"]["warmstart"] = warmstart

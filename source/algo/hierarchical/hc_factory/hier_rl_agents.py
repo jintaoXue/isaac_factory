@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from .hier_buffer import ReplayBuffer, Transition
+from .hier_buffer import PrioritizedReplayBuffer, ReplayBuffer, Transition
 from .hier_networks import QNetwork
 from .hier_utils import index_to_one_hot, masked_select_action, one_hot_to_index
 
@@ -34,6 +34,14 @@ class MaskedDQNAgent:
         huber_delta: float = 1.0,
         reward_clip: float | None = 100.0,
         q_target_clip: float | None = 500.0,
+        prioritized_replay: bool = False,
+        per_alpha: float = 0.6,
+        per_beta_start: float = 0.4,
+        per_beta_frames: int = 1_000_000,
+        per_eps: float = 1e-6,
+        dueling: bool = False,
+        noisy: bool = False,
+        noisy_std: float = 0.5,
     ):
         self.name = name
         self.obs_dim = obs_dim
@@ -47,18 +55,41 @@ class MaskedDQNAgent:
         self.huber_delta = float(huber_delta)
         self.reward_clip = None if reward_clip is None else float(reward_clip)
         self.q_target_clip = None if q_target_clip is None else float(q_target_clip)
+        self.prioritized_replay = bool(prioritized_replay)
+        self.dueling = bool(dueling)
+        self.noisy = bool(noisy)
         self.train_steps = 0
 
-        self.q_net = QNetwork(obs_dim, action_dim, hidden_dim).to(device)
-        self.target_net = QNetwork(obs_dim, action_dim, hidden_dim).to(device)
+        q_kwargs = dict(dueling=self.dueling, noisy=self.noisy, noisy_std=float(noisy_std))
+        self.q_net = QNetwork(obs_dim, action_dim, hidden_dim, **q_kwargs).to(device)
+        self.target_net = QNetwork(obs_dim, action_dim, hidden_dim, **q_kwargs).to(device)
         self.target_net.load_state_dict(self.q_net.state_dict())
         self.optimizer = optim.Adam(self.q_net.parameters(), lr=lr)
-        self.buffer = ReplayBuffer(buffer_capacity)
+        if self.prioritized_replay:
+            self.buffer: ReplayBuffer | PrioritizedReplayBuffer = PrioritizedReplayBuffer(
+                buffer_capacity,
+                alpha=per_alpha,
+                beta_start=per_beta_start,
+                beta_frames=per_beta_frames,
+                eps=per_eps,
+            )
+        else:
+            self.buffer = ReplayBuffer(buffer_capacity)
+
+    def reset_noise(self) -> None:
+        if not self.noisy:
+            return
+        self.q_net.reset_noise()
+        self.target_net.reset_noise()
 
     def select_action(self, obs: torch.Tensor, mask: torch.Tensor, epsilon: float) -> int | None:
+        # Noisy nets provide exploration; keep a small ε fallback only when not noisy.
+        act_eps = 0.0 if self.noisy else float(epsilon)
         with torch.no_grad():
+            if self.noisy and self.q_net.training:
+                self.q_net.reset_noise()
             q_values = self.q_net(obs.unsqueeze(0)).squeeze(0)
-        return masked_select_action(q_values, mask, epsilon)
+        return masked_select_action(q_values, mask, act_eps)
 
     def act_tensor(self, obs: torch.Tensor, mask: torch.Tensor, epsilon: float) -> torch.Tensor:
         action_idx = self.select_action(obs, mask, epsilon)
@@ -146,10 +177,14 @@ class MaskedDQNAgent:
     def _sample_train_batch(
         self,
         *,
-        offline_buffer: ReplayBuffer | None = None,
+        offline_buffer: ReplayBuffer | PrioritizedReplayBuffer | None = None,
         mix_ratio: float = 0.0,
-    ) -> list[Transition] | None:
-        """Sample ``batch_size`` transitions, mixing online + optional offline ORU buffer."""
+    ) -> tuple[list[Transition], object | None, torch.Tensor | None] | None:
+        """Sample ``batch_size`` transitions, mixing online + optional offline ORU buffer.
+
+        Returns ``(batch, per_indices_or_None, is_weights_or_None)``.
+        PER only applies to the **online** portion; offline ORU stays uniform.
+        """
         mix_ratio = max(0.0, min(1.0, float(mix_ratio)))
         offline_n = 0
         if offline_buffer is not None and len(offline_buffer) > 0 and mix_ratio > 0.0:
@@ -167,22 +202,46 @@ class MaskedDQNAgent:
         if total < self.batch_size and total < max(1, self.batch_size // 4):
             return None
         batch: list[Transition] = []
+        per_indices = None
+        is_weights: torch.Tensor | None = None
         if online_n > 0:
-            batch.extend(self.buffer.sample(online_n))
+            if isinstance(self.buffer, PrioritizedReplayBuffer):
+                online_batch, per_indices, weights = self.buffer.sample(online_n)
+                batch.extend(online_batch)
+                is_weights = torch.as_tensor(weights, dtype=torch.float32, device=self.device)
+            else:
+                batch.extend(self.buffer.sample(online_n))
         if offline_n > 0 and offline_buffer is not None:
-            batch.extend(offline_buffer.sample(offline_n))
-        return batch
+            # Offline catalog dumps use plain ReplayBuffer; sample uniformly.
+            if isinstance(offline_buffer, PrioritizedReplayBuffer):
+                off_batch, _, off_w = offline_buffer.sample(offline_n)
+                batch.extend(off_batch)
+                off_w_t = torch.as_tensor(off_w, dtype=torch.float32, device=self.device)
+                if is_weights is None:
+                    is_weights = off_w_t
+                else:
+                    is_weights = torch.cat([is_weights, off_w_t], dim=0)
+            else:
+                batch.extend(offline_buffer.sample(offline_n))
+                if is_weights is not None:
+                    # Online PER + offline uniform: pad offline weights with 1.0
+                    ones = torch.ones(offline_n, dtype=torch.float32, device=self.device)
+                    is_weights = torch.cat([is_weights, ones], dim=0)
+        return batch, per_indices, is_weights
 
     def compute_loss(
         self,
         encode_fn: Callable[[dict, Transition], torch.Tensor] | None = None,
         *,
-        offline_buffer: ReplayBuffer | None = None,
+        offline_buffer: ReplayBuffer | PrioritizedReplayBuffer | None = None,
         mix_ratio: float = 0.0,
     ) -> torch.Tensor | None:
-        batch = self._sample_train_batch(offline_buffer=offline_buffer, mix_ratio=mix_ratio)
-        if batch is None:
+        sampled = self._sample_train_batch(offline_buffer=offline_buffer, mix_ratio=mix_ratio)
+        if sampled is None:
             return None
+        batch, per_indices, is_weights = sampled
+        if self.noisy:
+            self.reset_noise()
         obs_batch = self._encode_batch(batch, encode_fn, use_next=False)
         action_batch = torch.tensor([t.action for t in batch], dtype=torch.long, device=self.device)
         reward_batch = torch.tensor([t.reward for t in batch], dtype=torch.float32, device=self.device)
@@ -218,7 +277,28 @@ class MaskedDQNAgent:
             if self.q_target_clip is not None:
                 target = target.clamp(-self.q_target_clip, self.q_target_clip)
 
-        return nn.functional.smooth_l1_loss(q_values, target, beta=self.huber_delta)
+        td_error = target - q_values
+        elementwise = nn.functional.smooth_l1_loss(
+            q_values, target, beta=self.huber_delta, reduction="none"
+        )
+        if is_weights is not None and is_weights.numel() == elementwise.numel():
+            loss = (is_weights * elementwise).mean()
+        else:
+            loss = elementwise.mean()
+
+        if (
+            per_indices is not None
+            and isinstance(self.buffer, PrioritizedReplayBuffer)
+            and is_weights is not None
+        ):
+            # Only update priorities for the online PER slice (leading online_n entries).
+            online_n = len(per_indices)
+            self.buffer.update_priorities(
+                per_indices,
+                td_error[:online_n].detach().abs().cpu().numpy(),
+            )
+
+        return loss
 
     def register_train_step(self) -> None:
         self.train_steps += 1
@@ -317,6 +397,8 @@ class RLProductSelectionAgent:
         self.device = device
         self.dqn: MaskedDQNAgent | None = None
         self.dqn_kwargs = dqn_kwargs
+        # T1RH: when True, use lower ε on B ranking so Q-scores dominate earlier.
+        self.b_score_rl = False
         from .agent_B_product_priority import ProductPriorityAgent
 
         self._priority = ProductPriorityAgent(device)
@@ -338,7 +420,10 @@ class RLProductSelectionAgent:
             return self._priority.rank_slots(eligible_mask)
 
         self._ensure_dqn(env_state_action_dict, product_sequencing_action)
-        if random.random() < epsilon:
+        rank_eps = float(epsilon) * (0.5 if self.b_score_rl else 1.0)
+        if self.dqn is not None and getattr(self.dqn, "noisy", False):
+            rank_eps = 0.0
+        if random.random() < rank_eps:
             ordered = [int(i.item()) for i in indices]
             random.shuffle(ordered)
             staging = int(eligible_mask.shape[0] - 1)
@@ -349,6 +434,8 @@ class RLProductSelectionAgent:
 
         mask = env_state_action_dict["agent_action_mask"][self.AGENT_KEY]
         with torch.no_grad():
+            if self.dqn.noisy and self.dqn.q_net.training:
+                self.dqn.q_net.reset_noise()
             obs = self.obs_encoder.encode_B(env_state_action_dict, product_sequencing_action, pre=pre)
             q = self.dqn.q_net(obs.unsqueeze(0)).squeeze(0).clone()
             q[mask == 0] = -float("inf")

@@ -32,45 +32,22 @@ HC_WANDB_CATALOG_PROJECT="${HC_WANDB_CATALOG_PROJECT:-HcFactory_Catalog}"
 #   22 采库 → 23 采库debug → 24/25 N10 rule → 26 N10 random
 #   → 27 hier课程 → 28 hier硬训 → 29 N16评测 → 30/31/32 N16 基线
 if [ $# -eq 0 ]; then
-    echo "用法: $0 <A|B|C|D|E|T1|序号...> [cuda:N]"
-    echo "  A: 运行A组训练 (1-5)"
-    echo "  B: 运行B组训练 (6-10)"
-    echo "  C: N=10 主路径 (22采库 → 24/25 rule → 26 random → 27 curriculum)"
-    echo "  D: 采库+训练 (22 explore → 27 curriculum)"
-    echo "  E: 基线矩阵 (24 25 26 | 30 31 32)"
-    echo "  1-21: 旧 RL / Perception 序号"
-    echo "  ---- HcFactory Hierarchical TPA（按流程编号）----"
-    echo "  22: explore 采库 (--explore, ep=${HC_EXPLORE_EPISODES}, wandb=${HC_WANDB_CATALOG_PROJECT}, MetricCatalog/*)"
-    echo "  23: explore debug（N=10, T_max=${HC_T_MAX_N10}, 可视化+warmstart，不录视频不启wandb）"
-    echo "  24: rule 单产品 eval (K=1, N=10, T_max=${HC_T_MAX_N10}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
-    echo "  25: rule 多产品 eval (K=${HC_MULTI_K}, N=10, T_max=${HC_T_MAX_N10}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
-    echo "  26: hier random eval (ε=1, N=10, T_max=${HC_T_MAX_N10}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
-    echo "  27: hier 倒序课程 (--curriculum → target=10)"
-    echo "  28: hier N=10 硬训 (默认 T0；HC_ORU=1 时为 T1 Phase B + ORU)"
-    echo "  29: hier 评测 (加载 nn/, 全量 N=16, T_max=${HC_T_MAX_N16})"
-    echo "  30: rule 单产品 eval (K=1, N=16, T_max=${HC_T_MAX_N16}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
-    echo "  31: rule 多产品 eval (K=${HC_MULTI_K}, N=16, T_max=${HC_T_MAX_N16}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
-    echo "  32: hier random eval (ε=1, N=16, T_max=${HC_T_MAX_N16}, seeds=${HC_TEST_SEEDS}, x${HC_TEST_TIMES})"
-    echo "  33: policy catalog hard train (catalog_collect, ep=${HC_POLICY_CATALOG_EPISODES:-80}, wandb catalog project)"
-    echo "  T1: 22 explore(+offline_replay) → 28 hard+ORU（同一 HC_CATALOG_TAG）"
-    echo "  cuda:N: 可选，指定CUDA设备，默认 cuda:0（写在最后）"
-    echo "  环境变量 HC_WARMSTART: 可选 pkl，传给 22/23/27/28 的 --warmstart"
-    echo "  环境变量 HC_CATALOG_TAG: catalog 实验标签（例 T2_random_ep10），22 写库与 27 读库须一致"
-    echo "  环境变量 HC_CATALOG_SOURCE: random_explore | policy_explore（默认 random_explore）"
-    echo "  环境变量 HC_EXPLORE_CATALOG_DIR: 显式 catalog 根路径（覆盖 TAG 拼接）"
-    echo "  环境变量 HC_EXPLORE_EPISODES: job 22 采库 episode 数（默认 ${HC_EXPLORE_EPISODES}）"
-    echo "  环境变量 HC_ORU: 1=启用 ORU（T1/job28）；0=关闭（默认）"
-    echo "  环境变量 HC_ORU_WARMUP_UPDATES: 覆盖自动 warmup update 次数"
-    echo "  环境变量 HC_ORU_MIX_DECAY_ENV_STEPS: offline mix 线性降到 0 的 env steps（默认 300000）"
-    echo "  环境变量 HC_WANDB_CATALOG_PROJECT: 采库/ policy catalog 专用 wandb project（默认 HcFactory_Catalog）"
-    echo "  环境变量 HC_POLICY_CATALOG_EPISODES: job 33 policy catalog 训练 episode 数（默认 80）"
-    echo "  环境变量 HC_LOAD_DIR: 29 号评测的实验目录（含 nn/）"
-    echo "  环境变量 HC_RULE_EPISODES: rule 基线 episode 数（默认 ${HC_RULE_EPISODES}）"
-    echo "  环境变量 HC_RANDOM_EPISODES: job 26 HierRandom episode 数（默认 ${HC_RANDOM_EPISODES}）"
-    echo "  环境变量 HC_T_MAX_ANCHOR: 全订单 T_max anchor（默认 ${HC_T_MAX_ANCHOR} → N10=${HC_T_MAX_N10}）"
-    echo "  环境变量 HC_WANDB_MODE: online|offline（默认 online 上云+本地 metrics.jsonl；网络不稳用 offline）"
-    echo "  环境变量 HC_WANDB_SYNC: 1=仅 offline 时跑完后 wandb sync（默认 1；online 无需）"
-    echo "  文件 .wandb_local.env: 共享机私有 wandb（HC_WANDB_API_KEY / HC_WANDB_ENTITY），gitignore，不影响别人"
+    echo "用法: $0 <T0|T1|T1R|T1RH|E|序号...> [cuda:N]"
+    echo "  ---- 主推版本（见 docs/experiment_protocol.md §1c）----"
+    echo "  T0:   hard train（无 ORU）"
+    echo "  T1:   22 explore → 28 hard+ORU"
+    echo "  T1R:  22(可选) → 28 ORU+PER+Dueling（复用 T1 catalog）"
+    echo "  T1RH: 22(可选) → 28 T1R + hier_credit+B-score"
+    echo "  E:    基线矩阵 (24 25 26 | 30 31 32)"
+    echo "  ---- job 序号 ----"
+    echo "  22: explore 采库 (+offline_replay)"
+    echo "  24/25/26: Rule K1/K10 / Random eval N=10"
+    echo "  27: curriculum（legacy，≠T2）"
+    echo "  28: hard train（由 HC_ORU/HC_PER/HC_HIER_CREDIT 选变体）"
+    echo "  29: hier eval（需 HC_LOAD_DIR；HC_EVAL_VARIANT=T1|T1R|T1RH）"
+    echo "  30/31/32: Rule / Random eval N=16"
+    echo "  环境变量: HC_CATALOG_TAG HC_ORU HC_PER HC_HIER_CREDIT HC_ALGO_VARIANT"
+    echo "            HC_LOAD_DIR HC_LOAD_STEP HC_TEST_SEEDS HC_TEST_TIMES HC_WANDB_MODE"
     exit 1
 fi
 
@@ -79,11 +56,14 @@ JOBS=()
 for arg in "$@"; do
     if [[ "$arg" =~ ^cuda:[0-9]+$ ]]; then
         DEVICE="$arg"
-    elif [[ "$arg" =~ ^([1-9]|1[0-9]|2[0-9]|3[0-3])$ ]] || [ "$arg" = "A" ] || [ "$arg" = "B" ] || [ "$arg" = "C" ] || [ "$arg" = "D" ] || [ "$arg" = "E" ] || [ "$arg" = "T1" ]; then
+    elif [[ "$arg" =~ ^([1-9]|1[0-9]|2[0-9]|3[0-3])$ ]] \
+        || [ "$arg" = "E" ] \
+        || [ "$arg" = "T0" ] || [ "$arg" = "T1" ] || [ "$arg" = "T1R" ] || [ "$arg" = "T1RH" ] \
+        || [ "$arg" = "A" ] || [ "$arg" = "B" ] || [ "$arg" = "C" ] || [ "$arg" = "D" ]; then
         JOBS+=("$arg")
     else
         echo "错误: 无法识别参数 '$arg'"
-        echo "用法: $0 <A|B|C|序号...> [cuda:N]"
+        echo "用法: $0 <T0|T1|T1R|T1RH|E|序号...> [cuda:N]"
         exit 1
     fi
 done
@@ -506,15 +486,30 @@ run_test_27() {
 }
 
 run_test_28() {
-    # hier N=10 硬训：HC_ORU=1 开启 ORU（T1 Phase B）；默认 0 = 纯 T0 hard train
+    # hier N=10 硬训：variant 由 HC_ALGO_VARIANT / HC_ORU / HC_PER / HC_HIER_CREDIT 决定
     hc_print_catalog_hint
+    local _variant="${HC_ALGO_VARIANT:-T0}"
     local _oru_flag=""
-    local _oru_tag="noORU"
+    local _per_flag=""
+    local _dueling_flag=""
+    local _credit_flag=""
+    local _bscore_flag=""
     if [ "${HC_ORU:-0}" = "1" ]; then
         _oru_flag="--oru"
-        _oru_tag="ORU"
+        if [ "${_variant}" = "T0" ]; then
+            _variant="T1"
+        fi
     fi
-    echo "运行 28: hier hard train (N=10, T_max=${HC_T_MAX_N10}, ${_oru_tag}, wandb=${HC_WANDB_PROJECT})"
+    if [ "${HC_PER:-0}" = "1" ]; then
+        # T1R Rainbow subset: PER + Dueling (Double already default-on; Noisy off)
+        _per_flag="--prioritized_replay"
+        _dueling_flag="--dueling_dqn"
+    fi
+    if [ "${HC_HIER_CREDIT:-0}" = "1" ]; then
+        _credit_flag="--hierarchical_credit"
+        _bscore_flag="--b_score_rl"
+    fi
+    echo "运行 28: hier hard train variant=${_variant} (N=10, T_max=${HC_T_MAX_N10}, wandb=${HC_WANDB_PROJECT})"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -522,13 +517,27 @@ run_test_28() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_PROJECT}" \
-        --wandb_name "hier_hard_${_oru_tag}_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}__${HC_CATALOG_TAG:-legacy}" \
+        --wandb_name "hier_${_variant}_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}__${HC_CATALOG_TAG:-legacy}" \
+        --algo_variant "${_variant}" \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         ${_oru_flag} \
+        ${_per_flag} \
+        ${_dueling_flag} \
+        ${_credit_flag} \
+        ${_bscore_flag} \
         $(hc_t_max_args) \
         $(hc_catalog_args) \
         $(hc_warmstart_args) \
         ${DEVICE_ARG}
+}
+
+run_t0() {
+    export HC_ALGO_VARIANT=T0
+    export HC_ORU=0
+    export HC_PER=0
+    export HC_HIER_CREDIT=0
+    echo "=== T0: hard train (no ORU) ==="
+    run_test_28
 }
 
 run_t1() {
@@ -536,11 +545,59 @@ run_t1() {
     export HC_CATALOG_TAG="${HC_CATALOG_TAG:-T1_random_ep20}"
     export HC_CATALOG_SOURCE="${HC_CATALOG_SOURCE:-random_explore}"
     export HC_EXPLORE_EPISODES="${HC_EXPLORE_EPISODES:-20}"
-    export HC_ORU="${HC_ORU:-1}"
-    echo "=== T1 流水线: 22 explore(+offline_replay) → 28 hard+ORU (tag=${HC_CATALOG_TAG}) ==="
+    export HC_ORU=1
+    export HC_PER=0
+    export HC_HIER_CREDIT=0
+    export HC_ALGO_VARIANT=T1
+    echo "=== T1 流水线: 22 explore → 28 hard+ORU (tag=${HC_CATALOG_TAG}) ==="
     run_test_22
     run_test_28
-    echo "=== T1 流水线完成 ==="
+    echo "=== T1 完成 ==="
+}
+
+run_t1r() {
+    # T1R = T1 + prioritized replay (Double DQN already on)
+    export HC_CATALOG_TAG="${HC_CATALOG_TAG:-T1_random_ep20}"
+    export HC_CATALOG_SOURCE="${HC_CATALOG_SOURCE:-random_explore}"
+    export HC_EXPLORE_EPISODES="${HC_EXPLORE_EPISODES:-20}"
+    export HC_ORU=1
+    export HC_PER=1
+    export HC_HIER_CREDIT=0
+    export HC_ALGO_VARIANT=T1R
+    echo "=== T1R 流水线: 22 explore → 28 hard+ORU+PER (tag=${HC_CATALOG_TAG}) ==="
+    # Reuse existing catalog+offline_replay if present; otherwise explore first.
+    local _cat
+    _cat="$(hc_catalog_root)"
+    if [ -z "${_cat}" ] || [ ! -d "${_cat}/offline_replay" ]; then
+        echo "[T1R] offline_replay missing → running explore (job 22)"
+        run_test_22
+    else
+        echo "[T1R] reuse catalog offline_replay: ${_cat}"
+    fi
+    run_test_28
+    echo "=== T1R 完成 ==="
+}
+
+run_t1rh() {
+    # T1RH = T1R + hierarchical credit + B-score RL
+    export HC_CATALOG_TAG="${HC_CATALOG_TAG:-T1_random_ep20}"
+    export HC_CATALOG_SOURCE="${HC_CATALOG_SOURCE:-random_explore}"
+    export HC_EXPLORE_EPISODES="${HC_EXPLORE_EPISODES:-20}"
+    export HC_ORU=1
+    export HC_PER=1
+    export HC_HIER_CREDIT=1
+    export HC_ALGO_VARIANT=T1RH
+    echo "=== T1RH 流水线: 22 explore → 28 ORU+PER+hier_credit (tag=${HC_CATALOG_TAG}) ==="
+    local _cat
+    _cat="$(hc_catalog_root)"
+    if [ -z "${_cat}" ] || [ ! -d "${_cat}/offline_replay" ]; then
+        echo "[T1RH] offline_replay missing → running explore (job 22)"
+        run_test_22
+    else
+        echo "[T1RH] reuse catalog offline_replay: ${_cat}"
+    fi
+    run_test_28
+    echo "=== T1RH 完成 ==="
 }
 
 run_test_29() {
@@ -690,7 +747,10 @@ run_one_job() {
         31) run_test_31 ;;
         32) run_test_32 ;;
         33) run_test_33 ;;
+        T0) run_t0 ;;
         T1) run_t1 ;;
+        T1R) run_t1r ;;
+        T1RH) run_t1rh ;;
         A)
             echo "=== 运行A组训练 (1-5) ==="
             run_test_1; run_test_2; run_test_3; run_test_4; run_test_5; run_test_6
@@ -737,8 +797,8 @@ run_one_job() {
 for job in "${JOBS[@]}"; do
     echo ">>> 开始任务: $job"
     run_one_job "$job" || exit 1
-    # HcFactory 22–32：offline 跑完后尝试上传到云端
-    if [[ "$job" =~ ^(2[2-9]|3[0-3]|C|D|E|T1)$ ]]; then
+    # HcFactory 22–33 / 版本流水线：offline 跑完后尝试上传到云端
+    if [[ "$job" =~ ^(2[2-9]|3[0-3]|C|D|E|T0|T1|T1R|T1RH)$ ]]; then
         hc_wandb_sync_latest
     fi
 done

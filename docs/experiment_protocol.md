@@ -21,7 +21,59 @@ conda activate isaaclab   # 或你的 Isaac Lab 环境名
 | **Hard train** | 整单 N=10、无 curriculum 分段 |
 | **K** | `max_parallel_cd_dispatch`：单步最多并行 C/D 派工数（默认 10） |
 
-> **实现说明**：当前 `batch_train.sh` job **22/27** 仅完成 **采库 + catalog 仿真 reset**（`pick_by_nfin` restore），**尚未**接入完整的 offline replay update；job 27 是 T2 的占位/legacy 路径，**不等于**论文定义的 T2。
+---
+
+## 1c. 算法版本命名（T / R / H）
+
+避免把 **训练协议（T0–T4）**、**roadmap 改进（R1/H1…）**、**job 序号（22/27/28）** 混在一起。统一用：
+
+```text
+Hier4TPA-{T*}[+R][+H]
+```
+
+短名（wandb / `HC_CATALOG_TAG` / 论文表）只写：`T0`、`T1`、`T1R`、`T1RH`、`T2`…
+
+### 字母含义
+
+| 字母 | 轴 | 含义 | 对应 roadmap |
+|------|----|------|--------------|
+| **T0–T4** | 训练协议（主轴，互斥） | 见 §2；唯一决定「怎么用 catalog / ORU / curriculum」 | L1 / L3 / L5 |
+| **R** | 后端（可叠加） | Double DQN + PER + **Dueling**（不含 Noisy / multi-step / C51） | R1, R2 |
+| **H** | 层级学习（可叠加） | B-score RL + A/B 层间信用（稀疏回报下的更新策略） | H1, H2 |
+
+字母顺序固定为 **T → R → H**（先协议，再后端，再层级），不要写成 `TRH1` / `HRT` 等。
+
+### 主推版本（尽量少）
+
+| 短名 | 完整名 | 内容 | 状态 |
+|------|--------|------|------|
+| **T0** | Hier4TPA-T0 | Hard train | ✅ |
+| **T1** | Hier4TPA-T1 | Explore catalog + ORU + hard train | ✅ **当前主跑** |
+| **T1R** | Hier4TPA-T1R | T1 + Rainbow 子集（Double+PER+Dueling） | ✅ `./batch_train.sh T1R` |
+| **T1RH** | Hier4TPA-T1RH | T1R + 层级学习（B-score + 信用） | ✅ `./batch_train.sh T1RH` |
+| **T2** | Hier4TPA-T2 | Explore + ORU + curriculum | 🔲 论文 proposed |
+
+可选扩展（实现后再加，**不提前占名**）：`T2R`、`T2RH`、`T3`、`T4`。
+
+### 命名规则（强制）
+
+1. **协议只用 T\***：`T1` ≠ job 28；`T2` ≠ legacy job 27。  
+2. **改进只用后缀**：`T1R` 表示「在 T1 上加 R」，不要另起 `Rainbow-ORU` / `Hier-PER`。  
+3. **wandb / catalog tag 带版本**：`T1_random_ep20`、`T1R_random_ep20`、`T1RH_K10_T40000`。  
+4. **评测 run 名带版本**：`hier_eval_T1_N16_step...`、`hier_eval_T1R_N10_...`（`HC_EVAL_VARIANT=T1` / `T1R`）。  
+5. **roadmap 的 H3/N1/P2 等**：消融表内写全称，**不**进主版本字母，除非升格为固定后缀。
+
+### 组合示意
+
+```text
+        T0 ──► T1 ──► T1R ──► T1RH
+                 │
+                 └──► T2 ──► T2R ──► T2RH   （curriculum 就绪后再开）
+```
+
+论文主表建议只报：**T0 / T1 / T1R / T1RH**（+ 基线 Rule/Random）；T2 作为 proposed protocol 单独一列或附录。
+
+> **实现说明**：**T1 ORU 已实现**（job 22 dump `offline_replay/` → job 28 `--oru`）。**T1R/T1RH** 在 Phase B 叠加 PER / hierarchical credit。job 27 仍是 curriculum **仿真 reset** legacy，**≠T2**。
 
 Catalog 默认路径（**未设 `HC_CATALOG_TAG` 时的 legacy 路径**）：
 
@@ -42,9 +94,9 @@ env_checkpoints/{source}/N{n}_T{t}__{tag}/
 
 | 实验 | `HC_CATALOG_SOURCE` | `HC_CATALOG_TAG` | 完整路径 |
 |------|---------------------|------------------|----------|
-| T2 随机采库 | `random_explore` | `T2_random_ep10` | `env_checkpoints/random_explore/N10_T40000__T2_random_ep10/` |
+| T1 随机采库 | `random_explore` | `T1_random_ep20` | `env_checkpoints/random_explore/N10_T40000__T1_random_ep20/` |
+| T1R 复用同库 | `random_explore` | `T1_random_ep20`（可共用）或 `T1R_random_ep20` | 同结构 |
 | T4 策略采库 | `policy_explore` | `T4_policy_ep20` | `env_checkpoints/policy_explore/N10_T40000__T4_policy_ep20/` |
-| 复现实验 v2 | `random_explore` | `T2_random_ep10_v2` | 同结构，**tag 不同即不冲突** |
 
 > **22 写库与 27 读库必须使用相同的 `HC_CATALOG_TAG` 或 `HC_EXPLORE_CATALOG_DIR`。**
 
@@ -152,15 +204,18 @@ job **33** 另含常规训练指标：`MetricTrain/*`、`MetricLoss/*`、`Metric
 ## 2. 长时域训练 Ablation（T0–T4）
 
 > 论文目标：**explore 建 catalog → offline replay update →（可选）curriculum 分段**。  
-> 当前代码：**T1 ORU 已实现**（job 22 dump `offline_replay/` → job 28 `--oru`）；T2 curriculum+ORU 仍待接。
+> 当前代码：**T1 ORU 已实现**（job 22 dump `offline_replay/` → job 28 `--oru`）；T2 curriculum+ORU 仍待接。  
+> 算法改进叠在协议之上时用 **§1c** 后缀：`T1R`、`T1RH`（勿再发明平行命名）。
 
 | ID | 名称 | 流程概要 | 代码状态 |
 |----|------|----------|----------|
-| **T0** | Hard train | 空车间 → 整单 N=10 在线 RL | ✅ job **28** |
-| **T1** | Explore catalog + offline replay update | 随机采库 → 离线数据驱动 loss 更新 + hard train | ✅ job **22→28 --oru** |
-| **T2** | Explore catalog + offline replay update + curriculum | 随机采库 → ORU + 倒序 curriculum | 🔲 **未实现**（论文 proposed） |
-| **T3** | Policy-guided catalog + offline replay update | 策略引导采库 → ORU + hard train | 🔲 未实现 |
-| **T4** | Policy-guided catalog + offline replay update + curriculum | 策略引导采库 → ORU + curriculum | 🔲 未实现 |
+| **T0** | Hard train | 空车间 → 整单 N=10 在线 RL | ✅ job **28** / `T0` |
+| **T1** | Explore catalog + offline replay update | 随机采库 → ORU + hard train | ✅ `T1` |
+| **T1R** | T1 + PER | 同上 + prioritized replay | ✅ `T1R` |
+| **T1RH** | T1R + hierarchical credit | 同上 + A/B 信用缩放 + B-score | ✅ `T1RH` |
+| **T2** | Explore catalog + ORU + curriculum | 随机采库 → ORU + 倒序 curriculum | 🔲 **未实现** |
+| **T3** | Policy-guided catalog + ORU | 策略引导采库 → ORU + hard train | 🔲 未实现 |
+| **T4** | Policy-guided + ORU + curriculum | 策略引导采库 → ORU + curriculum | 🔲 未实现 |
 
 **Legacy（非 T2，勿与论文 proposed 混淆）**：`22 → 27` 仅用 catalog 做 **segment 仿真 reset**，在线 interaction 产生 replay，**没有**从离线库直接做 loss update。
 
@@ -370,20 +425,22 @@ python train.py --task HRTPaHC-v1 --algo hier --headless --test \
 
 ### 5.1 长时域训练 Ablation（主表）
 
-| 实验 | 命令 | 备注 |
-|------|------|------|
-| T0 | `./batch_train.sh 28 cuda:0` | ✅ 下界 |
-| T1 | `./batch_train.sh T1 cuda:0` | ✅ explore + ORU + hard train |
-| T2 | 22 → ORU + curriculum | 🔲 **论文 proposed，未实现** |
-| T3 / T4 | policy 采库 + ORU（+ curriculum） | 🔲 未实现 |
+| 版本 | 命令 / 路径 | 备注 |
+|------|-------------|------|
+| **T0** | `./batch_train.sh 28 cuda:0` | ✅ 下界 |
+| **T1** | `./batch_train.sh T1 cuda:0` | ✅ explore + ORU + hard train（**当前**） |
+| **T1R** | `./batch_train.sh T1R cuda:0` | ✅ T1 + PER（复用 `HC_CATALOG_TAG`） |
+| **T1RH** | `./batch_train.sh T1RH cuda:0` | ✅ T1R + hierarchical credit + B-score |
+| **T2** | 22 → ORU + curriculum | 🔲 论文 proposed |
 | Legacy | `22 → 27` | 仅 catalog reset，**勿标 T2** |
 
-每个 T* 训练完成后：
+每个版本训练完成后：
 
 ```bash
-HC_LOAD_DIR=<对应 logs/.../hier_* 目录> ./batch_train.sh 29 cuda:0
+HC_EVAL_VARIANT=T1 HC_LOAD_DIR=<logs/.../hier_*> ./batch_train.sh 29 cuda:0
+# 或 journal 入口：
+HC_LOAD_DIR=... ./run_2026_journal_experiments.sh eval-T1R cuda:0
 ```
-
 ### 5.2 基线对比（辅表）
 
 与 T2 同 setting（N=10, T_max=40000, K=10）：

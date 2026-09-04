@@ -4,7 +4,21 @@
 > 论文叙事：domain-structured HRL（A→B→C→D + information pool），非自动 option discovery。  
 > 参考：Pateria et al., *ACM Comput. Surv.* 2021（HRL survey）；本仓库 `docs/experiment_protocol.md`（T0–T4 / ORU）。
 
-## 0. 现状一句话
+## 0. 版本命名（与 protocol 统一）
+
+> **完整规范与主推版本见 `docs/experiment_protocol.md` §1c。**  
+> 公式：`Hier4TPA-{T*}[+R][+H]`；wandb / catalog tag 用短名 `T1`、`T1R`、`T1RH`。
+
+| 字母 | 含义 | 对应本表 ID |
+|------|------|-------------|
+| **T0–T4** | 长时域协议（唯一训练轴） | L1 / L3 / L5 |
+| **+R** | Rainbow 后端（Double + PER，可选 dueling） | R1, R2 |
+| **+H** | 层级学习（B-score RL + 层间信用） | H1, H2 |
+
+**主推（按落地顺序）**：`T0` → `T1`（当前）→ `T1R` → `T1RH` → `T2`。  
+勿把 H1/H2/R1 单独当 run 名；勿把 legacy job 27 标成 `T2`。
+
+## 0b. 现状一句话
 
 | 模块 | 现状 |
 |------|------|
@@ -15,7 +29,7 @@
 
 ---
 
-## 1. 层级与信用分配（HRL 向）
+## 1. 层级与信用分配（HRL 向 → 版本后缀 **H**）
 
 | ID | 方向 | 说明 | 优先级 |
 |----|------|------|--------|
@@ -25,11 +39,11 @@
 | H4 | **层内终止/持续** | 显式「本步是否继续服务下一 in-process job」vs 固定扫完 K | 低 |
 | H5 | **勿硬套 option discovery** | 四层来自生产语义；论文写 handcrafted hierarchy；发现类方法仅作 future | 叙事 |
 
-## 2. 值函数 / 策略后端
+## 2. 值函数 / 策略后端（→ 版本后缀 **R**）
 
 | ID | 方向 | 说明 | 优先级 |
 |----|------|------|--------|
-| R1 | **Rainbow 组件** | Double DQN、prioritized replay、dueling、（可选）noisy / distributional | 高 |
+| R1 | **Rainbow 组件** | Double DQN、PER、**Dueling**（T1R 已开）；Noisy / multi-step / C51 仍可选（消融或 Future） | 高 |
 | R2 | **Prioritized replay** | 按 TD-error 或「稀有 progress key / 近完成」加权 | 高 |
 | R3 | **PPO / SAC / TD3** | 离散 mask 主线仍偏 DQN；连续头（速度、路径参数）再考虑 actor–critic | 低–中 |
 | R4 | **Safe / constrained** | 延续 JMS：疲劳约束、成本函数 vs mask 硬约束 | 中 |
@@ -72,18 +86,20 @@
 | M2 | **通信 / 对手建模** | survey 的 MA-HRL；仅当 CTCE 不够用再开 | 低 |
 | M3 | **Sim-to-real / 海创** | 感知噪声、人因偏差、延迟 | 中长期 |
 
-## 7. 建议落地顺序（工程）
+## 7. 建议落地顺序（工程 → 版本）
 
-1. **L1 ORU 闭环** + MetricCatalog 对齐论文 T0–T2  
-2. **R1/R2** Double DQN + prioritized replay（改动面小）  
-3. **H2 B-score RL** + **H1** 稀疏回报下的 A/B 更新频率  
-4. **L3 curriculum** 与 hard train 消融表  
-5. 网络消融 **N1**、并行 **P2/P3**  
+| 顺序 | 动作 | 产出版本名 |
+|------|------|------------|
+| 1 | **L1 ORU** + MetricCatalog（对齐 T0–T2） | **T1** ✅ |
+| 2 | **R1/R2** Double DQN + PER | **T1R** ✅ |
+| 3 | **H2** B-score RL + **H1** A/B 信用 | **T1RH** ✅ |
+| 4 | **L3** curriculum + ORU | **T2**（再视需要做 **T2R** / **T2RH**） |
+| 5 | 网络消融 N1、并行 P2/P3 | 论文表内消融，不另起字母 |
 
 ---
 
 ## 8. 与论文写作的边界
 
-- **可写进 Method 的**：四层 + pool、masked DQN、ORU、curriculum（实现到哪写到哪）。  
-- **适合 Ablation / Future**：Rainbow 全套、HER、自动 subtask discovery、分散执行。  
+- **可写进 Method 的**：四层 + pool、masked DQN、ORU、curriculum（实现到哪写到哪）；版本名用 `T*` / `T*R` / `T*RH`。  
+- **适合 Ablation / Future**：Rainbow 全套 noisy/distributional、HER、自动 subtask discovery、分散执行。  
 - **Related work 引用**：Pateria survey 支撑「长 horizon → 层级抽象」；明确我们是 **handcrafted production hierarchy**，不是 option discovery。

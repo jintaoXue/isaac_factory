@@ -155,8 +155,15 @@ def define_shared_metrics(
         "08_buffer_D_human",
         "09_buffer_D_robot",
         "10_buffer_flat",
+        "11_prioritized_replay",
+        "12_hierarchical_credit",
+        "13_b_score_rl",
+        "14_per_beta",
+        "15_dueling_dqn",
+        "16_noisy_net",
     ):
         wandb.define_metric(f"MetricTrain/{key}", step_metric="Train/step")
+    wandb.define_metric("MetricTrain/algo_variant", step_metric="Train/step")
 
     if rl:
         for key in (
@@ -409,6 +416,13 @@ def train_metrics(
     buffer_D_human: int | None = None,
     buffer_D_robot: int | None = None,
     buffer_flat: int | None = None,
+    algo_variant: str | None = None,
+    prioritized_replay: bool | None = None,
+    hierarchical_credit: bool | None = None,
+    b_score_rl: bool | None = None,
+    per_beta: float | None = None,
+    dueling_dqn: bool | None = None,
+    noisy_net: bool | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {}
     if epsilon is not None:
@@ -424,6 +438,20 @@ def train_metrics(
     for key, value in mapping.items():
         if value is not None:
             payload[f"MetricTrain/{key}"] = int(value)
+    if algo_variant is not None:
+        payload["MetricTrain/algo_variant"] = str(algo_variant)
+    if prioritized_replay is not None:
+        payload["MetricTrain/11_prioritized_replay"] = float(bool(prioritized_replay))
+    if hierarchical_credit is not None:
+        payload["MetricTrain/12_hierarchical_credit"] = float(bool(hierarchical_credit))
+    if b_score_rl is not None:
+        payload["MetricTrain/13_b_score_rl"] = float(bool(b_score_rl))
+    if per_beta is not None:
+        payload["MetricTrain/14_per_beta"] = float(per_beta)
+    if dueling_dqn is not None:
+        payload["MetricTrain/15_dueling_dqn"] = float(bool(dueling_dqn))
+    if noisy_net is not None:
+        payload["MetricTrain/16_noisy_net"] = float(bool(noisy_net))
     return payload
 
 
