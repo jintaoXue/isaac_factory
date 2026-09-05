@@ -151,3 +151,24 @@ BENCHMARK_TAG=factory_pdformer_134_v1 TUNE_SEEDS="42 43" DEVICE=cuda:0 \
 
 无法在不损害 report F1 或 precision 的情况下提高 upcoming 时，应如实报告该结构的能力
 边界，而不是加入主模型规则将其人为抬过业务门。
+# 2026-09-06：先诊断事件漏报，再增加候选
+
+第一轮 B4 搜索仍选中 `candidate_c0_incumbent`，双 seed validation 平均
+report F1=0.2916、P=0.4633、R=0.2138、upcoming recall=0.0026。
+增加正例或误报权重未证明有效，不据此宣称已达到正式实验要求。
+
+新增 `tools/diagnose_baseline_events.py`，固定只读取 validation 样本，检查
+checkpoint/dataset manifest 哈希，拒绝覆盖输出。不改标签、评估函数或模型权重。
+输出 ongoing/upcoming/negative 的事件概率分位数，以及每个阈值下互斥的
+概率漏报和起始时间漏报计数。起始时间沿用主实验的历史 hot 归零规则。
+其中低于原搜索区间的阈值仅作诊断，不能直接替换正式报警阈值。
+
+```bash
+python "$TOOLS/diagnose_baseline_events.py" \
+  --dataset_dir "$DATASET_DIR" \
+  --checkpoint "$TUNING_DIR/candidate_c0_incumbent/seed42/best.pt" \
+  --output "$TUNING_DIR/diagnostics/c0_seed42.json" --device cpu
+```
+
+当前服务器已有 B5 搜索时，不修改它正在使用的模型及损失默认值，不覆盖其输出。
+新候选必须使用独立实验标签，且仍只凭 validation 选型。
