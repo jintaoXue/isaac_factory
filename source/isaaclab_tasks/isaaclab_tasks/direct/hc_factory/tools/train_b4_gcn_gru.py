@@ -35,6 +35,8 @@ def main() -> None:
     parser.add_argument("--gru_hidden", type=int, default=128)
     parser.add_argument("--gru_layers", type=int, default=1)
     parser.add_argument("--dropout", type=float, default=0.2)
+    parser.add_argument("--event_context", action="store_true")
+    parser.add_argument("--event_focal_gamma", type=float, default=0.0)
     parser.add_argument("--prediction_horizon", type=float, default=180.0)
     parser.add_argument("--lambda_event_will", type=float, default=2.5)
     parser.add_argument("--event_will_pos_weight", type=float, default=3.0)
@@ -57,6 +59,7 @@ def main() -> None:
             "gru_hidden": args.gru_hidden,
             "gru_layers": args.gru_layers,
             "dropout": args.dropout,
+            "event_context": args.event_context,
         },
         train_config=TorchTrainConfig(
             training_profile=args.training_profile,
@@ -85,6 +88,7 @@ def main() -> None:
         ),
         loss_config=MultiTaskLossConfig(
             prediction_horizon=args.prediction_horizon,
+            event_focal_gamma=args.event_focal_gamma,
             lambda_event_will=args.lambda_event_will,
             event_will_pos_weight=args.event_will_pos_weight,
             event_will_fp_weight=args.event_will_fp_weight,

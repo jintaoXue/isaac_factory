@@ -172,3 +172,44 @@ python "$TOOLS/diagnose_baseline_events.py" \
 
 当前服务器已有 B5 搜索时，不修改它正在使用的模型及损失默认值，不覆盖其输出。
 新候选必须使用独立实验标签，且仍只凭 validation 选型。
+
+## 事件诊断与受控改进
+
+服务器 B4 incumbent seed42 的 validation 诊断：108 个 ongoing、189 个 upcoming、
+32956 个负例站点。阈值 0.55 下，upcoming 有 188 个概率漏报、0 个起始时间漏报；
+即使阈值降至 0.20，仍有 185 个概率漏报。upcoming 的 will 概率中位数约 0.0105，
+无阈值条件下起始时间落在容差内的比例约 78.3%。因此优先改事件表示与训练目标，
+不能把“下调阈值”或“重新计算 MAE”当成提前预测能力的修复。
+
+新增 `batch_factory_baseline_event_ablation.sh`，B3/B4/B5 均可使用相同的通用机制：
+
+| 候选 | 事件上下文 | Focal gamma |
+|---|---|---|
+| control | 关闭 | 0（普通 BCE） |
+| context | 开启 | 0 |
+| focal | 关闭 | 2 |
+| context_focal | 开启 | 2 |
+
+事件上下文只使用已有历史编码的 masked graph mean、已有 global 特征末帧和
+已知订单剩余量/总量的 log1p，不增加 raw 字段或未来特征；融合到单个事件头前。
+GCN-GRU、GAT-GRU、LSTM 主体不变，不引入 BNPDFormer 专用双 will head、
+传播延迟注意力、先兆规则或强制召回。global 维度为 0 时仍使用 graph mean 和订单量。
+
+Focal loss 用 `(1-p_t)^gamma * BCE` 下调容易样本的贡献，现有 mask、类型平均、
+正负权重不变。它是有待本数据验证的通用候选，不保证一定改善 precision 或 recall。
+方法依据：[Lin et al., Focal Loss for Dense Object Detection](https://arxiv.org/abs/1708.02002)。
+
+这两个选项是当前实验的真实对照变量，不是旧版本采集或标签兼容分支；默认值不改变
+已经启动的旧搜索。新实验使用独立目录，保存提交号、模型配置、seed、训练日志和
+validation 结果。先 seed42 再 seed43，每个模型至多 4 个候选 x 2 seeds，
+每次最多 60 epochs、min_epochs=10、patience=10。原报警阈值扫描、P>=0.80/R>=0.35
+门禁和跨 seed 排序保持不变。日志只放实验目录，不在仓库根目录产生散落 `.log`。
+
+```bash
+PYTHON_BIN="$TRAIN_PY" BENCHMARK_TAG=factory_pdformer_134_v1 \
+TUNING_TAG=b4_event_ablation_v1 DEVICE=cuda:0 \
+bash batch_factory_baseline_event_ablation.sh B4
+```
+
+即使新候选胜出，也应披露两轮搜索的累计预算。此次已反复查看的旧 test 只能作为
+开发期参考；正式论证仍需冻结配置并使用未参与调参的独立测试数据。

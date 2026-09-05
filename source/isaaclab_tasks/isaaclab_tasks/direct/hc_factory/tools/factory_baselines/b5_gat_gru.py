@@ -22,6 +22,7 @@ class B5ModelConfig:
     gru_hidden: int = 128
     gru_layers: int = 1
     dropout: float = 0.2
+    event_context: bool = False
     prediction_horizon: float = 180.0
     max_remain_windows: int = 15
     num_causes: int = 10
@@ -156,6 +157,7 @@ class B5GatGru(nn.Module):
             prediction_horizon=config.prediction_horizon,
             max_remain_windows=config.max_remain_windows,
             num_causes=config.num_causes,
+            event_context=config.event_context,
         )
 
     def forward(

@@ -15,6 +15,7 @@ class FactoryPredictionHeads(nn.Module):
         prediction_horizon: float,
         max_remain_windows: int,
         num_causes: int,
+        event_context: bool = False,
     ) -> None:
         super().__init__()
         self.node_hidden_dim = node_hidden_dim
@@ -58,6 +59,14 @@ class FactoryPredictionHeads(nn.Module):
             nn.Softplus(),
         )
         self.cause_head = nn.Linear(graph_dim, num_causes)
+        self.event_context_projection = (
+            nn.Sequential(
+                nn.Linear(node_hidden_dim + graph_dim + 2, node_hidden_dim),
+                nn.GELU(),
+                nn.LayerNorm(node_hidden_dim),
+            )
+            if event_context else None
+        )
 
     def forward(
         self,
@@ -92,12 +101,20 @@ class FactoryPredictionHeads(nn.Module):
         future_time = future_time[None, :, None].expand(batch_size, -1, node_count, -1)
         future_context = torch.cat((future_nodes, future_time), dim=-1)
         jobs_context = torch.stack((jobs_remaining, jobs_total), dim=-1)
+        event_hidden = node_hidden
+        if self.event_context_projection is not None:
+            context = torch.cat((graph_context, torch.log1p(jobs_context.clamp_min(0))), dim=-1)
+            context = context[:, None].expand(-1, node_count, -1)
+            event_hidden = node_hidden + self.event_context_projection(
+                torch.cat((node_hidden, context), dim=-1)
+            )
+            event_hidden = event_hidden * mask_float
         return {
             "remain_score": self.remain_score_head(future_context),
             "remain_hot_logit": self.remain_hot_head(future_context).squeeze(-1),
-            "event_will_logit": self.event_will_head(node_hidden).squeeze(-1),
-            "event_start_logit": self.event_start_head(node_hidden),
-            "event_duration": self.event_duration_head(node_hidden).squeeze(-1),
+            "event_will_logit": self.event_will_head(event_hidden).squeeze(-1),
+            "event_start_logit": self.event_start_head(event_hidden),
+            "event_duration": self.event_duration_head(event_hidden).squeeze(-1),
             "remain_len": self.remain_len_head(
                 torch.cat((graph_context, jobs_context), dim=-1)
             ).squeeze(-1),

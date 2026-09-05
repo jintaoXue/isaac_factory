@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import math
 from typing import Any
 
 import torch
@@ -44,12 +45,15 @@ class MultiTaskLossConfig:
     event_will_fp_weight: float = 2.0
     event_will_upcoming_pos_weight: float = 4.0
     event_will_ongoing_pos_weight: float = 3.0
+    event_focal_gamma: float = 0.0
     event_start_sigma: float = 1.0
     near_remain_windows: int = 15
     remain_loss_tau: float = 40.0
     prediction_horizon: float = 180.0
 
     def __post_init__(self) -> None:
+        if not math.isfinite(self.event_focal_gamma) or self.event_focal_gamma < 0:
+            raise ValueError("event_focal_gamma must be finite and non-negative")
         if self.prediction_horizon <= 0:
             raise ValueError("prediction_horizon must be positive")
         for name in (
@@ -89,6 +93,14 @@ class MultiTaskLossConfig:
 
 def _zero_from(outputs: dict[str, torch.Tensor]) -> torch.Tensor:
     return outputs["remain_hot_logit"].sum() * 0.0
+
+
+def _event_binary_loss(logits: torch.Tensor, target: torch.Tensor, gamma: float) -> torch.Tensor:
+    error = F.binary_cross_entropy_with_logits(logits, target, reduction="none")
+    if gamma == 0.0:
+        return error
+    # exp(-BCE) is the probability assigned to the true binary class.
+    return error * (-torch.expm1(-error)).pow(gamma)
 
 
 def _soft_dice_loss(
@@ -262,8 +274,8 @@ def compute_multitask_loss(
         torch.full_like(event_weight, config.event_will_ongoing_pos_weight),
         event_weight,
     )
-    event_will_raw = F.binary_cross_entropy_with_logits(
-        outputs["event_will_logit"], event_will_target, reduction="none"
+    event_will_raw = _event_binary_loss(
+        outputs["event_will_logit"], event_will_target, config.event_focal_gamma
     )
     event_weight = event_weight * occ_mask.float()
     event_parts = []
