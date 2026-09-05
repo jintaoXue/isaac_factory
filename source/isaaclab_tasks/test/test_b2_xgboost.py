@@ -20,6 +20,8 @@ from factory_baselines.b2_xgboost import (  # noqa: E402
     _Head,
     _base_features,
     _cell_features,
+    _event_training_data,
+    _node_features,
     _predict_multiclass,
     _predict_probability,
     _predict_regression,
@@ -72,6 +74,66 @@ class TestB2XGBoost(unittest.TestCase):
         )
         self.assertTrue(np.isfinite(features).all())
 
+    def test_node_features_include_history_and_node_identity(self) -> None:
+        samples = np.array([0, 0, 1, 2])
+        nodes = np.array([0, 2, 1, 4])
+        features = _node_features(self.payload, samples, nodes)
+        self.assertEqual(features.shape, (4, 47))
+        np.testing.assert_allclose(
+            features[:, :6],
+            self.payload["x"][samples, -1, nodes].numpy(),
+        )
+        np.testing.assert_array_equal(
+            features[:, -5:], np.eye(5, dtype=np.float32)[nodes]
+        )
+        self.assertTrue(np.isfinite(features).all())
+
+    def test_event_training_data_uses_canonical_masks(self) -> None:
+        payload = {
+            "x": torch.randn(2, 3, 2, 2),
+            "adjacency": torch.ones(2, 2, 2, dtype=torch.bool),
+            "node_mask": torch.ones(2, 2, dtype=torch.bool),
+            "observation_mask": torch.ones(2, 3, 2, dtype=torch.bool),
+            "target_node_mask": torch.ones(2, 2, dtype=torch.bool),
+            "occ_node_mask": torch.ones(2, 2, dtype=torch.float32),
+            "hist_last_hot": torch.tensor([[1, 0], [0, 0]], dtype=torch.float32),
+            "global_features": torch.empty(2, 3, 0),
+            "y_cause": torch.zeros(2, dtype=torch.int64),
+            "jobs_remaining": torch.tensor([2.0, 2.0]),
+            "jobs_total": torch.tensor([3.0, 3.0]),
+            "target_start_position": torch.zeros(2, dtype=torch.int64),
+            "target_remain_len": torch.full((2,), 4, dtype=torch.int64),
+            "sample_group_id": torch.tensor([0, 1], dtype=torch.int64),
+            "max_remain_windows": 4,
+            "event_min_windows": 2,
+            "remain_series": {
+                "0": {
+                    "score": torch.zeros(4, 2, 1),
+                    "hot": torch.tensor(
+                        [[1, 0], [1, 0], [0, 0], [0, 0]],
+                        dtype=torch.float32,
+                    ),
+                },
+                "1": {
+                    "score": torch.zeros(4, 2, 1),
+                    "hot": torch.tensor(
+                        [[0, 0], [0, 1], [0, 1], [0, 0]],
+                        dtype=torch.float32,
+                    ),
+                },
+            },
+        }
+
+        event = _event_training_data(payload, [0, 1])
+
+        self.assertEqual(event["features"].shape[0], 4)
+        self.assertEqual(int(event["will"].sum()), 2)
+        self.assertEqual(int(event["ongoing"].sum()), 1)
+        upcoming = (event["will"] > 0) & ~event["ongoing"]
+        self.assertEqual(int(upcoming.sum()), 1)
+        self.assertEqual(event["start"][upcoming].tolist(), [1])
+        self.assertEqual(event["duration"][event["will"] > 0].tolist(), [2.0, 2.0])
+
     def test_constant_heads_do_not_require_xgboost(self) -> None:
         X = np.zeros((4, 3), dtype=np.float32)
         probability = _predict_probability(
@@ -91,6 +153,8 @@ class TestB2XGBoost(unittest.TestCase):
             B2XGBoostConfig(negative_cell_ratio=0.0)
         with self.assertRaisesRegex(ValueError, "hot_scale_pos_weight"):
             B2XGBoostConfig(hot_scale_pos_weight=0.0)
+        with self.assertRaisesRegex(ValueError, "event_will_scale_pos_weight"):
+            B2XGBoostConfig(event_will_scale_pos_weight=0.0)
 
     def test_main_experiment_thresholds_are_the_defaults(self) -> None:
         config = B2XGBoostConfig()
@@ -100,6 +164,7 @@ class TestB2XGBoost(unittest.TestCase):
         self.assertEqual(config.min_child_weight, 3.0)
         self.assertEqual(config.reg_lambda, 5.0)
         self.assertEqual(config.hot_scale_pos_weight, 4.0)
+        self.assertEqual(config.event_will_scale_pos_weight, 4.0)
         self.assertTrue(config.evaluate_test)
         self.assertEqual(config.hot_eval_threshold, 0.55)
         self.assertEqual(config.event_report_threshold, 0.68)

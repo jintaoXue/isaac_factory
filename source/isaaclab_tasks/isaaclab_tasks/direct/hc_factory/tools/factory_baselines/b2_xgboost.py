@@ -17,7 +17,6 @@ import torch
 
 from factory_bn_shared.causes import cause_ignore_ids
 from factory_bn_shared.remain import (
-    node_event_targets,
     occupancy_event_metrics,
     rasterize_node_events,
     station_report_metrics,
@@ -26,6 +25,7 @@ from factory_bn_shared.remain import (
 from .dataset import FactoryBaselineTensorDataset, load_shared_dataset
 from .metrics import (
     REPORT_THRESHOLD_SWEEP,
+    _binary_metrics,
     choose_report_metrics,
     compute_metrics,
     hot_grid_metrics,
@@ -51,6 +51,7 @@ class B2XGBoostConfig:
     near_remain_windows: int = 60
     negative_cell_ratio: float = 4.0
     hot_scale_pos_weight: float = 4.0
+    event_will_scale_pos_weight: float = 4.0
     empty_sample_negative_cells: int = 32
     prediction_cell_chunk_size: int = 65536
     hot_eval_threshold: float = 0.55
@@ -78,6 +79,8 @@ class B2XGBoostConfig:
             raise ValueError("negative_cell_ratio must be positive")
         if self.hot_scale_pos_weight <= 0:
             raise ValueError("hot_scale_pos_weight must be positive")
+        if self.event_will_scale_pos_weight <= 0:
+            raise ValueError("event_will_scale_pos_weight must be positive")
         if self.min_child_weight <= 0:
             raise ValueError("min_child_weight must be positive")
         if self.reg_lambda < 0:
@@ -218,6 +221,59 @@ def _cell_features(
     ).astype(np.float32, copy=False)
 
 
+def _node_features(
+    payload: dict[str, Any],
+    sample_indices: np.ndarray,
+    node_indices: np.ndarray,
+) -> np.ndarray:
+    """Represent one history/node pair for direct station-event prediction."""
+    unique_samples, inverse = np.unique(sample_indices, return_inverse=True)
+    x_unique = payload["x"][unique_samples].float().numpy()
+    node_history = x_unique[inverse, :, node_indices, :]
+    observation_unique = (
+        payload["observation_mask"][unique_samples].float().numpy()
+    )
+    node_observation = observation_unique[inverse, :, node_indices]
+    graph_last = x_unique[:, -1]
+    jobs_remaining = payload["jobs_remaining"][sample_indices].float().numpy()
+    jobs_total = payload["jobs_total"][sample_indices].float().numpy()
+    jobs_ratio = jobs_remaining / np.maximum(jobs_total, 1.0)
+    num_nodes = max(int(payload["x"].shape[2]), 1)
+    node_norm = node_indices.astype(np.float32) / max(num_nodes - 1, 1)
+    node_identity = np.eye(num_nodes, dtype=np.float32)[node_indices]
+    scalar = np.stack(
+        (
+            node_observation[:, -1],
+            node_observation.mean(axis=1),
+            node_norm,
+            jobs_remaining,
+            jobs_total,
+            jobs_ratio,
+        ),
+        axis=1,
+    )
+    parts = [
+        node_history[:, -1],
+        node_history.mean(axis=1),
+        node_history.max(axis=1),
+        node_history[:, -1] - node_history[:, 0],
+        graph_last.mean(axis=1)[inverse],
+        graph_last.max(axis=1)[inverse],
+        scalar,
+        node_identity,
+    ]
+    global_features = payload["global_features"][unique_samples].float().numpy()
+    if global_features.shape[-1]:
+        parts.extend(
+            (
+                global_features[:, -1][inverse],
+                global_features.mean(axis=1)[inverse],
+                (global_features[:, -1] - global_features[:, 0])[inverse],
+            )
+        )
+    return np.concatenate(parts, axis=1).astype(np.float32, copy=False)
+
+
 def _sample_target(
     payload: dict[str, Any], sample_index: int
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -228,6 +284,50 @@ def _sample_target(
         sample["y_score"][:length, :, 0].numpy(),
         sample["y_hot"][:length].numpy().astype(np.int8),
     )
+
+
+def _event_training_data(
+    payload: dict[str, Any], indices: Iterable[int]
+) -> dict[str, np.ndarray]:
+    """Build valid sample/node rows and canonical direct-event targets."""
+    dataset = FactoryBaselineTensorDataset(payload, list(indices))
+    sample_parts: list[np.ndarray] = []
+    node_parts: list[np.ndarray] = []
+    will_parts: list[np.ndarray] = []
+    start_parts: list[np.ndarray] = []
+    duration_parts: list[np.ndarray] = []
+    ongoing_parts: list[np.ndarray] = []
+    for position in range(len(dataset)):
+        sample = dataset[position]
+        sample_index = int(sample["sample_index"])
+        valid_nodes = np.flatnonzero(sample["occ_node_mask"].numpy() > 0.5)
+        if not len(valid_nodes):
+            continue
+        will = sample["event_will"].numpy()[valid_nodes].astype(np.int8)
+        start = sample["event_start"].numpy()[valid_nodes].astype(np.int64)
+        duration = sample["event_duration"].numpy()[valid_nodes].astype(np.float32)
+        hist_hot = sample["hist_last_hot"].numpy()[valid_nodes] > 0.5
+        positive = will > 0
+        ongoing = positive & (hist_hot | (start == 0))
+        sample_parts.append(
+            np.full(len(valid_nodes), sample_index, dtype=np.int64)
+        )
+        node_parts.append(valid_nodes.astype(np.int64, copy=False))
+        will_parts.append(will)
+        start_parts.append(start)
+        duration_parts.append(duration)
+        ongoing_parts.append(ongoing)
+    if not sample_parts:
+        raise ValueError("No valid B2 event training rows were generated")
+    sample_indices = np.concatenate(sample_parts)
+    node_indices = np.concatenate(node_parts)
+    return {
+        "features": _node_features(payload, sample_indices, node_indices),
+        "will": np.concatenate(will_parts),
+        "start": np.concatenate(start_parts),
+        "duration": np.concatenate(duration_parts),
+        "ongoing": np.concatenate(ongoing_parts),
+    }
 
 
 def _training_cells(
@@ -375,6 +475,71 @@ def _predict_multiclass(
     return predictions, probabilities
 
 
+def _predict_event_heads(
+    payload: dict[str, Any],
+    indices: np.ndarray,
+    will_head: _Head,
+    start_head: _Head,
+    duration_head: _Head,
+) -> dict[str, np.ndarray]:
+    """Predict direct event targets for every valid sample/node pair."""
+    dataset = FactoryBaselineTensorDataset(payload, indices.tolist())
+    batch_size = len(indices)
+    node_count = int(payload["x"].shape[2])
+    max_windows = int(payload["max_remain_windows"])
+    target_will = np.zeros((batch_size, node_count), dtype=np.float32)
+    will_probability = np.zeros_like(target_will)
+    start_index = np.zeros((batch_size, node_count), dtype=np.int64)
+    duration_windows = np.zeros((batch_size, node_count), dtype=np.float32)
+    row_parts: list[np.ndarray] = []
+    sample_parts: list[np.ndarray] = []
+    node_parts: list[np.ndarray] = []
+    for row_position in range(len(dataset)):
+        sample = dataset[row_position]
+        valid_nodes = np.flatnonzero(sample["occ_node_mask"].numpy() > 0.5)
+        if not len(valid_nodes):
+            continue
+        target_will[row_position, valid_nodes] = sample["event_will"].numpy()[
+            valid_nodes
+        ]
+        row_parts.append(
+            np.full(len(valid_nodes), row_position, dtype=np.int64)
+        )
+        sample_parts.append(
+            np.full(
+                len(valid_nodes), int(sample["sample_index"]), dtype=np.int64
+            )
+        )
+        node_parts.append(valid_nodes.astype(np.int64, copy=False))
+    if not sample_parts:
+        return {
+            "event_will_target": target_will,
+            "event_will_probability": will_probability,
+            "event_start_index": start_index,
+            "event_duration_windows": duration_windows,
+        }
+    rows = np.concatenate(row_parts)
+    sample_indices = np.concatenate(sample_parts)
+    node_indices = np.concatenate(node_parts)
+    features = _node_features(payload, sample_indices, node_indices)
+    will_probability[rows, node_indices] = _predict_probability(
+        will_head, features
+    )
+    predicted_start, _ = _predict_multiclass(
+        start_head, features, class_count=max_windows
+    )
+    start_index[rows, node_indices] = predicted_start
+    duration_windows[rows, node_indices] = np.maximum(
+        _predict_regression(duration_head, features), 0.0
+    )
+    return {
+        "event_will_target": target_will,
+        "event_will_probability": will_probability,
+        "event_start_index": start_index,
+        "event_duration_windows": duration_windows,
+    }
+
+
 def _events(grid: np.ndarray, length: int) -> list[dict[str, int]]:
     result = []
     event_id = 0
@@ -512,6 +677,7 @@ def train_b2_xgboost(
         payload["target_remain_len"][train_indices].numpy(),
         config,
     )
+    del train_X, cause_values, cause_valid
     cell_X, cell_score_y, cell_hot_y = _training_cells(
         payload, train_indices.tolist(), config
     )
@@ -522,11 +688,51 @@ def train_b2_xgboost(
         scale_pos_weight=config.hot_scale_pos_weight,
     )
     score_head = _fit_regressor(cell_X, cell_score_y, config)
+    training_cell_count = int(len(cell_hot_y))
+    training_positive_cell_count = int(cell_hot_y.sum())
+    del cell_X, cell_score_y, cell_hot_y
+    event_data = _event_training_data(payload, train_indices.tolist())
+    event_positive = event_data["will"] > 0
+    event_upcoming = event_positive & ~event_data["ongoing"]
+    event_will_head = _fit_classifier(
+        event_data["features"],
+        event_data["will"],
+        config,
+        scale_pos_weight=config.event_will_scale_pos_weight,
+    )
+    event_start_head = (
+        _fit_classifier(
+            event_data["features"][event_upcoming],
+            event_data["start"][event_upcoming],
+            config,
+        )
+        if event_upcoming.any()
+        else _Head(kind="constant", constant=0, classes=[0])
+    )
+    event_duration_head = (
+        _fit_regressor(
+            event_data["features"][event_positive],
+            event_data["duration"][event_positive],
+            config,
+        )
+        if event_positive.any()
+        else _Head(
+            kind="constant",
+            constant=float(payload["event_min_windows"]),
+        )
+    )
+    training_event_node_count = int(len(event_data["will"]))
+    training_event_positive_count = int(event_positive.sum())
+    training_event_upcoming_count = int(event_upcoming.sum())
+    del event_data, event_positive, event_upcoming
     heads = {
         "cause": cause_head,
         "remain_len": remain_len_head,
         "remain_hot": hot_head,
         "remain_score": score_head,
+        "event_will": event_will_head,
+        "event_start": event_start_head,
+        "event_duration": event_duration_head,
     }
 
     def scalar_arrays(split_name: str) -> tuple[np.ndarray, dict[str, np.ndarray]]:
@@ -564,6 +770,15 @@ def train_b2_xgboost(
             (None, validation_arrays)
             if split_name == "validation"
             else scalar_arrays(split_name)
+        )
+        arrays.update(
+            _predict_event_heads(
+                payload,
+                arrays["sample_index"],
+                event_will_head,
+                event_start_head,
+                event_duration_head,
+            )
         )
         metrics, confusion = compute_metrics(
             arrays,
@@ -658,29 +873,21 @@ def train_b2_xgboost(
             else [config.event_report_threshold, *config.report_threshold_sweep]
         )
         report_candidates = []
-        event_predictions: dict[float, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
         for threshold in dict.fromkeys(float(value) for value in thresholds):
-            will, start, duration = node_event_targets(
-                (probability_grid_array >= threshold).astype(np.float32),
-                min_windows=8,
-                remain_mask=remain_mask_array,
-                occ_node_mask=occupancy_mask_array,
-            )
             candidate = station_report_metrics(
                 target_grid_array,
-                will,
-                start,
-                duration,
+                arrays["event_will_probability"],
+                arrays["event_start_index"],
+                arrays["event_duration_windows"],
                 remain_mask_array,
                 occupancy_mask_array,
-                threshold=0.5,
+                threshold=threshold,
                 min_windows=8,
                 start_tol_windows=3,
                 hist_last_hot=history_hot_array,
             )
             candidate["report_threshold_used"] = threshold
             report_candidates.append(candidate)
-            event_predictions[threshold] = (will, start, duration)
         report_metrics = choose_report_metrics(
             report_candidates,
             min_precision=config.report_threshold_min_precision,
@@ -688,13 +895,26 @@ def train_b2_xgboost(
         event_report_threshold = float(report_metrics["report_threshold_used"])
         metrics["station_report"] = report_metrics
         metrics.update(report_metrics)
-        will, start, duration = event_predictions[event_report_threshold]
+        event_valid = occupancy_mask_array > 0.5
+        event_labels = arrays["event_will_target"][event_valid]
+        event_probabilities = arrays["event_will_probability"][event_valid]
+        event_will_metrics = _binary_metrics(
+            event_labels,
+            event_probabilities,
+            threshold=event_report_threshold,
+        )
+        event_will_metrics["probability_quantiles"] = {
+            str(quantile): float(np.quantile(event_probabilities, quantile))
+            for quantile in (0.5, 0.9, 0.95, 0.99)
+        }
+        event_will_metrics["probability_max"] = float(event_probabilities.max())
+        metrics["event_will"] = event_will_metrics
         event_occupancy = rasterize_node_events(
-            will,
-            start,
-            duration,
+            arrays["event_will_probability"],
+            arrays["event_start_index"],
+            arrays["event_duration_windows"],
             target_grid_array.shape[1],
-            threshold=0.5,
+            threshold=event_report_threshold,
             min_windows=8,
         )
         occupancy_metrics = occupancy_event_metrics(
@@ -819,8 +1039,11 @@ def train_b2_xgboost(
         "report_threshold_selected_on": "validation",
         "occupancy_threshold": occupancy_threshold,
         "cause_majority": cause_majority,
-        "training_cell_count": int(len(cell_hot_y)),
-        "training_positive_cell_count": int(cell_hot_y.sum()),
+        "training_cell_count": training_cell_count,
+        "training_positive_cell_count": training_positive_cell_count,
+        "training_event_node_count": training_event_node_count,
+        "training_event_positive_count": training_event_positive_count,
+        "training_event_upcoming_count": training_event_upcoming_count,
         "cause_head_trained": cause_trained,
     }
     _write_json(output_dir / "config.json", metadata)
@@ -842,6 +1065,9 @@ def train_b2_xgboost(
         "dataset_version": manifest["dataset_version"],
         "label_version": manifest["label_version"],
         "validation_hot_f1": all_metrics["validation"]["remain"]["hot_f1"],
+        "validation_event_will_pr_auc": all_metrics["validation"]["event_will"][
+            "pr_auc"
+        ],
         "validation_report_precision": validation_report["report_precision"],
         "validation_report_recall": validation_report["report_recall"],
         "validation_report_f1": validation_report["report_f1"],
@@ -859,6 +1085,9 @@ def train_b2_xgboost(
         summary.update(
             {
                 "test_hot_f1": all_metrics["test"]["remain"]["hot_f1"],
+                "test_event_will_pr_auc": all_metrics["test"]["event_will"][
+                    "pr_auc"
+                ],
                 "test_report_precision": test_report["report_precision"],
                 "test_report_recall": test_report["report_recall"],
                 "test_report_f1": test_report["report_f1"],

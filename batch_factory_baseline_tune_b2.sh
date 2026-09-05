@@ -8,7 +8,7 @@ DATA_ROOT="${ROOT}/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output
 TOOLS_DIR="${ROOT}/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools"
 BENCHMARK_TAG="${BENCHMARK_TAG:-factory_pdformer_134_v1}"
 DATASET_DIR="${DATA_ROOT}/experiments/${BENCHMARK_TAG}"
-TUNING_TAG="${TUNING_TAG:-b2_search_v2}"
+TUNING_TAG="${TUNING_TAG:-b2_event_search_v1}"
 TUNING_DIR="${DATASET_DIR}/models/tuning/${TUNING_TAG}"
 TUNE_SEEDS="${TUNE_SEEDS:-42 43}"
 N_JOBS="${N_JOBS:-8}"
@@ -41,12 +41,14 @@ run_candidate() {
     local learning_rate=$6
     local min_child_weight=$7
     local reg_lambda=$8
+    local event_positive_weight=$9
 
     for seed in $TUNE_SEEDS; do
         local output_dir="${TUNING_DIR}/candidate_${name}/seed${seed}"
         echo "============================================================"
         echo "B2 candidate=${name} seed=${seed} validation-only"
-        echo "negative_ratio=${negative_ratio} positive_weight=${positive_weight}"
+        echo "negative_ratio=${negative_ratio} hot_positive_weight=${positive_weight}"
+        echo "event_positive_weight=${event_positive_weight}"
         echo "trees=${estimators} depth=${depth} lr=${learning_rate}"
         echo "============================================================"
         python "${TOOLS_DIR}/train_b2_xgboost.py" \
@@ -62,6 +64,7 @@ run_candidate() {
             --reg_lambda "$reg_lambda" \
             --negative_cell_ratio "$negative_ratio" \
             --hot_scale_pos_weight "$positive_weight" \
+            --event_will_scale_pos_weight "$event_positive_weight" \
             --n_jobs "$N_JOBS" \
             --hot_eval_threshold 0.55 \
             --event_report_threshold 0.68 \
@@ -71,17 +74,17 @@ run_candidate() {
     done
 }
 
-# Search v1 showed that r4/w4 had the best mean F1 but high seed variance,
-# while r4/w1 and every larger unweighted ratio collapsed recall. Refine the
-# class emphasis between those endpoints and test two higher-coverage r8 runs.
-run_candidate "c0_anchor_r4_w4" 4 4 500 5 0.03 3 5
-run_candidate "c1_r4_w2" 4 2 500 5 0.03 3 5
-run_candidate "c2_r4_w2_5" 4 2.5 500 5 0.03 3 5
-run_candidate "c3_r4_w3" 4 3 500 5 0.03 3 5
-run_candidate "c4_r4_w3_5" 4 3.5 500 5 0.03 3 5
-run_candidate "c5_r4_w2_5_regularized" 4 2.5 700 4 0.03 5 10
-run_candidate "c6_r8_w4" 8 4 500 5 0.03 3 5
-run_candidate "c7_r8_w6" 8 6 500 5 0.03 3 5
+# The occupancy-only searches are preserved under b2_search_v1/v2. With the
+# direct event heads, keep occupancy training fixed and isolate event class
+# emphasis. c7 adds one regularized tree candidate at the central weight.
+run_candidate "c0_event_w1" 4 4 500 5 0.03 3 5 1
+run_candidate "c1_event_w2" 4 4 500 5 0.03 3 5 2
+run_candidate "c2_event_w4" 4 4 500 5 0.03 3 5 4
+run_candidate "c3_event_w6" 4 4 500 5 0.03 3 5 6
+run_candidate "c4_event_w8" 4 4 500 5 0.03 3 5 8
+run_candidate "c5_event_w12" 4 4 500 5 0.03 3 5 12
+run_candidate "c6_event_w16" 4 4 500 5 0.03 3 5 16
+run_candidate "c7_event_w8_regularized" 4 4 700 4 0.03 5 10 8
 
 python "${TOOLS_DIR}/select_baseline_tuning.py" \
     --tuning_dir "$TUNING_DIR" \

@@ -68,9 +68,21 @@ B2 第一轮 `b2_search_v1` 显示，`negative_ratio=4, positive_weight=4` 的�
 - report threshold：0.55 到 0.95。
 
 `c0_anchor_r4_w4` 保留第一轮最优均值配置作为锚点，其余候选在高 precision
-低 recall 和高方差两个端点之间插值。B2 没有神经 event head，仍从未来 occupancy
-概率恢复 station event。第一轮产物保留在 `models/tuning/b2_search_v1`，第二轮写入
-`models/tuning/b2_search_v2`，不覆盖旧结果。
+低 recall 和高方差两个端点之间插值。第一轮产物保留在 `models/tuning/b2_search_v1`，
+第二轮写入 `models/tuning/b2_search_v2`，不覆盖旧结果。
+
+第二轮仍由 `c0_anchor_r4_w4` 胜出，但稳健 F1 只有 `0.1069`，所有候选的 upcoming
+recall 接近零。这说明限制来自“先预测 occupancy 再恢复事件”的输出形式，不再继续
+第三轮同类参数搜索。
+
+B2 现在补齐与 B3-B5 目标等价的 XGBoost `event_will/start/duration` 头：
+
+- will 在所有有效工位节点上训练；
+- start 只在 upcoming 正样本上训练；
+- duration 只在事件正样本上训练；
+- occupancy 头固定为前两轮的 `ratio=4, weight=4`，仅搜索 event will 正类权重
+  `1/2/4/6/8/12/16`；
+- 产物写入 `models/tuning/b2_event_search_v1`。
 
 执行：
 

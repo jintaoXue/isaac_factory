@@ -24,8 +24,9 @@ GAT-GRU 结构。
 - checkpoint 可行门同时要求 `report_precision >= 0.80` 和
   `report_recall >= 0.35`。
 
-B3-B5 扫描 `event_will_probability`。B2 没有独立神经事件头，因此逐阈值将未来
-occupancy 概率恢复为 `(will, start, duration)`，再使用完全相同的 who/report 公式。
+B2-B5 都直接输出 `event_will_probability`、`event_start` 和 `event_duration`。
+B2 使用三个 XGBoost 头，B3-B5 使用神经头；四者扫描同一阈值集并使用完全相同的
+who/report 公式。B2 的 occupancy 预测仍独立保留，只用于 hot 和 occupancy 附录指标。
 
 ## 3. 必须输出
 
@@ -36,6 +37,7 @@ occupancy 概率恢复为 `(will, start, duration)`，再使用完全相同的 w
 - `remain`：hot P/R/F1/AP、真实/预测正例率、四类资源分项、`hot_type_hmean`、
   `remain_len_mae`；
 - `occupancy_event`：IoU 0.5 的 event P/R/F1 和事件数；
+- `event_will`：直接事件头的 PR-AUC、ROC-AUC、概率分位数和固定阈值结果；
 - `cause`：六个过程原因的 per-class recall、`cause_macro_recall`、`cause_acc`、
   只用 train 标签确定的 `cause_majority_acc` 和 `cause_n`。
 

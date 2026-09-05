@@ -165,7 +165,7 @@ validation checkpoint 规则和评估公式，但优化器参数按结构分别�
 
 | 模型 | 容量/树配置 | batch | max/min/patience | 学习率 | weight decay | dropout |
 | --- | --- | ---: | --- | ---: | ---: | ---: |
-| B2 XGBoost | 500 trees, depth 5, min child 3, lambda 5 | - | - | 0.03 | - | - |
+| B2 XGBoost | occupancy + will/start/duration heads; 500 trees, depth 5, min child 3, lambda 5 | - | - | 0.03 | - | - |
 | B3 LSTM | hidden 128, node hidden 128, node embedding 32 | 32 | 60/15/15 | 3e-4 | 1e-3 | 0.25 |
 | B4 GCN-GRU | GCN 64, GRU 128 | 24 | 60/10/10 | 3e-4 | 1e-2 | 0.20 |
 | B5 GAT-GRU | GAT 64×4 heads, GRU 128 | 16 | 60/15/20 | 1.5e-4 | 1e-2 | 0.20 |
@@ -210,10 +210,12 @@ checkpoint 在 validation 上确定的阈值。
 - remain length MAE；
 - 六类过程原因的 per-class recall、macro recall，以及仅从 train 计算的多数类基线。
 
-B2 没有神经事件头，validation 对未来 occupancy 概率使用同一阈值集合恢复 station
-event，再按同一 who/report 规则选择阈值；test 冻结该阈值。B3-B5 直接扫描其
-`event_will_probability`。模型解码方式可以不同，但 8 分钟最短段、3 分钟 start 容差、
-监督节点 mask 和指标公式保持一致。
+B2 用展平的历史节点特征直接训练 XGBoost `will/start/duration` 事件头；
+B3-B5 用各自编码器的节点表示训练对应神经头。validation 都扫描 `event_will_probability`，
+test 冻结所选阈值。8 分钟最短段、3 分钟 start 容差、监督节点 mask 和指标公式保持一致。
+
+B2 的 start 头只使用 upcoming 事件训练，duration 头只使用事件正样本训练，与
+B3-B5 的有效性 mask 一致。它不使用 BNPDFormer 的 ongoing 强制、双 will 头或分类型阈值。
 
 B4 的两层 GCN 使用输入投影残差和逐层 LayerNorm。工厂图连接较密时，纯邻居平均会令
 不同工位表示快速趋同，造成按工位 event head 全零；残差保留工位自身状态，GCN 分支仍
