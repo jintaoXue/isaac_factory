@@ -41,32 +41,36 @@ BNPDFormer 的双 will head、ongoing 强制、recall lift、分类型解码阈�
 60，但 min epoch 和 patience 可按结构设置。最终候选冻结后，正式结果用 seed 42/43/44
 重训并报告均值与标准差。
 
-候选排名使用 validation 两个 seed 的均值：
+候选排名同时使用 validation 两个 seed 的均值和稳定性：
 
 1. 两个 seed 均通过业务门的候选优先；
-2. `report_f1` 均值；
-3. `report_recall_upcoming` 均值；
-4. `report_precision` 均值；
-5. `hot_f1`、event will AP；
-6. 更低的 `report_f1` 标准差。
+2. `report_f1` 稳健分数，定义为均值减去总体标准差；
+3. `report_f1` 均值；
+4. `report_recall_upcoming` 均值；
+5. `report_precision` 均值；
+6. `hot_f1`、event will AP。
 
-主指标仍是 report F1，upcoming 只作 F1 相同时的次级判断。cause、remain MAE 和只在
-who 命中样本上计算的 start MAE 不参与候选选择。
+稳健分数在只有两个 seed 时等于两者中较低的 F1，用来防止单个幸运 seed
+决定最终配置。主指标仍是 report F1，upcoming 只作次级判断。cause、remain MAE
+和只在 who 命中样本上计算的 start MAE 不参与候选选择。
 
 ## 4. B2 搜索
 
-B2 当前同时使用负样本下采样和约 4 倍正类权重，表现为高 recall、低 precision。候选
-围绕以下范围构造：
+B2 第一轮 `b2_search_v1` 显示，`negative_ratio=4, positive_weight=4` 的平均 F1
+最高，但 seed42/43 的 F1 为 `0.1069/0.2679`，方差过大；权重降为 1 或只增加负
+样本比例都会使 recall 降至约 `1%-4%`。因此第二轮 `b2_search_v2` 改为局部精调：
 
-- negative cell ratio：4、8、12、16；
-- hot `scale_pos_weight`：1、2、4；
+- negative cell ratio：为 4 时搜索 hot `scale_pos_weight` 2、2.5、3、3.5、4；
+- negative cell ratio：为 8 时搜索 hot `scale_pos_weight` 4、6；
 - tree depth：4、5；
 - min child weight：3、5；
 - lambda：5、10；
 - report threshold：0.55 到 0.95。
 
-`c0_repro` 保留现有训练配置作为对照，其余候选拆除重复正类强调或加强树正则。B2 没有
-神经 event head，仍从未来 occupancy 概率恢复 station event。
+`c0_anchor_r4_w4` 保留第一轮最优均值配置作为锚点，其余候选在高 precision
+低 recall 和高方差两个端点之间插值。B2 没有神经 event head，仍从未来 occupancy
+概率恢复 station event。第一轮产物保留在 `models/tuning/b2_search_v1`，第二轮写入
+`models/tuning/b2_search_v2`，不覆盖旧结果。
 
 执行：
 

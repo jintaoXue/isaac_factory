@@ -98,6 +98,11 @@ def summarize_candidate(
         values = [float(run[key]) for run in runs]
         aggregate[f"{key}_mean"] = _mean(values)
         aggregate[f"{key}_std"] = _std(values)
+        aggregate[f"{key}_min"] = min(values)
+        aggregate[f"{key}_max"] = max(values)
+    aggregate["report_f1_robust"] = (
+        aggregate["report_f1_mean"] - aggregate["report_f1_std"]
+    )
     aggregate["runs"] = runs
     return aggregate
 
@@ -105,12 +110,12 @@ def summarize_candidate(
 def candidate_rank(candidate: dict[str, Any]) -> tuple[float, ...]:
     return (
         float(candidate["all_constraints_met"]),
+        float(candidate["report_f1_robust"]),
         float(candidate["report_f1_mean"]),
         float(candidate["upcoming_recall_mean"]),
         float(candidate["report_precision_mean"]),
         float(candidate["hot_f1_mean"]),
         float(candidate["will_ap_mean"]),
-        -float(candidate["report_f1_std"]),
     )
 
 
@@ -148,12 +153,12 @@ def main() -> None:
         "test_evaluated": False,
         "rank_policy": [
             "all_constraints_met",
+            "report_f1_mean_minus_std",
             "report_f1_mean",
             "upcoming_recall_mean",
             "report_precision_mean",
             "hot_f1_mean",
             "will_ap_mean",
-            "lower_report_f1_std",
         ],
         "selected_candidate": candidates[0]["candidate"],
         "selected_profile": candidates[0]["profile"],
@@ -169,6 +174,7 @@ def main() -> None:
             f"{index}. {candidate['candidate']} "
             f"report_f1={candidate['report_f1_mean']:.4f}"
             f"+/-{candidate['report_f1_std']:.4f} "
+            f"robust={candidate['report_f1_robust']:.4f} "
             f"P={candidate['report_precision_mean']:.4f} "
             f"R={candidate['report_recall_mean']:.4f} "
             f"hot_f1={candidate['hot_f1_mean']:.4f} "

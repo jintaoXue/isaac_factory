@@ -55,21 +55,24 @@ class TestBaselineTuning(unittest.TestCase):
         )
         (seed_dir / "metrics.json").write_text(json.dumps(metrics), encoding="utf-8")
 
-    def test_ranking_uses_validation_mean_before_upcoming_tie_break(self) -> None:
+    def test_ranking_uses_robust_f1_before_mean(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            stronger = root / "candidate_stronger"
-            weaker = root / "candidate_weaker"
-            for seed in (42, 43):
-                self._write_run(stronger, seed, 0.31, 0.05)
-                self._write_run(weaker, seed, 0.30, 0.20)
+            stable = root / "candidate_stable"
+            unstable = root / "candidate_unstable"
+            self._write_run(stable, 42, 0.30, 0.05)
+            self._write_run(stable, 43, 0.30, 0.05)
+            self._write_run(unstable, 42, 0.10, 0.20)
+            self._write_run(unstable, 43, 0.55, 0.20)
 
-            strong_summary = summarize_candidate(stronger, {42, 43})
-            weak_summary = summarize_candidate(weaker, {42, 43})
+            stable_summary = summarize_candidate(stable, {42, 43})
+            unstable_summary = summarize_candidate(unstable, {42, 43})
 
             self.assertGreater(
-                candidate_rank(strong_summary), candidate_rank(weak_summary)
+                candidate_rank(stable_summary), candidate_rank(unstable_summary)
             )
+            self.assertAlmostEqual(stable_summary["report_f1_robust"], 0.30)
+            self.assertAlmostEqual(unstable_summary["report_f1_robust"], 0.10)
 
     def test_rejects_missing_seed_and_test_metrics(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

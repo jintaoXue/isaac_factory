@@ -8,7 +8,7 @@ DATA_ROOT="${ROOT}/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output
 TOOLS_DIR="${ROOT}/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools"
 BENCHMARK_TAG="${BENCHMARK_TAG:-factory_pdformer_134_v1}"
 DATASET_DIR="${DATA_ROOT}/experiments/${BENCHMARK_TAG}"
-TUNING_TAG="${TUNING_TAG:-b2_search_v1}"
+TUNING_TAG="${TUNING_TAG:-b2_search_v2}"
 TUNING_DIR="${DATASET_DIR}/models/tuning/${TUNING_TAG}"
 TUNE_SEEDS="${TUNE_SEEDS:-42 43}"
 N_JOBS="${N_JOBS:-8}"
@@ -71,16 +71,17 @@ run_candidate() {
     done
 }
 
-# c0 reproduces v2's doubled positive emphasis. c1-c4 isolate the sampled
-# class prior. c5 tests a shallower, more strongly regularized tree ensemble.
-run_candidate "c0_repro" 4 4 500 5 0.03 3 5
-run_candidate "c1_unweighted_r4" 4 1 500 5 0.03 3 5
-run_candidate "c2_unweighted_r8" 8 1 500 5 0.03 3 5
-run_candidate "c3_unweighted_r12" 12 1 500 5 0.03 3 5
-run_candidate "c4_unweighted_r16" 16 1 500 5 0.03 3 5
-run_candidate "c5_shallow_r12" 12 1 700 4 0.03 5 10
-run_candidate "c6_partial_weight_r12" 12 2 500 5 0.03 3 5
-run_candidate "c7_shallow_r16" 16 1 700 4 0.03 5 10
+# Search v1 showed that r4/w4 had the best mean F1 but high seed variance,
+# while r4/w1 and every larger unweighted ratio collapsed recall. Refine the
+# class emphasis between those endpoints and test two higher-coverage r8 runs.
+run_candidate "c0_anchor_r4_w4" 4 4 500 5 0.03 3 5
+run_candidate "c1_r4_w2" 4 2 500 5 0.03 3 5
+run_candidate "c2_r4_w2_5" 4 2.5 500 5 0.03 3 5
+run_candidate "c3_r4_w3" 4 3 500 5 0.03 3 5
+run_candidate "c4_r4_w3_5" 4 3.5 500 5 0.03 3 5
+run_candidate "c5_r4_w2_5_regularized" 4 2.5 700 4 0.03 5 10
+run_candidate "c6_r8_w4" 8 4 500 5 0.03 3 5
+run_candidate "c7_r8_w6" 8 6 500 5 0.03 3 5
 
 python "${TOOLS_DIR}/select_baseline_tuning.py" \
     --tuning_dir "$TUNING_DIR" \
