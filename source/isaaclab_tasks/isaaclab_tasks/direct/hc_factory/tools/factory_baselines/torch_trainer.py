@@ -44,6 +44,7 @@ from .b5_gat_gru import B5GatGru, B5ModelConfig
 @dataclass
 class TorchTrainConfig:
     training_profile: str = "baseline_fair_v2"
+    evaluate_test: bool = True
     batch_size: int = 16
     max_epochs: int = 50
     patience: int = 25
@@ -783,6 +784,7 @@ def train_torch_baseline(
         "torch_version": str(torch.__version__),
         "device": str(device),
         "training_profile": train_config.training_profile,
+        "seed": train_config.seed,
         "trainable_parameter_count": trainable_parameter_count,
         "pos_weight": pos_weight_value,
         "cause_majority": cause_majority,
@@ -848,6 +850,7 @@ def train_torch_baseline(
         validation_score = float(report["report_f1"])
         validation_precision = float(report["report_precision"])
         validation_recall = float(report["report_recall"])
+        validation_upcoming_recall = float(report["report_recall_upcoming"])
         selected_threshold = float(report["report_threshold_used"])
         validation_hot_f1 = float(validation_metrics["remain"]["hot_f1"])
         validation_loss = float(validation_metrics["loss"]["total"])
@@ -868,6 +871,7 @@ def train_torch_baseline(
                 "validation_report_f1": report["report_f1"],
                 "validation_report_precision": report["report_precision"],
                 "validation_report_recall": report["report_recall"],
+                "validation_report_recall_upcoming": report["report_recall_upcoming"],
                 "validation_event_threshold": selected_threshold,
                 "validation_hot_threshold": train_config.hot_eval_threshold,
                 "validation_event_will_pr_auc": validation_metrics["event_will"][
@@ -959,6 +963,7 @@ def train_torch_baseline(
             f"val_loss={validation_metrics['loss']['total']:.6f} "
             f"val_report_f1={report['report_f1']:.6f} "
             f"val_report_precision={report['report_precision']:.6f} "
+            f"val_upcoming_recall={validation_upcoming_recall:.6f} "
             f"val_hot_f1={validation_hot_f1:.6f} "
             f"will_ap={float(validation_will_ap or 0.0):.6f} "
             f"feasible={int(feasible)}",
@@ -1008,27 +1013,28 @@ def train_torch_baseline(
     config_payload["metadata"]["hot_eval_threshold"] = train_config.hot_eval_threshold
     config_payload["metadata"]["checkpoint_constraint_met"] = checkpoint_constraint_met
     _write_json(output_dir / "config.json", config_payload)
-    test_metrics, test_arrays, test_confusion = _evaluate_loader(
-        best_model,
-        loaders["test"],
-        loss_config,
-        pos_weight,
-        device,
-        model_config.num_causes,
-        cause_classes=cause_classes,
-        cause_majority=cause_majority,
-        event_threshold=event_threshold,
-        hot_threshold=train_config.hot_eval_threshold,
-        occupancy_type_masks=occupancy_type_masks,
-    )
     evaluations = {
         "validation": (
             validation_metrics,
             validation_arrays,
             validation_confusion,
-        ),
-        "test": (test_metrics, test_arrays, test_confusion),
+        )
     }
+    if train_config.evaluate_test:
+        test_metrics, test_arrays, test_confusion = _evaluate_loader(
+            best_model,
+            loaders["test"],
+            loss_config,
+            pos_weight,
+            device,
+            model_config.num_causes,
+            cause_classes=cause_classes,
+            cause_majority=cause_majority,
+            event_threshold=event_threshold,
+            hot_threshold=train_config.hot_eval_threshold,
+            occupancy_type_masks=occupancy_type_masks,
+        )
+        evaluations["test"] = (test_metrics, test_arrays, test_confusion)
     all_metrics: dict[str, Any] = {}
     for split_name, (metrics, arrays, confusion) in evaluations.items():
         all_metrics[split_name] = metrics
@@ -1043,11 +1049,14 @@ def train_torch_baseline(
         )
     _write_json(output_dir / "metrics.json", all_metrics)
     summary = {
-        "status": "completed",
+        "status": (
+            "completed" if train_config.evaluate_test else "validation_completed"
+        ),
         "baseline_id": baseline_id,
         "model_name": model_name,
         "model_kind": model_kind,
         "training_profile": train_config.training_profile,
+        "seed": train_config.seed,
         "trainable_parameter_count": trainable_parameter_count,
         "dataset_contract": manifest["dataset_contract"],
         "dataset_version": manifest["dataset_version"],
@@ -1072,16 +1081,23 @@ def train_torch_baseline(
         "event_report_threshold": event_threshold,
         "report_threshold_selected_on": "validation",
         "hot_eval_threshold": train_config.hot_eval_threshold,
-        "test_hot_f1": all_metrics["test"]["remain"]["hot_f1"],
-        "test_report_f1": all_metrics["test"]["station_report"]["report_f1"],
-        "test_report_precision": all_metrics["test"]["station_report"][
-            "report_precision"
-        ],
-        "test_report_recall": all_metrics["test"]["station_report"]["report_recall"],
         "elapsed_seconds": time.time() - started_at,
         "checkpoint_epoch": checkpoint["epoch"],
         "output_dir": str(output_dir),
     }
+    if train_config.evaluate_test:
+        summary.update(
+            {
+                "test_hot_f1": all_metrics["test"]["remain"]["hot_f1"],
+                "test_report_f1": all_metrics["test"]["station_report"]["report_f1"],
+                "test_report_precision": all_metrics["test"]["station_report"][
+                    "report_precision"
+                ],
+                "test_report_recall": all_metrics["test"]["station_report"][
+                    "report_recall"
+                ],
+            }
+        )
     _write_json(output_dir / "run_summary.json", summary)
     return summary
 

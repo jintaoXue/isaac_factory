@@ -255,9 +255,7 @@ class TestFactoryBaselineDataset(unittest.TestCase):
                 manifest["prediction_target_version"],
                 "factory_ops_event_30m_to_15m_v1",
             )
-            self.assertEqual(
-                manifest["dataset_contract"], "tyx_bn_agg_unsupervised_v2"
-            )
+            self.assertEqual(manifest["dataset_contract"], "tyx_bn_agg_unsupervised_v2")
             self.assertEqual(manifest["label_version"], "factory_ops_hot_v1")
             self.assertEqual(manifest["target_node_category"], "machine_gantry_agv")
             self.assertEqual(manifest["event_positive_samples"], 6)
@@ -366,9 +364,7 @@ class TestFactoryBaselineDataset(unittest.TestCase):
                         summary["checkpoint_selection"],
                         "fallback_report_f1_hot_f1_val_loss",
                     )
-                    self.assertGreaterEqual(
-                        summary["best_validation_report_f1"], 0.0
-                    )
+                    self.assertGreaterEqual(summary["best_validation_report_f1"], 0.0)
                     metrics = json.loads(
                         (model_dir / "metrics.json").read_text(encoding="utf-8")
                     )
@@ -390,6 +386,35 @@ class TestFactoryBaselineDataset(unittest.TestCase):
                     if test["cause_n"]:
                         self.assertIn("cause_majority_acc", test)
                     self.assertTrue((model_dir / "occupancy_events_test.csv").is_file())
+
+            validation_only_dir = root / "b4_validation_only"
+            summary = train_torch_baseline(
+                model_kind="b4_gcn_gru",
+                dataset_dir=out_dir,
+                output_dir=validation_only_dir,
+                model_overrides={
+                    "gcn_hidden": 8,
+                    "gru_hidden": 8,
+                    "dropout": 0.0,
+                },
+                train_config=TorchTrainConfig(
+                    evaluate_test=False,
+                    batch_size=8,
+                    max_epochs=1,
+                    patience=1,
+                    device="cpu",
+                ),
+                loss_config=MultiTaskLossConfig(),
+            )
+            self.assertEqual(summary["status"], "validation_completed")
+            self.assertNotIn("test_report_f1", summary)
+            metrics = json.loads(
+                (validation_only_dir / "metrics.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(set(metrics), {"validation"})
+            self.assertFalse(
+                (validation_only_dir / "occupancy_events_test.csv").exists()
+            )
 
 
 if __name__ == "__main__":

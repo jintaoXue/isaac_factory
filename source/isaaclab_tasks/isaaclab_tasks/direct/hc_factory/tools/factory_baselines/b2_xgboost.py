@@ -38,6 +38,7 @@ class B2XGBoostConfig:
     """Training and bounded cell-sampling settings for B2."""
 
     training_profile: str = "baseline_fair_v2"
+    evaluate_test: bool = True
     seed: int = 42
     n_estimators: int = 500
     max_depth: int = 5
@@ -49,6 +50,7 @@ class B2XGBoostConfig:
     n_jobs: int = 8
     near_remain_windows: int = 60
     negative_cell_ratio: float = 4.0
+    hot_scale_pos_weight: float = 4.0
     empty_sample_negative_cells: int = 32
     prediction_cell_chunk_size: int = 65536
     hot_eval_threshold: float = 0.55
@@ -74,6 +76,8 @@ class B2XGBoostConfig:
             raise ValueError("learning_rate must be positive")
         if self.negative_cell_ratio <= 0:
             raise ValueError("negative_cell_ratio must be positive")
+        if self.hot_scale_pos_weight <= 0:
+            raise ValueError("hot_scale_pos_weight must be positive")
         if self.min_child_weight <= 0:
             raise ValueError("min_child_weight must be positive")
         if self.reg_lambda < 0:
@@ -476,7 +480,7 @@ def train_b2_xgboost(
     output_dir: Path,
     config: B2XGBoostConfig | None = None,
 ) -> dict[str, Any]:
-    """Train B2 heads, select thresholds on validation, and evaluate test."""
+    """Train B2 heads and optionally evaluate the validation-selected model on test."""
     config = config or B2XGBoostConfig()
     random.seed(config.seed)
     np.random.seed(config.seed)
@@ -511,12 +515,11 @@ def train_b2_xgboost(
     cell_X, cell_score_y, cell_hot_y = _training_cells(
         payload, train_indices.tolist(), config
     )
-    cell_positives = max(int(cell_hot_y.sum()), 1)
     hot_head = _fit_classifier(
         cell_X,
         cell_hot_y,
         config,
-        scale_pos_weight=float(len(cell_hot_y) - cell_positives) / cell_positives,
+        scale_pos_weight=config.hot_scale_pos_weight,
     )
     score_head = _fit_regressor(cell_X, cell_score_y, config)
     heads = {
@@ -553,7 +556,10 @@ def train_b2_xgboost(
     )
     sample_lookup = {int(row["sample_index"]): row for row in sample_rows}
     all_metrics: dict[str, Any] = {}
-    for split_name in ("validation", "test"):
+    evaluation_splits = (
+        ("validation", "test") if config.evaluate_test else ("validation",)
+    )
+    for split_name in evaluation_splits:
         _, arrays = (
             (None, validation_arrays)
             if split_name == "validation"
@@ -798,6 +804,7 @@ def train_b2_xgboost(
         "baseline_id": "B2",
         "model_name": "XGBoost",
         "training_profile": config.training_profile,
+        "seed": config.seed,
         "dataset_dir": str(dataset_dir),
         "dataset_manifest_sha256": _manifest_hash(
             dataset_dir / "dataset_manifest.json"
@@ -819,7 +826,6 @@ def train_b2_xgboost(
     _write_json(output_dir / "config.json", metadata)
     _write_json(output_dir / "metrics.json", all_metrics)
     validation_report = all_metrics["validation"]["station_report"]
-    test_report = all_metrics["test"]["station_report"]
     checkpoint_constraint_met = (
         float(validation_report["report_precision"])
         >= config.report_threshold_min_precision
@@ -827,21 +833,18 @@ def train_b2_xgboost(
         >= config.checkpoint_min_report_recall
     )
     summary = {
-        "status": "completed",
+        "status": "completed" if config.evaluate_test else "validation_completed",
         "baseline_id": "B2",
         "model_name": "XGBoost",
         "training_profile": config.training_profile,
+        "seed": config.seed,
         "dataset_contract": manifest["dataset_contract"],
         "dataset_version": manifest["dataset_version"],
         "label_version": manifest["label_version"],
         "validation_hot_f1": all_metrics["validation"]["remain"]["hot_f1"],
-        "test_hot_f1": all_metrics["test"]["remain"]["hot_f1"],
         "validation_report_precision": validation_report["report_precision"],
         "validation_report_recall": validation_report["report_recall"],
         "validation_report_f1": validation_report["report_f1"],
-        "test_report_precision": test_report["report_precision"],
-        "test_report_recall": test_report["report_recall"],
-        "test_report_f1": test_report["report_f1"],
         "checkpoint_precision_constraint": config.report_threshold_min_precision,
         "checkpoint_recall_constraint": config.checkpoint_min_report_recall,
         "checkpoint_constraint_met": checkpoint_constraint_met,
@@ -851,5 +854,15 @@ def train_b2_xgboost(
         "elapsed_seconds": time.time() - started_at,
         "output_dir": str(output_dir),
     }
+    if config.evaluate_test:
+        test_report = all_metrics["test"]["station_report"]
+        summary.update(
+            {
+                "test_hot_f1": all_metrics["test"]["remain"]["hot_f1"],
+                "test_report_precision": test_report["report_precision"],
+                "test_report_recall": test_report["report_recall"],
+                "test_report_f1": test_report["report_f1"],
+            }
+        )
     _write_json(output_dir / "run_summary.json", summary)
     return summary

@@ -26,6 +26,7 @@ def main() -> None:
     parser.add_argument("--n_jobs", type=int, default=8)
     parser.add_argument("--near_remain_windows", type=int, default=60)
     parser.add_argument("--negative_cell_ratio", type=float, default=4.0)
+    parser.add_argument("--hot_scale_pos_weight", type=float, default=4.0)
     parser.add_argument("--empty_sample_negative_cells", type=int, default=32)
     parser.add_argument("--prediction_cell_chunk_size", type=int, default=65536)
     parser.add_argument("--hot_eval_threshold", type=float, default=0.55)
@@ -33,9 +34,11 @@ def main() -> None:
     parser.add_argument("--report_threshold_sweep", type=float, nargs="+")
     parser.add_argument("--report_threshold_min_precision", type=float, default=0.80)
     parser.add_argument("--checkpoint_min_report_recall", type=float, default=0.35)
+    parser.add_argument("--validation_only", action="store_true")
     args = parser.parse_args()
     config = B2XGBoostConfig(
         training_profile=args.training_profile,
+        evaluate_test=not args.validation_only,
         seed=args.seed,
         n_estimators=args.n_estimators,
         max_depth=args.max_depth,
@@ -47,6 +50,7 @@ def main() -> None:
         n_jobs=args.n_jobs,
         near_remain_windows=args.near_remain_windows,
         negative_cell_ratio=args.negative_cell_ratio,
+        hot_scale_pos_weight=args.hot_scale_pos_weight,
         empty_sample_negative_cells=args.empty_sample_negative_cells,
         prediction_cell_chunk_size=args.prediction_cell_chunk_size,
         hot_eval_threshold=args.hot_eval_threshold,

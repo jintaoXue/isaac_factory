@@ -30,6 +30,7 @@ B2_MAX_DEPTH="${B2_MAX_DEPTH:-5}"
 B2_LEARNING_RATE="${B2_LEARNING_RATE:-0.03}"
 B2_MIN_CHILD_WEIGHT="${B2_MIN_CHILD_WEIGHT:-3.0}"
 B2_REG_LAMBDA="${B2_REG_LAMBDA:-5.0}"
+B2_HOT_SCALE_POS_WEIGHT="${B2_HOT_SCALE_POS_WEIGHT:-4.0}"
 
 B3_BATCH_SIZE="${B3_BATCH_SIZE:-32}"
 B3_MAX_EPOCHS="${B3_MAX_EPOCHS:-60}"
@@ -142,7 +143,7 @@ train_one() {
     local model=$1
     case "$model" in
         B2)
-            echo "B2 config: trees=${B2_XGB_ESTIMATORS} depth=${B2_MAX_DEPTH} lr=${B2_LEARNING_RATE} min_child_weight=${B2_MIN_CHILD_WEIGHT} reg_lambda=${B2_REG_LAMBDA}"
+            echo "B2 config: trees=${B2_XGB_ESTIMATORS} depth=${B2_MAX_DEPTH} lr=${B2_LEARNING_RATE} min_child_weight=${B2_MIN_CHILD_WEIGHT} reg_lambda=${B2_REG_LAMBDA} hot_scale_pos_weight=${B2_HOT_SCALE_POS_WEIGHT}"
             python -c "import sklearn, xgboost; print('xgboost', xgboost.__version__, 'scikit-learn', sklearn.__version__)"
             python "${TOOLS_DIR}/train_b2_xgboost.py" \
                 --dataset_dir "$DATASET_DIR" \
@@ -154,6 +155,7 @@ train_one() {
                 --learning_rate "$B2_LEARNING_RATE" \
                 --min_child_weight "$B2_MIN_CHILD_WEIGHT" \
                 --reg_lambda "$B2_REG_LAMBDA" \
+                --hot_scale_pos_weight "$B2_HOT_SCALE_POS_WEIGHT" \
                 --n_jobs "$N_JOBS" \
                 --hot_eval_threshold "$HOT_EVAL_THRESHOLD" \
                 --event_report_threshold "$EVENT_REPORT_THRESHOLD" \

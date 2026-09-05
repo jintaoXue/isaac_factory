@@ -122,6 +122,9 @@ class B5GatGru(nn.Module):
         super().__init__()
         self.config = config
         first_head_dim = config.gat_hidden // config.gat_heads
+        self.input_projection = nn.Linear(
+            config.input_dim, config.gat_hidden, bias=False
+        )
         self.gat1 = DenseGraphAttention(
             config.input_dim,
             first_head_dim,
@@ -136,6 +139,8 @@ class B5GatGru(nn.Module):
             concat=False,
             dropout=config.dropout,
         )
+        self.gat1_norm = nn.LayerNorm(config.gat_hidden)
+        self.gat2_norm = nn.LayerNorm(config.gat_hidden)
         self.dropout = nn.Dropout(config.dropout)
         self.gru = nn.GRU(
             input_size=config.gat_hidden,
@@ -177,11 +182,16 @@ class B5GatGru(nn.Module):
         )
         spatial_mask = node_mask[:, None].expand(batch_size, time_steps, node_count)
         spatial_mask = spatial_mask.reshape(batch_size * time_steps, node_count)
+        valid_features = spatial_mask[:, :, None].to(spatial_x.dtype)
 
+        input_residual = self.input_projection(spatial_x) * valid_features
         spatial = self.gat1(spatial_x, spatial_adjacency, spatial_mask)
-        spatial = self.dropout(F.elu(spatial))
-        spatial = self.gat2(spatial, spatial_adjacency, spatial_mask)
-        spatial = F.elu(spatial)
+        spatial = (
+            self.dropout(F.elu(self.gat1_norm(spatial + input_residual)))
+            * valid_features
+        )
+        graph_update = self.gat2(spatial, spatial_adjacency, spatial_mask)
+        spatial = F.elu(self.gat2_norm(graph_update + spatial)) * valid_features
         spatial = spatial.view(batch_size, time_steps, node_count, -1)
 
         temporal_input = spatial.permute(0, 2, 1, 3).reshape(

@@ -52,6 +52,32 @@ class MultiTaskLossConfig:
     def __post_init__(self) -> None:
         if self.prediction_horizon <= 0:
             raise ValueError("prediction_horizon must be positive")
+        for name in (
+            "lambda_remain_score",
+            "lambda_remain_hot",
+            "lambda_remain_dice",
+            "lambda_remain_iou",
+            "lambda_remain_len",
+            "lambda_cause",
+            "lambda_event_will",
+            "lambda_event_start",
+            "lambda_event_duration",
+        ):
+            if float(getattr(self, name)) < 0.0:
+                raise ValueError(f"{name} must be non-negative")
+        for name in (
+            "hot_pos_weight",
+            "event_will_pos_weight",
+            "event_will_fp_weight",
+            "event_will_upcoming_pos_weight",
+            "event_will_ongoing_pos_weight",
+            "event_start_sigma",
+            "remain_loss_tau",
+        ):
+            if float(getattr(self, name)) <= 0.0:
+                raise ValueError(f"{name} must be positive")
+        if self.near_remain_windows <= 0:
+            raise ValueError("near_remain_windows must be positive")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -85,11 +111,7 @@ def _soft_iou_loss(
 ) -> torch.Tensor:
     prediction = torch.sigmoid(logits)
     intersection = (prediction * target * weight).sum()
-    union = (
-        (prediction * weight).sum()
-        + (target * weight).sum()
-        - intersection
-    )
+    union = (prediction * weight).sum() + (target * weight).sum() - intersection
     return 1.0 - (intersection + eps) / (union + eps)
 
 
@@ -137,8 +159,7 @@ def _type_balanced_occupancy_losses(
         if float(typed_mask.sum()) <= 0:
             continue
         bce_parts.append(
-            (bce * class_weight * typed_mask).sum()
-            / typed_mask.sum().clamp_min(1.0)
+            (bce * class_weight * typed_mask).sum() / typed_mask.sum().clamp_min(1.0)
         )
         dice_parts.append(_soft_dice_loss(logits, target, typed_mask))
         iou_parts.append(_soft_iou_loss(logits, target, typed_mask))
@@ -202,9 +223,7 @@ def compute_multitask_loss(
         remain_dice = _soft_dice_loss(
             outputs["remain_hot_logit"], hot_target, hot_weight
         )
-        remain_iou = _soft_iou_loss(
-            outputs["remain_hot_logit"], hot_target, hot_weight
-        )
+        remain_iou = _soft_iou_loss(outputs["remain_hot_logit"], hot_target, hot_weight)
     remain_len = F.smooth_l1_loss(
         torch.log1p(outputs["remain_len"]),
         torch.log1p(batch["target_remain_len"].float()),
@@ -224,8 +243,7 @@ def compute_multitask_loss(
     event_will_target = batch["event_will"].float()
     hist_hot = batch["hist_last_hot"].bool()
     ongoing = (
-        hist_hot
-        | ((batch["event_start"] == 0) & (event_will_target > 0.5))
+        hist_hot | ((batch["event_start"] == 0) & (event_will_target > 0.5))
     ) & occ_mask
     ongoing = ongoing & (event_will_target > 0.5)
     upcoming = (event_will_target > 0.5) & ~ongoing & occ_mask
@@ -259,14 +277,12 @@ def compute_multitask_loss(
         if float(typed_weight.sum()) <= 0:
             continue
         event_parts.append(
-            (event_will_raw * typed_weight).sum()
-            / typed_weight.sum().clamp_min(1.0)
+            (event_will_raw * typed_weight).sum() / typed_weight.sum().clamp_min(1.0)
         )
     event_will = (
         torch.stack(event_parts).mean()
         if event_parts
-        else (event_will_raw * event_weight).sum()
-        / event_weight.sum().clamp_min(1.0)
+        else (event_will_raw * event_weight).sum() / event_weight.sum().clamp_min(1.0)
     )
     if upcoming.any():
         start_logits = outputs["event_start_logit"][upcoming]
@@ -278,20 +294,18 @@ def compute_multitask_loss(
         soft_start_target = torch.from_numpy(soft_start).to(
             device=start_logits.device, dtype=start_logits.dtype
         )
-        event_start = -(
-            soft_start_target * F.log_softmax(start_logits, dim=-1)
-        ).sum(dim=-1).mean()
+        event_start = (
+            -(soft_start_target * F.log_softmax(start_logits, dim=-1))
+            .sum(dim=-1)
+            .mean()
+        )
     else:
         event_start = zero
     positive_event = (upcoming | ongoing) & occ_mask
     event_duration = (
         F.smooth_l1_loss(
-            torch.log1p(
-                outputs["event_duration"][positive_event].clamp_min(0.0)
-            ),
-            torch.log1p(
-                batch["event_duration"][positive_event].float().clamp_min(0.0)
-            ),
+            torch.log1p(outputs["event_duration"][positive_event].clamp_min(0.0)),
+            torch.log1p(batch["event_duration"][positive_event].float().clamp_min(0.0)),
         )
         if positive_event.any()
         else zero

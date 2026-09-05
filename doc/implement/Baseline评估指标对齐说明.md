@@ -8,7 +8,8 @@ BNPDFormer：PDFormer 编码器加制造瓶颈 occupancy、event 和 cause 任�
 
 本轮只改 B2-B5 的评估、阈值选择和 checkpoint 规则，不改变共享 raw、derived、
 dataset、episode split 或标签，因此不需要重新采集或重建 dataset。B4 同时修正了
-dense GCN 的过平滑问题，加入输入残差和 LayerNorm，但仍保持 GCN-GRU 结构。
+dense GCN 的过平滑问题；B5 补齐标准残差和 LayerNorm。两者仍分别保持 GCN-GRU 与
+GAT-GRU 结构。
 
 ## 2. 主任务口径
 
@@ -66,4 +67,5 @@ BNPDFormer 专属解码规则把 baseline 人为调到过线。
 公平对照固定共享数据、标签、episode split、监督 mask、validation 阈值扫描、test 冻结
 和指标公式。模型容量、学习率、正则化、batch 和训练时长可按结构分别配置，但必须在查看
 新 test 结果之前冻结并完整记录。当前固定配置见《统一 Baseline 对照实验执行设计》的
-`baseline_fair_v2` 表。
+`baseline_fair_v2` 表；后续配置搜索严格执行《Baseline 验证集调优协议》，候选运行不生成
+test 指标。

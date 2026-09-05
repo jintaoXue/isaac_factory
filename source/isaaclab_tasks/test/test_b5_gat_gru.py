@@ -136,6 +136,7 @@ class TestB5GatGru(unittest.TestCase):
         self.assertTrue(torch.isfinite(components["remain_dice"]))
         self.assertTrue(torch.isfinite(components["remain_iou"]))
         loss.backward()
+        self.assertIsNotNone(model.input_projection.weight.grad)
 
     def test_occupancy_loss_excludes_non_target_nodes(self) -> None:
         batch = self._batch()

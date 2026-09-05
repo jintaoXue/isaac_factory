@@ -37,11 +37,17 @@ def main() -> None:
     parser.add_argument("--node_embedding", type=int, default=32)
     parser.add_argument("--dropout", type=float, default=0.25)
     parser.add_argument("--prediction_horizon", type=float, default=180.0)
+    parser.add_argument("--lambda_event_will", type=float, default=2.5)
+    parser.add_argument("--event_will_pos_weight", type=float, default=3.0)
+    parser.add_argument("--event_will_fp_weight", type=float, default=2.0)
+    parser.add_argument("--event_will_upcoming_pos_weight", type=float, default=4.0)
+    parser.add_argument("--event_will_ongoing_pos_weight", type=float, default=3.0)
     parser.add_argument("--hot_eval_threshold", type=float, default=0.55)
     parser.add_argument("--event_report_threshold", type=float, default=0.68)
     parser.add_argument("--report_threshold_sweep", type=float, nargs="+")
     parser.add_argument("--checkpoint_min_report_precision", type=float, default=0.80)
     parser.add_argument("--checkpoint_min_report_recall", type=float, default=0.35)
+    parser.add_argument("--validation_only", action="store_true")
     args = parser.parse_args()
     summary = train_torch_baseline(
         model_kind="b3_lstm",
@@ -56,6 +62,7 @@ def main() -> None:
         },
         train_config=TorchTrainConfig(
             training_profile=args.training_profile,
+            evaluate_test=not args.validation_only,
             batch_size=args.batch_size,
             max_epochs=args.max_epochs,
             patience=args.patience,
@@ -78,7 +85,14 @@ def main() -> None:
             checkpoint_min_report_precision=args.checkpoint_min_report_precision,
             checkpoint_min_report_recall=args.checkpoint_min_report_recall,
         ),
-        loss_config=MultiTaskLossConfig(prediction_horizon=args.prediction_horizon),
+        loss_config=MultiTaskLossConfig(
+            prediction_horizon=args.prediction_horizon,
+            lambda_event_will=args.lambda_event_will,
+            event_will_pos_weight=args.event_will_pos_weight,
+            event_will_fp_weight=args.event_will_fp_weight,
+            event_will_upcoming_pos_weight=args.event_will_upcoming_pos_weight,
+            event_will_ongoing_pos_weight=args.event_will_ongoing_pos_weight,
+        ),
     )
     print(json.dumps(summary, indent=2, ensure_ascii=False))
 

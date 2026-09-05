@@ -89,6 +89,8 @@ class TestB2XGBoost(unittest.TestCase):
     def test_invalid_sampling_configuration_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "negative_cell_ratio"):
             B2XGBoostConfig(negative_cell_ratio=0.0)
+        with self.assertRaisesRegex(ValueError, "hot_scale_pos_weight"):
+            B2XGBoostConfig(hot_scale_pos_weight=0.0)
 
     def test_main_experiment_thresholds_are_the_defaults(self) -> None:
         config = B2XGBoostConfig()
@@ -97,6 +99,8 @@ class TestB2XGBoost(unittest.TestCase):
         self.assertEqual(config.max_depth, 5)
         self.assertEqual(config.min_child_weight, 3.0)
         self.assertEqual(config.reg_lambda, 5.0)
+        self.assertEqual(config.hot_scale_pos_weight, 4.0)
+        self.assertTrue(config.evaluate_test)
         self.assertEqual(config.hot_eval_threshold, 0.55)
         self.assertEqual(config.event_report_threshold, 0.68)
         self.assertEqual(config.report_threshold_min_precision, 0.80)

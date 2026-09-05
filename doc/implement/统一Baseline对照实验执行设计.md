@@ -175,9 +175,10 @@ validation checkpoint 规则和评估公式，但优化器参数按结构分别�
 参数量不强行做成完全相等，因为 B3 的节点展平输入本身就是非图基线定义的一部分，但每次
 训练都会把实际参数量写入 `config.json` 和 `run_summary.json`。
 
-这些超参数不从 test 反推。若后续要做超参数搜索，应为每个模型分配相同数量的候选配置，
-只按 validation `report_f1` 和门槛选定，最终 test 只运行一次。不能为了让 baseline 达到
-某个预设分数而查看 test 后继续调参。
+上述为首轮探索配置，不再直接作为最终固定配置。后续每个模型分配 8 个候选配置、每个候选
+使用 seed 42/43，只按 validation `report_f1` 和门槛选定，最终 test 只运行一次。完整
+搜索空间、test 隔离要求和服务器命令见《Baseline 验证集调优协议》。不能为了让 baseline
+达到某个预设分数而查看 test 后继续调参。
 
 B4 的 v2 正则化配置由 seed 42 validation 单因素对照确定：相对 v1，report F1
 从 0.2948 提升到 0.3097，report recall 从 0.2189 提升到 0.2357，hot F1 从 0.3946
@@ -217,6 +218,10 @@ event，再按同一 who/report 规则选择阈值；test 冻结该阈值。B3-B
 B4 的两层 GCN 使用输入投影残差和逐层 LayerNorm。工厂图连接较密时，纯邻居平均会令
 不同工位表示快速趋同，造成按工位 event head 全零；残差保留工位自身状态，GCN 分支仍
 负责传播拓扑上下文，因此模型定义仍是标准 GCN-GRU baseline。
+
+B5 的两层 GAT 同样使用输入投影残差、层间残差和逐层 LayerNorm。该修正补齐图模型常规
+训练稳定性，不引入 BNPDFormer 的 attention、双 will head 或专属解码规则，模型定义仍
+是 BSTAN-style GAT-GRU baseline。
 
 ## 8. 服务器执行
 
@@ -270,6 +275,6 @@ BENCHMARK_TAG=factory_pdformer_134_v1 RUN_MODE=formal DEVICE=cuda:0 \
 5. 所有 baseline 输出 `station_report` 与 `occupancy_event`；
 6. test 只使用 validation 阶段冻结的模型和固定阈值；
 7. raw 不需要重新采集，只重建 derived、dataset 和模型；
-8. 每个产物记录 `training_profile=baseline_fair_v2`、完整模型配置和神经模型参数量；
+8. 每个产物记录具体 `training_profile`、seed、完整模型/loss 配置和神经模型参数量；
 9. 正式论文结果固定配置后至少运行 seed 42/43/44，报告均值和标准差；同一 seed 的
    episode split 不变，训练随机种子变化。
