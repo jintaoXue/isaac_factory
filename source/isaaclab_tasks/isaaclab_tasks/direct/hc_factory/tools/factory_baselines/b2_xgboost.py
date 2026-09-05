@@ -37,7 +37,7 @@ from .metrics import (
 class B2XGBoostConfig:
     """Training and bounded cell-sampling settings for B2."""
 
-    training_profile: str = "baseline_fair_v1"
+    training_profile: str = "baseline_fair_v2"
     seed: int = 42
     n_estimators: int = 500
     max_depth: int = 5

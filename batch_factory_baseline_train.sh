@@ -8,7 +8,7 @@
 #
 # Environment overrides:
 #   BENCHMARK_TAG=factory_main_aligned_v1 DEVICE=cuda:0 SEED=42 N_JOBS=8
-#   B3_LEARNING_RATE=0.0003 B4_DROPOUT=0.1 B5_WEIGHT_DECAY=0.01
+#   B3_LEARNING_RATE=0.0003 B4_DROPOUT=0.2 B5_WEIGHT_DECAY=0.01
 
 set -euo pipefail
 
@@ -21,7 +21,7 @@ MODEL_ROOT="${DATASET_DIR}/models"
 
 DEVICE="${DEVICE:-cuda:0}"
 SEED="${SEED:-42}"
-TRAINING_PROFILE="${TRAINING_PROFILE:-baseline_fair_v1}"
+TRAINING_PROFILE="${TRAINING_PROFILE:-baseline_fair_v2}"
 
 # Model-specific optimization is fixed before test evaluation. The shared data,
 # targets, metric protocol and validation-only threshold selection stay identical.
@@ -46,15 +46,15 @@ B3_DROPOUT="${B3_DROPOUT:-0.25}"
 
 B4_BATCH_SIZE="${B4_BATCH_SIZE:-24}"
 B4_MAX_EPOCHS="${B4_MAX_EPOCHS:-60}"
-B4_PATIENCE="${B4_PATIENCE:-20}"
-B4_MIN_EPOCHS="${B4_MIN_EPOCHS:-15}"
+B4_PATIENCE="${B4_PATIENCE:-10}"
+B4_MIN_EPOCHS="${B4_MIN_EPOCHS:-10}"
 B4_LEARNING_RATE="${B4_LEARNING_RATE:-0.0003}"
-B4_WEIGHT_DECAY="${B4_WEIGHT_DECAY:-0.001}"
+B4_WEIGHT_DECAY="${B4_WEIGHT_DECAY:-0.01}"
 B4_LR_MIN="${B4_LR_MIN:-0.000001}"
 B4_LR_SCHEDULE="${B4_LR_SCHEDULE:-cosine}"
 B4_GCN_HIDDEN="${B4_GCN_HIDDEN:-64}"
 B4_GRU_HIDDEN="${B4_GRU_HIDDEN:-128}"
-B4_DROPOUT="${B4_DROPOUT:-0.10}"
+B4_DROPOUT="${B4_DROPOUT:-0.20}"
 
 B5_BATCH_SIZE="${B5_BATCH_SIZE:-16}"
 B5_MAX_EPOCHS="${B5_MAX_EPOCHS:-60}"

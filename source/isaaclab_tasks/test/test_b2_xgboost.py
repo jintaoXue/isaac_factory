@@ -92,7 +92,7 @@ class TestB2XGBoost(unittest.TestCase):
 
     def test_main_experiment_thresholds_are_the_defaults(self) -> None:
         config = B2XGBoostConfig()
-        self.assertEqual(config.training_profile, "baseline_fair_v1")
+        self.assertEqual(config.training_profile, "baseline_fair_v2")
         self.assertEqual(config.n_estimators, 500)
         self.assertEqual(config.max_depth, 5)
         self.assertEqual(config.min_child_weight, 3.0)

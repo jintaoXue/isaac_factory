@@ -43,7 +43,7 @@ from .b5_gat_gru import B5GatGru, B5ModelConfig
 
 @dataclass
 class TorchTrainConfig:
-    training_profile: str = "baseline_fair_v1"
+    training_profile: str = "baseline_fair_v2"
     batch_size: int = 16
     max_epochs: int = 50
     patience: int = 25

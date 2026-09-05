@@ -106,7 +106,7 @@ class TestB3B4Models(unittest.TestCase):
         self.assertFalse(torch.allclose(hidden[:, 0], hidden[:, 1]))
 
     def test_training_profile_must_be_named(self) -> None:
-        self.assertEqual(TorchTrainConfig().training_profile, "baseline_fair_v1")
+        self.assertEqual(TorchTrainConfig().training_profile, "baseline_fair_v2")
         with self.assertRaisesRegex(ValueError, "training_profile"):
             TorchTrainConfig(training_profile="")
 

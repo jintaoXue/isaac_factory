@@ -160,14 +160,14 @@ ongoing 强制和 recall lift 都属于主模型专属训练或解码能力，�
 `precision=0.817`、`recall=0.447`、`F1=0.578`。该数值用于正式实验后的横向核对；
 最终表格仍应从同一份 134-episode dataset 对应的模型产物中自动汇总，不能只引用文档数字。
 
-正式训练使用预先冻结的 `baseline_fair_v1` 配置。各模型共享数据、监督目标、loss 形式、
+正式训练使用预先冻结的 `baseline_fair_v2` 配置。各模型共享数据、监督目标、loss 形式、
 validation checkpoint 规则和评估公式，但优化器参数按结构分别设定：
 
 | 模型 | 容量/树配置 | batch | max/min/patience | 学习率 | weight decay | dropout |
 | --- | --- | ---: | --- | ---: | ---: | ---: |
 | B2 XGBoost | 500 trees, depth 5, min child 3, lambda 5 | - | - | 0.03 | - | - |
 | B3 LSTM | hidden 128, node hidden 128, node embedding 32 | 32 | 60/15/15 | 3e-4 | 1e-3 | 0.25 |
-| B4 GCN-GRU | GCN 64, GRU 128 | 24 | 60/15/20 | 3e-4 | 1e-3 | 0.10 |
+| B4 GCN-GRU | GCN 64, GRU 128 | 24 | 60/10/10 | 3e-4 | 1e-2 | 0.20 |
 | B5 GAT-GRU | GAT 64×4 heads, GRU 128 | 16 | 60/15/20 | 1.5e-4 | 1e-2 | 0.20 |
 
 三种神经模型都使用 AdamW、gradient clip 1.0 和 cosine schedule (`lr_min=1e-6`)。
@@ -178,6 +178,12 @@ validation checkpoint 规则和评估公式，但优化器参数按结构分别�
 这些超参数不从 test 反推。若后续要做超参数搜索，应为每个模型分配相同数量的候选配置，
 只按 validation `report_f1` 和门槛选定，最终 test 只运行一次。不能为了让 baseline 达到
 某个预设分数而查看 test 后继续调参。
+
+B4 的 v2 正则化配置由 seed 42 validation 单因素对照确定：相对 v1，report F1
+从 0.2948 提升到 0.3097，report recall 从 0.2189 提升到 0.2357，hot F1 从 0.3946
+提升到 0.4093，hot AP 从 0.3242 提升到 0.3373；report precision 基本不变。
+`event_will` AP 从 0.2352 降到 0.2206，但它不是 checkpoint 主指标，且后期退化幅度明显
+减小，因此采用 v2。该选择不读取 test 指标。
 
 checkpoint 主指标为 validation `report_f1`，并要求
 `report_precision >= 0.80` 且 `report_recall >= 0.35`。每个 epoch 先在 validation
@@ -264,6 +270,6 @@ BENCHMARK_TAG=factory_pdformer_134_v1 RUN_MODE=formal DEVICE=cuda:0 \
 5. 所有 baseline 输出 `station_report` 与 `occupancy_event`；
 6. test 只使用 validation 阶段冻结的模型和固定阈值；
 7. raw 不需要重新采集，只重建 derived、dataset 和模型；
-8. 每个产物记录 `training_profile=baseline_fair_v1`、完整模型配置和神经模型参数量；
+8. 每个产物记录 `training_profile=baseline_fair_v2`、完整模型配置和神经模型参数量；
 9. 正式论文结果固定配置后至少运行 seed 42/43/44，报告均值和标准差；同一 seed 的
    episode split 不变，训练随机种子变化。

@@ -66,4 +66,4 @@ BNPDFormer 专属解码规则把 baseline 人为调到过线。
 公平对照固定共享数据、标签、episode split、监督 mask、validation 阈值扫描、test 冻结
 和指标公式。模型容量、学习率、正则化、batch 和训练时长可按结构分别配置，但必须在查看
 新 test 结果之前冻结并完整记录。当前固定配置见《统一 Baseline 对照实验执行设计》的
-`baseline_fair_v1` 表。
+`baseline_fair_v2` 表。
