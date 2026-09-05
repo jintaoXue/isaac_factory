@@ -12,6 +12,7 @@ from factory_bn.remain import (  # noqa: E402,F401
     occupancy_to_events,
     ops_hot_mask,
     pack_remain_target,
+    rasterize_node_events,
     smooth_occupancy_runs,
     station_report_metrics,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "occupancy_to_events",
     "ops_hot_mask",
     "pack_remain_target",
+    "rasterize_node_events",
     "smooth_occupancy_runs",
     "station_report_metrics",
 ]

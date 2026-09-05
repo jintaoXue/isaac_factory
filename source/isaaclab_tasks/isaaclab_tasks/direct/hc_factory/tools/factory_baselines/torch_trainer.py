@@ -20,11 +20,22 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from factory_bn_shared.remain import occupancy_event_metrics, station_report_metrics
+from factory_bn_shared.remain import (
+    occupancy_event_metrics,
+    rasterize_node_events,
+    station_report_metrics,
+)
 
 from .dataset import FactoryBaselineTensorDataset, load_shared_dataset
 from .torch_losses import MultiTaskLossConfig, compute_multitask_loss
-from .metrics import _binary_metrics, compute_metrics
+from .metrics import (
+    REPORT_THRESHOLD_SWEEP,
+    _binary_metrics,
+    compute_metrics,
+    hot_grid_metrics,
+    select_report_threshold,
+    training_cause_majority,
+)
 from .b3_lstm import B3Lstm, B3ModelConfig
 from .b4_gcn_gru import B4GcnGru, B4ModelConfig
 from .b5_gat_gru import B5GatGru, B5ModelConfig
@@ -32,6 +43,7 @@ from .b5_gat_gru import B5GatGru, B5ModelConfig
 
 @dataclass
 class TorchTrainConfig:
+    training_profile: str = "baseline_fair_v1"
     batch_size: int = 16
     max_epochs: int = 50
     patience: int = 25
@@ -45,10 +57,14 @@ class TorchTrainConfig:
     num_workers: int = 0
     device: str = "auto"
     hot_eval_threshold: float = 0.55
-    event_report_threshold: float = 0.65
+    event_report_threshold: float = 0.68
+    report_threshold_sweep: tuple[float, ...] = REPORT_THRESHOLD_SWEEP
     checkpoint_min_report_precision: float = 0.80
+    checkpoint_min_report_recall: float = 0.35
 
     def __post_init__(self) -> None:
+        if not self.training_profile.strip():
+            raise ValueError("training_profile must not be empty")
         for name in ("batch_size", "max_epochs", "patience", "min_epochs"):
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be positive")
@@ -60,10 +76,15 @@ class TorchTrainConfig:
             "hot_eval_threshold",
             "event_report_threshold",
             "checkpoint_min_report_precision",
+            "checkpoint_min_report_recall",
         ):
             value = float(getattr(self, name))
             if not 0.0 <= value <= 1.0:
                 raise ValueError(f"{name} must be in [0, 1]")
+        if not self.report_threshold_sweep:
+            raise ValueError("report_threshold_sweep must not be empty")
+        if any(not 0.0 <= float(value) <= 1.0 for value in self.report_threshold_sweep):
+            raise ValueError("report_threshold_sweep values must be in [0, 1]")
 
 
 def _model_spec(model_kind: str) -> tuple[type[nn.Module], type, str, str]:
@@ -320,7 +341,11 @@ def _evaluate_loader(
     pos_weight: torch.Tensor,
     device: torch.device,
     cause_class_count: int,
-    event_threshold: float = 0.65,
+    cause_classes: list[str] | tuple[str, ...] | None = None,
+    cause_majority: int = -1,
+    event_threshold: float = 0.68,
+    report_threshold_sweep: tuple[float, ...] | list[float] = (),
+    min_report_precision: float = 0.80,
     hot_threshold: float = 0.55,
     occupancy_type_masks: dict[str, torch.Tensor] | None = None,
 ) -> tuple[dict[str, Any], dict[str, np.ndarray], np.ndarray]:
@@ -328,7 +353,6 @@ def _evaluate_loader(
     collected: dict[str, list[np.ndarray]] = {}
     totals: dict[str, float] = {}
     sample_count = 0
-    hot_tp = hot_fp = hot_fn = 0
     score_abs_sum = 0.0
     score_count = 0
     with torch.no_grad():
@@ -359,9 +383,7 @@ def _evaluate_loader(
                 "hist_last_hot_grid": batch["hist_last_hot"],
                 "hot_probability_grid": torch.sigmoid(outputs["remain_hot_logit"]),
                 "event_will_target": batch["event_will"],
-                "event_will_probability": torch.sigmoid(
-                    outputs["event_will_logit"]
-                ),
+                "event_will_probability": torch.sigmoid(outputs["event_will_logit"]),
                 "event_start_index": outputs["event_start_logit"].argmax(dim=-1),
                 "event_duration_windows": outputs["event_duration"],
             }
@@ -402,13 +424,6 @@ def _evaluate_loader(
                 batch["remain_mask"].bool()[:, :, None]
                 & batch["occ_node_mask"].bool()[:, None, :]
             )
-            predicted_hot = (
-                torch.sigmoid(outputs["remain_hot_logit"]) >= hot_threshold
-            )
-            target_hot = batch["y_hot"].bool()
-            hot_tp += int((predicted_hot & target_hot & valid).sum().item())
-            hot_fp += int((predicted_hot & ~target_hot & valid).sum().item())
-            hot_fn += int((~predicted_hot & target_hot & valid).sum().item())
             score_valid = valid[:, :, :, None].expand_as(outputs["remain_score"])
             score_abs_sum += float(
                 torch.abs(outputs["remain_score"] - batch["y_score"])[score_valid]
@@ -418,43 +433,75 @@ def _evaluate_loader(
             score_count += int(score_valid.sum().item())
 
     arrays = {name: np.concatenate(values) for name, values in collected.items()}
-    metrics, confusion = compute_metrics(arrays, cause_class_count)
-    hot_precision = hot_tp / max(hot_tp + hot_fp, 1)
-    hot_recall = hot_tp / max(hot_tp + hot_fn, 1)
-    metrics["remain"] = {
-        "hot_threshold": hot_threshold,
-        "hot_precision": hot_precision,
-        "hot_recall": hot_recall,
-        "hot_f1": 2
-        * hot_precision
-        * hot_recall
-        / max(hot_precision + hot_recall, 1.0e-12),
-        "score_mae": score_abs_sum / max(score_count, 1),
-        "remain_len_mae_windows": float(
-            np.abs(arrays["remain_len"] - arrays["target_remain_len"]).mean()
-        ),
-        "valid_node_windows": score_count,
+    metrics, confusion = compute_metrics(
+        arrays,
+        cause_class_count,
+        cause_classes=cause_classes,
+        cause_majority=cause_majority,
+    )
+    type_masks = {
+        name: mask.detach().cpu().numpy()
+        for name, mask in (occupancy_type_masks or {}).items()
     }
-    metrics["station_report"] = station_report_metrics(
+    hot_metrics = hot_grid_metrics(
         arrays["y_hot_grid"],
-        arrays["event_will_probability"],
-        arrays["event_start_index"],
-        arrays["event_duration_windows"],
+        arrays["hot_probability_grid"],
         arrays["remain_mask_grid"],
         arrays["occ_node_mask_grid"],
-        threshold=event_threshold,
-        min_windows=8,
-        start_tol_windows=3,
-        hist_last_hot=arrays["hist_last_hot_grid"],
-        force_ongoing_will=False,
+        threshold=hot_threshold,
+        type_masks=type_masks,
     )
+    remain_len_mae = float(
+        np.abs(arrays["remain_len"] - arrays["target_remain_len"]).mean()
+    )
+    metrics["remain"] = {
+        **hot_metrics,
+        "score_mae": score_abs_sum / max(score_count, 1),
+        "remain_len_mae": remain_len_mae,
+        "remain_len_mae_windows": remain_len_mae,
+    }
+    metrics.update(hot_metrics)
+    metrics["remain_len_mae"] = remain_len_mae
+    if report_threshold_sweep:
+        report_metrics = select_report_threshold(
+            arrays["y_hot_grid"],
+            arrays["event_will_probability"],
+            arrays["event_start_index"],
+            arrays["event_duration_windows"],
+            arrays["remain_mask_grid"],
+            arrays["occ_node_mask_grid"],
+            default_threshold=event_threshold,
+            threshold_sweep=report_threshold_sweep,
+            min_precision=min_report_precision,
+            min_windows=8,
+            start_tol_windows=3,
+            hist_last_hot=arrays["hist_last_hot_grid"],
+        )
+    else:
+        report_metrics = station_report_metrics(
+            arrays["y_hot_grid"],
+            arrays["event_will_probability"],
+            arrays["event_start_index"],
+            arrays["event_duration_windows"],
+            arrays["remain_mask_grid"],
+            arrays["occ_node_mask_grid"],
+            threshold=event_threshold,
+            min_windows=8,
+            start_tol_windows=3,
+            hist_last_hot=arrays["hist_last_hot_grid"],
+            force_ongoing_will=False,
+        )
+        report_metrics["report_threshold_used"] = float(event_threshold)
+    metrics["station_report"] = report_metrics
+    metrics.update(report_metrics)
+    selected_threshold = float(report_metrics["report_threshold_used"])
     event_valid = arrays["occ_node_mask_grid"] > 0.5
     event_labels = arrays["event_will_target"][event_valid]
     event_probabilities = arrays["event_will_probability"][event_valid]
     event_will_metrics = _binary_metrics(
         event_labels,
         event_probabilities,
-        threshold=event_threshold,
+        threshold=selected_threshold,
     )
     event_will_metrics["probability_quantiles"] = {
         str(quantile): float(np.quantile(event_probabilities, quantile))
@@ -462,17 +509,27 @@ def _evaluate_loader(
     }
     event_will_metrics["probability_max"] = float(event_probabilities.max())
     metrics["event_will"] = event_will_metrics
-    metrics["occupancy_event"] = occupancy_event_metrics(
+    event_occupancy = rasterize_node_events(
+        arrays["event_will_probability"],
+        arrays["event_start_index"],
+        arrays["event_duration_windows"],
+        arrays["y_hot_grid"].shape[1],
+        threshold=selected_threshold,
+        min_windows=8,
+    )
+    occupancy_metrics = occupancy_event_metrics(
         arrays["y_hot_grid"],
-        arrays["hot_probability_grid"],
+        event_occupancy,
         arrays["remain_mask_grid"],
         arrays["occ_node_mask_grid"],
         [str(index) for index in range(arrays["y_hot_grid"].shape[-1])],
-        threshold=event_threshold,
+        threshold=0.5,
         min_windows=8,
         iou_min=0.5,
         window_size_s=60.0,
     )
+    metrics["occupancy_event"] = occupancy_metrics
+    metrics.update(occupancy_metrics)
     metrics["loss"] = {name: value / sample_count for name, value in totals.items()}
     metrics["sample_count"] = sample_count
     return metrics, arrays, confusion
@@ -680,6 +737,9 @@ def train_torch_baseline(
     model_class, config_class, baseline_id, model_name = _model_spec(model_kind)
     model_config = config_class(**model_values)
     model = model_class(model_config).to(device)
+    trainable_parameter_count = sum(
+        parameter.numel() for parameter in model.parameters() if parameter.requires_grad
+    )
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=train_config.learning_rate,
@@ -696,6 +756,12 @@ def train_torch_baseline(
     )
     loaders = _loaders(payload, train_config)
     occupancy_type_masks = _occupancy_type_masks(dataset_dir, payload, device)
+    cause_classes = list(manifest["cause_classes"])
+    train_indices = payload["split_indices"]["train"]
+    cause_majority = training_cause_majority(
+        payload["y_cause"][train_indices].numpy(),
+        cause_classes,
+    )
     pos_weight_value = 1.0
     pos_weight = torch.tensor(pos_weight_value, device=device)
     manifest_path = dataset_dir / "dataset_manifest.json"
@@ -716,7 +782,10 @@ def train_torch_baseline(
         "git_commit": _git_commit(_repo_root(Path(__file__).resolve())),
         "torch_version": str(torch.__version__),
         "device": str(device),
+        "training_profile": train_config.training_profile,
+        "trainable_parameter_count": trainable_parameter_count,
         "pos_weight": pos_weight_value,
+        "cause_majority": cause_majority,
         "occupancy_type_masks": {
             name: torch.nonzero(mask > 0.5, as_tuple=False).reshape(-1).tolist()
             for name, mask in occupancy_type_masks.items()
@@ -734,6 +803,7 @@ def train_torch_baseline(
     best_score = -1.0
     best_epoch = 0
     best_precision = 0.0
+    best_recall = 0.0
     best_hot_f1 = -1.0
     best_validation_loss = float("inf")
     empty_rank = (float("-inf"),) * 3
@@ -741,6 +811,7 @@ def train_torch_baseline(
     fallback_score = -1.0
     fallback_epoch = 0
     fallback_precision = 0.0
+    fallback_recall = 0.0
     fallback_hot_f1 = -1.0
     fallback_validation_loss = float("inf")
     fallback_rank = empty_rank
@@ -765,20 +836,26 @@ def train_torch_baseline(
             pos_weight,
             device,
             model_config.num_causes,
+            cause_classes=cause_classes,
+            cause_majority=cause_majority,
             event_threshold=train_config.event_report_threshold,
+            report_threshold_sweep=train_config.report_threshold_sweep,
+            min_report_precision=train_config.checkpoint_min_report_precision,
             hot_threshold=train_config.hot_eval_threshold,
             occupancy_type_masks=occupancy_type_masks,
         )
         report = validation_metrics["station_report"]
         validation_score = float(report["report_f1"])
         validation_precision = float(report["report_precision"])
+        validation_recall = float(report["report_recall"])
+        selected_threshold = float(report["report_threshold_used"])
         validation_hot_f1 = float(validation_metrics["remain"]["hot_f1"])
         validation_loss = float(validation_metrics["loss"]["total"])
         validation_will_ap = validation_metrics["event_will"]["pr_auc"]
         candidate_rank = _validation_checkpoint_rank(validation_metrics)
         feasible = (
-            validation_precision
-            >= train_config.checkpoint_min_report_precision
+            validation_precision >= train_config.checkpoint_min_report_precision
+            and validation_recall >= train_config.checkpoint_min_report_recall
         )
         fallback_improved = _rank_improved(candidate_rank, fallback_rank)
         feasible_improved = feasible and _rank_improved(candidate_rank, best_rank)
@@ -791,7 +868,7 @@ def train_torch_baseline(
                 "validation_report_f1": report["report_f1"],
                 "validation_report_precision": report["report_precision"],
                 "validation_report_recall": report["report_recall"],
-                "validation_event_threshold": train_config.event_report_threshold,
+                "validation_event_threshold": selected_threshold,
                 "validation_hot_threshold": train_config.hot_eval_threshold,
                 "validation_event_will_pr_auc": validation_metrics["event_will"][
                     "pr_auc"
@@ -801,16 +878,28 @@ def train_torch_baseline(
                 ]["probability_quantiles"]["0.95"],
                 "fallback_checkpoint_improved": int(fallback_improved),
                 "feasible_checkpoint_improved": int(feasible_improved),
-                "checkpoint_precision_constraint_met": int(feasible),
+                "checkpoint_precision_constraint_met": int(
+                    validation_precision >= train_config.checkpoint_min_report_precision
+                ),
+                "checkpoint_recall_constraint_met": int(
+                    validation_recall >= train_config.checkpoint_min_report_recall
+                ),
+                "checkpoint_constraints_met": int(feasible),
                 "learning_rate": float(optimizer.param_groups[0]["lr"]),
             }
         )
         history.append(row)
+        epoch_metadata = {
+            **metadata,
+            "event_report_threshold": selected_threshold,
+            "hot_eval_threshold": train_config.hot_eval_threshold,
+        }
         if fallback_improved:
             fallback_rank = candidate_rank
             fallback_score = validation_score
             fallback_epoch = epoch
             fallback_precision = validation_precision
+            fallback_recall = validation_recall
             fallback_hot_f1 = validation_hot_f1
             fallback_validation_loss = validation_loss
             save_checkpoint(
@@ -823,7 +912,7 @@ def train_torch_baseline(
                 model_config,
                 loss_config,
                 train_config,
-                metadata,
+                epoch_metadata,
             )
         if feasible_improved:
             checkpoint_constraint_met = True
@@ -831,6 +920,7 @@ def train_torch_baseline(
             best_score = validation_score
             best_epoch = epoch
             best_precision = validation_precision
+            best_recall = validation_recall
             best_hot_f1 = validation_hot_f1
             best_validation_loss = validation_loss
             save_checkpoint(
@@ -843,7 +933,7 @@ def train_torch_baseline(
                 model_config,
                 loss_config,
                 train_config,
-                metadata,
+                epoch_metadata,
             )
         selection_improved = (
             feasible_improved if checkpoint_constraint_met else fallback_improved
@@ -862,7 +952,7 @@ def train_torch_baseline(
             model_config,
             loss_config,
             train_config,
-            metadata,
+            epoch_metadata,
         )
         print(
             f"epoch={epoch:03d} train_loss={train_losses['total']:.6f} "
@@ -888,39 +978,36 @@ def train_torch_baseline(
         best_score = fallback_score
         best_epoch = fallback_epoch
         best_precision = fallback_precision
+        best_recall = fallback_recall
         best_hot_f1 = fallback_hot_f1
         best_validation_loss = fallback_validation_loss
     best_model, checkpoint = load_checkpoint(output_dir / "best.pt", device)
-    initial_validation_metrics, validation_arrays, _ = _evaluate_loader(
+    event_threshold = float(
+        checkpoint["metadata"].get(
+            "event_report_threshold", train_config.event_report_threshold
+        )
+    )
+    validation_metrics, validation_arrays, validation_confusion = _evaluate_loader(
         best_model,
         loaders["validation"],
         loss_config,
         pos_weight,
         device,
         model_config.num_causes,
-        event_threshold=train_config.event_report_threshold,
+        cause_classes=cause_classes,
+        cause_majority=cause_majority,
+        event_threshold=event_threshold,
         hot_threshold=train_config.hot_eval_threshold,
         occupancy_type_masks=occupancy_type_masks,
     )
-    event_threshold = train_config.event_report_threshold
     checkpoint["metadata"]["event_report_threshold"] = event_threshold
     checkpoint["metadata"]["hot_eval_threshold"] = train_config.hot_eval_threshold
-    checkpoint["metadata"]["checkpoint_constraint_met"] = (
-        checkpoint_constraint_met
-    )
+    checkpoint["metadata"]["checkpoint_constraint_met"] = checkpoint_constraint_met
     torch.save(checkpoint, output_dir / "best.pt")
     config_payload["metadata"]["event_report_threshold"] = event_threshold
-    config_payload["metadata"]["hot_eval_threshold"] = (
-        train_config.hot_eval_threshold
-    )
-    config_payload["metadata"]["checkpoint_constraint_met"] = (
-        checkpoint_constraint_met
-    )
+    config_payload["metadata"]["hot_eval_threshold"] = train_config.hot_eval_threshold
+    config_payload["metadata"]["checkpoint_constraint_met"] = checkpoint_constraint_met
     _write_json(output_dir / "config.json", config_payload)
-    validation_metrics = initial_validation_metrics
-    _, validation_confusion = compute_metrics(
-        validation_arrays, model_config.num_causes
-    )
     test_metrics, test_arrays, test_confusion = _evaluate_loader(
         best_model,
         loaders["test"],
@@ -928,6 +1015,8 @@ def train_torch_baseline(
         pos_weight,
         device,
         model_config.num_causes,
+        cause_classes=cause_classes,
+        cause_majority=cause_majority,
         event_threshold=event_threshold,
         hot_threshold=train_config.hot_eval_threshold,
         occupancy_type_masks=occupancy_type_masks,
@@ -958,6 +1047,8 @@ def train_torch_baseline(
         "baseline_id": baseline_id,
         "model_name": model_name,
         "model_kind": model_kind,
+        "training_profile": train_config.training_profile,
+        "trainable_parameter_count": trainable_parameter_count,
         "dataset_contract": manifest["dataset_contract"],
         "dataset_version": manifest["dataset_version"],
         "label_version": manifest["label_version"],
@@ -965,11 +1056,13 @@ def train_torch_baseline(
         "epochs_trained": len(history),
         "best_validation_report_f1": best_score,
         "best_validation_report_precision": best_precision,
+        "best_validation_report_recall": best_recall,
         "best_validation_hot_f1": best_hot_f1,
         "best_validation_total_loss": best_validation_loss,
         "checkpoint_precision_constraint": (
             train_config.checkpoint_min_report_precision
         ),
+        "checkpoint_recall_constraint": (train_config.checkpoint_min_report_recall),
         "checkpoint_constraint_met": checkpoint_constraint_met,
         "checkpoint_selection": (
             "constrained_report_f1_hot_f1_val_loss"
@@ -977,15 +1070,14 @@ def train_torch_baseline(
             else "fallback_report_f1_hot_f1_val_loss"
         ),
         "event_report_threshold": event_threshold,
+        "report_threshold_selected_on": "validation",
         "hot_eval_threshold": train_config.hot_eval_threshold,
         "test_hot_f1": all_metrics["test"]["remain"]["hot_f1"],
         "test_report_f1": all_metrics["test"]["station_report"]["report_f1"],
         "test_report_precision": all_metrics["test"]["station_report"][
             "report_precision"
         ],
-        "test_report_recall": all_metrics["test"]["station_report"][
-            "report_recall"
-        ],
+        "test_report_recall": all_metrics["test"]["station_report"]["report_recall"],
         "elapsed_seconds": time.time() - started_at,
         "checkpoint_epoch": checkpoint["epoch"],
         "output_dir": str(output_dir),
@@ -1027,6 +1119,8 @@ def evaluate_torch_checkpoint(
     event_threshold = float(checkpoint["metadata"]["event_report_threshold"])
     hot_threshold = float(checkpoint["metadata"].get("hot_eval_threshold", 0.55))
     occupancy_type_masks = _occupancy_type_masks(dataset_dir, payload, device)
+    cause_classes = list(manifest["cause_classes"])
+    cause_majority = int(checkpoint["metadata"].get("cause_majority", -1))
     metrics, arrays, confusion = _evaluate_loader(
         model,
         loaders[split_name],
@@ -1034,6 +1128,8 @@ def evaluate_torch_checkpoint(
         pos_weight,
         device,
         model.config.num_causes,
+        cause_classes=cause_classes,
+        cause_majority=cause_majority,
         event_threshold=event_threshold,
         hot_threshold=hot_threshold,
         occupancy_type_masks=occupancy_type_masks,
@@ -1061,9 +1157,7 @@ def evaluate_torch_checkpoint(
             "model_name": checkpoint["metadata"]["model_name"],
             "model_kind": checkpoint["model_kind"],
             "best_epoch": checkpoint["epoch"],
-            "best_validation_report_f1": checkpoint[
-                "best_validation_report_f1"
-            ],
+            "best_validation_report_f1": checkpoint["best_validation_report_f1"],
             "checkpoint": str(checkpoint_path.resolve()),
             "output_dir": str(output_dir),
         }

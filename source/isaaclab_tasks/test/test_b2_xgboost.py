@@ -92,12 +92,21 @@ class TestB2XGBoost(unittest.TestCase):
 
     def test_main_experiment_thresholds_are_the_defaults(self) -> None:
         config = B2XGBoostConfig()
+        self.assertEqual(config.training_profile, "baseline_fair_v1")
+        self.assertEqual(config.n_estimators, 500)
+        self.assertEqual(config.max_depth, 5)
+        self.assertEqual(config.min_child_weight, 3.0)
+        self.assertEqual(config.reg_lambda, 5.0)
         self.assertEqual(config.hot_eval_threshold, 0.55)
-        self.assertEqual(config.event_report_threshold, 0.65)
+        self.assertEqual(config.event_report_threshold, 0.68)
+        self.assertEqual(config.report_threshold_min_precision, 0.80)
+        self.assertEqual(config.checkpoint_min_report_recall, 0.35)
         with self.assertRaisesRegex(ValueError, "hot_eval_threshold"):
             B2XGBoostConfig(hot_eval_threshold=1.01)
         with self.assertRaisesRegex(ValueError, "event_report_threshold"):
             B2XGBoostConfig(event_report_threshold=-0.01)
+        with self.assertRaisesRegex(ValueError, "training_profile"):
+            B2XGBoostConfig(training_profile="")
 
 
 if __name__ == "__main__":

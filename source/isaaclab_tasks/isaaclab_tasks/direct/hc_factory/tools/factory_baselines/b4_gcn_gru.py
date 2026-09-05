@@ -76,8 +76,13 @@ class B4GcnGru(nn.Module):
     def __init__(self, config: B4ModelConfig) -> None:
         super().__init__()
         self.config = config
+        self.input_projection = nn.Linear(
+            config.input_dim, config.gcn_hidden, bias=False
+        )
         self.gcn1 = DenseGraphConvolution(config.input_dim, config.gcn_hidden)
         self.gcn2 = DenseGraphConvolution(config.gcn_hidden, config.gcn_hidden)
+        self.gcn1_norm = nn.LayerNorm(config.gcn_hidden)
+        self.gcn2_norm = nn.LayerNorm(config.gcn_hidden)
         self.dropout = nn.Dropout(config.dropout)
         self.gru = nn.GRU(
             input_size=config.gcn_hidden,
@@ -115,10 +120,16 @@ class B4GcnGru(nn.Module):
         )
         spatial_mask = node_mask[:, None].expand(batch_size, time_steps, node_count)
         spatial_mask = spatial_mask.reshape(batch_size * time_steps, node_count)
+        valid_features = spatial_mask[:, :, None].to(spatial_x.dtype)
+        input_residual = self.input_projection(spatial_x) * valid_features
         spatial = self.gcn1(spatial_x, spatial_adjacency, spatial_mask)
-        spatial = self.dropout(F.relu(spatial))
-        spatial = self.gcn2(spatial, spatial_adjacency, spatial_mask)
-        spatial = F.relu(spatial).view(batch_size, time_steps, node_count, -1)
+        spatial = (
+            self.dropout(F.relu(self.gcn1_norm(spatial + input_residual)))
+            * valid_features
+        )
+        graph_update = self.gcn2(spatial, spatial_adjacency, spatial_mask)
+        spatial = F.relu(self.gcn2_norm(graph_update + spatial)) * valid_features
+        spatial = spatial.view(batch_size, time_steps, node_count, -1)
         temporal = spatial.permute(0, 2, 1, 3).reshape(
             batch_size * node_count, time_steps, self.config.gcn_hidden
         )

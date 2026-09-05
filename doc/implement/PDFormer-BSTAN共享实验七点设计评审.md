@@ -91,8 +91,9 @@ starved upstream、queue buildup、high utilization。注入名称和 score fall
 - occupancy event temporal IoU 指标；
 - cell-level occupancy 指标作为辅助。
 
-事件最短持续 8 个窗口，预测阈值固定 0.65，IoU 阈值固定 0.5。checkpoint 使用
-validation `report_f1`，并要求 `report_precision >= 0.80`。
+事件最短持续 8 个窗口，报告阈值在 validation 扫描后冻结到 test，IoU 阈值固定 0.5。
+checkpoint 使用 validation `report_f1`，并要求 `report_precision >= 0.80` 且
+`report_recall >= 0.35`。
 
 ## 9. 数据影响
 

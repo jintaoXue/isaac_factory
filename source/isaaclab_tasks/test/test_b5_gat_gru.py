@@ -21,9 +21,13 @@ from factory_baselines.torch_losses import (  # noqa: E402
 )
 from factory_baselines.b5_gat_gru import B5GatGru, B5ModelConfig  # noqa: E402
 from factory_baselines.metrics import (  # noqa: E402
+    REPORT_THRESHOLD_SWEEP,
     _binary_metrics,
     compute_metrics,
+    hot_grid_metrics,
     select_f1_threshold,
+    select_report_threshold,
+    training_cause_majority,
 )
 from factory_baselines.torch_trainer import (  # noqa: E402
     TorchTrainConfig,
@@ -136,15 +140,11 @@ class TestB5GatGru(unittest.TestCase):
     def test_occupancy_loss_excludes_non_target_nodes(self) -> None:
         batch = self._batch()
         outputs = B5GatGru(self.config)(**self._inputs(batch))
-        _, original = compute_multitask_loss(
-            outputs, batch, MultiTaskLossConfig()
-        )
+        _, original = compute_multitask_loss(outputs, batch, MultiTaskLossConfig())
         changed = dict(outputs)
         changed["remain_hot_logit"] = outputs["remain_hot_logit"].clone()
         changed["remain_hot_logit"][:, :, -2:] = 100.0
-        _, modified = compute_multitask_loss(
-            changed, batch, MultiTaskLossConfig()
-        )
+        _, modified = compute_multitask_loss(changed, batch, MultiTaskLossConfig())
 
         for name in ("remain_hot", "remain_dice", "remain_iou"):
             self.assertTrue(torch.equal(original[name], modified[name]))
@@ -178,9 +178,7 @@ class TestB5GatGru(unittest.TestCase):
         expected_duration = torch.nn.functional.smooth_l1_loss(
             torch.log1p(torch.tensor(1.0)), torch.log1p(torch.tensor(9.0))
         )
-        self.assertTrue(
-            torch.allclose(components["event_duration"], expected_duration)
-        )
+        self.assertTrue(torch.allclose(components["event_duration"], expected_duration))
 
     def test_two_epoch_synthetic_overfit_smoke(self) -> None:
         model = B5GatGru(self.config)
@@ -250,6 +248,90 @@ class TestB5GatGru(unittest.TestCase):
         metrics, confusion = compute_metrics(arrays, cause_class_count=10)
         self.assertEqual(confusion.sum(), 2)
         self.assertEqual(metrics["cause"]["sample_count"], 2)
+
+    def test_cause_protocol_uses_train_majority_and_six_report_classes(self) -> None:
+        import numpy as np
+
+        classes = [
+            "machine_failure",
+            "human_unavailable",
+            "transport_delay",
+            "material_shortage",
+            "blocked_downstream",
+            "starved_upstream",
+            "unavailable",
+            "high_utilization",
+            "queue_buildup",
+            "score_threshold",
+        ]
+        train_majority = training_cause_majority(np.array([0, 2, 2, 3, 9]), classes)
+        arrays = {
+            "y_cause": np.array([2, 2, 3, 0]),
+            "cause_predictions": np.array([2, 3, 3, 0]),
+        }
+        metrics, confusion = compute_metrics(
+            arrays,
+            cause_class_count=len(classes),
+            cause_classes=classes,
+            cause_majority=train_majority,
+        )
+
+        self.assertEqual(train_majority, 2)
+        self.assertEqual(confusion.sum(), 3)
+        self.assertAlmostEqual(metrics["cause_macro_recall"], 0.75)
+        self.assertAlmostEqual(metrics["cause_majority_acc"], 2 / 3)
+
+    def test_hot_grid_metrics_use_valid_cells_and_resource_types(self) -> None:
+        import numpy as np
+
+        labels = np.array([[[1, 0], [0, 1]]], dtype=np.float32)
+        probabilities = np.array([[[0.9, 0.8], [0.1, 0.9]]], dtype=np.float32)
+        metrics = hot_grid_metrics(
+            labels,
+            probabilities,
+            remain_mask=np.array([[1, 1]]),
+            occ_node_mask=np.array([[1, 1]]),
+            type_masks={
+                "machine": np.array([1, 0]),
+                "gantry": np.array([0, 1]),
+            },
+        )
+
+        self.assertAlmostEqual(metrics["hot_precision"], 2 / 3)
+        self.assertEqual(metrics["hot_recall"], 1.0)
+        self.assertEqual(metrics["hot_f1_machine"], 1.0)
+        self.assertAlmostEqual(metrics["hot_f1_gantry"], 2 / 3)
+
+    def test_report_threshold_is_selected_on_validation_with_precision_gate(
+        self,
+    ) -> None:
+        import numpy as np
+
+        y_hot = np.zeros((1, 15, 2), dtype=np.float32)
+        y_hot[0, :8, 0] = 1.0
+        metrics = select_report_threshold(
+            y_hot,
+            will_probability=np.array([[0.75, 0.65]], dtype=np.float32),
+            start_index=np.zeros((1, 2), dtype=np.int64),
+            duration_windows=np.full((1, 2), 8.0, dtype=np.float32),
+            remain_mask=np.ones((1, 15), dtype=np.float32),
+            occ_node_mask=np.ones((1, 2), dtype=np.float32),
+            default_threshold=0.55,
+            threshold_sweep=[0.55, 0.68, 0.80],
+            min_precision=0.80,
+        )
+
+        self.assertEqual(metrics["report_threshold_used"], 0.68)
+        self.assertEqual(metrics["report_precision"], 1.0)
+        self.assertEqual(metrics["report_recall"], 1.0)
+
+    def test_latest_main_evaluation_defaults(self) -> None:
+        config = TorchTrainConfig()
+
+        self.assertEqual(config.event_report_threshold, 0.68)
+        self.assertEqual(config.report_threshold_sweep, REPORT_THRESHOLD_SWEEP)
+        self.assertEqual(config.checkpoint_min_report_precision, 0.80)
+        self.assertEqual(config.checkpoint_min_report_recall, 0.35)
 
     def test_occurrence_threshold_is_selected_on_validation_predictions(self) -> None:
         import numpy as np

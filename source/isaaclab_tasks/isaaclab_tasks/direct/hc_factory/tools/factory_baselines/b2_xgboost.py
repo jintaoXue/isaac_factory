@@ -19,34 +19,47 @@ from factory_bn_shared.causes import cause_ignore_ids
 from factory_bn_shared.remain import (
     node_event_targets,
     occupancy_event_metrics,
+    rasterize_node_events,
     station_report_metrics,
 )
 
 from .dataset import FactoryBaselineTensorDataset, load_shared_dataset
-from .metrics import compute_metrics
+from .metrics import (
+    REPORT_THRESHOLD_SWEEP,
+    choose_report_metrics,
+    compute_metrics,
+    hot_grid_metrics,
+    training_cause_majority,
+)
 
 
 @dataclass
 class B2XGBoostConfig:
     """Training and bounded cell-sampling settings for B2."""
 
+    training_profile: str = "baseline_fair_v1"
     seed: int = 42
-    n_estimators: int = 300
-    max_depth: int = 6
-    learning_rate: float = 0.05
+    n_estimators: int = 500
+    max_depth: int = 5
+    learning_rate: float = 0.03
     subsample: float = 0.8
     colsample_bytree: float = 0.8
-    min_child_weight: float = 1.0
-    reg_lambda: float = 1.0
+    min_child_weight: float = 3.0
+    reg_lambda: float = 5.0
     n_jobs: int = 8
     near_remain_windows: int = 60
     negative_cell_ratio: float = 4.0
     empty_sample_negative_cells: int = 32
     prediction_cell_chunk_size: int = 65536
     hot_eval_threshold: float = 0.55
-    event_report_threshold: float = 0.65
+    event_report_threshold: float = 0.68
+    report_threshold_sweep: tuple[float, ...] = REPORT_THRESHOLD_SWEEP
+    report_threshold_min_precision: float = 0.80
+    checkpoint_min_report_recall: float = 0.35
 
     def __post_init__(self) -> None:
+        if not self.training_profile.strip():
+            raise ValueError("training_profile must not be empty")
         for name in (
             "n_estimators",
             "max_depth",
@@ -61,10 +74,23 @@ class B2XGBoostConfig:
             raise ValueError("learning_rate must be positive")
         if self.negative_cell_ratio <= 0:
             raise ValueError("negative_cell_ratio must be positive")
-        for name in ("hot_eval_threshold", "event_report_threshold"):
+        if self.min_child_weight <= 0:
+            raise ValueError("min_child_weight must be positive")
+        if self.reg_lambda < 0:
+            raise ValueError("reg_lambda must be non-negative")
+        for name in (
+            "hot_eval_threshold",
+            "event_report_threshold",
+            "report_threshold_min_precision",
+            "checkpoint_min_report_recall",
+        ):
             value = float(getattr(self, name))
             if not 0.0 <= value <= 1.0:
                 raise ValueError(f"{name} must be in [0, 1]")
+        if not self.report_threshold_sweep:
+            raise ValueError("report_threshold_sweep must not be empty")
+        if any(not 0.0 <= float(value) <= 1.0 for value in self.report_threshold_sweep):
+            raise ValueError("report_threshold_sweep values must be in [0, 1]")
 
 
 @dataclass
@@ -381,9 +407,7 @@ def _predict_cells(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     target_score, target_hot = _sample_target(payload, sample_index)
     length, node_count = target_hot.shape
-    valid_nodes = np.flatnonzero(
-        payload["occ_node_mask"][sample_index].numpy() > 0.5
-    )
+    valid_nodes = np.flatnonzero(payload["occ_node_mask"][sample_index].numpy() > 0.5)
     probabilities = np.zeros((length, node_count), dtype=np.float32)
     predicted_score = np.zeros((length, node_count), dtype=np.float32)
     offsets, nodes = np.meshgrid(
@@ -421,6 +445,32 @@ def _save_head(output_dir: Path, name: str, head: _Head) -> dict[str, Any]:
     return metadata
 
 
+def _occupancy_type_masks(dataset_dir: Path, node_count: int) -> dict[str, np.ndarray]:
+    masks = {
+        name: np.zeros(node_count, dtype=bool)
+        for name in ("machine", "workbench", "gantry", "agv")
+    }
+    with (dataset_dir / "node_catalog.csv").open(
+        newline="", encoding="utf-8"
+    ) as stream:
+        for row in csv.DictReader(stream):
+            index = int(row["node_index"])
+            resource_id = str(row["resource_id"]).lower()
+            resource_type = str(row["resource_type"]).lower()
+            if "workbench" in resource_id:
+                name = "workbench"
+            elif resource_type == "machine":
+                name = "machine"
+            elif resource_type == "gantry":
+                name = "gantry"
+            elif resource_type in {"transport_robot", "agv"}:
+                name = "agv"
+            else:
+                continue
+            masks[name][index] = True
+    return masks
+
+
 def train_b2_xgboost(
     dataset_dir: Path,
     output_dir: Path,
@@ -442,8 +492,10 @@ def train_b2_xgboost(
     train_indices = split_indices["train"]
     train_X = _base_features(payload, train_indices)
     cause_values = payload["y_cause"][train_indices].numpy()
+    cause_classes = list(manifest["cause_classes"])
+    cause_majority = training_cause_majority(cause_values, cause_classes)
     cause_valid = cause_values >= 0
-    for cause_id in cause_ignore_ids():
+    for cause_id in cause_ignore_ids(cause_classes):
         cause_valid &= cause_values != int(cause_id)
     cause_trained = bool(cause_valid.any())
     cause_head = (
@@ -492,6 +544,7 @@ def train_b2_xgboost(
     _, validation_arrays = scalar_arrays("validation")
     occupancy_threshold = config.hot_eval_threshold
     event_report_threshold = config.event_report_threshold
+    type_masks = _occupancy_type_masks(dataset_dir, len(manifest["node_ids"]))
 
     sample_rows = list(
         csv.DictReader(
@@ -507,9 +560,12 @@ def train_b2_xgboost(
             else scalar_arrays(split_name)
         )
         metrics, confusion = compute_metrics(
-            arrays, len(manifest["cause_classes"])
+            arrays,
+            len(cause_classes),
+            cause_classes=cause_classes,
+            cause_majority=cause_majority,
         )
-        hot_tp = hot_fp = hot_fn = score_count = 0
+        score_count = 0
         score_abs_sum = 0.0
         predicted_event_json = []
         target_event_json = []
@@ -518,9 +574,6 @@ def train_b2_xgboost(
         remain_masks = []
         occupancy_masks = []
         history_hot = []
-        event_will_probabilities = []
-        event_start_indices = []
-        event_durations = []
         for position, sample_index in enumerate(arrays["sample_index"]):
             predicted_hot, _probability, predicted_score, target_score = _predict_cells(
                 payload,
@@ -531,14 +584,7 @@ def train_b2_xgboost(
                 config,
             )
             _, target_hot = _sample_target(payload, int(sample_index))
-            valid_nodes = (
-                payload["occ_node_mask"][sample_index].numpy() > 0.5
-            )
-            predicted_valid = predicted_hot[:, valid_nodes]
-            target_valid = target_hot[:, valid_nodes].astype(bool)
-            hot_tp += int(np.logical_and(predicted_valid, target_valid).sum())
-            hot_fp += int(np.logical_and(predicted_valid, ~target_valid).sum())
-            hot_fn += int(np.logical_and(~predicted_valid, target_valid).sum())
+            valid_nodes = payload["occ_node_mask"][sample_index].numpy() > 0.5
             score_abs_sum += float(
                 np.abs(
                     predicted_score[:, valid_nodes] - target_score[:, valid_nodes]
@@ -548,12 +594,6 @@ def train_b2_xgboost(
             sample = FactoryBaselineTensorDataset(payload, [int(sample_index)])[0]
             remain_mask = sample["remain_mask"].numpy()
             occ_mask = sample["occ_node_mask"].numpy()
-            will, start, duration = node_event_targets(
-                (_probability >= event_report_threshold).astype(np.float32),
-                min_windows=8,
-                remain_mask=remain_mask,
-                occ_node_mask=occ_mask,
-            )
             padded_target = np.zeros(
                 (int(payload["max_remain_windows"]), target_hot.shape[1]),
                 dtype=np.float32,
@@ -566,9 +606,6 @@ def train_b2_xgboost(
             remain_masks.append(remain_mask)
             occupancy_masks.append(occ_mask)
             history_hot.append(sample["hist_last_hot"].numpy())
-            event_will_probabilities.append(will)
-            event_start_indices.append(start)
-            event_durations.append(duration)
             predicted_length = int(round(float(arrays["remain_len"][position])))
             target_length = int(arrays["target_remain_len"][position])
             predicted_event_json.append(
@@ -584,45 +621,89 @@ def train_b2_xgboost(
             )
         arrays["predicted_events_json"] = np.asarray(predicted_event_json)
         arrays["target_events_json"] = np.asarray(target_event_json)
-        hot_precision = hot_tp / max(hot_tp + hot_fp, 1)
-        hot_recall = hot_tp / max(hot_tp + hot_fn, 1)
-        metrics["remain"] = {
-            "hot_threshold": occupancy_threshold,
-            "hot_precision": hot_precision,
-            "hot_recall": hot_recall,
-            "hot_f1": 2.0
-            * hot_precision
-            * hot_recall
-            / max(hot_precision + hot_recall, 1.0e-12),
-            "score_mae": score_abs_sum / max(score_count, 1),
-            "remain_len_mae_windows": float(
-                np.abs(arrays["remain_len"] - arrays["target_remain_len"]).mean()
-            ),
-            "valid_node_windows": score_count,
-        }
-        metrics["station_report"] = station_report_metrics(
-            np.stack(target_grids),
-            np.stack(event_will_probabilities),
-            np.stack(event_start_indices),
-            np.stack(event_durations),
-            np.stack(remain_masks),
-            np.stack(occupancy_masks),
-            threshold=event_report_threshold,
-            min_windows=8,
-            start_tol_windows=3,
-            hist_last_hot=np.stack(history_hot),
+        target_grid_array = np.stack(target_grids)
+        probability_grid_array = np.stack(probability_grids)
+        remain_mask_array = np.stack(remain_masks)
+        occupancy_mask_array = np.stack(occupancy_masks)
+        history_hot_array = np.stack(history_hot)
+        hot_metrics = hot_grid_metrics(
+            target_grid_array,
+            probability_grid_array,
+            remain_mask_array,
+            occupancy_mask_array,
+            threshold=occupancy_threshold,
+            type_masks=type_masks,
         )
-        metrics["occupancy_event"] = occupancy_event_metrics(
-            np.stack(target_grids),
-            np.stack(probability_grids),
-            np.stack(remain_masks),
-            np.stack(occupancy_masks),
+        remain_len_mae = float(
+            np.abs(arrays["remain_len"] - arrays["target_remain_len"]).mean()
+        )
+        metrics["remain"] = {
+            **hot_metrics,
+            "score_mae": score_abs_sum / max(score_count, 1),
+            "remain_len_mae": remain_len_mae,
+            "remain_len_mae_windows": remain_len_mae,
+        }
+        metrics.update(hot_metrics)
+        metrics["remain_len_mae"] = remain_len_mae
+
+        thresholds = (
+            [event_report_threshold]
+            if split_name == "test"
+            else [config.event_report_threshold, *config.report_threshold_sweep]
+        )
+        report_candidates = []
+        event_predictions: dict[float, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+        for threshold in dict.fromkeys(float(value) for value in thresholds):
+            will, start, duration = node_event_targets(
+                (probability_grid_array >= threshold).astype(np.float32),
+                min_windows=8,
+                remain_mask=remain_mask_array,
+                occ_node_mask=occupancy_mask_array,
+            )
+            candidate = station_report_metrics(
+                target_grid_array,
+                will,
+                start,
+                duration,
+                remain_mask_array,
+                occupancy_mask_array,
+                threshold=0.5,
+                min_windows=8,
+                start_tol_windows=3,
+                hist_last_hot=history_hot_array,
+            )
+            candidate["report_threshold_used"] = threshold
+            report_candidates.append(candidate)
+            event_predictions[threshold] = (will, start, duration)
+        report_metrics = choose_report_metrics(
+            report_candidates,
+            min_precision=config.report_threshold_min_precision,
+        )
+        event_report_threshold = float(report_metrics["report_threshold_used"])
+        metrics["station_report"] = report_metrics
+        metrics.update(report_metrics)
+        will, start, duration = event_predictions[event_report_threshold]
+        event_occupancy = rasterize_node_events(
+            will,
+            start,
+            duration,
+            target_grid_array.shape[1],
+            threshold=0.5,
+            min_windows=8,
+        )
+        occupancy_metrics = occupancy_event_metrics(
+            target_grid_array,
+            event_occupancy,
+            remain_mask_array,
+            occupancy_mask_array,
             manifest["node_ids"],
-            threshold=event_report_threshold,
+            threshold=0.5,
             min_windows=8,
             iou_min=0.5,
             window_size_s=float(manifest["window_size_s"]),
         )
+        metrics["occupancy_event"] = occupancy_metrics
+        metrics.update(occupancy_metrics)
         metrics["sample_count"] = len(arrays["sample_index"])
         all_metrics[split_name] = metrics
         _write_json(output_dir / f"metrics_{split_name}.json", metrics)
@@ -716,6 +797,7 @@ def train_b2_xgboost(
     metadata = {
         "baseline_id": "B2",
         "model_name": "XGBoost",
+        "training_profile": config.training_profile,
         "dataset_dir": str(dataset_dir),
         "dataset_manifest_sha256": _manifest_hash(
             dataset_dir / "dataset_manifest.json"
@@ -727,27 +809,44 @@ def train_b2_xgboost(
         "config": asdict(config),
         "models": model_metadata,
         "event_report_threshold": event_report_threshold,
+        "report_threshold_selected_on": "validation",
         "occupancy_threshold": occupancy_threshold,
+        "cause_majority": cause_majority,
         "training_cell_count": int(len(cell_hot_y)),
         "training_positive_cell_count": int(cell_hot_y.sum()),
         "cause_head_trained": cause_trained,
     }
     _write_json(output_dir / "config.json", metadata)
     _write_json(output_dir / "metrics.json", all_metrics)
+    validation_report = all_metrics["validation"]["station_report"]
+    test_report = all_metrics["test"]["station_report"]
+    checkpoint_constraint_met = (
+        float(validation_report["report_precision"])
+        >= config.report_threshold_min_precision
+        and float(validation_report["report_recall"])
+        >= config.checkpoint_min_report_recall
+    )
     summary = {
         "status": "completed",
         "baseline_id": "B2",
         "model_name": "XGBoost",
+        "training_profile": config.training_profile,
         "dataset_contract": manifest["dataset_contract"],
         "dataset_version": manifest["dataset_version"],
         "label_version": manifest["label_version"],
         "validation_hot_f1": all_metrics["validation"]["remain"]["hot_f1"],
         "test_hot_f1": all_metrics["test"]["remain"]["hot_f1"],
-        "validation_report_f1": all_metrics["validation"]["station_report"][
-            "report_f1"
-        ],
-        "test_report_f1": all_metrics["test"]["station_report"]["report_f1"],
+        "validation_report_precision": validation_report["report_precision"],
+        "validation_report_recall": validation_report["report_recall"],
+        "validation_report_f1": validation_report["report_f1"],
+        "test_report_precision": test_report["report_precision"],
+        "test_report_recall": test_report["report_recall"],
+        "test_report_f1": test_report["report_f1"],
+        "checkpoint_precision_constraint": config.report_threshold_min_precision,
+        "checkpoint_recall_constraint": config.checkpoint_min_report_recall,
+        "checkpoint_constraint_met": checkpoint_constraint_met,
         "event_report_threshold": event_report_threshold,
+        "report_threshold_selected_on": "validation",
         "occupancy_threshold": occupancy_threshold,
         "elapsed_seconds": time.time() - started_at,
         "output_dir": str(output_dir),

@@ -98,6 +98,18 @@ class TestB3B4Models(unittest.TestCase):
             changed = model(**{**self.batch, "adjacency": identity})["node_hidden"]
         self.assertFalse(torch.allclose(full, changed))
 
+    def test_b4_residual_preserves_station_identity_on_dense_graph(self) -> None:
+        model = B4GcnGru(self.configs["b4_gcn_gru"]).eval()
+        with torch.no_grad():
+            hidden = model(**self.batch)["node_hidden"]
+
+        self.assertFalse(torch.allclose(hidden[:, 0], hidden[:, 1]))
+
+    def test_training_profile_must_be_named(self) -> None:
+        self.assertEqual(TorchTrainConfig().training_profile, "baseline_fair_v1")
+        with self.assertRaisesRegex(ValueError, "training_profile"):
+            TorchTrainConfig(training_profile="")
+
     def test_checkpoint_registry_round_trip(self) -> None:
         cases = (
             ("b3_lstm", B3Lstm(self.configs["b3_lstm"])),

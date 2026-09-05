@@ -369,6 +369,26 @@ class TestFactoryBaselineDataset(unittest.TestCase):
                     self.assertGreaterEqual(
                         summary["best_validation_report_f1"], 0.0
                     )
+                    metrics = json.loads(
+                        (model_dir / "metrics.json").read_text(encoding="utf-8")
+                    )
+                    validation = metrics["validation"]
+                    test = metrics["test"]
+                    self.assertIn("report_threshold_used", validation)
+                    self.assertEqual(
+                        validation["report_threshold_used"],
+                        test["report_threshold_used"],
+                    )
+                    for name in (
+                        "hot_ap",
+                        "hot_pos_rate",
+                        "hot_type_hmean",
+                        "remain_len_mae",
+                        "cause_macro_recall",
+                    ):
+                        self.assertIn(name, test)
+                    if test["cause_n"]:
+                        self.assertIn("cause_majority_acc", test)
                     self.assertTrue((model_dir / "occupancy_events_test.csv").is_file())
 
 

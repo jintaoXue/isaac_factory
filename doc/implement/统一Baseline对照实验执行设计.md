@@ -2,8 +2,8 @@
 
 ## 1. 当前状态
 
-- 状态：共享 dataset 和首轮 smoke 已通过；主实验 loss/checkpoint 对齐修订已通过本地回归，等待服务器二次 smoke
-- 主实验参考：`dev_tyx@7b2fc02`
+- 状态：共享 dataset 和首轮正式训练已通过；评估协议已对齐主实验最新定义，等待服务器重评/重训
+- 主实验参考：`dev_tyx@52e8643` 的 `模型评估指标.md`
 - raw 契约：`collector_version=v0.3`
 - derived 契约：`tyx_bn_agg_unsupervised_v2`
 - dataset：`factory_baseline_dataset_v3`
@@ -27,8 +27,8 @@ episode split
 事件恢复与评分规则
 ```
 
-模型之间仅允许编码器结构和模型自身超参数不同。扰动日志是上下文和原因证据，不能直接
-创建瓶颈正标签。
+模型之间允许编码器结构和与该结构匹配的优化超参数不同；模型容量、超参数和训练预算
+必须随产物披露。扰动日志是上下文和原因证据，不能直接创建瓶颈正标签。
 
 ## 3. 数据链路
 
@@ -77,7 +77,8 @@ occupancy_horizon_windows   = 15
 occupancy_horizon_s         = 900
 hot_min_windows             = 8
 hot_gap_windows             = 1
-event_report_threshold      = 0.65
+event_report_threshold      = 0.68（validation 扫描的起始值）
+report_threshold_sweep      = 0.55,0.60,0.62,0.65,0.68,0.70,0.72,0.75,0.78,0.80,0.82,0.85
 event_start_tolerance       = 3 windows
 event_iou_min               = 0.5
 ```
@@ -126,7 +127,7 @@ split 不读取正负标签或原因分布。连续特征归一化、类别权�
 
 ## 7. 训练与评分
 
-PyTorch B3-B5 的任务 loss 权重与 PDFormer `unsup_best` 一致：
+PyTorch B3-B5 使用同一套 baseline 多任务 loss，以便主要差异落在编码器上：
 
 ```text
 occupancy hot       0.5
@@ -141,7 +142,7 @@ event duration      1.0
 
 occupancy loss 只在 `remain_mask & occ_node_mask` 上计算，human/buffer 不再
 充当负样本。BCE/Dice/IoU 按 machine、workbench、gantry、AGV 分类取均值，
-并使用主实验的类型权重：
+并使用 B3-B5 共同冻结的 baseline 类型权重：
 
 ```text
 positive: machine=4, workbench=2, gantry=1, AGV=4
@@ -151,39 +152,65 @@ negative: machine=1, workbench=2, gantry=2, AGV=2
 event will loss 同样按四类资源分别归一化后取均值；start 使用与主实验一致的
 `sigma=1` 高斯软标签，duration 对窗口数执行 `log1p` 后计算 Smooth L1。
 
-PDFormer 的 reconstruction、contrastive loss、encoder warm-start 属于主模型专属能力，
-不移植到 baseline。
+这组权重不是 BNPDFormer 配方的复制，也不是评估协议的一部分。BNPDFormer 当前配方的
+reconstruction、contrastive loss、分类型 loss、encoder warm-start、双 will head、
+ongoing 强制和 recall lift 都属于主模型专属训练或解码能力，不移植到 baseline。
 
 当前 `modelnote.md` 记录的同口径 PDFormer test 锚点为 report
 `precision=0.817`、`recall=0.447`、`F1=0.578`。该数值用于正式实验后的横向核对；
 最终表格仍应从同一份 134-episode dataset 对应的模型产物中自动汇总，不能只引用文档数字。
 
-B3-B5 正式训练预设为 batch 16、最多 50 epochs、最少 25 epochs、
-patience 25、AdamW (`lr=1.5e-4`, `weight_decay=0.05`)和 cosine schedule
-(`lr_min=1e-6`)。
+正式训练使用预先冻结的 `baseline_fair_v1` 配置。各模型共享数据、监督目标、loss 形式、
+validation checkpoint 规则和评估公式，但优化器参数按结构分别设定：
+
+| 模型 | 容量/树配置 | batch | max/min/patience | 学习率 | weight decay | dropout |
+| --- | --- | ---: | --- | ---: | ---: | ---: |
+| B2 XGBoost | 500 trees, depth 5, min child 3, lambda 5 | - | - | 0.03 | - | - |
+| B3 LSTM | hidden 128, node hidden 128, node embedding 32 | 32 | 60/15/15 | 3e-4 | 1e-3 | 0.25 |
+| B4 GCN-GRU | GCN 64, GRU 128 | 24 | 60/15/20 | 3e-4 | 1e-3 | 0.10 |
+| B5 GAT-GRU | GAT 64×4 heads, GRU 128 | 16 | 60/15/20 | 1.5e-4 | 1e-2 | 0.20 |
+
+三种神经模型都使用 AdamW、gradient clip 1.0 和 cosine schedule (`lr_min=1e-6`)。
+在当前 34 节点、27 特征数据上，B3/B4/B5 默认可训练参数量约为 700k/221k/232k；
+参数量不强行做成完全相等，因为 B3 的节点展平输入本身就是非图基线定义的一部分，但每次
+训练都会把实际参数量写入 `config.json` 和 `run_summary.json`。
+
+这些超参数不从 test 反推。若后续要做超参数搜索，应为每个模型分配相同数量的候选配置，
+只按 validation `report_f1` 和门槛选定，最终 test 只运行一次。不能为了让 baseline 达到
+某个预设分数而查看 test 后继续调参。
 
 checkpoint 主指标为 validation `report_f1`，并要求
-`report_precision >= 0.80`。达到约束后只在可行 epoch 中选最高 F1；若整轮均
-未达到 0.80，则明确记录 `checkpoint_constraint_met=false`，并使用 validation F1
+`report_precision >= 0.80` 且 `report_recall >= 0.35`。每个 epoch 先在 validation
+扫描统一阈值集合，在满足 precision 门槛的候选中选择最高 report F1，并将该 epoch
+选中的阈值写入 checkpoint。达到双门槛后只在可行 epoch 中选最高 F1；若整轮均
+未达到双门槛，则明确记录 `checkpoint_constraint_met=false`，并使用 validation F1
 最佳 epoch 作诊断结果。report F1 打平时依次以更高的 occupancy hot F1 和更低的
 validation total loss 决胜，避免事件指标全零时错误固定在 epoch 1；early stopping
-使用同一排序。occupancy 评估阈值为 0.55，
-station report 阈值为 0.65，并在 test 阶段保持固定。
+使用同一排序。occupancy 评估阈值固定为 0.55；test 不再扫描阈值，严格使用所选
+checkpoint 在 validation 上确定的阈值。
 
 `event_will` 同时记录不参与 checkpoint 选择的 PR-AUC、ROC-AUC 和预测概率分位数，
 用于区分“模型没有排序能力”和“概率整体尚未越过固定报告阈值”。
 正式报告至少输出：
 
 - occupancy precision/recall/F1；
+- occupancy AP、真实/预测正例率和 machine/workbench/gantry/AGV 分类型指标；
 - who precision/recall/F1；
 - report precision/recall/F1；
 - start MAE、duration MAE；
 - ongoing/upcoming 分组 recall 和 MAE；
 - occupancy event IoU 指标；
 - remain length MAE；
-- 六类过程原因指标。
+- 六类过程原因的 per-class recall、macro recall，以及仅从 train 计算的多数类基线。
 
-B2 没有神经事件头，使用其未来 occupancy 概率恢复 station event，并以同一事件规则评分。
+B2 没有神经事件头，validation 对未来 occupancy 概率使用同一阈值集合恢复 station
+event，再按同一 who/report 规则选择阈值；test 冻结该阈值。B3-B5 直接扫描其
+`event_will_probability`。模型解码方式可以不同，但 8 分钟最短段、3 分钟 start 容差、
+监督节点 mask 和指标公式保持一致。
+
+B4 的两层 GCN 使用输入投影残差和逐层 LayerNorm。工厂图连接较密时，纯邻居平均会令
+不同工位表示快速趋同，造成按工位 event head 全零；残差保留工位自身状态，GCN 分支仍
+负责传播拓扑上下文，因此模型定义仍是标准 GCN-GRU baseline。
 
 ## 8. 服务器执行
 
@@ -214,11 +241,17 @@ BENCHMARK_TAG=factory_pdformer_134_v1 RUN_MODE=smoke DEVICE=cuda:0 \
   ./batch_factory_baseline_train.sh ALL
 ```
 
-smoke 通过后正式训练：
+smoke 通过后，优先单独重跑修正后的 B4：
 
 ```bash
 BENCHMARK_TAG=factory_pdformer_134_v1 RUN_MODE=formal DEVICE=cuda:0 \
-  MAX_EPOCHS=50 MIN_EPOCHS=25 PATIENCE=25 \
+  ./batch_factory_baseline_train.sh B4
+```
+
+B4 validation 曲线和产物通过后再运行完整一轮：
+
+```bash
+BENCHMARK_TAG=factory_pdformer_134_v1 RUN_MODE=formal DEVICE=cuda:0 \
   ./batch_factory_baseline_train.sh ALL
 ```
 
@@ -230,4 +263,7 @@ BENCHMARK_TAG=factory_pdformer_134_v1 RUN_MODE=formal DEVICE=cuda:0 \
 4. `y_hot` 在 human/buffer 列始终不参与 loss 和 metrics；
 5. 所有 baseline 输出 `station_report` 与 `occupancy_event`；
 6. test 只使用 validation 阶段冻结的模型和固定阈值；
-7. raw 不需要重新采集，只重建 derived、dataset 和模型。
+7. raw 不需要重新采集，只重建 derived、dataset 和模型；
+8. 每个产物记录 `training_profile=baseline_fair_v1`、完整模型配置和神经模型参数量；
+9. 正式论文结果固定配置后至少运行 seed 42/43/44，报告均值和标准差；同一 seed 的
+   episode split 不变，训练随机种子变化。
