@@ -8,7 +8,7 @@
 
 以下实验契约冻结：
 
-- 数据集：`factory_pdformer_134_v1`，134 个可训练 episode；
+- 数据集：待完整审计的 `factory_pdformer_134_v3`（schema v5），134 个可训练 episode；
 - split：现有整 episode train/validation/test 划分；
 - 输入/输出：过去 30 个 60 秒窗口，预测未来 15 个窗口；
 - 监督节点：machine、workbench、gantry、AGV；
@@ -16,6 +16,10 @@
 - 主指标：`report_f1`；
 - 业务门：`report_precision >= 0.80` 且 `report_recall >= 0.35`；
 - threshold：只在 validation 扫描，test 使用冻结值。
+
+旧 `factory_pdformer_134_v1` 搜索仅保留开发期证据。输入与末尾窗口已在 v4 修复，
+v5 再显式采用主实验冻结 bundle 的原因标签；新整轮开始前须通过逐样本共同输入/目标审计。
+重跑 incumbent 作为新数据上的对照起点，不能把数据修复与模型修改混为一种收益。
 
 BNPDFormer 的双 will head、ongoing 强制、recall lift、分类型解码阈值和 precursor
 加权不移植到 baseline。B3-B5 保持同一种单 event head 和同一种 loss 形式。
@@ -37,7 +41,8 @@ BNPDFormer 的双 will head、ongoing 强制、recall lift、分类型解码阈�
 
 ## 3. 统一搜索预算
 
-每个 baseline 固定 8 个候选，每个候选训练 seed 42 和 43。神经模型的 epoch 上限相同为
+首轮每个 baseline 为 8 个候选，每个候选训练 seed 42 和 43；后续受控消融每轮 4 个候选，
+完整记录各模型累计搜索次数，不声称多轮后总预算仍完全相等。神经模型的 epoch 上限相同为
 60，但 min epoch 和 patience 可按结构设置。最终候选冻结后，正式结果用 seed 42/43/44
 重训并报告均值与标准差。
 

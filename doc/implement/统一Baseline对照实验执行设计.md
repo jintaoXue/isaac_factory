@@ -2,11 +2,11 @@
 
 ## 1. 当前状态
 
-- 状态：开发期搜索进行中；逐样本审计发现输入/末尾窗口差异，v4 待服务器重建与审计，尚未正式冻结
+- 状态：开发期搜索进行中；v4 输入/事件已对齐但 A.3 审计失败，v5 固定共同原因标签，待服务器完整审计
 - 主实验参考：`dev_tyx@52e8643` 的 `模型评估指标.md`
 - raw 契约：`collector_version=v0.3`
 - derived 契约：`tyx_bn_agg_unsupervised_v2`
-- dataset：`factory_baseline_dataset_v4`
+- dataset：`factory_baseline_dataset_v5`
 - 预测目标：`factory_ops_event_30m_to_15m_v1`
 - baseline：B2 XGBoost、B3 LSTM、B4 GCN-GRU、B5 GAT-GRU
 
@@ -19,7 +19,7 @@ B2-B5 与 PDFormer 固定使用同一组：
 
 ```text
 raw episode
-bn_agg 窗口特征和原因字段
+bn_agg 窗口特征与冻结主实验 bundle 的原因标签
 operational occupancy 目标
 episode split
 节点有效性 mask
@@ -35,9 +35,10 @@ episode split
 ```text
 tyx raw v0.3
   -> raw quality gate
-  -> dev_tyx tools/bn_agg（supervised 模式仅提供 features/cause）
+  -> dev_tyx tools/bn_agg（离线特征；其重算原因不作为训练标签）
   -> canonical 27 维节点输入
   -> ops_hot_mask 生成无监督 operational occupancy
+  -> 显式读取冻结主实验 bundle 的 A.3 cause[t-1]
   -> episode-level 70/15/15 split
   -> B2-B5 shared dataset.pt
 ```
@@ -69,9 +70,16 @@ tyx raw v0.3
 output/bottleneck_dataset/experiments/<BENCHMARK_TAG>/
 ```
 
-本轮新目录为 `factory_pdformer_134_v2`。构建器拒绝非空输出目录，不删除旧派生目录，
-也不写入主实验的 raw 仓库。单独张量构建入口必须显式提供 `--derived_root`。
-v3 模型和张量仅作为历史开发证据，由原 Git commit 复现；当前加载器不兼容旧版本。
+本轮新目录为 `factory_pdformer_134_v3`，失败的 v4 原型保留在 `factory_pdformer_134_v2`。
+构建器拒绝非空输出目录，不删除旧派生目录，也不写入主实验 raw 仓库。
+单独张量构建必须提供 `--derived_root` 和 `--main_bundle`；全流程脚本要求 `MAIN_BUNDLE`。
+冻结 bundle 的 NPZ/meta SHA-256、原因类别字典和 episode 对应关系写入 manifest。
+原因来自共同 bundle，不读取重算 CSV 原因；缺文件、cohort/窗口/时间锚点不匹配直接失败，
+没有回退规则。旧模型和张量由原 Git commit 复现，当前加载器不兼容旧版本。
+
+此选择固定的是双方实际使用的共同标签，不声称旧 A.3 规则更合理。
+主 bundle 的劳动饱和相关原因与新聚合不一致；若要修正原因语义，双方须共同更新 bundle、
+重新审计并重训。只把 baseline 原因换新而继续比较旧主模型是不公平的。
 
 ## 4. 输入定义
 

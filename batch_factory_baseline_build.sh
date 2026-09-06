@@ -7,7 +7,8 @@
 #   ./batch_factory_baseline_build.sh new_machine1.0 new_human1.0
 #
 # Environment overrides:
-#   BENCHMARK_TAG=factory_pdformer_134_v2  # must be a new/empty output directory
+#   MAIN_BUNDLE=/absolute/path/to/frozen/main/bundle  # required
+#   BENCHMARK_TAG=factory_pdformer_134_v3  # must be a new/empty output directory
 #   PYTHON_BIN=python
 #   STRICT_RAW=1      # fail if any raw episode is rejected
 #   EXPECTED_ACCEPTED_EPISODES=134
@@ -18,12 +19,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_ROOT="${ROOT}/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset"
 TOOLS_DIR="${ROOT}/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools"
-BENCHMARK_TAG="${BENCHMARK_TAG:-factory_pdformer_134_v2}"
+BENCHMARK_TAG="${BENCHMARK_TAG:-factory_pdformer_134_v3}"
 BENCHMARK_DIR="${DATA_ROOT}/experiments/${BENCHMARK_TAG}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 STRICT_RAW="${STRICT_RAW:-1}"
 EXPECTED_ACCEPTED_EPISODES="${EXPECTED_ACCEPTED_EPISODES:-}"
 SEED="${SEED:-42}"
+MAIN_BUNDLE="${MAIN_BUNDLE:?Set MAIN_BUNDLE to the frozen main experiment bundle}"
 
 WINDOW_SIZE="${WINDOW_SIZE:-60}"
 INPUT_WINDOWS="${INPUT_WINDOWS:-30}"
@@ -100,6 +102,7 @@ BUILD_ARGS=(
     "$PYTHON_BIN" "${TOOLS_DIR}/build_shared_benchmark.py"
     --run_dirs "${RUN_DIRS[@]}"
     --out_dir "${BENCHMARK_DIR}"
+    --main_bundle "${MAIN_BUNDLE}"
     --window_size "${WINDOW_SIZE}"
     --input_windows "${INPUT_WINDOWS}"
     --horizon "${HORIZON}"

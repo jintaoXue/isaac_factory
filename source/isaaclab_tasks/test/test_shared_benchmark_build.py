@@ -17,7 +17,7 @@ def test_nonempty_benchmark_is_not_overwritten(tmp_path, monkeypatch):
     sentinel = out / "dataset.pt"
     sentinel.write_bytes(b"existing")
     monkeypatch.setattr(sys, "argv", ["build", "--run_dirs", str(tmp_path / "raw"),
-                                      "--out_dir", str(out)])
+                                      "--out_dir", str(out), "--main_bundle", str(tmp_path / "main")])
     with pytest.raises(FileExistsError, match="empty benchmark"):
         builder.main()
     assert sentinel.read_bytes() == b"existing"
@@ -26,7 +26,8 @@ def test_nonempty_benchmark_is_not_overwritten(tmp_path, monkeypatch):
 def test_same_run_names_are_rejected_before_writing(tmp_path, monkeypatch):
     out = tmp_path / "benchmark"
     monkeypatch.setattr(sys, "argv", ["build", "--run_dirs", str(tmp_path / "a/run"),
-                                      str(tmp_path / "b/run"), "--out_dir", str(out)])
+                                      str(tmp_path / "b/run"), "--out_dir", str(out),
+                                      "--main_bundle", str(tmp_path / "main")])
     with pytest.raises(ValueError, match="unique"):
         builder.main()
     assert not out.exists()
@@ -40,10 +41,12 @@ def test_offline_derived_stays_inside_benchmark(tmp_path, monkeypatch):
     audits = [{"accepted": True, "run_id": "run", "env_id": 0, "episode_id": ep,
                "raw_contract_version": "tyx_raw_v0.3", "raw_episode_sha256": "fixture",
                "scenario_id": "fixture", "episode_end_s": 125.0} for ep in range(3)]
-    monkeypatch.setattr(sys, "argv", ["build", "--run_dirs", str(raw), "--out_dir", str(out)])
+    monkeypatch.setattr(sys, "argv", ["build", "--run_dirs", str(raw), "--out_dir", str(out),
+                                      "--main_bundle", str(tmp_path / "main")])
     monkeypatch.setattr(builder, "discover_env_dirs", Mock(return_value=pairs))
     monkeypatch.setattr(builder, "audit_env_dir", Mock(side_effect=audits))
     monkeypatch.setattr(builder, "build_report", Mock(return_value={"status": "passed"}))
+    monkeypatch.setattr(builder, "load_frozen_cause_labels", Mock(return_value=({}, {})))
 
     def derive(**kwargs):
         kwargs["out_dir"].mkdir(parents=True)
@@ -65,4 +68,5 @@ def test_offline_derived_stays_inside_benchmark(tmp_path, monkeypatch):
         metadata = json.loads((call.kwargs["out_dir"] / "shared_metadata.json").read_text())
         assert metadata["closed_windows_only"] is False
     assert build.call_args.kwargs["derived_root"] == out / "derived"
+    assert build.call_args.kwargs["main_bundle"] == tmp_path / "main"
     assert len(build.call_args.kwargs["allowed_group_ids"]) == 3

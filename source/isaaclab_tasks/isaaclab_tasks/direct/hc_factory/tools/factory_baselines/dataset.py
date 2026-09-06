@@ -17,7 +17,8 @@ import torch
 from torch.utils.data import Dataset
 
 from .graph_builder import build_static_graph
-from factory_bn_shared.causes import ROOT_CAUSE_CLASSES, encode_root_cause
+from factory_bn_shared.causes import ROOT_CAUSE_CLASSES
+from factory_bn_shared.bundle import align_frozen_causes, load_frozen_cause_labels
 from factory_bn_shared.remain import (
     ensure_labor_saturated_feature,
     first_done_index,
@@ -107,7 +108,6 @@ def _discover_groups(
         ):
             rel = feature_path.parent.relative_to(run_derived)
             raw_dir = run_dir / rel
-            label_path = feature_path.parent / "bottleneck_label.csv"
             metadata_path = feature_path.parent / "shared_metadata.json"
             config_rows = _read_csv(raw_dir / "episode_config.csv")
             if not config_rows:
@@ -149,7 +149,6 @@ def _discover_groups(
                     "raw_episode_sha256": metadata.get("raw_episode_sha256") or "",
                     "config": config,
                     "feature_rows": _read_csv(feature_path),
-                    "label_rows": _read_csv(label_path),
                     "job_kpi_rows": _read_csv(feature_path.parent / "job_kpi.csv"),
                 }
             )
@@ -420,6 +419,7 @@ def build_factory_baseline_dataset(
     run_dirs: Iterable[Path],
     out_dir: Path,
     derived_root: Path,
+    main_bundle: Path,
     window_size: float = 60.0,
     stride: float = 60.0,
     input_windows: int = 30,
@@ -468,12 +468,12 @@ def build_factory_baseline_dataset(
                 f"{group['label_version']!r}"
             )
         group["feature_rows"] = _filter_rows(group["feature_rows"], window_size, stride)
-        group["label_rows"] = _filter_rows(group["label_rows"], window_size, stride)
-        if not group["feature_rows"] or not group["label_rows"]:
+        if not group["feature_rows"]:
             raise ValueError(f"No matching Phase-B rows for {group['group_id']}")
-        for label in group["label_rows"]:
-            if not math.isclose(_f(label.get("horizon_s")), horizon):
-                raise ValueError(f"Prediction horizon mismatch for {group['group_id']}")
+
+    frozen_causes, cause_provenance = load_frozen_cause_labels(
+        Path(main_bundle), {group["group_id"] for group in groups}, window_size
+    )
 
     node_ids, node_types = _build_node_catalog(groups)
     node_index = {node_id: index for index, node_id in enumerate(node_ids)}
@@ -504,7 +504,6 @@ def build_factory_baseline_dataset(
             if row["resource_id"] not in node_index:
                 continue
             by_window[_i(row["window_index"])][row["resource_id"]] = row
-        labels = {_i(row["window_index"]): row for row in group["label_rows"]}
         active_nodes = set(group["included_node_ids"])
         node_mask = torch.tensor(
             [node_id in active_nodes for node_id in node_ids], dtype=torch.bool
@@ -593,6 +592,9 @@ def build_factory_baseline_dataset(
             group["job_kpi_rows"], np.asarray(window_starts)
         )
         done_position = first_done_index(jobs_remaining)
+        cause_values = align_frozen_causes(
+            frozen_causes[group["group_id"]], window_indices, window_starts
+        )
         for position in range(input_windows, len(window_indices)):
             sequence_indices = window_indices[position - input_windows : position]
             if any(
@@ -644,7 +646,6 @@ def build_factory_baseline_dataset(
                 target_node_id = ""
             target_type = node_types.get(target_node_id, "")
             anchor_index = sequence_indices[-1]
-            label = labels.get(anchor_index, {})
             sample_index = len(continuous_samples)
             continuous_samples.append(x_continuous)
             labor_samples.append(x_labor)
@@ -658,7 +659,7 @@ def build_factory_baseline_dataset(
             targets.append(
                 {
                     "event_positive": occurrence,
-                    "cause": encode_root_cause(label.get("root_cause_reason")),
+                    "cause": int(cause_values[position - 1]),
                     "jobs_remaining": float(jobs_remaining[position - 1]),
                     "jobs_total": jobs_total,
                     "target_start_position": position,
@@ -877,10 +878,12 @@ def build_factory_baseline_dataset(
                 "group_id": group["group_id"],
                 "scenario_id": group["scenario_id"],
                 "raw_episode_sha256": group["raw_episode_sha256"],
+                "main_episode_name": frozen_causes[group["group_id"]]["name"],
             }
             for group in sorted(groups, key=lambda item: item["group_id"])
         ],
         "derived_root": str(Path(derived_root).resolve()),
+        "cause_label_source": cause_provenance,
         "aggregation_mode": "main_offline_with_terminal_partial_target",
         "jobs_remaining_anchor": "last_history_window_start",
         "collector_versions": collector_versions,

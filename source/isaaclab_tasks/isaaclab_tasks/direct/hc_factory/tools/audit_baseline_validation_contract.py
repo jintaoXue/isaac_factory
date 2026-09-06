@@ -58,6 +58,12 @@ def main():
         if file_hash(path) != split_audit["provenance"][name]["sha256"]:
             raise ValueError(f"{name} changed since the episode split audit")
     payload, manifest = load_shared_dataset(args.dataset_dir)
+    cause_source = manifest["cause_label_source"]
+    if cause_source["kind"] != "frozen_main_bundle":
+        raise ValueError("Expected explicitly frozen main cause labels")
+    for name, filename in (("meta", "meta.json"), ("episodes", "episodes.npz")):
+        if file_hash(args.main_bundle / filename) != cause_source["files"][name]["sha256"]:
+            raise ValueError("Cause-label source differs from the main bundle under audit")
     # Load the supplied main implementation separately from baseline imports.
     reference_path = args.pdformer_root / "factory_bn/remain.py"
     spec = importlib.util.spec_from_file_location("main_remain_reference", reference_path)

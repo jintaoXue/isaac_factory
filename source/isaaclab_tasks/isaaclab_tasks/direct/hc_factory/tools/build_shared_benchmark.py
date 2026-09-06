@@ -10,6 +10,7 @@ from pathlib import Path
 from audit_bottleneck_data import audit_env_dir, build_report, discover_env_dirs
 from bn_agg.pipeline import process_env_dir
 from factory_baselines import build_factory_baseline_dataset
+from factory_bn_shared.bundle import load_frozen_cause_labels
 from factory_bn_shared.contract import (
     DERIVED_CONTRACT_VERSION,
     DERIVED_SOURCE_BRANCH,
@@ -22,6 +23,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run_dirs", type=Path, nargs="+", required=True)
     parser.add_argument("--out_dir", type=Path, required=True)
+    parser.add_argument("--main_bundle", type=Path, required=True)
     parser.add_argument("--window_size", type=float, default=60.0)
     parser.add_argument("--input_windows", type=int, default=30)
     parser.add_argument("--horizon", type=float, default=180.0)
@@ -70,6 +72,12 @@ def main() -> None:
             f"At least 3 accepted episodes are required, got {len(accepted)}"
         )
 
+    accepted_group_ids = {
+        f"{row['run_id']}:env_{int(row['env_id']):02d}:episode_{int(row['episode_id']):02d}"
+        for row in accepted
+    }
+    load_frozen_cause_labels(args.main_bundle, accepted_group_ids, args.window_size)
+
     derived_summaries = []
     for (run_dir, env_dir), audit in zip(pairs, audit_rows):
         if not audit["accepted"]:
@@ -114,6 +122,7 @@ def main() -> None:
         run_dirs=run_dirs,
         out_dir=args.out_dir,
         derived_root=derived_root,
+        main_bundle=args.main_bundle,
         window_size=args.window_size,
         stride=args.window_size,
         input_windows=args.input_windows,
@@ -123,10 +132,7 @@ def main() -> None:
         hot_gap_windows=args.hot_gap_windows,
         seed=args.seed,
         repo_root=Path(__file__).resolve().parents[6],
-        allowed_group_ids={
-            f"{row['run_id']}:env_{int(row['env_id']):02d}:episode_{int(row['episode_id']):02d}"
-            for row in accepted
-        },
+        allowed_group_ids=accepted_group_ids,
     )
     manifest = result["manifest"]
     summary = {

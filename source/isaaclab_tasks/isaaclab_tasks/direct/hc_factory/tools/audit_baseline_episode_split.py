@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
-import hashlib
 import importlib
 import json
 import sys
@@ -13,16 +11,10 @@ from pathlib import Path
 
 import numpy as np
 
+from factory_bn_shared.bundle import file_hash, main_episode_identities
+
 
 SPLITS = ("train", "validation", "test")
-
-
-def file_hash(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def assignment(splits: dict[str, list[str]]) -> dict[str, str]:
@@ -59,34 +51,6 @@ def compare_splits(baseline: dict, main: dict) -> dict:
             for split in SPLITS
         },
     }
-
-
-def main_episode_identities(meta: dict, names: list[str]) -> dict[str, str]:
-    if len(meta["run_names"]) != len(meta["run_dirs"]):
-        raise ValueError("Main bundle run_names/run_dirs lengths differ")
-    runs = dict(zip(meta["run_names"], meta["run_dirs"], strict=True))
-    if len(runs) != len(meta["run_names"]):
-        raise ValueError("Main bundle contains duplicate run aliases")
-    result = {}
-    for name in names:
-        alias, separator, episode = name.partition("__")
-        if not separator or not episode.startswith("episode_"):
-            raise ValueError(f"Unsupported main episode identity: {name}")
-        # The main exporter reads env_00 only; never guess a different env.
-        path = Path(runs[alias]) / episode / "env_00" / "episode_config.csv"
-        with path.open(newline="", encoding="utf-8") as stream:
-            rows = list(csv.DictReader(stream))
-        if len(rows) != 1:
-            raise ValueError(f"{path}: expected exactly one config row")
-        row = rows[0]
-        run_id = row["run_id"]
-        env_id, episode_id = int(row["env_id"]), int(row["episode_id"])
-        if not run_id or env_id != 0 or episode_id != int(episode.removeprefix("episode_")):
-            raise ValueError(f"Raw episode identity contradicts bundle name: {path}")
-        result[name] = f"{run_id}:env_{env_id:02d}:episode_{episode_id:02d}"
-    if len(set(result.values())) != len(result):
-        raise ValueError("Multiple main bundle names refer to the same raw episode")
-    return result
 
 
 def main():

@@ -7,7 +7,9 @@
 BNPDFormer：PDFormer 编码器加制造瓶颈 occupancy、event 和 cause 任务头。
 
 指标公式与阈值选择规则不改变。2026-09-06 的逐样本审计另发现订单数输入偏移、
-终末部分窗口及未闭合扰动聚合差异，因此现在必须用数据集 v4 重建并重训；raw 不用重采。
+终末部分窗口及未闭合扰动聚合差异；v4 修复后仅 A.3 仍有 128 个 validation 样本不同。
+因此当前 v5 显式读取冻结主 bundle 的 A.3 原因，重建并重训；raw 不用重采。
+共同标签来源及哈希随 manifest 固定，不增加旧规则兼容，也不删除原因标签审计。
 新张量通过实际主实验 bundle 的样本/特征/标签审计后才能作为正式对照输入。
 B4/B5 仍分别保持 GCN-GRU 与 GAT-GRU 结构，参数与消融在验证集上选择。
 
@@ -50,7 +52,7 @@ who/report 公式。B2 的 occupancy 预测仍独立保留，只用于 hot 和 o
 `event_report_threshold`。`history.csv` 逐 epoch 记录该 epoch 的实际阈值和双门状态。
 
 不同数据版本或旧固定阈值/checkpoint 规则的模型不能与新结果混表。v3 的 `dataset.pt`
-不能继续用于正式训练；在新 benchmark 目录重建 v4，并保持原 episode split 后重训。
+不能继续用于正式训练；在新 benchmark 目录重建 v5，并保持原 episode split 后重训。
 旧搜索保留为开发期证据，不重写其配置或结果。仅修改指标时才可能复评旧 checkpoint，
 本次包含输入修复，不能仅重新算指标代替重训。
 

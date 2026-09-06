@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 
 import torch
+import numpy as np
 from torch.utils.data import DataLoader
 
 
@@ -31,6 +32,7 @@ from factory_baselines.dataset import (  # noqa: E402
     build_factory_baseline_dataset,
 )
 from factory_baselines.schema import CONTINUOUS_FEATURES, GLOBAL_FEATURES  # noqa: E402
+from factory_bn_shared.causes import ROOT_CAUSE_CLASSES  # noqa: E402
 
 
 class TestFactoryBaselineDataset(unittest.TestCase):
@@ -166,6 +168,22 @@ class TestFactoryBaselineDataset(unittest.TestCase):
                 for job_id in range(2)
             ]
             self._write_csv(derived_dir / "job_kpi.csv", list(job_rows[0]), job_rows)
+        bundle = root / "main_bundle"
+        bundle.mkdir()
+        names = [f"run_seed42__episode_{ep:02d}" for ep in range(6)]
+        arrays = {"episode_names": np.asarray(names),
+                  "cause_classes": np.asarray(ROOT_CAUSE_CLASSES),
+                  "window_size_s": np.asarray([60.0])}
+        for name in names:
+            arrays[name + "_windows"] = np.arange(20)
+            arrays[name + "_window_start_s"] = np.arange(20) * 60.0
+            arrays[name + "_cause"] = np.arange(20, dtype=np.int64) % len(ROOT_CAUSE_CLASSES)
+        np.savez(bundle / "episodes.npz", **arrays)
+        (bundle / "meta.json").write_text(json.dumps({
+            "run_names": [run_dir.name], "run_dirs": [str(run_dir)],
+            "episodes": {name: {} for name in names}, "window_size_s": 60.0,
+            "cause_classes": list(ROOT_CAUSE_CLASSES),
+        }))
         return run_dir
 
     def test_occupancy_type_masks_match_main_experiment_categories(self) -> None:
@@ -224,6 +242,7 @@ class TestFactoryBaselineDataset(unittest.TestCase):
                 ])
             result = build_factory_baseline_dataset(
                 run_dirs=[run], out_dir=root / "dataset", derived_root=root / "derived",
+                main_bundle=root / "main_bundle",
                 input_windows=12,
             )
             data = FactoryBaselineTensorDataset(result["payload"])
@@ -257,6 +276,7 @@ class TestFactoryBaselineDataset(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Expected main offline aggregation"):
                 build_factory_baseline_dataset(
                     run_dirs=[run], out_dir=root / "dataset", derived_root=root / "derived",
+                    main_bundle=root / "main_bundle",
                     input_windows=12,
                 )
 
@@ -274,6 +294,7 @@ class TestFactoryBaselineDataset(unittest.TestCase):
             self._write_csv(path, fields, rows)
             result = build_factory_baseline_dataset(
                 run_dirs=[run], out_dir=root / "dataset", derived_root=root / "derived",
+                main_bundle=root / "main_bundle",
                 input_windows=12,
             )
             index = next(row["sample_index"] for row in result["sample_rows"] if row["episode_id"] == 0)
@@ -307,6 +328,7 @@ class TestFactoryBaselineDataset(unittest.TestCase):
                 run_dirs=[run_dir],
                 out_dir=out_dir,
                 derived_root=root / "derived",
+                main_bundle=root / "main_bundle",
                 window_size=60,
                 stride=60,
                 input_windows=12,
@@ -329,7 +351,12 @@ class TestFactoryBaselineDataset(unittest.TestCase):
             self.assertTrue(payload["target_node_mask"][:, machine_index].all())
             self.assertFalse(payload["target_node_mask"][:, buffer_index].any())
             self.assertTrue(torch.isfinite(payload["x"]).all())
-            self.assertEqual(manifest["dataset_version"], "factory_baseline_dataset_v4")
+            self.assertEqual(manifest["dataset_version"], "factory_baseline_dataset_v5")
+            self.assertEqual(manifest["cause_label_source"]["kind"], "frozen_main_bundle")
+            self.assertTrue(torch.equal(payload["y_cause"], torch.tensor([
+                int(row["anchor_window_index"]) % len(ROOT_CAUSE_CLASSES)
+                for row in result["sample_rows"]
+            ])))
             self.assertEqual(
                 manifest["prediction_target_version"],
                 "factory_ops_event_30m_to_15m_v1",
@@ -390,6 +417,7 @@ class TestFactoryBaselineDataset(unittest.TestCase):
             with self.assertRaisesRegex(FileExistsError, "Refusing to overwrite"):
                 build_factory_baseline_dataset(
                     run_dirs=[run_dir], out_dir=out_dir, derived_root=root / "derived",
+                    main_bundle=root / "main_bundle",
                     input_windows=12,
                 )
 
@@ -397,6 +425,7 @@ class TestFactoryBaselineDataset(unittest.TestCase):
                 run_dirs=[run_dir],
                 out_dir=root / "dataset_repeated",
                 derived_root=root / "derived",
+                main_bundle=root / "main_bundle",
                 window_size=60,
                 stride=60,
                 input_windows=12,

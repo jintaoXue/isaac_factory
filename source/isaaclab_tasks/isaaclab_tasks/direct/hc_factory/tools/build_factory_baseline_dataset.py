@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build shared B2-B5 A.1/A.3 targets from bn_agg tables."""
+"""Build B2-B5 from offline features and the frozen main A.3 label bundle."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run_dirs", type=Path, nargs="+", required=True)
     parser.add_argument("--derived_root", type=Path, required=True)
+    parser.add_argument("--main_bundle", type=Path, required=True)
     parser.add_argument("--window_size", type=float, default=60.0)
     parser.add_argument("--stride", type=float, default=60.0)
     parser.add_argument("--input_windows", type=int, default=30)
@@ -30,6 +31,7 @@ def main() -> None:
         run_dirs=args.run_dirs,
         out_dir=args.out_dir,
         derived_root=args.derived_root,
+        main_bundle=args.main_bundle,
         window_size=args.window_size,
         stride=args.stride,
         input_windows=args.input_windows,

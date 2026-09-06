@@ -8,7 +8,7 @@ from factory_bn_shared.contract import (
     SHARED_LABEL_VERSION,
 )
 
-DATASET_VERSION = "factory_baseline_dataset_v4"
+DATASET_VERSION = "factory_baseline_dataset_v5"
 PREDICTION_TARGET_VERSION = "factory_ops_event_30m_to_15m_v1"
 LABEL_VERSION = SHARED_LABEL_VERSION
 COLLECTOR_VERSION = RAW_COLLECTOR_VERSION
