@@ -171,7 +171,25 @@ def main() -> None:
         scalers.append(reference_dataset.Scaler(mean=mean, std=std))
     config["device"] = torch.device(args.device)
     model = BNPDFormer(config, _data_feature_from_ckpt(meta)).to(config["device"])
-    model.load_state_dict(checkpoint["model"], strict=True)
+    try:
+        model.load_state_dict(checkpoint["model"], strict=True)
+    except RuntimeError as error:
+        failure = {
+            "status": "failed", "stage": "strict_checkpoint_loading",
+            "test_evaluated": False, "model_scored": False, "error": str(error),
+            "checkpoint_sha256": file_hash(args.main_checkpoint), "source_commit": source_commit,
+            "sample_count": len(samples), "episode_names": sorted(names),
+            "input_audit_sha256": file_hash(input_path), "split_audit_sha256": file_hash(split_path),
+            "observed_history_prefix_diagnostic": {
+                "different_node_windows": history_difference, "eligible_node_windows": history_cells,
+            },
+            "note": "No partial/random-weight model was evaluated. Prefix differences describe only "
+                    "the historical hot flag; they are not a full input-causality audit.",
+        }
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(failure, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps(failure, indent=2), flush=True)
+        raise
     model.eval()
     collected = {}
     loader = DataLoader(reference_dataset.FactoryBNWindowDataset(samples, *scalers),
