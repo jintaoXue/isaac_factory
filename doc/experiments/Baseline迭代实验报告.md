@@ -261,7 +261,7 @@ B4 context/focal 整轮完成后，新增 `b4_representation_v1`，不改变数�
 实验开关用于正在执行的消融，不是旧版本兼容路径。最终冻结时应清理无收益的候选实现，
 历史实验的完整代码继续由 Git commit 保留。
 
-## 8. 共同 A.3 标签绑定（实现中）
+## 8. 共同 A.3 标签绑定与 v5 验证
 
 v5 构建 API 必须显式传入主实验冻结 bundle；A.3 只从该 bundle 的 cause[t-1] 读取，
 不再读取 baseline 重算的 bottleneck_label.csv。两边原因字典、物理 episode 身份、
@@ -272,7 +272,7 @@ cohort、窗口索引和窗口起点须严格匹配；NPZ/meta 文件哈希与 e
 窗口特征与 A.1 仍按已对齐离线规则构建，完整验证仍逐项比较 X、A.1、A.3、mask、订单数、
 时间锚点和 episode split；不通过删除失败检查来获得通过。当前本地测试覆盖冻结标签值、
 类别顺序、cohort、无标签 -1、非法值、时间错位及缺文件；相关 33 项测试与 5 个 subtest 通过。
-服务器实际审计尚待运行。
+服务器实际审计结果见本节下文。
 
 2026-09-06 12:16 HKT，B3 为 8/16 完成，活动训练 PID=3731066；原工作目录不更新
 v5 加载器，避免打断旧数据的完整轮。下一步先完成 v5 服务器构建与审计，再跑 B4/B5
@@ -284,6 +284,19 @@ v5 提交 `26893a1` 已在服务器独立只读快照成功构建 20060 个样�
 修正为先加载指定主实验 splitter，再导入身份辅助函数，保留来源检查。
 测试增加独立主实验代码目录，避免只在同目录通过而漏掉服务器场景。
 已有张量不覆盖、不重建，仅重新执行两项审计。
+
+2026-09-06 12:33:54 HKT，`baseline_v5_audit` 以 exit=0 完成。由 `b06728b` 独立
+只读快照重跑来源正确的审计后，134 个 episode 的 split 一致；2589 个 validation 样本
+位置差异为 0，以下字段均为 0 差异：y_score、y_hot、y_cause、remain_mask、target_remain_len、
+occ_node_mask、hist_last_hot、event_will/start/duration、jobs_remaining/total、raw_x_observed、
+anchor_time_s、first_future_start_s、input_window_indices。`comparison_match=True`。
+这是完整 validation 观测输入/目标审计，并非 test 性能评估或主模型历史训练溯源证明。
+
+证据存于新 benchmark 的 `episode_split_audit.json`、`validation_contract_audit.json`，
+并复制为服务器 `doc/experiments/baseline_episode_split_v5_20260906.json` 与
+`baseline_validation_contract_v5_20260906.json`，待 B3 结束、服务器工作目录可快进后同步。
+构建控制台日志移入新 benchmark，未遗留在仓库根目录。v5 数据现在可作为下一轮 B4/B5
+共同协议的起点；新数据上的模型对照与多 seed 完整结果仍未完成，不宣称方法达标。
 
 ### 续训对照原则
 

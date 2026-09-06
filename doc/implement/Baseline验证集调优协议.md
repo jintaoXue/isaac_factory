@@ -8,7 +8,7 @@
 
 以下实验契约冻结：
 
-- 数据集：待完整审计的 `factory_pdformer_134_v3`（schema v5），134 个可训练 episode；
+- 数据集：`factory_pdformer_134_v3`（schema v5），134 个可训练 episode，已通过完整 validation 输入/目标审计；
 - split：现有整 episode train/validation/test 划分；
 - 输入/输出：过去 30 个 60 秒窗口，预测未来 15 个窗口；
 - 监督节点：machine、workbench、gantry、AGV；

@@ -2,7 +2,7 @@
 
 ## 1. 当前状态
 
-- 状态：开发期搜索进行中；v4 输入/事件已对齐但 A.3 审计失败，v5 固定共同原因标签，待服务器完整审计
+- 状态：v5 已通过服务器 episode 划分和 2589 个 validation 输入/目标审计；新数据模型整轮仍待完成
 - 主实验参考：`dev_tyx@52e8643` 的 `模型评估指标.md`
 - raw 契约：`collector_version=v0.3`
 - derived 契约：`tyx_bn_agg_unsupervised_v2`
