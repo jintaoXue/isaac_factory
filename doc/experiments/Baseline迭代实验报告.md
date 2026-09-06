@@ -20,7 +20,22 @@ P>=0.80、R>=0.35 是业务可行性约束，不是保证每个 baseline 能达�
 
 ## 2. 当前可追溯证据
 
-机器可读证据：[`baseline_validation_20260906_round1_partial.json`](baseline_validation_20260906_round1_partial.json)。
+最新补充：`baseline_validation_20260906_round2.json` 已收齐原 B5 搜索的 16 次、
+B4 context/focal 对照的 8 次训练；总快照包含 88 次已完成 validation-only 运行。
+原 B5 最佳仍是 `candidate_c0_stabilized`。B4 新轮按既定稳健排序选中 context，
+其 F1=0.2848，低于 control 的均值 0.2916，但跨 seed 波动较小；不能写成平均效果提升。
+Focal 单独和与 context 组合的 F1 均值分别为 0.0584、0.2095，upcoming recall 均为 0。
+
+`baseline_main_episode_split_20260906.json` 实测双方 134 个 episode 身份和分配均一致，
+train/validation/test 交集分别为 92/17/25；本批数据未触发第 5 节的软链接 split 风险。
+`baseline_train_symmetry_20260906.json` 在 13723 个训练样本中只发现 62 个存在所检查的
+精确工位交换对称，且对应工位的事件标签无冲突。不支持把差距解释为大量精确同输入异标签。
+
+截至本轮更新，B5 `b5_event_ablation_v1` 和 B3 `b3_search_v1_pyfix` 正在运行。
+B3 首次启动在导入 PyTorch 阶段失败，未训练；脚本改为显式使用 `PYTHON_BIN` 后
+已成功训练，失败目录 `b3_search_v1` 保留，不计入模型候选分数。
+
+首次快照：[`baseline_validation_20260906_round1_partial.json`](baseline_validation_20260906_round1_partial.json)。
 导出时间为 2026-09-06 03:18:41 HKT，仅包含当时已完成的 76 次 validation-only 训练。
 此文件不表示所有排队任务已经完成；未读取 `metrics_test.json` 或综合 `metrics.json`。
 
@@ -47,11 +62,11 @@ P>=0.80、R>=0.35 是业务可行性约束，不是保证每个 baseline 能达�
 |---|---:|---:|---:|---:|---:|---|
 | B2 `b2_event_search_v1/candidate_c5_event_w12` | 0.3070 | 0.2727 | 0.2887 ± 0.0125 | 0.0608 | 0.2335 | 该轮完整搜索选中 |
 | B4 `b4_search_v1/candidate_c0_incumbent` | 0.4633 | 0.2138 | 0.2916 ± 0.0182 | 0.0026 | 0.2265 | 第一轮完整搜索选中 |
-| B5 `b5_search_v1/candidate_c0_stabilized` | 0.5312 | 0.2155 | 0.3066 ± 0.0011 | 0.0106 | 0.2493 | 候选双 seed 完成，整轮未完成 |
+| B5 `b5_search_v1/candidate_c0_stabilized` | 0.5312 | 0.2155 | 0.3066 ± 0.0011 | 0.0106 | 0.2493 | 完整搜索选中 |
 
 不能只看表中最高 precision：例如 B4 新 Focal 候选 seed42 的 P=0.8333，
 但 R=0.0337、F1=0.0647，只发出 12 条报告，不能视为解决了误报与漏报平衡。
-这个单 seed 结果也不足以判定整个 Focal 方向无效。
+该单 seed 本身不足以下结论；现已补齐的 B4 双 seed 对照见第 2 节。
 
 ## 4. 漏报诊断与当前实验
 
@@ -63,7 +78,7 @@ upcoming 的预测事件概率中位数约 0.0105。阈值降至 0.20，仍有 1
 不加概率筛选时，约 78.3% 的 upcoming 起始时间预测落在容差内。
 这些数字将主要问题定位在事件判别环节，并不证明某个具体模型改动必然有效。
 
-已启动的受控实验为 `context × focal`：
+受控实验为 `context × focal`，B4 已结束，B5 正在执行：
 
 | 候选 | 事件头加入已有历史的全图上下文 | Focal gamma |
 |---|---|---:|
@@ -74,14 +89,22 @@ upcoming 的预测事件概率中位数约 0.0105。阈值降至 0.20，仍有 1
 
 各候选均从头训练，两颗 seed；不改变 GCN/GAT/GRU 主体或 raw/derived 数据。
 新实验存放在独立目录 `models/tuning/b4_event_ablation_v1` 与
-`models/tuning/b5_event_ablation_v1`。服务器 tmux 队列名 `baseline_event_ablation`。
-先 B4，等待原 B5 搜索结束后再执行新 B5 对照。
+`models/tuning/b5_event_ablation_v1`。旧队列结束后 B5 未启动，已确认目录不存在且
+无相应训练进程，再以独立 tmux `baseline_b5_event` 启动；未重跑已完成候选。
 
 尚未完成的候选不参加正式跨候选排名。下一轮模型修改应等本轮完整结果再决定。
 
 ## 5. 对照一致性待审计项
 
 ### 主实验结果来源
+
+已取得一个主实验保存产物：`n10_i1_all_usable_unsup_p80decode/BNPDFormer_best.pt`，
+见 `main_validation_reference_20260906.json`。它是 seed42 单次训练、该阶段 epoch6 的
+checkpoint（由 `unsup10` 权重继续训练），不是多 seed 均值或已证实的全局最好结果。
+保存的 validation P/R/F1 为 0.8504/0.3636/0.5094，upcoming recall=0.2698。
+该产物记录固定报告阈值 0.65、recall gate=0，与当前正式配置的阈值扫描及双门选型不同；
+所以只能作为有来源的参考，不直接作为最终多 seed 主表。当前服务器主实验源码为
+`f322dbf`，远端最新文档为 `52e8643`；当前源码不等于训练时源码的证明。
 
 `origin/dev_tyx@52e8643` 的《模型评估指标.md》第 6 节明确把
 `rep_p=0.817 / rep_r=0.447 / rep_f1=0.578` 标为历史背景数字。
@@ -95,14 +118,12 @@ upcoming 的预测事件概率中位数约 0.0105。阈值降至 0.20，仍有 1
 再取 `run_dir.name`。两边随后均按 run 名称排序并依次消耗同一个 RNG 进行 split。
 
 若服务器的 `unsup_n10_i1/n10_*` 是指向 `machine20/human20/...` 的软链接，
-别名与实际目录名差异**可能改变分组排序和抽样分配**。目前仅确认源码风险，
-尚未用服务器实际主实验 manifest/NPZ 与 baseline split_manifest 逐 episode 验证。
-不能把这一风险写成已确认数据泄漏，也不能仅凭 92/17/25 的数量一致认为已排除。
+别名与实际目录名差异**可能改变分组排序和抽样分配**。最初仅发现源码风险，
+现已用服务器实际主实验 manifest/NPZ 与 baseline split_manifest 逐 episode 验证通过。
+证据是逐 episode 差异为空，而不是仅凭 92/17/25 的数量一致。
 
-恢复远程访问后的优先动作：核对主实验 export `meta.json` 中的 run_names/run_dirs、
-完整 episode 名称，以及双方 train/validation/test 的 episode 身份集合。
-若不一致，先修复统一输入协议，在新目录重建派生训练数据并重新训练；不覆盖现有
-运行，也不改写 raw 来伪装一致。是否需要重建，以实际审计结果为准。
+本次无需因此重建。后续数据迁移仍应重复审计，不能仅凭路径别名认定一致；
+若发现不一致，应在新目录修复统一输入协议，不改写 raw 或覆盖现有实验。
 
 只读审计工具为 `tools/audit_baseline_episode_split.py`：传入 baseline 数据集目录、
 主实验 bundle、可信训练 checkpoint，以及主实验所用 `PDFormer` 源码目录。
@@ -126,5 +147,25 @@ upcoming 的预测事件概率中位数约 0.0105。阈值降至 0.20，仍有 1
 6. 配置冻结后再做独立评估；此前已被反复查看的旧 test 不能恢复成未使用的
    holdout。最终报告明确区分开发期比较和严格独立泛化证据。
 
-最终报告还缺：本轮完整结果、B3 调参、必要的后续改进、主实验产物与 split 审计、
-冻结配置及完整主表。当前不具备结束实验并宣称指标达标或方法到顶的证据。
+最终报告还缺：当前 B5 对照、B3 调参、必要的后续改进、特征/标签/锚点一致性证据、
+主实验正式多 seed 结果、冻结配置及完整主表。当前不具备结束实验并宣称指标达标或方法到顶的证据。
+
+## 7. B4 下一轮表示对照
+
+B4 context/focal 整轮完成后，新增 `b4_representation_v1`，不改变数据、损失权重或评分。
+保持两层 GCN、node-wise GRU 和同一事件头，比较以下四个从头训练的候选，各 seed42/43：
+
+| 候选 | 已知工位 ID 嵌入 | GRU 读出 |
+|---|---|---|
+| control | 无 | 末状态 |
+| identity | 16 维，投影后加入图卷积残差 | 末状态 |
+| history | 无 | 末状态与全历史均值拼接，线性投影回原维度 |
+| identity_history | 16 维 | 末状态与全历史均值 |
+
+假设分别是固定工位的不同动态可受益于显式身份，以及均值读出能减轻末状态对近期状态的偏重。
+这不是已证实的修复或性能上限解释，必须等待完整对照；不使用未来信息，不增加主模型专属解码。
+工位身份绑定同一 manifest 的 node_ids，只支持当前已知工位，不据此声称跨布局泛化。
+预算保持 max_epochs=60、min_epochs=10、patience=10、batch=24、lr=3e-4、weight_decay=0.01。
+入口为 `bash batch_factory_baseline_tune_b4_representation.sh`；输出新目录，禁止覆盖旧结果。
+实验开关用于正在执行的消融，不是旧版本兼容路径。最终冻结时应清理无收益的候选实现，
+历史实验的完整代码继续由 Git commit 保留。
