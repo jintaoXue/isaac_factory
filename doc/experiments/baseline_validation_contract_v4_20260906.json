@@ -1,0 +1,122 @@
+{
+  "scope": "validation inputs, sample anchors, masks and event targets; no test scoring",
+  "test_evaluated": false,
+  "sample_count": 2589,
+  "episode_count": 17,
+  "comparison_match": false,
+  "fields": {
+    "y_score": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "y_hot": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "y_cause": {
+      "mismatched_samples": 128,
+      "mismatched_cells": 128,
+      "max_absolute_difference": 6.0,
+      "example_samples": [
+        10242,
+        10247,
+        10251,
+        10252,
+        10253,
+        10307,
+        10325,
+        10326
+      ]
+    },
+    "remain_mask": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "target_remain_len": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "occ_node_mask": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "hist_last_hot": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "event_will": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "event_start": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "event_duration": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "jobs_remaining": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "jobs_total": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "raw_x_observed": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "anchor_time_s": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "first_future_start_s": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "input_window_indices": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    }
+  },
+  "position_mismatches": [],
+  "split_audit_sha256": "0996d58b2ea51f808cd351e03d52722f320efd5ffe43c9aa405f673d909b81b0",
+  "main_remain_source_sha256": "b18e2d9fe52922fd9a0a084e6e01838ce9d7b099669c0cab97cddcddb3657a56",
+  "input_tolerance": {
+    "absolute": 0.0001,
+    "relative": 1e-05
+  },
+  "input_scope": "Raw X compared on observed history nodes after undoing baseline continuous-feature scaling. This does not compare architecture-specific scaling, graph construction or padded-node encodings."
+}
