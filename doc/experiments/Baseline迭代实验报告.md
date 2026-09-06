@@ -104,6 +104,15 @@ upcoming 的预测事件概率中位数约 0.0105。阈值降至 0.20，仍有 1
 若不一致，先修复统一输入协议，在新目录重建派生训练数据并重新训练；不覆盖现有
 运行，也不改写 raw 来伪装一致。是否需要重建，以实际审计结果为准。
 
+只读审计工具为 `tools/audit_baseline_episode_split.py`：传入 baseline 数据集目录、
+主实验 bundle、可信训练 checkpoint，以及主实验所用 `PDFormer` 源码目录。
+工具直接调用该目录的 split 函数，用 checkpoint 中的 seed/比例重建分配，
+通过 raw `episode_config.csv` 将软链接别名映射到同一 episode 身份。
+输出逐 episode 差异和输入 SHA-256，不读取预测指标或 NPZ 中的未来标签。
+其 `episode_split_match` 仅证明提供的这些产物在 episode 分配上是否一致；
+若主实验 bundle/源码在训练后变动，仍需历史快照才能证明当次实际分配。
+这也不能替代 raw 字节、特征、标签和样本时间锚点的一致性审计。
+
 ## 6. 后续选型与停止依据
 
 1. 先完成当前搜索、收齐完整配置与 validation 指标，再决定下一轮。
