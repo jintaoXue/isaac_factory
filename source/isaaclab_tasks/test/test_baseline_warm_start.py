@@ -271,6 +271,25 @@ def test_study_routes_all_trials_and_selects_only_after_completion(staged_study)
     assert len(calls) == 9
 
 
+def test_hard_negative_study_routes_six_scratch_trials(staged_study, monkeypatch):
+    dataset, parent_dir, output, calls = staged_study
+    def select(args, **kwargs):
+        assert len(calls) == 6
+        assert args[1].endswith("select_baseline_tuning.py")
+        calls.append("selection")
+    monkeypatch.setattr(staged.subprocess, "run", select)
+    staged.run_study("B4", dataset, parent_dir, output, [42, 43], "cpu", study="hard_negatives")
+    assert calls[-1] == "selection" and len(calls) == 7
+    protocol = json.loads((output / "study_config.json").read_text())
+    assert protocol["protocol"] == "baseline_short_hot_negative_v1"
+    assert len(protocol["trials"]) == 6 and "not a final causal benchmark" in protocol["comparison_scope"]
+    for index, (_, _, _, kwargs) in enumerate(calls[:-1]):
+        assert kwargs["warm_start_checkpoint"] is None
+        assert kwargs["train_config"].max_epochs == 60
+        assert not kwargs["train_config"].evaluate_test
+        assert kwargs["loss_config"].event_short_hot_fp_multiplier == (1., 2., 4.)[index % 3]
+
+
 @pytest.mark.parametrize("change", ["manifest", "audit", "duplicate_candidate", "duplicate_seed", "missing_run", "test_selection", "seeds", "branch", "dirty"])
 def test_study_refuses_invalid_preflight(staged_study, change, monkeypatch):
     dataset, parent_dir, output, calls = staged_study

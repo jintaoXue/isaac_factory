@@ -45,6 +45,7 @@ class MultiTaskLossConfig:
     event_will_fp_weight: float = 2.0
     event_will_upcoming_pos_weight: float = 4.0
     event_will_ongoing_pos_weight: float = 3.0
+    event_short_hot_fp_multiplier: float = 1.0
     event_focal_gamma: float = 0.0
     event_start_sigma: float = 1.0
     near_remain_windows: int = 15
@@ -52,6 +53,8 @@ class MultiTaskLossConfig:
     prediction_horizon: float = 180.0
 
     def __post_init__(self) -> None:
+        if not math.isfinite(self.event_short_hot_fp_multiplier) or self.event_short_hot_fp_multiplier < 1:
+            raise ValueError("event_short_hot_fp_multiplier must be finite and at least one")
         if not math.isfinite(self.event_focal_gamma) or self.event_focal_gamma < 0:
             raise ValueError("event_focal_gamma must be finite and non-negative")
         if self.prediction_horizon <= 0:
@@ -101,6 +104,17 @@ def _event_binary_loss(logits: torch.Tensor, target: torch.Tensor, gamma: float)
         return error
     # exp(-BCE) is the probability assigned to the true binary class.
     return error * (-torch.expm1(-error)).pow(gamma)
+
+
+def _short_hot_negative_mask(batch: dict[str, torch.Tensor]) -> torch.Tensor:
+    observed = batch["remain_mask"] > .5
+    hot_observed = (batch["y_hot"] > .5) & observed[:, :, None]
+    return (
+        (batch["event_will"] <= .5)
+        & batch["occ_node_mask"].bool()
+        & hot_observed.any(dim=1)
+        & (observed.sum(dim=1) >= 8)[:, None]
+    )
 
 
 def _soft_dice_loss(
@@ -274,6 +288,12 @@ def compute_multitask_loss(
         torch.full_like(event_weight, config.event_will_ongoing_pos_weight),
         event_weight,
     )
+    if config.event_short_hot_fp_multiplier > 1:
+        # Future targets define loss weights only; inference and labels are unchanged.
+        multiplier = torch.where(
+            _short_hot_negative_mask(batch), config.event_short_hot_fp_multiplier, 1.0
+        )
+        event_weight = event_weight * multiplier
     event_will_raw = _event_binary_loss(
         outputs["event_will_logit"], event_will_target, config.event_focal_gamma
     )

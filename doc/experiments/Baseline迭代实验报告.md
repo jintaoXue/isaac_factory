@@ -724,3 +724,66 @@ main_validation_replay_attempt_20260906.json（status=failed、model_scored=Fals
 本轮本地事件诊断和主重评工具测试合计 8 passed；覆盖资源目录、误报分解、只选 validation、
 评分模块隔离、原解码/共同解码区别及上述历史状态反例。真实 checkpoint 已触发严格加载
 拒绝，当前并未成功生成主实验重评分数。
+
+## 17. 历史状态敏感性实测与困难负例对照预案
+
+2026-09-06 实测完成，产物为 baseline_history_causality_20260906.json。保持原 X、目标、
+权重和保存阈值，仅比较完整序列历史 hot 与截至锚点的前缀重算值，不进行 test 评分。
+
+| split | 样本 | 可评估站点窗口 | 历史标志差异 | 正例中的历史标志差异 | ongoing 损失分组差异 |
+|---|---:|---:|---:|---:|---:|
+| train | 13813 | 177484 | 1146 | 451 | 0 |
+| validation | 2589 | 33473 | 199 | 68 | 0 |
+
+当前损失把 event_start=0 的正例也纳入 ongoing，故上述历史标志变化没有改变事件损失分组；
+loss 的其他项不读取 hist_last_hot，网络输入也不包含该字段。本地测试验证分组不变时当前
+loss/梯度不变，但这不证明重新训练后 checkpoint/threshold 选型不变。
+
+| checkpoint | 原 report P/R/F1 | 前缀 report P/R/F1 | F1 差值 |
+|---|---|---|---:|
+| B4 warm_base / 42 | 0.5210 / 0.2088 / 0.2981 | 0.5042 / 0.2020 / 0.2885 | -0.0096 |
+| B4 warm_base / 43 | 0.4621 / 0.2256 / 0.3032 | 0.4000 / 0.1953 / 0.2624 | -0.0407 |
+| B5 warm_base / 42 | 0.5077 / 0.2222 / 0.3091 | 0.5077 / 0.2222 / 0.3091 | 0.0000 |
+| B5 warm_base / 43 | 0.4675 / 0.2424 / 0.3193 | 0.4481 / 0.2323 / 0.3060 | -0.0133 |
+
+who P/R、报警数、upcoming recall 均不变；变化来自 ongoing 的起点置零规则。
+这不是历史状态问题已解决的证明，也不是主模型差距的解释；正式口径仍需双方确认。
+现有主模型 Git 历史中，7b2fc02 之前尚无 checkpoint 所需事件头，之后又包含 cluster_emb。
+目前没有找到能无补参数地匹配该保存权重的完整 Git 版本，已询问对应源码快照/可加载权重。
+
+### 下一轮：仅调整短 hot 事件负例的损失权重
+
+作为有限开发试验，继续冻结 v5 的已有共同数据、标签和评分规则，不将结果直接写成新的
+正式因果 benchmark。针对第 16 节占多数的误报，使用训练目标识别困难负例：站点有效、
+未来可观测至少 8 窗口、可观测未来有 hot、但 event_will=0。future hot/观测长度只决定
+loss 权重，不进入输入或解码，不用于过滤验证报警，不改变任何标签。
+
+| 候选 | event_short_hot_fp_multiplier | 初始化 | 上限 |
+|---|---:|---|---:|
+| weight1_control | 1 | 从头 | 60 epoch |
+| weight2 | 2 | 从头 | 60 epoch |
+| weight4 | 4 | 从头 | 60 epoch |
+
+B4/B5 各三个候选 x seed42/43，共 12 次。结构固定为已选 history-only；各模型的原学习率、
+batch、dropout、weight decay、早停及正例/一般负例权重不变。父 history 产物仅提供配置及
+溯源，绝不加载权重。本轮不复用旧 warm 控制组，而是同一新源码重跑从头 control。
+沿用原 12 点阈值列表、P/R 约束及完整轮稳健选型，所有候选完成后才作判断。
+不同 loss 权重下的 total loss 不直接跨候选比较，核心依据为共同 P/R/F1 与 upcoming recall。
+
+倍数 1 跳过加权分支，保留原算法精确行为；测试覆盖正例、无 hot 负例、padding、未观测
+未来、短 horizon 不被错误加权，梯度方向及标签不变。运行器测试覆盖六次全部从头训练后
+才选型，保证不会误走 warm 路由。本轮结束后对选择结果做前缀解码敏感性复核，不把高
+precision、低 recall 的候选视为成功，也不在结果不理想时无限追加倍数。
+
+执行入口（执行目录和环境由服务器实际配置）：
+
+```bash
+STUDY=hard_negatives bash batch_factory_baseline_staged.sh B4
+STUDY=hard_negatives bash batch_factory_baseline_staged.sh B5
+```
+
+默认输出 models/tuning/{b4,b5}_short_hot_negative_v1，已存在则拒绝覆盖。本段是预先固定的
+方案与实现说明，实际启动、完成状态和结果另行记录；不能将计划当作完成。
+
+实现验证：相关损失、训练路由、续训、因果历史审计、评分重放、事件诊断、图对称性、
+调参与数据集测试合计 62 passed、8 subtests passed；shell 语法和 git diff --check 通过。

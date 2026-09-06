@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the preregistered B4/B5 scratch/warm x event-signal comparison."""
+"""Run a finite, preregistered B4/B5 training-procedure comparison."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from factory_baselines.warm_start import load_warm_start_parent
 
 
 ARMS = ("scratch_base", "scratch_signal", "warm_base", "warm_signal")
+HARD_NEGATIVE_ARMS = {"weight1_control": 1.0, "weight2": 2.0, "weight4": 4.0}
 
 
 def stage_configuration(parent: dict, arm: str, profile: str, device: str, seed: int) -> dict:
@@ -49,6 +50,15 @@ def stage_configuration(parent: dict, arm: str, profile: str, device: str, seed:
     return config
 
 
+def hard_negative_configuration(parent: dict, arm: str, profile: str, device: str, seed: int) -> dict:
+    if arm not in HARD_NEGATIVE_ARMS:
+        raise ValueError(f"Unknown hard-negative arm: {arm}")
+    config = stage_configuration(parent, "scratch_base", profile, device, seed)
+    config["training"]["max_epochs"] = 60
+    config["loss"]["event_short_hot_fp_multiplier"] = HARD_NEGATIVE_ARMS[arm]
+    return config
+
+
 class _Tee:
     def __init__(self, console, log):
         self.console, self.log = console, log
@@ -63,7 +73,9 @@ class _Tee:
 
 
 def run_study(model: str, dataset_dir: Path, parent_dir: Path, output_dir: Path,
-              seeds: list[int], device: str) -> None:
+              seeds: list[int], device: str, *, study: str = "staged") -> None:
+    if study not in {"staged", "hard_negatives"}:
+        raise ValueError(f"Unknown study: {study}")
     tools_dir = Path(__file__).resolve().parent
     repo = next(path for path in tools_dir.parents if (path / ".git").exists())
     branch = subprocess.check_output(["git", "branch", "--show-current"], cwd=repo, text=True).strip()
@@ -118,26 +130,35 @@ def run_study(model: str, dataset_dir: Path, parent_dir: Path, output_dir: Path,
         del state
         parents[seed], configs[seed], provenance[seed] = parent, config, proof
     trials = []
+    arms = ARMS if study == "staged" else HARD_NEGATIVE_ARMS
+    configure = stage_configuration if study == "staged" else hard_negative_configuration
     for seed in seeds:
-        for arm in ARMS:
-            config = stage_configuration(configs[seed], arm, f"{output_dir.name}_{arm}", device, seed)
+        for arm in arms:
+            config = configure(configs[seed], arm, f"{output_dir.name}_{arm}", device, seed)
             trials.append({"seed": seed, "arm": arm, "configuration": config,
-                           "warm_start_checkpoint": str(parents[seed]) if arm.startswith("warm_") else None})
+                           "warm_start_checkpoint": str(parents[seed]) if study == "staged" and arm.startswith("warm_") else None})
     output_dir.mkdir(parents=True)
-    study = {
-        "protocol": "baseline_staged_training_v1", "selection_split": "validation",
+    study_record = {
+        "protocol": "baseline_staged_training_v1" if study == "staged" else "baseline_short_hot_negative_v1",
+        "selection_split": "validation",
         "test_evaluated": False, "model": model, "seeds": seeds,
         "dataset_manifest_sha256": manifest_hash,
         "parent_selection_sha256": hashlib.sha256(selection_bytes).hexdigest(),
         "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(),
         "parents": provenance, "trials": trials,
     }
-    (output_dir / "study_config.json").write_text(json.dumps(study, indent=2) + "\n")
+    if study == "hard_negatives":
+        study_record.update(
+            initialization="from scratch; parent files supply configuration/provenance, not weights",
+            comparison_scope="development under the frozen v5 scoring contract; not a final causal benchmark",
+            post_selection_audit="repeat frozen-model observed-prefix decoding sensitivity before interpretation",
+        )
+    (output_dir / "study_config.json").write_text(json.dumps(study_record, indent=2) + "\n")
     for trial in trials:
         arm, seed, config = trial["arm"], trial["seed"], trial["configuration"]
         dest = output_dir / f"candidate_{arm}" / f"seed{seed}"
         dest.mkdir(parents=True)
-        print(f"\n{model} staged candidate={arm} seed={seed} validation-only", flush=True)
+        print(f"\n{model} {study} candidate={arm} seed={seed} validation-only", flush=True)
         with (dest / "training.log").open("w") as log, redirect_stdout(_Tee(sys.stdout, log)):
             train_torch_baseline(
                 kind, dataset_dir, dest, model_overrides=config["model"],
@@ -155,6 +176,7 @@ def run_study(model: str, dataset_dir: Path, parent_dir: Path, output_dir: Path,
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", choices=("B4", "B5"), required=True)
+    parser.add_argument("--study", choices=("staged", "hard_negatives"), default="staged")
     parser.add_argument("--dataset_dir", type=Path, required=True)
     parser.add_argument("--parent_dir", type=Path, required=True)
     parser.add_argument("--output_dir", type=Path, required=True)
@@ -164,7 +186,7 @@ def main() -> None:
     args = parser.parse_args()
     torch.set_num_threads(args.threads)
     run_study(args.model, args.dataset_dir.resolve(), args.parent_dir.resolve(),
-              args.output_dir.resolve(), args.seeds, args.device)
+              args.output_dir.resolve(), args.seeds, args.device, study=args.study)
 
 
 if __name__ == "__main__":
