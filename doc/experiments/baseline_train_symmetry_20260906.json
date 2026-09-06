@@ -1,0 +1,25 @@
+{
+  "split": "train",
+  "test_evaluated": false,
+  "sample_count": 13723,
+  "samples_with_exact_node_swap_symmetry": 62,
+  "pairs": [
+    {
+      "nodes": [
+        "robot_1",
+        "robot_2"
+      ],
+      "identical_history_and_graph_samples": 14,
+      "different_event_labels": 0
+    },
+    {
+      "nodes": [
+        "robot_2",
+        "robot_3"
+      ],
+      "identical_history_and_graph_samples": 48,
+      "different_event_labels": 0
+    }
+  ],
+  "interpretation": "Pair counts may overlap; do not sum as a global error lower bound. This checks exact transpositions only, not all graph symmetries or approximate ambiguity."
+}
