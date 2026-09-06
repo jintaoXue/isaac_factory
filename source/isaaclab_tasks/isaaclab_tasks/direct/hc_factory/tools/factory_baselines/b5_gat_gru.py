@@ -23,6 +23,8 @@ class B5ModelConfig:
     gru_layers: int = 1
     dropout: float = 0.2
     event_context: bool = False
+    node_embedding: int = 0
+    temporal_readout: str = "last"
     prediction_horizon: float = 180.0
     max_remain_windows: int = 15
     num_causes: int = 10
@@ -45,6 +47,10 @@ class B5ModelConfig:
                 raise ValueError(f"{name} must be positive")
         if self.global_dim < 0:
             raise ValueError("global_dim must be non-negative")
+        if self.node_embedding < 0:
+            raise ValueError("node_embedding must be non-negative")
+        if self.temporal_readout not in {"last", "last_mean"}:
+            raise ValueError("temporal_readout must be last or last_mean")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -150,6 +156,23 @@ class B5GatGru(nn.Module):
             batch_first=True,
             dropout=config.dropout if config.gru_layers > 1 else 0.0,
         )
+        self.node_identity = (
+            nn.Sequential(
+                nn.Embedding(config.num_nodes, config.node_embedding),
+                nn.Linear(config.node_embedding, config.gat_hidden, bias=False),
+            )
+            if config.node_embedding else None
+        )
+        if self.node_identity is not None:
+            nn.init.normal_(self.node_identity[0].weight, mean=0.0, std=0.02)
+        self.history_readout = (
+            nn.Sequential(
+                nn.Linear(2 * config.gru_hidden, config.gru_hidden),
+                nn.GELU(),
+                nn.LayerNorm(config.gru_hidden),
+            )
+            if config.temporal_readout == "last_mean" else None
+        )
         self.heads = FactoryPredictionHeads(
             node_hidden_dim=config.gru_hidden,
             global_dim=config.global_dim,
@@ -187,6 +210,9 @@ class B5GatGru(nn.Module):
         valid_features = spatial_mask[:, :, None].to(spatial_x.dtype)
 
         input_residual = self.input_projection(spatial_x) * valid_features
+        if self.node_identity is not None:
+            node_ids = torch.arange(node_count, device=x.device)
+            input_residual = input_residual + self.node_identity(node_ids)[None] * valid_features
         spatial = self.gat1(spatial_x, spatial_adjacency, spatial_mask)
         spatial = (
             self.dropout(F.elu(self.gat1_norm(spatial + input_residual)))
@@ -200,7 +226,12 @@ class B5GatGru(nn.Module):
             batch_size * node_count, time_steps, self.config.gat_hidden
         )
         temporal_output, _ = self.gru(temporal_input)
-        node_hidden = temporal_output[:, -1].view(
+        last = temporal_output[:, -1]
+        readout = (
+            self.history_readout(torch.cat((last, temporal_output.mean(dim=1)), dim=-1))
+            if self.history_readout is not None else last
+        )
+        node_hidden = readout.view(
             batch_size, node_count, self.config.gru_hidden
         )
         return self.heads(

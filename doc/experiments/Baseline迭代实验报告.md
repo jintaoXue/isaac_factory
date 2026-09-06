@@ -240,7 +240,7 @@ checkpoint（由 `unsup10` 权重继续训练），不是多 seed 均值或已�
 最终报告还缺：B3 调参、v4 数据上的必要重训与后续改进、特征/标签/锚点一致性证据、
 主实验正式多 seed 结果、冻结配置及完整主表。当前不具备结束实验并宣称指标达标或方法到顶的证据。
 
-## 7. B4 下一轮表示对照
+## 7. B4/B5 下一轮表示对照
 
 B4 context/focal 整轮完成后，新增 `b4_representation_v1`，不改变数据、损失权重或评分。
 保持两层 GCN、node-wise GRU 和同一事件头，比较以下四个从头训练的候选，各 seed42/43：
@@ -256,8 +256,17 @@ B4 context/focal 整轮完成后，新增 `b4_representation_v1`，不改变数�
 这不是已证实的修复或性能上限解释，必须等待完整对照；不使用未来信息，不增加主模型专属解码。
 工位身份绑定同一 manifest 的 node_ids，只支持当前已知工位，不据此声称跨布局泛化。
 预算保持 max_epochs=60、min_epochs=10、patience=10、batch=24、lr=3e-4、weight_decay=0.01。
-入口为 `bash batch_factory_baseline_tune_b4_representation.sh`；输出新目录，禁止覆盖旧结果。
-因输入时点偏移审计，本轮尚未实际启动，待修正数据后执行。
+入口已统一为 `bash batch_factory_baseline_representation.sh B4` 或 `B5`，旧脚本不留别名。
+两模型都比较 control、identity、history、identity_history，每组 seed42/43，从头训练。
+B5 保留两层 GAT + GRU，采用相同的身份/历史读出对照；batch=16、lr=1.5e-4、
+min_epochs=15、patience=20，其他参数在该模型四个候选间不变。B4 保持上述原定预算。
+新数据 `factory_pdformer_134_v3` 上先跑 control，避免把输入修复混成结构收益。
+脚本校验通过的 episode/validation 审计和 manifest 哈希，拒绝覆盖旧搜索目录。
+当前实现与测试已补齐，尚未启动本轮；默认关闭 B5 新选项时，与 Git `805efeb`
+相同 seed 的权重及全部输出 tensor 逐位一致。完整实验结束前不宣称选项改善指标。
+本轮本地模型/掩码/梯度/checkpoint/命令路由共 33 项测试与 9 个 subtest 通过；
+脚本路由测试验证每模型 8 次候选、一次完整排名、全部 validation-only，并拒绝未通过或
+哈希失效的输入审计和已有输出目录。测试中的模拟训练仅用于命令路由，不计入实验成绩。
 实验开关用于正在执行的消融，不是旧版本兼容路径。最终冻结时应清理无收益的候选实现，
 历史实验的完整代码继续由 Git commit 保留。
 

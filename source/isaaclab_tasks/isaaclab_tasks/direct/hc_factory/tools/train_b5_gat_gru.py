@@ -38,6 +38,8 @@ def main() -> None:
     parser.add_argument("--dropout", type=float, default=0.2)
     parser.add_argument("--event_context", action="store_true")
     parser.add_argument("--event_focal_gamma", type=float, default=0.0)
+    parser.add_argument("--node_embedding", type=int, default=0)
+    parser.add_argument("--temporal_readout", choices=("last", "last_mean"), default="last")
     parser.add_argument("--prediction_horizon", type=float, default=180.0)
     parser.add_argument("--lambda_event_will", type=float, default=2.5)
     parser.add_argument("--event_will_pos_weight", type=float, default=3.0)
@@ -97,6 +99,8 @@ def main() -> None:
             "gru_layers": args.gru_layers,
             "dropout": args.dropout,
             "event_context": args.event_context,
+            "node_embedding": args.node_embedding,
+            "temporal_readout": args.temporal_readout,
         },
         train_config=train_config,
         loss_config=loss_config,

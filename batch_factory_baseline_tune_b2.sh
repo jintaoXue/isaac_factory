@@ -6,7 +6,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_ROOT="${ROOT}/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset"
 TOOLS_DIR="${ROOT}/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools"
-BENCHMARK_TAG="${BENCHMARK_TAG:-factory_pdformer_134_v1}"
+BENCHMARK_TAG="${BENCHMARK_TAG:-factory_pdformer_134_v3}"
 DATASET_DIR="${DATA_ROOT}/experiments/${BENCHMARK_TAG}"
 TUNING_TAG="${TUNING_TAG:-b2_event_search_v1}"
 TUNING_DIR="${DATASET_DIR}/models/tuning/${TUNING_TAG}"

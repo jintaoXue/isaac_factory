@@ -211,10 +211,32 @@ validation 结果。先 seed42 再 seed43，每个模型至多 4 个候选 x 2 s
 门禁和跨 seed 排序保持不变。日志只放实验目录，不在仓库根目录产生散落 `.log`。
 
 ```bash
-PYTHON_BIN="$TRAIN_PY" BENCHMARK_TAG=factory_pdformer_134_v1 \
+PYTHON_BIN="$TRAIN_PY" BENCHMARK_TAG=factory_pdformer_134_v3 \
 TUNING_TAG=b4_event_ablation_v1 DEVICE=cuda:0 \
 bash batch_factory_baseline_event_ablation.sh B4
 ```
 
 即使新候选胜出，也应披露两轮搜索的累计预算。此次已反复查看的旧 test 只能作为
 开发期参考；正式论证仍需冻结配置并使用未参与调参的独立测试数据。
+
+## 9. B4/B5 历史表示对照
+
+context/focal 完整轮未显示可靠收益，下一轮固定事件损失和解码，不继续同方向搜索。
+两层 GCN/GAT 后仍使用 node-wise GRU，只比较工位 ID 的 16 维嵌入和 GRU 的历史读出：
+control（无嵌入、末状态）、identity、history（末状态加全历史均值）、identity_history。
+ID 对应固定 manifest 的已知节点，不能用于宣称未知工位/跨布局泛化。
+
+每个模型 4 候选 x 2 seeds，先执行 control；B4 batch24/lr3e-4/min10/patience10，
+B5 batch16/lr1.5e-4/min15/patience20，两者 max_epochs60、dropout0.2、weight_decay0.01。
+每组完整训练后才按第 3 节稳健排名；因早停实际训练量不同，记录实际 epoch/耗时与参数量。
+该对照不包含热启动，阶段微调须作为后续独立方案比较，不能与表示变化同时捆绑解释。
+
+```bash
+PYTHON_BIN="$TRAIN_PY" BENCHMARK_TAG=factory_pdformer_134_v3 DEVICE=cuda:0 \
+bash batch_factory_baseline_representation.sh B4
+PYTHON_BIN="$TRAIN_PY" BENCHMARK_TAG=factory_pdformer_134_v3 DEVICE=cuda:0 \
+bash batch_factory_baseline_representation.sh B5
+```
+
+脚本要求 dev_xwt，允许显式 DATASET_DIR 指向已审计的同一数据集；输出始终位于该数据集
+的 models/tuning 下。独立执行 checkout 也固定 dev_xwt，用于不修改其他正在训练的代码目录。

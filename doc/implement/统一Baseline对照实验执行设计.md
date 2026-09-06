@@ -248,9 +248,11 @@ B5 的两层 GAT 同样使用输入投影残差、层间残差和逐层 LayerNor
 episode，其中预期 134 个通过门禁，因此显式关闭“零拒绝”模式并锁定入选数量：
 
 ```bash
-RAW_ROOT="$HOME/work/BNPDFormer/_isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset"
+FACTORY="$HOME/work/isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory"
+RAW_ROOT="$FACTORY/output/bottleneck_dataset"
+MAIN_BUNDLE="$FACTORY/PDFormer/raw_data/n10_i1_all_usable"
 
-BENCHMARK_TAG=factory_pdformer_134_v1 \
+MAIN_BUNDLE="$MAIN_BUNDLE" BENCHMARK_TAG=factory_pdformer_134_v3 \
 STRICT_RAW=0 EXPECTED_ACCEPTED_EPISODES=134 \
   ./batch_factory_baseline_build.sh \
   "$RAW_ROOT/extra_machine" \
@@ -264,26 +266,26 @@ STRICT_RAW=0 EXPECTED_ACCEPTED_EPISODES=134 \
   "$RAW_ROOT/material重采"
 ```
 
-先做四模型 smoke：
+当前新数据已完成构建，不重复覆盖。首次构建或输入发生变化时，必须先执行
+`audit_baseline_episode_split.py` 与 `audit_baseline_validation_contract.py`，核对指定主 bundle
+及可信 checkpoint；仅数量一致不足以进入正式对照。
+
+当前仍是 validation-only 搜索阶段，B4/B5 运行新的表示对照：
 
 ```bash
-BENCHMARK_TAG=factory_pdformer_134_v1 RUN_MODE=smoke DEVICE=cuda:0 \
-  ./batch_factory_baseline_train.sh ALL
+BENCHMARK_TAG=factory_pdformer_134_v3 DEVICE=cuda:0 \
+  bash batch_factory_baseline_representation.sh B4
 ```
 
-smoke 通过后，优先单独重跑修正后的 B4：
+上一模型完整轮结束后运行 B5：
 
 ```bash
-BENCHMARK_TAG=factory_pdformer_134_v1 RUN_MODE=formal DEVICE=cuda:0 \
-  ./batch_factory_baseline_train.sh B4
+BENCHMARK_TAG=factory_pdformer_134_v3 DEVICE=cuda:0 \
+  bash batch_factory_baseline_representation.sh B5
 ```
 
-B4 validation 曲线和产物通过后再运行完整一轮：
-
-```bash
-BENCHMARK_TAG=factory_pdformer_134_v1 RUN_MODE=formal DEVICE=cuda:0 \
-  ./batch_factory_baseline_train.sh ALL
-```
+目前不要用 formal ALL 作为调参步骤，因为它会计算 test。待全部候选及训练策略冻结后，
+再单独给出多 seed 的最终执行清单，并区分开发期已看过的旧 test 与独立 holdout。
 
 ## 9. 验收条件
 
