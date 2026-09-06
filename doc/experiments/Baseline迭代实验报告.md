@@ -87,7 +87,7 @@ split 比较完全相同，耗时从 5.960s 降至 0.094s（本地约 63 倍，�
 事件发生/开始/时长、订单数、剩余长度、各 mask 及时间/窗口索引全部匹配，末尾样本差异为零。
 但 A.3 `y_cause` 有 128 个样本不匹配，所以整体 `comparison_match=False`，还不能正式训练。
 服务器产物为 `baseline_episode_split_v4_20260906.json` 和
-`baseline_validation_contract_v4_20260906.json`（已复制到 doc/experiments，待同步）。
+`baseline_validation_contract_v4_20260906.json`（现已随 `64366a6` 同步入 Git）。
 
 已查到具体原因：主实验原有 `n10_human1.0/derived/episode_06/env_00` 特征 CSV
 没有 `labor_saturated_s`，新离线聚合新增了这一列。窗口 32 的共同 CSV 字段逐项一致。
@@ -117,7 +117,7 @@ split 比较完全相同，耗时从 5.960s 降至 0.094s（本地约 63 倍，�
 也未超过第一轮 `c0_stabilized` 的 0.3066。两个 Focal 方向均不再追加同类搜索。
 四个候选全部未通过 P/R 双门，事件提前预测仍未解决。
 服务器已导出 `doc/experiments/baseline_validation_20260906_round3_partial.json`，
-含 100 次已完成 validation-only 运行（其中 B3 仅 4 次，尚非完整搜索）；文件待同步入 Git。
+含 100 次已完成 validation-only 运行（其中 B3 仅 4 次，尚非完整搜索）；现已随 `64366a6` 同步入 Git。
 
 首次快照：[`baseline_validation_20260906_round1_partial.json`](baseline_validation_20260906_round1_partial.json)。
 导出时间为 2026-09-06 03:18:41 HKT，仅包含当时已完成的 76 次 validation-only 训练。
@@ -262,7 +262,7 @@ B5 保留两层 GAT + GRU，采用相同的身份/历史读出对照；batch=16�
 min_epochs=15、patience=20，其他参数在该模型四个候选间不变。B4 保持上述原定预算。
 新数据 `factory_pdformer_134_v3` 上先跑 control，避免把输入修复混成结构收益。
 脚本校验通过的 episode/validation 审计和 manifest 哈希，拒绝覆盖旧搜索目录。
-当前实现与测试已补齐，尚未启动本轮；默认关闭 B5 新选项时，与 Git `805efeb`
+默认关闭 B5 新选项时，与 Git `805efeb`
 相同 seed 的权重及全部输出 tensor 逐位一致。完整实验结束前不宣称选项改善指标。
 本轮本地模型/掩码/梯度/checkpoint/命令路由共 33 项测试与 9 个 subtest 通过；
 脚本路由测试验证每模型 8 次候选、一次完整排名、全部 validation-only，并拒绝未通过或
@@ -304,6 +304,8 @@ anchor_time_s、first_future_start_s、input_window_indices。`comparison_match=
 证据存于新 benchmark 的 `episode_split_audit.json`、`validation_contract_audit.json`，
 并复制为服务器 `doc/experiments/baseline_episode_split_v5_20260906.json` 与
 `baseline_validation_contract_v5_20260906.json`，待 B3 结束、服务器工作目录可快进后同步。
+上述五份服务器证据已改由独立 dev_xwt 执行 checkout 在开训前提交为 `64366a6`，
+并拉回本地；不需要中断 B3 或更新其旧工作目录。
 构建控制台日志移入新 benchmark，未遗留在仓库根目录。v5 数据现在可作为下一轮 B4/B5
 共同协议的起点；新数据上的模型对照与多 seed 完整结果仍未完成，不宣称方法达标。
 
@@ -315,3 +317,25 @@ B4/B5 可以从自身 checkpoint 进行低学习率微调，不因此失去 base
 产物应记录父 checkpoint 哈希、数据版本、每阶段 epoch/更新步数/耗时/学习率及选型规则；
 均值覆盖完整训练流程，不能只报续训阶段的最好 seed 或 epoch。当前先完成共同数据审计，
 不从旧 v3 不同输入协议的权重热启动并把它冒充新协议从头训练的公平对照。
+
+## 9. 新数据模型整轮已启动
+
+表示对照实现提交 `161327c`，加上服务器证据后的实际执行提交固定为
+`64366a62b075f7abfd3b9861176e2e866ec8443d`。
+独立 checkout `/home/sci/work/BSTAN_baseline_dev_xwt_v5` 的分支是 dev_xwt，
+原 `/home/sci/work/BSTAN_isaac_factory` 仍在 dev_xwt 的旧提交运行 B3，未改代码或切分支。
+此执行 checkout 在整轮完成前不 pull、不提交修改；新文档提交不改变运行中的代码。
+
+tmux `baseline_graph_v5` 的 pane PID=3760105，顺序执行 B4 整轮，再执行 B5 整轮；
+每模型 control/identity/history/identity_history x seed42/43。已实测 B4 control seed42
+训练 PID=3761319 完成 epoch1/2，确实开始训练，而非只创建队列或跑 smoke。
+此时 B3 已完成 11/16，活动 PID=3759057。主机可用内存约 24 GiB，GPU 占用约
+8.5/32 GiB；没有为此停止其他训练或 Isaac Sim 进程。存在并发，不将耗时当作独占推理效率。
+
+输出继续写入原仓库的 `factory_pdformer_134_v3/models/tuning/b4_representation_v1`
+和 `b5_representation_v1`，不是写到主实验或执行副本的数据目录。
+整轮日志为新 benchmark 内 `representation_round_v1_console.log`。
+绑定 dataset manifest SHA-256 为
+`66c6554d0ae1c7a293e482a201829a4c324f1d9d0b88934c1c2a6c1e27333183`。
+先等各完整轮结束再比较均值、稳健分数及 upcoming 诊断；目前不对早期 epoch 排名，
+也不声称新表示已提高 F1。后续仍需完成 B3 整轮、必要重训、阶段微调对照及最终报告。
