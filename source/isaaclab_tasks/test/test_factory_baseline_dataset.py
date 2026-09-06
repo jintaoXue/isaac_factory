@@ -260,6 +260,29 @@ class TestFactoryBaselineDataset(unittest.TestCase):
                     input_windows=12,
                 )
 
+    def test_episode_slices_preserve_missing_observation_masks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            run = self._make_run(root)
+            path = root / "derived" / run.name / "episode_00/env_00/window_feature_table.csv"
+            with path.open(newline="") as stream:
+                reader = csv.DictReader(stream)
+                fields, rows = reader.fieldnames, list(reader)
+            rows = [row for row in rows if not (
+                row["resource_type"] == "buffer" and row["window_index"] == "4"
+            )]
+            self._write_csv(path, fields, rows)
+            result = build_factory_baseline_dataset(
+                run_dirs=[run], out_dir=root / "dataset", derived_root=root / "derived",
+                input_windows=12,
+            )
+            index = next(row["sample_index"] for row in result["sample_rows"] if row["episode_id"] == 0)
+            buffer = result["manifest"]["node_ids"].index("storage_BlackStorage_00")
+            payload = result["payload"]
+            self.assertFalse(bool(payload["observation_mask"][index, 4, buffer]))
+            self.assertTrue(bool(payload["observation_mask"][index, 5, buffer]))
+            self.assertTrue((payload["x"][index, 4, buffer, :26] == 0).all())
+
     def test_checkpoint_rank_breaks_zero_report_tie_with_hot_f1(self) -> None:
         def metrics(report_f1: float, hot_f1: float, loss: float) -> dict:
             return {
@@ -364,6 +387,11 @@ class TestFactoryBaselineDataset(unittest.TestCase):
             self.assertEqual(expected_files, {path.name for path in out_dir.iterdir()})
             loaded = torch.load(out_dir / "dataset.pt", map_location="cpu")
             self.assertTrue(torch.equal(payload["x"], loaded["x"]))
+            with self.assertRaisesRegex(FileExistsError, "Refusing to overwrite"):
+                build_factory_baseline_dataset(
+                    run_dirs=[run_dir], out_dir=out_dir, derived_root=root / "derived",
+                    input_windows=12,
+                )
 
             repeated = build_factory_baseline_dataset(
                 run_dirs=[run_dir],

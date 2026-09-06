@@ -437,6 +437,12 @@ def build_factory_baseline_dataset(
     if max_remain_windows <= 0:
         raise ValueError("max_remain_windows must be positive")
     out_dir = Path(out_dir).resolve()
+    for name in (
+        "dataset.pt", "dataset_manifest.json", "split_manifest.json", "normalization.json",
+        "node_catalog.csv", "graph_edge_table.csv", "model_sample_index.csv",
+    ):
+        if (out_dir / name).exists():
+            raise FileExistsError(f"Refusing to overwrite dataset output: {out_dir / name}")
     groups = _discover_groups(run_dirs, Path(derived_root).resolve())
     if allowed_group_ids is not None:
         groups = [group for group in groups if group["group_id"] in allowed_group_ids]
@@ -527,6 +533,9 @@ def build_factory_baseline_dataset(
             (len(window_indices), len(node_ids), len(resource_types)),
             dtype=torch.float32,
         )
+        raw_observed = torch.zeros((len(window_indices), len(node_ids)), dtype=torch.bool)
+        raw_global = torch.zeros((len(window_indices), len(GLOBAL_FEATURES)), dtype=torch.float32)
+        closed_windows = []
         for node_id in active_nodes:
             catalog_index = node_index[node_id]
             raw_types[
@@ -535,9 +544,18 @@ def build_factory_baseline_dataset(
         window_starts = []
         for time_index, window_index_value in enumerate(window_indices):
             rows = by_window[window_index_value]
-            window_starts.append(_f(next(iter(rows.values())).get("window_start_s")))
+            first_row = next(iter(rows.values()))
+            window_starts.append(_f(first_row.get("window_start_s")))
+            raw_global[time_index] = torch.tensor(
+                [_f(first_row.get(name)) for name in GLOBAL_FEATURES], dtype=torch.float32
+            )
+            closed_windows.append(all(
+                math.isclose(_f(row.get("window_end_s")) - _f(row.get("window_start_s")), window_size)
+                for row in rows.values()
+            ))
             for node_id, row in rows.items():
                 catalog_index = node_index[node_id]
+                raw_observed[time_index, catalog_index] = True
                 raw_features[time_index, catalog_index] = torch.tensor(
                     [_f(row.get(name)) for name in CONTINUOUS_FEATURES]
                 )
@@ -547,6 +565,15 @@ def build_factory_baseline_dataset(
         canonical_features = ensure_labor_saturated_feature(
             torch.cat((raw_features, raw_types), dim=-1).numpy()
         )
+        # Parse each episode once; overlapping histories share these immutable tensors.
+        node_applicability = torch.tensor([
+            [feature_is_applicable(name, node_id, node_types[node_id]) for name in CONTINUOUS_FEATURES]
+            for node_id in node_ids
+        ], dtype=torch.bool)
+        raw_applicability = raw_observed[..., None] & node_applicability[None]
+        raw_inputs = raw_features.masked_fill(~raw_applicability, 0.0)
+        observed_types = raw_types * raw_observed[..., None]
+        raw_labor = torch.from_numpy(canonical_features[..., -1:])
         raw_hot = torch.from_numpy(
             ops_hot_mask(
                 canonical_features,
@@ -576,71 +603,23 @@ def build_factory_baseline_dataset(
             remain_len = done_position - position
             if remain_len <= 0:
                 continue
-            sequence_rows = [by_window[index] for index in sequence_indices]
+            history_slice = slice(position - input_windows, position)
             # A terminal partial window may be a target, never an observed history window.
-            if any(
-                not math.isclose(
-                    _f(row.get("window_end_s")) - _f(row.get("window_start_s")),
-                    window_size,
-                )
-                for rows in sequence_rows for row in rows.values()
-            ):
+            if not all(closed_windows[history_slice]):
                 continue
-            starts = [
-                _f(next(iter(rows.values())).get("window_start_s"))
-                for rows in sequence_rows
-            ]
+            starts = window_starts[history_slice]
             if any(
                 not math.isclose(current - previous, stride)
                 for previous, current in zip(starts, starts[1:])
             ):
                 continue
 
-            x_continuous = torch.zeros(
-                (input_windows, len(node_ids), len(CONTINUOUS_FEATURES)),
-                dtype=torch.float32,
-            )
-            applicability = torch.zeros_like(x_continuous, dtype=torch.bool)
-            x_type = torch.zeros(
-                (input_windows, len(node_ids), len(resource_types)), dtype=torch.float32
-            )
-            x_global = torch.zeros(
-                (input_windows, len(GLOBAL_FEATURES)), dtype=torch.float32
-            )
-            observation_mask = torch.zeros(
-                (input_windows, len(node_ids)), dtype=torch.bool
-            )
-            x_labor = torch.from_numpy(
-                canonical_features[position - input_windows : position, :, -1:].copy()
-            )
-            for time_index, rows in enumerate(sequence_rows):
-                first_row = next(iter(rows.values()))
-                x_global[time_index] = torch.tensor(
-                    [_f(first_row.get(name)) for name in GLOBAL_FEATURES],
-                    dtype=torch.float32,
-                )
-                for node_id, row in rows.items():
-                    catalog_index = node_index[node_id]
-                    resource_type = node_types[node_id]
-                    observation_mask[time_index, catalog_index] = True
-                    for feature_index, feature_name in enumerate(CONTINUOUS_FEATURES):
-                        applicable = observation_mask[
-                            time_index, catalog_index
-                        ] and feature_is_applicable(
-                            feature_name, node_id, resource_type
-                        )
-                        applicability[
-                            time_index, catalog_index, feature_index
-                        ] = applicable
-                        if applicable:
-                            x_continuous[time_index, catalog_index, feature_index] = _f(
-                                row.get(feature_name)
-                            )
-                    x_type[
-                        time_index,
-                        catalog_index,
-                        resource_type_index[resource_type],
-                    ] = 1.0
+            x_continuous = raw_inputs[history_slice]
+            applicability = raw_applicability[history_slice]
+            x_type = observed_types[history_slice]
+            x_global = raw_global[history_slice]
+            observation_mask = raw_observed[history_slice]
+            x_labor = raw_labor[history_slice]
 
             _y_score, y_hot_np, remain_mask_np, _ = pack_remain_target(
                 raw_scores.numpy(),
