@@ -6,10 +6,10 @@
 `PDFormer/factory_bn/train.py` 为唯一评估参考。`dev_tyx` 的当前主模型是
 BNPDFormer：PDFormer 编码器加制造瓶颈 occupancy、event 和 cause 任务头。
 
-本轮只改 B2-B5 的评估、阈值选择和 checkpoint 规则，不改变共享 raw、derived、
-dataset、episode split 或标签，因此不需要重新采集或重建 dataset。B4 同时修正了
-dense GCN 的过平滑问题；B5 补齐标准残差和 LayerNorm。两者仍分别保持 GCN-GRU 与
-GAT-GRU 结构。
+指标公式与阈值选择规则不改变。2026-09-06 的逐样本审计另发现订单数输入偏移、
+终末部分窗口及未闭合扰动聚合差异，因此现在必须用数据集 v4 重建并重训；raw 不用重采。
+新张量通过实际主实验 bundle 的样本/特征/标签审计后才能作为正式对照输入。
+B4/B5 仍分别保持 GCN-GRU 与 GAT-GRU 结构，参数与消融在验证集上选择。
 
 ## 2. 主任务口径
 
@@ -49,9 +49,10 @@ who/report 公式。B2 的 occupancy 预测仍独立保留，只用于 hot 和 o
 训练产物会在 `config.json`、`best.pt`、`run_summary.json` 中记录 validation 选中的
 `event_report_threshold`。`history.csv` 逐 epoch 记录该 epoch 的实际阈值和双门状态。
 
-旧模型产物使用旧的固定阈值和旧 checkpoint 选择规则，不能与新结果混表。共享
-`dataset.pt` 可复用，但 B2-B5 需要重新训练，或者在同一 checkpoint 上完整执行一次
-validation 阈值选择后再冻结复评 test；正式结果采用重新训练版本。
+不同数据版本或旧固定阈值/checkpoint 规则的模型不能与新结果混表。v3 的 `dataset.pt`
+不能继续用于正式训练；在新 benchmark 目录重建 v4，并保持原 episode split 后重训。
+旧搜索保留为开发期证据，不重写其配置或结果。仅修改指标时才可能复评旧 checkpoint，
+本次包含输入修复，不能仅重新算指标代替重训。
 
 ## 5. 与主模型的边界
 

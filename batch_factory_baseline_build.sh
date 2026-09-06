@@ -7,8 +7,8 @@
 #   ./batch_factory_baseline_build.sh new_machine1.0 new_human1.0
 #
 # Environment overrides:
-#   BENCHMARK_TAG=factory_main_aligned_v1
-#   CLEAN_DERIVED=1   # remove shared_bn_agg_unsupervised_v2 before rebuilding
+#   BENCHMARK_TAG=factory_pdformer_134_v2  # must be a new/empty output directory
+#   PYTHON_BIN=python
 #   STRICT_RAW=1      # fail if any raw episode is rejected
 #   EXPECTED_ACCEPTED_EPISODES=134
 #   SEED=42
@@ -18,9 +18,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_ROOT="${ROOT}/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset"
 TOOLS_DIR="${ROOT}/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools"
-BENCHMARK_TAG="${BENCHMARK_TAG:-factory_main_aligned_v1}"
+BENCHMARK_TAG="${BENCHMARK_TAG:-factory_pdformer_134_v2}"
 BENCHMARK_DIR="${DATA_ROOT}/experiments/${BENCHMARK_TAG}"
-CLEAN_DERIVED="${CLEAN_DERIVED:-1}"
+PYTHON_BIN="${PYTHON_BIN:-python}"
 STRICT_RAW="${STRICT_RAW:-1}"
 EXPECTED_ACCEPTED_EPISODES="${EXPECTED_ACCEPTED_EPISODES:-}"
 SEED="${SEED:-42}"
@@ -91,26 +91,13 @@ printf '  %s\n' "${RUN_DIRS[@]}"
 echo "Protocol: window=${WINDOW_SIZE}s history=${INPUT_WINDOWS} occupancy_horizon=${OCCUPANCY_HORIZON_WINDOWS} min_event=${MIN_EVENT_WINDOWS}"
 echo "Raw gate: strict=${STRICT_RAW} expected_accepted=${EXPECTED_ACCEPTED_EPISODES:-unset}"
 
-if [ "$CLEAN_DERIVED" = "1" ]; then
-    for run_dir in "${RUN_DIRS[@]}"; do
-        derived_dir="${run_dir}/shared_bn_agg_unsupervised_v2"
-        if [ -d "$derived_dir" ]; then
-            echo "Removing stale derived tables: ${derived_dir}"
-            rm -rf -- "$derived_dir"
-        fi
-    done
-elif [ "$CLEAN_DERIVED" != "0" ]; then
-    echo "CLEAN_DERIVED must be 0 or 1, got: ${CLEAN_DERIVED}" >&2
-    exit 1
-fi
-
 if [ "$STRICT_RAW" != "0" ] && [ "$STRICT_RAW" != "1" ]; then
     echo "STRICT_RAW must be 0 or 1, got: ${STRICT_RAW}" >&2
     exit 1
 fi
 
 BUILD_ARGS=(
-    python "${TOOLS_DIR}/build_shared_benchmark.py"
+    "$PYTHON_BIN" "${TOOLS_DIR}/build_shared_benchmark.py"
     --run_dirs "${RUN_DIRS[@]}"
     --out_dir "${BENCHMARK_DIR}"
     --window_size "${WINDOW_SIZE}"

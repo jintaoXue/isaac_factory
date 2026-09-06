@@ -2,11 +2,11 @@
 
 ## 1. 当前状态
 
-- 状态：共享 dataset 和首轮正式训练已通过；评估协议已对齐主实验最新定义，等待服务器重评/重训
+- 状态：开发期搜索进行中；逐样本审计发现输入/末尾窗口差异，v4 待服务器重建与审计，尚未正式冻结
 - 主实验参考：`dev_tyx@52e8643` 的 `模型评估指标.md`
 - raw 契约：`collector_version=v0.3`
 - derived 契约：`tyx_bn_agg_unsupervised_v2`
-- dataset：`factory_baseline_dataset_v3`
+- dataset：`factory_baseline_dataset_v4`
 - 预测目标：`factory_ops_event_30m_to_15m_v1`
 - baseline：B2 XGBoost、B3 LSTM、B4 GCN-GRU、B5 GAT-GRU
 
@@ -44,9 +44,14 @@ tyx raw v0.3
 
 当前 PDFormer 134-episode cohort 的 raw quality gate 与主实验一致：订单必须完成，
 含 `deadlock_reset` 的 episode 必须排除。若生产完成时某个运行期扰动已经 START、但尚未
-产生 END，则它属于 episode 右边界上的右删失区间：保留该 episode，将区间截断到最后
-可观测时刻，并记录 `runtime_disturbance_right_censored=<event_id>` warning。该 warning
+产生 END，则它属于 episode 右边界上的右删失区间：raw 审计保留该 episode，将审计区间
+截断到最后可观测时刻，并记录 `runtime_disturbance_right_censored=<event_id>` warning。该 warning
 不创建瓶颈标签，也不构成 episode 拒绝原因。
+
+离线派生使用主实验 `closed_windows_only=False`，保留终末部分窗口供预测目标使用；
+历史输入只接受完整窗口，订单数取最后历史窗口起点。主实验离线聚合不采用未闭合扰动
+区间，与上述 raw 审计的右删失处理不同。该已知语义问题需双方共同讨论、共同修改数据，
+当前对照不单方面改善它。详见 `../experiments/Baseline迭代实验报告.md`。
 
 这 9 个 raw 目录共含 142 个 episode；8 个未完成 episode 被门禁排除，最终与 PDFormer
 使用相同的 134 个 episode。构建正式数据集前必须同时核对 episode 名称集合，不能只核对
@@ -55,7 +60,7 @@ tyx raw v0.3
 共享派生目录为：
 
 ```text
-<raw_run>/shared_bn_agg_unsupervised_v2/episode_XX/env_YY/
+<benchmark>/derived/<raw_run_name>/episode_XX/env_YY/
 ```
 
 共享 benchmark 目录为：
@@ -63,6 +68,10 @@ tyx raw v0.3
 ```text
 output/bottleneck_dataset/experiments/<BENCHMARK_TAG>/
 ```
+
+本轮新目录为 `factory_pdformer_134_v2`。构建器拒绝非空输出目录，不删除旧派生目录，
+也不写入主实验的 raw 仓库。单独张量构建入口必须显式提供 `--derived_root`。
+v3 模型和张量仅作为历史开发证据，由原 Git commit 复现；当前加载器不兼容旧版本。
 
 ## 4. 输入定义
 

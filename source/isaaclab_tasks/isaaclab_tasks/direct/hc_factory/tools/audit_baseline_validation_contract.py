@@ -113,14 +113,16 @@ def main():
                 index = int(row["sample_index"])
                 sample = dataset[index]
                 t = int(sample["target_start_position"])
-                _, target_hot, remain_mask, remain_len = reference.pack_remain_target(
+                target_score, target_hot, remain_mask, remain_len = reference.pack_remain_target(
                     scores, hot, t=t, done_ti=done, max_remain_windows=horizon,
                     occupancy_horizon_windows=k_occ,
                 )
                 will, start, duration = reference.node_event_targets(
                     target_hot, min_windows=event_min, remain_mask=remain_mask, occ_node_mask=occ_mask,
                 )
-                expected = dict(y_hot=target_hot, remain_mask=remain_mask, target_remain_len=remain_len,
+                expected = dict(y_score=target_score, y_hot=target_hot,
+                                y_cause=bundle[name + "_cause"][t-1],
+                                remain_mask=remain_mask, target_remain_len=remain_len,
                                 occ_node_mask=occ_mask, hist_last_hot=hot[t-1], event_will=will,
                                 event_start=start, event_duration=duration, jobs_remaining=jobs[t-1], jobs_total=total)
                 for key, value in expected.items():

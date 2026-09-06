@@ -44,6 +44,26 @@ B3/B5 当前完整轮继续保留；尚未启动的 B4 表示对照等待队列�
 `tools/audit_baseline_validation_contract.py` 用于继续核对 validation 的观测 X、时间锚点、
 mask、hot 和事件目标，不读取 test 指标；正式冻结前必须以修正数据通过实际审计。
 
+`baseline_validation_contract_20260906.json` 实测共同的 2572 个 validation 样本：
+hot、事件发生/开始/时长、事件节点 mask、历史末尾 hot 及时间锚点一致。
+但每个 validation episode 少一个末尾预测样本（共 17 个），所有样本的剩余窗口数少 1，
+238 个样本的剩余时间 mask 不同；另有 11 个样本、132 个历史特征格不一致。
+不能把这些差异归为模型能力，也不能凭事件目标暂时一致声称输入协议完全对齐。
+
+原因已定位：构建器调用 `bn_agg` 时使用 `closed_windows_only=True`，而主实验 bundle
+来自离线 `False` 路径。前者删除末尾不满一分钟的窗口，也把未闭合扰动区间截到 episode
+结束；后者保留终末窗口但不采用这些未闭合区间。实测 `material重采__episode_05`
+在窗口 123 的两个 workbench 的 `disturbance_active_s` 为 baseline=1、main=0。
+在独立探针目录用当前离线代码重建该 episode，136×38×27 个特征与 main bundle 全部一致。
+该探针仅证明这个 episode；新数据必须再通过整套 validation 审计。
+
+数据集 v4 修正：订单数使用最后历史窗口起点；离线派生保留终末部分窗口供预测目标使用，
+历史输入仍仅允许完整窗口。新派生 CSV 和张量统一写入独立 benchmark 目录，不覆盖 raw
+或旧实验。只有当前版本加载路径，不在主代码中兼容旧 v3；旧结果用原 commit 复现。
+这是对已保存主实验数据口径的对齐，不意味着主实验对未闭合扰动的忽略在业务上最合理。
+此项需与 tyx 一起讨论，若改进应共同重建与重训，不能只给 baseline 换一套特征语义。
+当前 B3/B5 整轮结束前，不向服务器部署拒绝旧数据集的 v4 加载器。
+
 首次快照：[`baseline_validation_20260906_round1_partial.json`](baseline_validation_20260906_round1_partial.json)。
 导出时间为 2026-09-06 03:18:41 HKT，仅包含当时已完成的 76 次 validation-only 训练。
 此文件不表示所有排队任务已经完成；未读取 `metrics_test.json` 或综合 `metrics.json`。

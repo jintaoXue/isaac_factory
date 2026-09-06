@@ -14,7 +14,6 @@ RAW_COLLECTOR_VERSION = "v0.3"
 RAW_CONTRACT_VERSION = "tyx_raw_v0.3"
 DERIVED_CONTRACT_VERSION = "tyx_bn_agg_unsupervised_v2"
 SHARED_LABEL_VERSION = "factory_ops_hot_v1"
-SHARED_DERIVED_DIR = "shared_bn_agg_unsupervised_v2"
 DERIVED_SOURCE_BRANCH = "dev_tyx"
 DERIVED_SOURCE_COMMIT = "7b2fc02"
 

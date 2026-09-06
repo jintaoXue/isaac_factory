@@ -13,7 +13,7 @@ from factory_baselines import build_factory_baseline_dataset
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run_dirs", type=Path, nargs="+", required=True)
-    parser.add_argument("--derived_dir_name", default="shared_bn_agg_unsupervised_v2")
+    parser.add_argument("--derived_root", type=Path, required=True)
     parser.add_argument("--window_size", type=float, default=60.0)
     parser.add_argument("--stride", type=float, default=60.0)
     parser.add_argument("--input_windows", type=int, default=30)
@@ -29,7 +29,7 @@ def main() -> None:
     result = build_factory_baseline_dataset(
         run_dirs=args.run_dirs,
         out_dir=args.out_dir,
-        derived_dir_name=args.derived_dir_name,
+        derived_root=args.derived_root,
         window_size=args.window_size,
         stride=args.stride,
         input_windows=args.input_windows,

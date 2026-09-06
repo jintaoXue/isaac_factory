@@ -14,7 +14,6 @@ from factory_bn_shared.contract import (
     DERIVED_CONTRACT_VERSION,
     DERIVED_SOURCE_BRANCH,
     DERIVED_SOURCE_COMMIT,
-    SHARED_DERIVED_DIR,
     SHARED_LABEL_VERSION,
 )
 
@@ -35,7 +34,13 @@ def main() -> None:
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
 
+    if args.out_dir.exists() and any(args.out_dir.iterdir()):
+        raise FileExistsError(f"Use a new, empty benchmark directory: {args.out_dir}")
     run_dirs = [path.expanduser().absolute() for path in args.run_dirs]
+    run_names = [path.resolve().name for path in run_dirs]
+    if len(run_names) != len(set(run_names)):
+        raise ValueError("Raw run directory names must be unique for derived output")
+    derived_root = args.out_dir / "derived"
     pairs = discover_env_dirs(run_dirs)
     audit_rows = [audit_env_dir(run_dir, env_dir) for run_dir, env_dir in pairs]
     report = build_report(audit_rows)
@@ -69,7 +74,7 @@ def main() -> None:
     for (run_dir, env_dir), audit in zip(pairs, audit_rows):
         if not audit["accepted"]:
             continue
-        derived_dir = run_dir / SHARED_DERIVED_DIR / env_dir.relative_to(run_dir)
+        derived_dir = derived_root / run_dir.resolve().name / env_dir.relative_to(run_dir)
         print(f"[shared bn_agg] {env_dir} -> {derived_dir}")
         summary = process_env_dir(
             env_dir=env_dir,
@@ -78,7 +83,7 @@ def main() -> None:
             horizon=args.horizon,
             score_threshold=args.score_threshold,
             min_event_windows=args.min_event_windows,
-            closed_windows_only=True,
+            closed_windows_only=False,
             label_mode="supervised",
         )
         metadata = {
@@ -94,7 +99,8 @@ def main() -> None:
             "horizon_s": args.horizon,
             "score_threshold": args.score_threshold,
             "min_event_windows": args.min_event_windows,
-            "closed_windows_only": True,
+            "closed_windows_only": False,
+            "history_policy": "complete_windows_only; terminal partial window is target-only",
             "target_mode": "unsupervised_operational_occupancy",
             "episode_end_s": audit["episode_end_s"],
         }
@@ -107,7 +113,7 @@ def main() -> None:
     result = build_factory_baseline_dataset(
         run_dirs=run_dirs,
         out_dir=args.out_dir,
-        derived_dir_name=SHARED_DERIVED_DIR,
+        derived_root=derived_root,
         window_size=args.window_size,
         stride=args.window_size,
         input_windows=args.input_windows,

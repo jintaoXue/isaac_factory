@@ -20,6 +20,8 @@ from .graph_builder import build_static_graph
 from factory_bn_shared.causes import ROOT_CAUSE_CLASSES, encode_root_cause
 from factory_bn_shared.remain import (
     ensure_labor_saturated_feature,
+    first_done_index,
+    jobs_remaining_series,
     node_event_targets,
     occupancy_node_mask,
     ops_hot_mask,
@@ -95,15 +97,15 @@ def _git_commit(repo_root: Path | None) -> str:
 
 
 def _discover_groups(
-    run_dirs: Iterable[Path], derived_dir_name: str
+    run_dirs: Iterable[Path], derived_root: Path
 ) -> list[dict[str, Any]]:
     groups: list[dict[str, Any]] = []
     for run_dir in (Path(path).resolve() for path in run_dirs):
-        derived_root = run_dir / derived_dir_name
+        run_derived = derived_root / run_dir.name
         for feature_path in sorted(
-            derived_root.glob("episode_*/env_*/window_feature_table.csv")
+            run_derived.glob("episode_*/env_*/window_feature_table.csv")
         ):
-            rel = feature_path.parent.relative_to(derived_root)
+            rel = feature_path.parent.relative_to(run_derived)
             raw_dir = run_dir / rel
             label_path = feature_path.parent / "bottleneck_label.csv"
             metadata_path = feature_path.parent / "shared_metadata.json"
@@ -114,6 +116,8 @@ def _discover_groups(
             if not metadata_path.is_file():
                 raise FileNotFoundError(metadata_path)
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if metadata.get("closed_windows_only") is not False:
+                raise ValueError(f"Expected main offline aggregation in {metadata_path}")
             if metadata.get("derived_contract_version") != DATASET_CONTRACT:
                 raise ValueError(
                     f"Unexpected derived contract in {metadata_path}: "
@@ -151,7 +155,7 @@ def _discover_groups(
             )
     if not groups:
         raise ValueError(
-            f"No Phase-B tables found under derived directory {derived_dir_name!r}"
+            f"No Phase-B tables found under derived directory {str(derived_root)!r}"
         )
     group_ids = [group["group_id"] for group in groups]
     if len(group_ids) != len(set(group_ids)):
@@ -415,7 +419,7 @@ def load_shared_dataset(dataset_dir: Path) -> tuple[dict[str, Any], dict[str, An
 def build_factory_baseline_dataset(
     run_dirs: Iterable[Path],
     out_dir: Path,
-    derived_dir_name: str = "shared_bn_agg_unsupervised_v2",
+    derived_root: Path,
     window_size: float = 60.0,
     stride: float = 60.0,
     input_windows: int = 30,
@@ -433,7 +437,7 @@ def build_factory_baseline_dataset(
     if max_remain_windows <= 0:
         raise ValueError("max_remain_windows must be positive")
     out_dir = Path(out_dir).resolve()
-    groups = _discover_groups(run_dirs, derived_dir_name)
+    groups = _discover_groups(run_dirs, Path(derived_root).resolve())
     if allowed_group_ids is not None:
         groups = [group for group in groups if group["group_id"] in allowed_group_ids]
         if not groups:
@@ -558,22 +562,10 @@ def build_factory_baseline_dataset(
             "score": raw_scores,
             "hot": raw_hot,
         }
-        completion_times = sorted(
-            _f(row.get("complete_s"), float("inf")) for row in group["job_kpi_rows"]
+        jobs_remaining, jobs_total = jobs_remaining_series(
+            group["job_kpi_rows"], np.asarray(window_starts)
         )
-        jobs_total = len(completion_times)
-        jobs_remaining = [
-            sum(complete_s > start_s for complete_s in completion_times)
-            for start_s in window_starts
-        ]
-        done_position = next(
-            (
-                position
-                for position, remaining in enumerate(jobs_remaining)
-                if remaining <= 0
-            ),
-            len(window_indices),
-        )
+        done_position = first_done_index(jobs_remaining)
         for position in range(input_windows, len(window_indices)):
             sequence_indices = window_indices[position - input_windows : position]
             if any(
@@ -585,6 +577,15 @@ def build_factory_baseline_dataset(
             if remain_len <= 0:
                 continue
             sequence_rows = [by_window[index] for index in sequence_indices]
+            # A terminal partial window may be a target, never an observed history window.
+            if any(
+                not math.isclose(
+                    _f(row.get("window_end_s")) - _f(row.get("window_start_s")),
+                    window_size,
+                )
+                for rows in sequence_rows for row in rows.values()
+            ):
+                continue
             starts = [
                 _f(next(iter(rows.values())).get("window_start_s"))
                 for rows in sequence_rows
@@ -679,7 +680,7 @@ def build_factory_baseline_dataset(
                 {
                     "event_positive": occurrence,
                     "cause": encode_root_cause(label.get("root_cause_reason")),
-                    "jobs_remaining": jobs_remaining[position],
+                    "jobs_remaining": float(jobs_remaining[position - 1]),
                     "jobs_total": jobs_total,
                     "target_start_position": position,
                     "target_remain_len": remain_len,
@@ -900,7 +901,9 @@ def build_factory_baseline_dataset(
             }
             for group in sorted(groups, key=lambda item: item["group_id"])
         ],
-        "derived_dir_name": derived_dir_name,
+        "derived_root": str(Path(derived_root).resolve()),
+        "aggregation_mode": "main_offline_with_terminal_partial_target",
+        "jobs_remaining_anchor": "last_history_window_start",
         "collector_versions": collector_versions,
         "window_size_s": window_size,
         "stride_s": stride,

@@ -47,8 +47,7 @@ class TestFactoryBaselineDataset(unittest.TestCase):
         for episode_id in range(6):
             raw_dir = run_dir / f"episode_{episode_id:02d}" / "env_00"
             derived_dir = (
-                run_dir
-                / "shared_bn_agg_unsupervised_v2"
+                root / "derived" / run_dir.name
                 / f"episode_{episode_id:02d}"
                 / "env_00"
             )
@@ -87,6 +86,7 @@ class TestFactoryBaselineDataset(unittest.TestCase):
                         "label_version": "factory_ops_hot_v1",
                         "raw_contract_version": "tyx_raw_v0.3",
                         "scenario_id": f"scenario_{episode_id % 2}",
+                        "closed_windows_only": False,
                     }
                 )
                 + "\n",
@@ -205,6 +205,61 @@ class TestFactoryBaselineDataset(unittest.TestCase):
             self.assertEqual(torch.nonzero(masks["gantry"]).item(), 2)
             self.assertEqual(torch.nonzero(masks["agv"]).item(), 3)
 
+    def test_jobs_anchor_and_partial_terminal_target_match_main(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            run = self._make_run(root)
+            for derived in (root / "derived" / run.name).glob("episode_*/env_00"):
+                path = derived / "window_feature_table.csv"
+                with path.open(newline="") as stream:
+                    reader = csv.DictReader(stream)
+                    fields, rows = reader.fieldnames, list(reader)
+                for row in rows:
+                    if int(row["window_index"]) == 19:
+                        row["window_end_s"] = 1160
+                self._write_csv(path, fields, rows)
+                self._write_csv(derived / "job_kpi.csv", ["job_id", "complete_s"], [
+                    {"job_id": 0, "complete_s": 720},
+                    {"job_id": 1, "complete_s": 1160},
+                ])
+            result = build_factory_baseline_dataset(
+                run_dirs=[run], out_dir=root / "dataset", derived_root=root / "derived",
+                input_windows=12,
+            )
+            data = FactoryBaselineTensorDataset(result["payload"])
+            positions = result["payload"]["target_start_position"]
+            first = torch.nonzero(positions == 12).flatten().tolist()
+            last = torch.nonzero(positions == 19).flatten().tolist()
+            self.assertEqual(len(first), 6)
+            self.assertEqual(len(last), 6)
+            for index in first:
+                sample = data[index]
+                # At the last history start (660s), both jobs are unfinished.
+                self.assertEqual(float(sample["jobs_remaining"]), 2)
+                self.assertEqual(int(sample["target_remain_len"]), 8)
+                self.assertEqual(int(sample["remain_mask"].sum()), 8)
+            for index in last:
+                sample = data[index]
+                self.assertEqual(int(sample["target_remain_len"]), 1)
+                self.assertEqual(int(sample["remain_mask"].sum()), 1)
+                self.assertEqual(float(sample["jobs_remaining"]), 1)
+            for row in result["sample_rows"]:
+                self.assertNotIn(19, json.loads(row["input_window_indices"]))
+
+    def test_closed_only_derived_is_rejected_not_silently_reused(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            run = self._make_run(root)
+            path = root / "derived" / run.name / "episode_00/env_00/shared_metadata.json"
+            metadata = json.loads(path.read_text())
+            metadata["closed_windows_only"] = True
+            path.write_text(json.dumps(metadata), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Expected main offline aggregation"):
+                build_factory_baseline_dataset(
+                    run_dirs=[run], out_dir=root / "dataset", derived_root=root / "derived",
+                    input_windows=12,
+                )
+
     def test_checkpoint_rank_breaks_zero_report_tie_with_hot_f1(self) -> None:
         def metrics(report_f1: float, hot_f1: float, loss: float) -> dict:
             return {
@@ -228,6 +283,7 @@ class TestFactoryBaselineDataset(unittest.TestCase):
             result = build_factory_baseline_dataset(
                 run_dirs=[run_dir],
                 out_dir=out_dir,
+                derived_root=root / "derived",
                 window_size=60,
                 stride=60,
                 input_windows=12,
@@ -250,7 +306,7 @@ class TestFactoryBaselineDataset(unittest.TestCase):
             self.assertTrue(payload["target_node_mask"][:, machine_index].all())
             self.assertFalse(payload["target_node_mask"][:, buffer_index].any())
             self.assertTrue(torch.isfinite(payload["x"]).all())
-            self.assertEqual(manifest["dataset_version"], "factory_baseline_dataset_v3")
+            self.assertEqual(manifest["dataset_version"], "factory_baseline_dataset_v4")
             self.assertEqual(
                 manifest["prediction_target_version"],
                 "factory_ops_event_30m_to_15m_v1",
@@ -312,6 +368,7 @@ class TestFactoryBaselineDataset(unittest.TestCase):
             repeated = build_factory_baseline_dataset(
                 run_dirs=[run_dir],
                 out_dir=root / "dataset_repeated",
+                derived_root=root / "derived",
                 window_size=60,
                 stride=60,
                 input_windows=12,
