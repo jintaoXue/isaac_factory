@@ -48,7 +48,7 @@ def export_validation(model_root: Path) -> dict:
             "provenance": {key: metadata[key] for key in (
                 "git_commit", "dataset_manifest_sha256", "dataset_version",
                 "dataset_contract", "label_version", "torch_version",
-                "warm_start_parent", "training_budget",
+                "warm_start_parent", "training_budget", "training_sampling",
             ) if key in metadata},
             "metrics_sha256": hashlib.sha256(metrics_path.read_bytes()).hexdigest(),
             "validation": metrics,

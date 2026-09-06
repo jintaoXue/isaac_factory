@@ -5,9 +5,9 @@
 
 最新进度（2026-09-06）：第 18 节困难负例对照 12/12 完成，两模型均选回控制组，
 没有综合提升；赢家的保存分数复现及前缀解码敏感性复核完成。本轮所有训练正常退出，
-没有启动新的调参轮次。当前 v5 共 48 次验证运行，连同旧 v3 共 160 次开发运行。
+上述轮次均已结束。当前 v5 共 48 次已完成验证运行，连同旧 v3 共 160 次开发运行。
 随后第 20 节四个固定权重的 train/validation 诊断 8/8 完成，保存的 validation 指标
-全部复现。第 21 节预注册训练抽样对照，当前不把未完成候选计入上述训练数量。
+全部复现。第 21 节预注册训练抽样对照已启动，当前不把未完成候选计入上述训练数量。
 
 最新前置变化：随后 fetch 到 dev_tyx 的 `20c40e2`，主实验文档已更换数据包和事件定义。
 这不是同一任务上的新增高分，不能与本报告 v5 直接排名。新产物路径和最终定义待确认，
@@ -18,6 +18,11 @@
 对象为 B2 XGBoost、B3 LSTM、B4 GCN-GRU、B5 BSTAN-style GAT-GRU。
 允许模型有各自合理的训练参数，不要求复制 BNPDFormer 的专用结构。
 所有修改限定 `dev_xwt`，服务器仓库为 `/home/sci/work/BSTAN_isaac_factory`。
+
+目录约定（2026-09-06 用户确认）：后续不按 commit 新建源码副本或构建目录，复用
+现有仓库及执行目录。实验结果放在现有 benchmark 的 `models` 下，按实验轮次、候选
+和 seed 区分；源码 commit、配置、权重与指标记录在产物和本报告中。已建立的目录
+保持原状，由用户决定是否清理，不自动删除或覆盖历史结果。
 
 比较必须保持相同的 raw cohort、episode split、标签定义、历史/预报窗、有效节点、
 时间锚点及匹配规则。优化只看 validation；不得依照 test 数字继续选择参数。
@@ -1055,7 +1060,7 @@ history 方案的网络、loss、batch、学习率、早停及验证阈值表。
 不因被重复抽到而变化。抽样不做 importance correction，因而明确改变了所有任务的
 训练暴露分布，不把它误述为只改 event loss 的等价实现。
 
-`STUDY=sampling batch_factory_baseline_staged.sh B4|B5` 沿用现有执行入口和执行副本，
+`STUDY=sampling bash batch_factory_baseline_staged.sh B4|B5` 沿用现有执行入口和执行副本，
 不新建源码目录。study_config 在开跑前固定三组配置；每个运行的 metadata 保存
 抽取数、目标窗口数和期望抽中比例。默认 factor=1 保持旧 loader 的精确 shuffle
 顺序，不额外遍历标签；B3 也可显式使用同一训练选项，但本轮仅运行 B4/B5。
@@ -1064,3 +1069,28 @@ history 方案的网络、loss、batch、学习率、早停及验证阈值表。
 确定性、固定抽样长度、有效节点门禁、禁止借评估集事件和 train-only 产物记录。
 完成全部候选后按现有 validation 稳健排序选型，重做保存分数和前缀历史敏感性核验。
 尚未得到本轮分数，不承诺这一训练因素会提高 precision 或 F1。
+
+### 启动记录
+
+源码固定为 `009fe42`，复用 `/home/sci/work/BSTAN_baseline_dev_xwt_v5`，没有新建
+源码或构建目录。结果分别写入现有 `factory_pdformer_134_v3/models/tuning` 下的
+`b4_event_sampling_v1` 和 `b5_event_sampling_v1`；运行期间不更新执行目录源码。
+
+最初直接执行脚本因文件没有执行权限而在进入 Python 前退出，两次均未产生训练结果。
+确认原 pane 已退出、输出目录不存在后，复用同名 tmux 会话并改为 `bash` 调用；
+未修改文件权限，未覆盖结果。另一次 B5 命令粘贴在外层 shell 被拒绝，未进入 tmux。
+以下为纠正调用后验证到的实际进程，失败的启动尝试不计作训练候选。
+
+2026-09-06 22:53:08 HKT 核查：
+
+| 模型 | tmux 会话 | pane PID | 训练 Python PID | 当时输出 |
+|---|---|---:|---:|---|
+| B4 | baseline_b4_sampling_v1 | 4119696 | 4119986 | epoch 7，进程存活 |
+| B5 | baseline_b5_sampling_v1 | 4119701 | 4124609 | epoch 2，进程存活 |
+
+这是启动检查，不是本轮选型结果。等待全部 12 次训练和完整产物核验后再比较候选。
+
+启动后的记录工具补充：`export_baseline_validation.py` 同时导出已保存的
+`training_sampling` metadata，保留抽样方式、目标窗口数和期望抽中比例；仅使用
+validation 专用指标文件。相关导出与抽样测试 14/14 通过。该改动不影响 trainer，
+也没有同步到本轮仍在运行的执行目录。

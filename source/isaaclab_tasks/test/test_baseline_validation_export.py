@@ -24,7 +24,16 @@ class TestValidationExport(unittest.TestCase):
             (run / "metrics.json").write_text("must never be parsed")
             (run / "config.json").write_text(json.dumps({
                 "model": {}, "loss": {}, "training": {"evaluate_test": False},
-                "metadata": {"git_commit": "abc", "dataset_manifest_sha256": "xyz"},
+                "metadata": {
+                    "git_commit": "abc", "dataset_manifest_sha256": "xyz",
+                    "training_sampling": {
+                        "method": "weighted_with_replacement", "target": "upcoming",
+                        "eligible_windows": 8, "population_windows": 100,
+                        "draws_per_epoch": 100, "factor": 4.0,
+                        "expected_eligible_draw_fraction": 32 / 124,
+                        "importance_corrected": False, "split": "train",
+                    },
+                },
             }))
             unfinished = root / "tuning/search/candidate_focal/seed42"
             unfinished.mkdir(parents=True)
@@ -34,6 +43,9 @@ class TestValidationExport(unittest.TestCase):
             self.assertEqual(result["runs"][0]["validation"], {"report_f1": .3})
             self.assertFalse(result["test_metrics_opened"])
             self.assertEqual(len(result["runs"][0]["metrics_sha256"]), 64)
+            metadata = json.loads((run / "config.json").read_text())["metadata"]
+            self.assertEqual(result["runs"][0]["provenance"]["training_sampling"],
+                             metadata["training_sampling"])
 
     def test_xgboost_native_configuration(self):
         with tempfile.TemporaryDirectory() as temp:
