@@ -11,8 +11,6 @@ from pathlib import Path
 
 import numpy as np
 
-from factory_bn_shared.bundle import file_hash, main_episode_identities
-
 
 SPLITS = ("train", "validation", "test")
 
@@ -69,6 +67,10 @@ def main():
     module = importlib.import_module("factory_bn.dataset")
     if Path(module.__file__).resolve() != splitter_path:
         raise ValueError("Imported main splitter from an unexpected checkout")
+
+    # Shared helpers initialize the local canonical package. Import the supplied
+    # reference first so that a different checkout cannot silently shadow it.
+    from factory_bn_shared.bundle import file_hash, main_episode_identities
 
     import torch
 

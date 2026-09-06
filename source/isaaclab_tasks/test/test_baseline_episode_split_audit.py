@@ -1,6 +1,7 @@
 import csv
 import json
 import subprocess
+import shutil
 import sys
 from pathlib import Path
 
@@ -11,7 +12,8 @@ import torch
 TOOLS = Path(__file__).resolve().parents[1] / "isaaclab_tasks/direct/hc_factory/tools"
 sys.path.insert(0, str(TOOLS))
 
-from audit_baseline_episode_split import compare_splits, main_episode_identities
+from audit_baseline_episode_split import compare_splits
+from factory_bn_shared.bundle import main_episode_identities
 
 
 def test_equal_counts_do_not_prove_equal_split():
@@ -85,11 +87,13 @@ def test_cli_reads_only_episode_inventory_and_rejects_overwrite(tmp_path):
         "source_episodes": [{"group_id": group} for group in groups]
     }))
     output = tmp_path / "audit.json"
+    reference = tmp_path / "separate_main_checkout"
+    shutil.copytree(TOOLS.parent / "PDFormer/factory_bn", reference / "factory_bn")
     command = [
         sys.executable, str(TOOLS / "audit_baseline_episode_split.py"),
         "--baseline_dir", str(baseline), "--main_bundle", str(bundle),
         "--main_checkpoint", str(checkpoint),
-        "--pdformer_root", str(TOOLS.parent / "PDFormer"), "--output", str(output),
+        "--pdformer_root", str(reference), "--output", str(output),
     ]
     completed = subprocess.run(command, capture_output=True, text=True)
     assert completed.returncode == 0, completed.stderr
@@ -97,6 +101,7 @@ def test_cli_reads_only_episode_inventory_and_rejects_overwrite(tmp_path):
     assert report["episode_split_match"]
     assert not report["test_metrics_read"]
     assert report["counts"]["train"]["intersection"] == 4
+    assert report["provenance"]["main_splitter"]["path"] == str(reference / "factory_bn/dataset.py")
     original = output.read_bytes()
     repeated = subprocess.run(command, capture_output=True, text=True)
     assert repeated.returncode != 0

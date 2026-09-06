@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from audit_baseline_episode_split import file_hash
+from factory_bn_shared.bundle import file_hash
 from factory_baselines.dataset import FactoryBaselineTensorDataset, load_shared_dataset
 
 
