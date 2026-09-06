@@ -8,10 +8,18 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isaaclab_tasks/direct/hc_factory/tools"))
-from diagnose_baseline_events import attach_node_catalog, summarize_events
+from diagnose_baseline_events import attach_node_catalog, parse_args, summarize_events
 
 
 class TestEventDiagnostics(unittest.TestCase):
+    def test_diagnostic_accepts_train_and_validation_but_not_test(self):
+        common = ["--dataset_dir", "data", "--checkpoint", "best.pt", "--output", "result.json"]
+        self.assertEqual(parse_args(common).split, "validation")
+        for split in ("train", "validation"):
+            self.assertEqual(parse_args([*common, "--split", split]).split, split)
+        with self.assertRaises(SystemExit):
+            parse_args([*common, "--split", "test"])
+
     def test_catalog_types_are_not_indexed_by_node_position(self):
         manifest = {"node_ids": ["a", "b", "c"], "resource_types": ["machine", "human"]}
         report = {"thresholds": [{"per_node": [{"node_index": 2}]}]}
@@ -54,6 +62,13 @@ class TestEventDiagnostics(unittest.TestCase):
         self.assertEqual(row["report_recall_upcoming"], 0)
         self.assertAlmostEqual(row["report_f1"], 1 / 3)
         self.assertEqual(result["groups"]["ongoing"]["start_within_tolerance_rate"], 1)
+        ranking = result["ranking"]
+        self.assertEqual(ranking["all_events"]["sample_count"], 4)
+        self.assertEqual(ranking["upcoming_vs_negative"]["positive_count"], 2)
+        self.assertEqual(ranking["upcoming_vs_negative"]["negative_count"], 1)
+        self.assertEqual(ranking["ongoing_vs_negative"]["positive_count"], 1)
+        self.assertAlmostEqual(ranking["upcoming_vs_negative"]["tie_aware_average_precision"], 7 / 12)
+        self.assertAlmostEqual(ranking["ongoing_vs_negative"]["tie_aware_average_precision"], 1)
 
     def test_false_alarm_partition_handles_short_horizon_and_short_hot_runs(self):
         hot = np.zeros((2, 15, 3), dtype=np.float32)
@@ -83,6 +98,13 @@ class TestEventDiagnostics(unittest.TestCase):
         self.assertEqual(sum(parts.values()), 4)
         self.assertEqual(sum(node["false_alarms"] for node in row["per_node"]), 4)
         self.assertEqual(row["predicted_duration_q25_q50_q75"], [8, 8, 8])
+        ranking = summarize_events(arrays, [.5])["ranking"]["events_vs_short_hot_negative"]
+        self.assertEqual(ranking["sample_count"], 2)
+        self.assertEqual(ranking["negative_count"], 1)
+        self.assertEqual(ranking["positive_rate"], .5)
+        self.assertEqual(ranking["tie_aware_average_precision"], .5)
+        self.assertEqual(ranking["ap_over_prevalence"], 1)
+        self.assertEqual(ranking["roc_auc"], .5)
 
     def test_future_hot_outside_observation_does_not_explain_false_alarm(self):
         hot = np.zeros((1, 15, 1), dtype=np.float32)
@@ -100,6 +122,22 @@ class TestEventDiagnostics(unittest.TestCase):
         empty = summarize_events(arrays, [.95])["thresholds"][0]
         self.assertEqual(empty["report_false_alarm_count"], 0)
         self.assertIsNone(empty["predicted_duration_q25_q50_q75"])
+        result = summarize_events(arrays, [.95])
+        self.assertIsNone(result["ranking"]["upcoming_vs_negative"]["tie_aware_average_precision"])
+        self.assertIsNone(result["ranking"]["events_vs_short_hot_negative"]["positive_rate"])
+
+    def test_invalid_nodes_are_excluded_from_ranking(self):
+        arrays = {
+            "y_hot": np.zeros((1, 15, 1)), "remain_mask": np.ones((1, 15)),
+            "occ_node_mask": np.zeros((1, 1)), "hist_last_hot": np.zeros((1, 1)),
+            "event_will": np.ones((1, 1)), "event_start": np.zeros((1, 1)),
+            "will_probability": np.ones((1, 1)), "predicted_start": np.zeros((1, 1)),
+            "predicted_duration": np.ones((1, 1)),
+        }
+        for row in summarize_events(arrays, [.5])["ranking"].values():
+            self.assertEqual(row["sample_count"], 0)
+            self.assertIsNone(row["tie_aware_average_precision"])
+            self.assertIsNone(row["roc_auc"])
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Decompose validation event misses and false alarms without changing scoring."""
+"""Diagnose train/validation event errors without changing scoring or selecting models."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from factory_baselines.dataset import FactoryBaselineTensorDataset, load_shared_dataset
+from factory_baselines.metrics import _binary_metrics
 from factory_baselines.torch_trainer import (
     _manifest_hash,
     _model_inputs,
@@ -60,7 +61,30 @@ def summarize_events(arrays: dict[str, np.ndarray], thresholds: list[float]) -> 
         "hot_without_qualifying_event": groups["negative"] & ~short_horizon & any_future_hot,
         "no_future_hot": groups["negative"] & ~short_horizon & ~any_future_hot,
     }
-    output = {"groups": {}, "thresholds": []}
+    output = {"groups": {}, "thresholds": [], "ranking": {}}
+    ranking_groups = {
+        "all_events": (positive, valid),
+        "ongoing_vs_negative": (groups["ongoing"], groups["ongoing"] | groups["negative"]),
+        "upcoming_vs_negative": (groups["upcoming"], groups["upcoming"] | groups["negative"]),
+        "events_vs_short_hot_negative": (
+            positive, positive | negative_kinds["hot_without_qualifying_event"]
+        ),
+    }
+    for name, (target, mask) in ranking_groups.items():
+        metrics = _binary_metrics(target[mask].astype(np.int64), probability[mask])
+        count = int(mask.sum())
+        prevalence = float(target[mask].mean()) if count else None
+        output["ranking"][name] = {
+            "sample_count": count,
+            "positive_count": metrics["positive_count"],
+            "negative_count": metrics["negative_count"],
+            "positive_rate": prevalence,
+            "tie_aware_average_precision": metrics["pr_auc"],
+            "roc_auc": metrics["roc_auc"],
+            "ap_over_prevalence": (
+                metrics["pr_auc"] / prevalence if prevalence else None
+            ),
+        }
     for name, mask in groups.items():
         values = probability[mask]
         output["groups"][name] = {
@@ -131,18 +155,23 @@ def summarize_events(arrays: dict[str, np.ndarray], thresholds: list[float]) -> 
     return output
 
 
-def main() -> None:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset_dir", type=Path, required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--split", choices=("train", "validation"), default="validation")
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--thresholds", type=float, nargs="+", default=[
         0.20, 0.30, 0.40, 0.50, 0.55, 0.60, 0.68, 0.75, 0.80, 0.85, 0.90, 0.95,
     ])
-    args = parser.parse_args()
+    return parser.parse_args(argv)
+
+
+def main() -> None:
+    args = parse_args()
     if args.output.exists():
         raise FileExistsError(args.output)
     torch.set_num_threads(args.threads)
@@ -156,7 +185,7 @@ def main() -> None:
     if int(manifest["event_min_windows"]) != 8:
         raise ValueError("This diagnostic requires the canonical 8-window event contract")
     loader = DataLoader(
-        FactoryBaselineTensorDataset(payload, payload["split_indices"]["validation"]),
+        FactoryBaselineTensorDataset(payload, payload["split_indices"][args.split]),
         batch_size=args.batch_size, shuffle=False,
     )
     collected: dict[str, list[np.ndarray]] = {}
@@ -182,17 +211,21 @@ def main() -> None:
     report = summarize_events(arrays, thresholds)
     attach_node_catalog(report, args.dataset_dir / "node_catalog.csv", manifest)
     report.update(
-        split="validation", test_evaluated=False,
+        split=args.split, test_evaluated=False,
         checkpoint=str(args.checkpoint.resolve()), epoch=checkpoint["epoch"],
         dataset_manifest_sha256=checkpoint["metadata"]["dataset_manifest_sha256"],
         sample_count=len(arrays["sample_index"]),
         saved_report_threshold=chosen_threshold,
         diagnostic_scope="Future labels and horizon length are retrospective diagnostic strata, "
                          "not deployable features or proposed alarm filters. No threshold is selected here.",
+        ranking_scope="One existing will score is ranked in each retrospective subgroup. "
+                      "Ongoing/upcoming are not separate predicted heads. Tie-aware AP is diagnostic, "
+                      "not a replacement for the canonical checkpoint-selection metric.",
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report["groups"], indent=2), flush=True)
+    print(json.dumps(report["ranking"], indent=2), flush=True)
     print("threshold P R F1 upcoming_R upcoming_probability_misses upcoming_timing_misses")
     for row in report["thresholds"]:
         print(row["threshold"], *[round(row[k], 4) for k in (
