@@ -66,8 +66,8 @@ hot、事件发生/开始/时长、事件节点 mask、历史末尾 hot 及时�
 当前 B3 整轮结束前，不更新其所在服务器工作目录的 v4 加载器。
 v4 修正提交为 `daac38b`（dev_xwt）。通过该提交的独立只读构建快照运行重建，
 服务器训练工作目录仍固定在 dev_xwt 的 `35ee064`，未切换分支，也未修改 dev_tyx。
-新 benchmark 为 `factory_pdformer_134_v2`，新派生已完成 134 个 episode；张量构建及
-完整对齐审计尚未完成，不能提前记为通过。第一次构建启动缺少 PyTorch 即退出，未生成数据，
+新 benchmark 为 `factory_pdformer_134_v2`，新派生已完成 134 个 episode。第一次构建
+启动缺少 PyTorch 即退出，未生成数据，
 已保留日志并显式传入经验证的 PYTHONPATH 后重新启动；不是因等待超时重复运行。
 
 张量阶段原实现对重叠历史重复解析与逐格赋值，服务器已观测到长时间单核计算。
@@ -75,6 +75,32 @@ v4 修正提交为 `daac38b`（dev_xwt）。通过该提交的独立只读构建
 本地用 1020 个含缺失 buffer 观测的样本，与 Git `daac38b` 实现逐 tensor、sample row、
 split 比较完全相同，耗时从 5.960s 降至 0.094s（本地约 63 倍，不是服务器耗时承诺）。
 构建入口拒绝覆盖已有张量/manifest，已完成的派生 CSV 可显式通过 `--derived_root` 复用。
+
+确认旧转换 PID=3697518 仍在单核运行、没有任何张量输出后，仅终止这个未完成转换。
+复用全部已完成 CSV，以 dev_xwt `7c50640` 的只读快照完成快速张量构建；未重跑 raw 聚合，
+没有中断 B3。快照仅用于运行，所有代码修改/提交仍在 dev_xwt，服务器训练工作目录未切换分支。
+
+### v4 实测审计与剩余 A.3 问题
+
+新张量已完成：20060 个样本，train/validation/test=13813/2589/3658，episode=92/17/25。
+134 个 episode 的身份及 split 匹配。2589 个 validation 样本的历史特征、评分、hot、
+事件发生/开始/时长、订单数、剩余长度、各 mask 及时间/窗口索引全部匹配，末尾样本差异为零。
+但 A.3 `y_cause` 有 128 个样本不匹配，所以整体 `comparison_match=False`，还不能正式训练。
+服务器产物为 `baseline_episode_split_v4_20260906.json` 和
+`baseline_validation_contract_v4_20260906.json`（已复制到 doc/experiments，待同步）。
+
+已查到具体原因：主实验原有 `n10_human1.0/derived/episode_06/env_00` 特征 CSV
+没有 `labor_saturated_s`，新离线聚合新增了这一列。窗口 32 的共同 CSV 字段逐项一致。
+主实验 NPZ 已通过 `ensure_labor_saturated_feature` 补算第 27 维，因此模型输入和 A.1
+可一致；但保存的 A.3 原因标签没有同步采用新增列。比如窗口 32/37/41，当前聚合为
+`starved_upstream`，主 bundle 仍为 -1；窗口 97 则分别为 `starved_upstream` 和
+`transport_delay`。两边原因类别字典相同，不是编码顺序错位。
+
+原派生 min_event_windows=1、新派生=8 也不同，但源码中 A.3 当前窗口原因的判定不依赖
+这个事件段长度过滤，不能简单改成 1 就宣称修好。下一步应使用主实验实际冻结 bundle
+作为共同标签来源，并验证字段/身份/哈希；不添加缺列回退到旧规则的兼容分支。
+若双方要修正劳动饱和的 A.3 语义，则必须共同更新 bundle 并重训主模型和 baseline，
+不能把新 A.3 baseline 与旧 A.3 checkpoint 当作完全同口径。当前 v4 原型保留为失败审计证据。
 
 ### B5 context/focal 完整轮
 
