@@ -51,11 +51,13 @@ def main() -> None:
     parser.add_argument("--checkpoint_min_report_precision", type=float, default=0.80)
     parser.add_argument("--checkpoint_min_report_recall", type=float, default=0.35)
     parser.add_argument("--validation_only", action="store_true")
+    parser.add_argument("--warm_start_checkpoint", type=Path)
     args = parser.parse_args()
     summary = train_torch_baseline(
         model_kind="b4_gcn_gru",
         dataset_dir=args.dataset_dir,
         output_dir=args.output_dir,
+        warm_start_checkpoint=args.warm_start_checkpoint,
         model_overrides={
             "gcn_hidden": args.gcn_hidden,
             "gru_hidden": args.gru_hidden,

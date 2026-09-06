@@ -270,19 +270,33 @@ STRICT_RAW=0 EXPECTED_ACCEPTED_EPISODES=134 \
 `audit_baseline_episode_split.py` 与 `audit_baseline_validation_contract.py`，核对指定主 bundle
 及可信 checkpoint；仅数量一致不足以进入正式对照。
 
-当前仍是 validation-only 搜索阶段，B4/B5 运行新的表示对照：
+当前仍是 validation-only 搜索阶段。B4/B5 的表示对照已各完成 8 次，均选中 history；
+下面是复现该轮的命令，不能覆盖已存在的实验目录：
 
 ```bash
 BENCHMARK_TAG=factory_pdformer_134_v3 DEVICE=cuda:0 \
   bash batch_factory_baseline_representation.sh B4
 ```
 
-上一模型完整轮结束后运行 B5：
+对应 B5：
 
 ```bash
 BENCHMARK_TAG=factory_pdformer_134_v3 DEVICE=cuda:0 \
   bash batch_factory_baseline_representation.sh B5
 ```
+
+下一轮固定 history，比较从头/同 seed 父权重微调与原始/增强 upcoming 权重的四组方案：
+
+```bash
+BENCHMARK_TAG=factory_pdformer_134_v3 DEVICE=cuda:0 \
+  bash batch_factory_baseline_staged.sh B4
+BENCHMARK_TAG=factory_pdformer_134_v3 DEVICE=cuda:0 \
+  bash batch_factory_baseline_staged.sh B5
+```
+
+完整预算上限均为 80 epoch，warm 包含第一阶段最多 60 和新阶段最多 20，保存父权重
+哈希及全部实际训练成本，具体规则见《Baseline 验证集调优协议》第 10 节。
+不会因为续训读入不同模型、旧数据版本或测试集选择出的父权重。
 
 目前不要用 formal ALL 作为调参步骤，因为它会计算 test。待全部候选及训练策略冻结后，
 再单独给出多 seed 的最终执行清单，并区分开发期已看过的旧 test 与独立 holdout。

@@ -240,3 +240,44 @@ bash batch_factory_baseline_representation.sh B5
 
 脚本要求 dev_xwt，允许显式 DATASET_DIR 指向已审计的同一数据集；输出始终位于该数据集
 的 models/tuning 下。独立执行 checkout 也固定 dev_xwt，用于不修改其他正在训练的代码目录。
+
+## 10. 同预算上限的阶段训练对照
+
+表示对照完整结束后，固定各自的 history 结构，运行以下预先定义的四组方案，均为
+seed42/43，当前 v5 数据、validation-only，不重新选择父模型或调整解码规则：
+
+| 方案 | 初始化 | upcoming / negative 权重 | 本阶段最多 epoch |
+|---|---|---|---:|
+| scratch_base | 随机 | 4 / 2 | 80 |
+| scratch_signal | 随机 | 16 / 2 | 80 |
+| warm_base | 同 seed 的 history best.pt | 4 / 2 | 20 |
+| warm_signal | 同 seed 的 history best.pt | 16 / 2 | 20 |
+
+其余损失和结构不变。warm 的学习率是第一阶段的 1/4，min_epochs/patience 均为 10；
+创建新 AdamW/cosine，不恢复优化器。scratch 沿用模型学习率、batch 和早停，cosine 上限为 80。
+第一阶段上限 60 计入 warm 的完整上限 80，实际成本计入第一阶段全部已训练 epoch，而非
+仅计最佳 checkpoint 所在 epoch。实际早停与学习率日程不同，因此这是训练方案对照，
+不是只改变初始化的单因素实验。父权重复用的实际计算量与每候选累计预算分别披露。
+
+```bash
+PYTHON_BIN="$TRAIN_PY" DATASET_DIR="$V5_DIR" DEVICE=cuda:0 \
+  bash batch_factory_baseline_staged.sh B4
+PYTHON_BIN="$TRAIN_PY" DATASET_DIR="$V5_DIR" DEVICE=cuda:0 \
+  bash batch_factory_baseline_staged.sh B5
+```
+
+入口 `run_staged_baseline.py` 要求 dev_xwt 已提交的工作目录、通过的共同数据审计、完整的
+四候选双 seed 表示选型产物及新输出目录。每模型写入 `models/tuning/b4_staged_training_v1`
+或 `b5_staged_training_v1`，拒绝覆盖已有目录。所有 8 次完成后才调用统一选型器；
+某次失败则停止，不使用部分结果排名。
+
+`factory_baselines/warm_start.py` 检查父模型 kind/config、seed、manifest、完成状态、完整
+history 和选中指标的一致性，并记录权重/config/history/summary/validation 五份 SHA-256。
+只允许第一阶段、同协议、validation-only 的父模型，不允许跨模型借权重或隐式多阶段串接。
+阶段 0 保存 `initial.pt` 和 `metrics_initial_validation.json` 并参与既定选型：
+若后续未改善，明确保留 epoch0，不把较差的续训结果冒充提升。
+
+`run_summary.json` 和 best.pt/config 元数据包含 `training_budget`，记录本阶段/父阶段/
+累计 epoch、优化器更新次数和耗时。warm 额外报告 `initial_validation_report_f1` 与
+`warm_start_checkpoint_improved`；后者表示按既定完整排序选中了阶段内 checkpoint，
+不保证 report F1 单项严格上升。逐候选训练日志留在实验目录内。

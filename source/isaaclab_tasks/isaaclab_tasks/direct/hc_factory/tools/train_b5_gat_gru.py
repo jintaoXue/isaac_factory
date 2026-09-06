@@ -52,6 +52,7 @@ def main() -> None:
     parser.add_argument("--checkpoint_min_report_precision", type=float, default=0.80)
     parser.add_argument("--checkpoint_min_report_recall", type=float, default=0.35)
     parser.add_argument("--validation_only", action="store_true")
+    parser.add_argument("--warm_start_checkpoint", type=Path)
     args = parser.parse_args()
 
     train_config = TorchTrainConfig(
@@ -92,6 +93,7 @@ def main() -> None:
         model_kind="b5_gat_gru",
         dataset_dir=args.dataset_dir,
         output_dir=args.output_dir,
+        warm_start_checkpoint=args.warm_start_checkpoint,
         model_overrides={
             "gat_hidden": args.gat_hidden,
             "gat_heads": args.gat_heads,

@@ -39,6 +39,7 @@ from .metrics import (
 from .b3_lstm import B3Lstm, B3ModelConfig
 from .b4_gcn_gru import B4GcnGru, B4ModelConfig
 from .b5_gat_gru import B5GatGru, B5ModelConfig
+from .warm_start import load_warm_start_parent
 
 
 @dataclass
@@ -707,13 +708,18 @@ def train_torch_baseline(
     model_overrides: dict[str, Any] | None = None,
     train_config: TorchTrainConfig | None = None,
     loss_config: MultiTaskLossConfig | None = None,
+    warm_start_checkpoint: Path | None = None,
 ) -> dict[str, Any]:
     """Train one B3-B5 model and evaluate it with the shared protocol."""
     dataset_dir = dataset_dir.resolve()
     output_dir = output_dir.resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
     train_config = train_config or TorchTrainConfig()
     loss_config = loss_config or MultiTaskLossConfig()
+    if warm_start_checkpoint is not None and train_config.evaluate_test:
+        raise ValueError("Warm-start tuning must be validation-only; evaluate frozen models separately")
+    if warm_start_checkpoint is not None and warm_start_checkpoint.resolve().parent == output_dir:
+        raise ValueError("Warm start must not overwrite the parent run")
+    output_dir.mkdir(parents=True, exist_ok=True)
     _seed_everything(train_config.seed)
     device = _resolve_device(train_config.device)
     payload, manifest = load_shared_dataset(dataset_dir)
@@ -738,6 +744,18 @@ def train_torch_baseline(
     model_class, config_class, baseline_id, model_name = _model_spec(model_kind)
     model_config = config_class(**model_values)
     model = model_class(model_config).to(device)
+    parent = None
+    manifest_path = dataset_dir / "dataset_manifest.json"
+    if warm_start_checkpoint is not None:
+        state, parent = load_warm_start_parent(
+            warm_start_checkpoint,
+            model_kind=model_kind,
+            model_config=model_config.to_dict(),
+            seed=train_config.seed,
+            dataset_manifest_sha256=_manifest_hash(manifest_path),
+            train_sample_count=len(payload["split_indices"]["train"]),
+        )
+        model.load_state_dict(state, strict=True)
     trainable_parameter_count = sum(
         parameter.numel() for parameter in model.parameters() if parameter.requires_grad
     )
@@ -765,7 +783,6 @@ def train_torch_baseline(
     )
     pos_weight_value = 1.0
     pos_weight = torch.tensor(pos_weight_value, device=device)
-    manifest_path = dataset_dir / "dataset_manifest.json"
     metadata = {
         "baseline_id": baseline_id,
         "model_name": model_name,
@@ -793,6 +810,11 @@ def train_torch_baseline(
             for name, mask in occupancy_type_masks.items()
         },
     }
+    if parent is not None:
+        metadata["warm_start_parent"] = parent
+    parent_epochs = parent["epochs_trained"] if parent is not None else 0
+    parent_steps = parent["optimizer_steps"] if parent is not None else 0
+    parent_elapsed = parent["elapsed_seconds"] if parent is not None else 0.0
     config_payload = {
         "model": model_config.to_dict(),
         "loss": loss_config.to_dict(),
@@ -820,6 +842,50 @@ def train_torch_baseline(
     checkpoint_constraint_met = False
     epochs_without_improvement = 0
     started_at = time.time()
+    initial_metrics = None
+    if parent is not None:
+        initial_metrics, _, _ = _evaluate_loader(
+            model, loaders["validation"], loss_config, pos_weight, device,
+            model_config.num_causes, cause_classes=cause_classes,
+            cause_majority=cause_majority,
+            event_threshold=train_config.event_report_threshold,
+            report_threshold_sweep=train_config.report_threshold_sweep,
+            min_report_precision=train_config.checkpoint_min_report_precision,
+            hot_threshold=train_config.hot_eval_threshold,
+            occupancy_type_masks=occupancy_type_masks,
+        )
+        _write_json(output_dir / "metrics_initial_validation.json", initial_metrics)
+        initial_report = initial_metrics["station_report"]
+        fallback_rank = _validation_checkpoint_rank(initial_metrics)
+        fallback_score = float(initial_report["report_f1"])
+        fallback_precision = float(initial_report["report_precision"])
+        fallback_recall = float(initial_report["report_recall"])
+        fallback_hot_f1 = float(initial_metrics["remain"]["hot_f1"])
+        fallback_validation_loss = float(initial_metrics["loss"]["total"])
+        checkpoint_constraint_met = (
+            fallback_precision >= train_config.checkpoint_min_report_precision
+            and fallback_recall >= train_config.checkpoint_min_report_recall
+        )
+        initial_files = ["initial.pt", "fallback_best.pt"]
+        if checkpoint_constraint_met:
+            best_rank, best_score = fallback_rank, fallback_score
+            best_precision, best_recall = fallback_precision, fallback_recall
+            best_hot_f1, best_validation_loss = fallback_hot_f1, fallback_validation_loss
+            initial_files.append("best.pt")
+        initial_metadata = {
+            **metadata,
+            "event_report_threshold": float(initial_report["report_threshold_used"]),
+            "hot_eval_threshold": train_config.hot_eval_threshold,
+            "stage_optimizer_steps": 0,
+            "cumulative_optimizer_steps": parent_steps,
+        }
+        for filename in initial_files:
+            save_checkpoint(
+                output_dir / filename, model, optimizer, 0, fallback_score,
+                model_kind, model_config, loss_config, train_config, initial_metadata,
+            )
+        print(f"warm_start epoch=000 val_report_f1={fallback_score:.6f} "
+              f"parent_epochs={parent_epochs} parent_steps={parent_steps}", flush=True)
     for epoch in range(1, train_config.max_epochs + 1):
         train_losses = _run_train_epoch(
             model,
@@ -866,6 +932,8 @@ def train_torch_baseline(
         row.update({f"train_{name}": value for name, value in train_losses.items()})
         row.update(
             {
+                "stage_optimizer_steps": epoch * len(loaders["train"]),
+                "cumulative_optimizer_steps": parent_steps + epoch * len(loaders["train"]),
                 "validation_total_loss": validation_metrics["loss"]["total"],
                 "validation_hot_f1": validation_metrics["remain"]["hot_f1"],
                 "validation_report_f1": report["report_f1"],
@@ -897,6 +965,8 @@ def train_torch_baseline(
             **metadata,
             "event_report_threshold": selected_threshold,
             "hot_eval_threshold": train_config.hot_eval_threshold,
+            "stage_optimizer_steps": epoch * len(loaders["train"]),
+            "cumulative_optimizer_steps": parent_steps + epoch * len(loaders["train"]),
         }
         if fallback_improved:
             fallback_rank = candidate_rank
@@ -1008,11 +1078,9 @@ def train_torch_baseline(
     checkpoint["metadata"]["event_report_threshold"] = event_threshold
     checkpoint["metadata"]["hot_eval_threshold"] = train_config.hot_eval_threshold
     checkpoint["metadata"]["checkpoint_constraint_met"] = checkpoint_constraint_met
-    torch.save(checkpoint, output_dir / "best.pt")
     config_payload["metadata"]["event_report_threshold"] = event_threshold
     config_payload["metadata"]["hot_eval_threshold"] = train_config.hot_eval_threshold
     config_payload["metadata"]["checkpoint_constraint_met"] = checkpoint_constraint_met
-    _write_json(output_dir / "config.json", config_payload)
     evaluations = {
         "validation": (
             validation_metrics,
@@ -1098,6 +1166,27 @@ def train_torch_baseline(
                 ],
             }
         )
+    stage_elapsed = float(summary["elapsed_seconds"])
+    budget = {
+        "stage_epochs_trained": len(history),
+        "stage_optimizer_steps": len(history) * len(loaders["train"]),
+        "parent_epochs_trained": parent_epochs,
+        "parent_optimizer_steps": parent_steps,
+        "cumulative_epochs_trained": parent_epochs + len(history),
+        "cumulative_optimizer_steps": parent_steps + len(history) * len(loaders["train"]),
+        "cumulative_max_epochs": train_config.max_epochs + (parent["max_epochs"] if parent else 0),
+        "stage_elapsed_seconds": stage_elapsed,
+        "cumulative_elapsed_seconds": parent_elapsed + stage_elapsed,
+    }
+    summary["training_budget"] = budget
+    summary["initialization"] = "warm_start_weights_only" if parent is not None else "random"
+    if initial_metrics is not None:
+        summary["initial_validation_report_f1"] = initial_metrics["station_report"]["report_f1"]
+        summary["warm_start_checkpoint_improved"] = best_epoch > 0
+    checkpoint["metadata"]["training_budget"] = budget
+    config_payload["metadata"]["training_budget"] = budget
+    torch.save(checkpoint, output_dir / "best.pt")
+    _write_json(output_dir / "config.json", config_payload)
     _write_json(output_dir / "run_summary.json", summary)
     return summary
 
