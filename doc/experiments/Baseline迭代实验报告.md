@@ -237,7 +237,7 @@ checkpoint（由 `unsup10` 权重继续训练），不是多 seed 均值或已�
 6. 配置冻结后再做独立评估；此前已被反复查看的旧 test 不能恢复成未使用的
    holdout。最终报告明确区分开发期比较和严格独立泛化证据。
 
-最终报告还缺：B3 完整调参、当前 v5 数据上的必要重训与后续改进、主实验正式多 seed
+最终报告还缺：B2/B3 在当前 v5 数据上的确认重训、B4/B5 后续改进、主实验正式多 seed
 结果、冻结配置及完整主表。共同 validation 输入/目标审计已完成，见第 8 节；它不替代
 独立泛化评估。当前不具备结束实验并宣称指标达标或方法到顶的证据。
 
@@ -383,3 +383,93 @@ tmux `baseline_graph_v5` 的 pane PID=3760105，顺序执行 B4 整轮，再执�
 `models/tuning/b4_representation_v1/diagnostics/{control,history}_seed{42,43}.json`。
 已完成运行的配置、validation 指标及哈希另由导出工具归档；B5 整轮结束后再作其完整
 比较，并决定后续受控调整。当前 B3 仍为 15/16、进程存活，不对最后未完成候选排名。
+
+### 训练集事件信号分布
+
+通过正式 `FactoryBaselineTensorDataset` 生成 train 的事件目标后统计，避免把动态生成的
+event_will 误当成 dataset.pt 中的静态字段。覆盖 13813 个训练样本，不使用 validation/test
+决定类别比例；计数单位为滑窗站点目标，不能视作独立样本数：
+
+| 资源类型 | negative | ongoing | upcoming |
+|---|---:|---:|---:|
+| machine | 63247 | 357 | 491 |
+| workbench | 24315 | 198 | 177 |
+| gantry | 43807 | 151 | 312 |
+| agv | 44324 | 39 | 66 |
+| 总计 | 175693 | 745 | 1046 |
+
+训练中 future_start>0 且 hist_last_hot=1 的正例为 0，因此这批数据上没有证据支持
+“loss 将大量 upcoming 错当成 ongoing”这一解释。原搜索的 base、balanced、strict
+分别使用 upcoming/negative 权重 4/2、6/3、7/4，比值为 2、2、1.75；后两组并未增加
+upcoming 相对负例的权重。总 loss 系数和 ongoing 权重也有变化，所以不能仅凭比值
+断言梯度完全相同，或断言提高 upcoming 权重必然改善泛化。
+
+此证据支持下一轮隔离“提前事件信号强度”与“增加训练阶段”的影响，而不是复用旧搜索
+标签称已经充分搜索正负平衡。先等 B5 表示对照完整结束，再固定有限候选与预算；不在
+运行中改损失、阈值或样本。原始统计产物为新 benchmark 的
+`train_event_balance_diagnostic_20260906.json`，包含数据 manifest 哈希。
+
+以上 B4 完整配置/指标、selection、四份漏报诊断及训练分布，以及下节 B3 完整轮，
+已由服务器生成并随 `b81503b` 归档到本地 `doc/experiments`。未提交 raw、模型权重
+或 test 预测；执行中的 B5 checkout 仍保持 `64366a6`，未跟随报告提交更新。
+
+## 11. B3 旧数据搜索完整结果
+
+2026-09-06 14:23 HKT，`b3_search_v1_pyfix` 为 16/16，selection 状态为
+`validation_selection_completed`，确认没有仍运行的 B3 Python 训练进程。
+以下仍为旧 v3 数据、2572 个 validation 样本的开发期结果，不与当前 v5 的 B4
+表格合并成同口径正式排名。原始配置、逐 seed 指标及哈希存于
+`baseline_validation_v3_20260906_b3_complete.json`，完整排序见
+`baseline_b3_selection_20260906.json`：
+
+| 候选 | report P | report R | report F1 均值 ± std | upcoming R | will AP |
+|---|---:|---:|---:|---:|---:|
+| c0_incumbent | 0.2462 | 0.0892 | 0.1310 ± 0.0087 | 0.0212 | 0.0966 |
+| c1_balanced | 0.2291 | 0.0471 | 0.0780 ± 0.0094 | 0.0159 | 0.0596 |
+| c3_compact96 | 0.1805 | 0.0539 | 0.0829 ± 0.0145 | 0.0185 | 0.0644 |
+| c2_strict | 0.2408 | 0.0455 | 0.0763 ± 0.0099 | 0.0079 | 0.0659 |
+| c6_regularized | 0.1892 | 0.0471 | 0.0755 ± 0.0162 | 0.0132 | 0.0724 |
+| c4_compact64 | 0.2447 | 0.0337 | 0.0567 ± 0.0008 | 0.0291 | 0.0580 |
+| c7_low_lr_strict | 0.3111 | 0.0135 | 0.0257 ± 0.0003 | 0.0106 | 0.0722 |
+| c5_two_layer | 0.1298 | 0.0101 | 0.0187 ± 0.0126 | 0.0053 | 0.0348 |
+
+按既定排序选中 c0_incumbent，全部未通过 P/R 双门。加深、缩小和加大正则等候选
+没有超过对照，不据此宣称 LSTM 的理论上限。后续先在共同 v5 数据确认原配置，
+避免继续扩大旧数据搜索；有限训练信号实验可与 B4/B5 共用合理思路，但不改成图模型。
+
+16 次运行的 manifest 哈希相同，但记录了五个不同 git_commit：761380d、0a1c98b、
+7a10e71、38d4b5b、35ee064。对这些提交分别读取 Git blob 并作 SHA-256 比对，
+确认搜索脚本、B3 入口、B3 模型、共享 trainer/heads/loss/dataset/metrics/schema、
+remain 指标模块均字节相同。提交间改动为 B4 表示选项、审计工具/产物和文档；不能
+直接声称整仓库固定同一 commit，但没有发现 B3 核心实现跨候选变化。
+
+确认 B3 结束后，原服务器仓库快进到 dev_xwt 当前提交。五份以前生成、后来已入 Git
+的未跟踪审计副本先与 origin/dev_xwt 字节比对，全部一致后保留到旧 benchmark 的
+`audit_copies_before_pull_20260906`，没有删除 raw 或用户修改。B5 在独立 dev_xwt
+checkout 中继续运行，不修改其代码、不重启其进程。
+
+## 12. B2/B3 共同 v5 数据确认轮
+
+旧数据两模型的搜索完整结束后，启动 `baseline_confirm_v5`。它顺序执行 B2 两颗 seed，
+再执行 B3 两颗 seed；不增加候选，不 warm-start，不读取 test。和 B5 共用只读执行
+checkout 的 `64366a6` 代码及 v5 manifest。启动前核对分支、提交和 manifest 哈希，
+两个新输出目录均必须不存在。该队列只在各模型两次训练均成功后生成 selection；
+这里只有一个候选，selection 仅用于验证完整性和汇总，不表示做了新超参搜索。
+
+- B2：沿用 c5_event_w12，500 棵树、深度 5、lr=0.03、subsample/colsample=0.8、
+  min_child_weight=3、reg_lambda=5、negative_cell_ratio=4、hot 权重=4、event 权重=12、
+  n_jobs=4；输出 `models/tuning/b2_v5_confirmation_v1/candidate_c5_event_w12/seed{42,43}`。
+- B3：沿用 c0_incumbent，单层 LSTM128、node_hidden128、node_embedding32、dropout0.25、
+  batch32、lr=3e-4、weight_decay=0.001、max_epochs60、min_epochs12、patience12，
+  原 base loss；输出 `models/tuning/b3_v5_confirmation_v1/candidate_c0_incumbent/seed{42,43}`。
+
+本轮保持各模型旧轮的验证阈值候选，不把阈值搜索变化混成输入修正收益：B2 原有 16 点
+扫描（0.55 至 0.95 的显式列表），B3/B4/B5 原有 12 点扫描（0.55 至 0.85 的显式列表）。
+它们的 P/R 约束、标签与匹配规则相同，但阈值搜索范围不同，最终正式横向协议冻结时
+必须明确统一候选范围或披露模型特定阈值调参预算；当前不能只写成所有评估配置完全相同。
+不得为提高某个 baseline 数字临时换评分规则；正式协议调整须共同、预先固定并重评。
+
+启动实测 `baseline_confirm_v5` pane PID=3825863，B2 seed42 Python PID=3828116，
+CPU 活跃；B5 原 PID=3819541 继续运行，2/8 完成。两队列均尚未产生本轮完整结果。
+每个运行保留 `training.log`、config、validation 指标及 provenance；并发耗时不用于
+声称独占训练效率。下一次修改训练方案仍等待 B5 表示对照整轮完成。
