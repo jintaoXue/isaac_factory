@@ -1,0 +1,793 @@
+{
+  "status": "completed",
+  "test_evaluated": false,
+  "validation_replay_matched": true,
+  "source_commit": "0a8c0b5f07086ef7363f061ab7bc6c12bfa211e6",
+  "dataset_manifest_sha256": "66c6554d0ae1c7a293e482a201829a4c324f1d9d0b88934c1c2a6c1e27333183",
+  "runs": [
+    {
+      "name": "b4_seed42_train.json",
+      "source_sha256": "7860f5f8970a95e40d224c8c09fa62b584e6276187c08f6e04787ea2b185e6f2",
+      "checkpoint_sha256": "a54dc63b33c6ab5829e12b96d9532ec4707b2fa605ab1703e10fd13b1f657de5",
+      "checkpoint": "/home/sci/work/BSTAN_isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset/experiments/factory_pdformer_134_v3/models/tuning/b4_representation_v1/candidate_history/seed42/best.pt",
+      "split": "train",
+      "epoch": 10,
+      "sample_count": 13813,
+      "groups": {
+        "ongoing": {
+          "count": 745,
+          "will_q10_q50_q90": [
+            0.029691173508763328,
+            0.6517871618270874,
+            0.8987623929977417
+          ],
+          "hist_hot_count": 589,
+          "start_within_tolerance_rate": 0.9731543624161074
+        },
+        "upcoming": {
+          "count": 1046,
+          "will_q10_q50_q90": [
+            0.002567271119914949,
+            0.023199268616735935,
+            0.19555747509002686
+          ],
+          "hist_hot_count": 0,
+          "start_within_tolerance_rate": 0.9837476099426387
+        },
+        "negative": {
+          "count": 175693,
+          "will_q10_q50_q90": [
+            1.8236158939544112e-05,
+            0.0003929438826162368,
+            0.007227938901633025
+          ],
+          "hist_hot_count": 1441
+        }
+      },
+      "ranking": {
+        "all_events": {
+          "sample_count": 177484,
+          "positive_count": 1791,
+          "negative_count": 175693,
+          "positive_rate": 0.010091050460886614,
+          "tie_aware_average_precision": 0.4173607756195853,
+          "roc_auc": 0.9486577255527789,
+          "ap_over_prevalence": 41.359497431639575
+        },
+        "ongoing_vs_negative": {
+          "sample_count": 176438,
+          "positive_count": 745,
+          "negative_count": 175693,
+          "positive_rate": 0.004222446411770707,
+          "tie_aware_average_precision": 0.6687886637521884,
+          "roc_auc": 0.9857579211633533,
+          "ap_over_prevalence": 158.38890504041424
+        },
+        "upcoming_vs_negative": {
+          "sample_count": 176739,
+          "positive_count": 1046,
+          "negative_count": 175693,
+          "positive_rate": 0.005918331551044195,
+          "tie_aware_average_precision": 0.08028477231840665,
+          "roc_auc": 0.9222335900557638,
+          "ap_over_prevalence": 13.565440128855519
+        },
+        "events_vs_short_hot_negative": {
+          "sample_count": 4029,
+          "positive_count": 1791,
+          "negative_count": 2238,
+          "positive_rate": 0.4445271779597915,
+          "tie_aware_average_precision": 0.6351433486661,
+          "roc_auc": 0.6584702132447562,
+          "ap_over_prevalence": 1.428806561572148
+        }
+      },
+      "saved_threshold_report": {
+        "threshold": 0.55,
+        "report_precision": 0.7042459736456809,
+        "report_recall": 0.2685650474595198,
+        "report_f1": 0.3888439773645917,
+        "report_recall_ongoing": 0.6026845637583893,
+        "report_recall_upcoming": 0.030592734225621414,
+        "report_false_alarm_count": 202,
+        "report_false_alarm_breakdown": {
+          "true_event_wrong_start": 0,
+          "short_observed_horizon_historically_hot": 0,
+          "short_observed_horizon_historically_cold": 0,
+          "hot_without_qualifying_event_historically_hot": 172,
+          "hot_without_qualifying_event_historically_cold": 2,
+          "no_future_hot_historically_hot": 5,
+          "no_future_hot_historically_cold": 23
+        },
+        "n_true_who": 1791.0,
+        "n_pred_who": 683.0
+      }
+    },
+    {
+      "name": "b4_seed42_validation.json",
+      "source_sha256": "a091921bb9b4011cf14fc66f94a8b66113fa7bba6f2630dbc0d08bdd0308f432",
+      "checkpoint_sha256": "a54dc63b33c6ab5829e12b96d9532ec4707b2fa605ab1703e10fd13b1f657de5",
+      "checkpoint": "/home/sci/work/BSTAN_isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset/experiments/factory_pdformer_134_v3/models/tuning/b4_representation_v1/candidate_history/seed42/best.pt",
+      "split": "validation",
+      "epoch": 10,
+      "sample_count": 2589,
+      "groups": {
+        "ongoing": {
+          "count": 108,
+          "will_q10_q50_q90": [
+            0.00802110182121396,
+            0.6248822510242462,
+            0.9097240328788757
+          ],
+          "hist_hot_count": 81,
+          "start_within_tolerance_rate": 0.9259259259259259
+        },
+        "upcoming": {
+          "count": 189,
+          "will_q10_q50_q90": [
+            0.0003496259043458849,
+            0.005770788993686438,
+            0.05542972683906557
+          ],
+          "hist_hot_count": 0,
+          "start_within_tolerance_rate": 0.7777777777777778
+        },
+        "negative": {
+          "count": 33176,
+          "will_q10_q50_q90": [
+            1.9190456441720016e-05,
+            0.0004095526528544724,
+            0.007877686992287636
+          ],
+          "hist_hot_count": 255
+        }
+      },
+      "ranking": {
+        "all_events": {
+          "sample_count": 33473,
+          "positive_count": 297,
+          "negative_count": 33176,
+          "positive_rate": 0.008872822872165627,
+          "tie_aware_average_precision": 0.22268121514916558,
+          "roc_auc": 0.8668338801567642,
+          "ap_over_prevalence": 25.096997692552254
+        },
+        "ongoing_vs_negative": {
+          "sample_count": 33284,
+          "positive_count": 108,
+          "negative_count": 33176,
+          "positive_rate": 0.0032448023074149743,
+          "tie_aware_average_precision": 0.4806603879796571,
+          "roc_auc": 0.9706447766792594,
+          "ap_over_prevalence": 148.13241068069357
+        },
+        "upcoming_vs_negative": {
+          "sample_count": 33365,
+          "positive_count": 189,
+          "negative_count": 33176,
+          "positive_rate": 0.005664618612318297,
+          "tie_aware_average_precision": 0.021369492082969108,
+          "roc_auc": 0.8075133678581955,
+          "ap_over_prevalence": 3.772450282265949
+        },
+        "events_vs_short_hot_negative": {
+          "sample_count": 700,
+          "positive_count": 297,
+          "negative_count": 403,
+          "positive_rate": 0.42428571428571427,
+          "tie_aware_average_precision": 0.4826639818399768,
+          "roc_auc": 0.4869455514616805,
+          "ap_over_prevalence": 1.1375918763905177
+        }
+      },
+      "saved_threshold_report": {
+        "threshold": 0.55,
+        "report_precision": 0.5210084033613446,
+        "report_recall": 0.20875420875420875,
+        "report_f1": 0.2980769230769231,
+        "report_recall_ongoing": 0.5740740740740741,
+        "report_recall_upcoming": 0.0,
+        "report_false_alarm_count": 57,
+        "report_false_alarm_breakdown": {
+          "true_event_wrong_start": 1,
+          "short_observed_horizon_historically_hot": 0,
+          "short_observed_horizon_historically_cold": 0,
+          "hot_without_qualifying_event_historically_hot": 41,
+          "hot_without_qualifying_event_historically_cold": 0,
+          "no_future_hot_historically_hot": 0,
+          "no_future_hot_historically_cold": 15
+        },
+        "n_true_who": 297.0,
+        "n_pred_who": 119.0
+      }
+    },
+    {
+      "name": "b4_seed43_train.json",
+      "source_sha256": "7f6adf11efb59d9708bee554af51a8c35ecffa8ddbf06bd2e15acc6022190db7",
+      "checkpoint_sha256": "4e8492ce0f4b6c6fd6bb2751cb0de647be194a0d71e81044b5b92eaeaa99eff0",
+      "checkpoint": "/home/sci/work/BSTAN_isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset/experiments/factory_pdformer_134_v3/models/tuning/b4_representation_v1/candidate_history/seed43/best.pt",
+      "split": "train",
+      "epoch": 12,
+      "sample_count": 13813,
+      "groups": {
+        "ongoing": {
+          "count": 745,
+          "will_q10_q50_q90": [
+            0.09697838425636293,
+            0.7276427745819092,
+            0.9396705508232117
+          ],
+          "hist_hot_count": 589,
+          "start_within_tolerance_rate": 0.978523489932886
+        },
+        "upcoming": {
+          "count": 1046,
+          "will_q10_q50_q90": [
+            0.008779607713222504,
+            0.05802059546113014,
+            0.4024922400712967
+          ],
+          "hist_hot_count": 0,
+          "start_within_tolerance_rate": 0.994263862332696
+        },
+        "negative": {
+          "count": 175693,
+          "will_q10_q50_q90": [
+            2.8059535907232203e-06,
+            0.0005504696746356785,
+            0.01606691107153896
+          ],
+          "hist_hot_count": 1441
+        }
+      },
+      "ranking": {
+        "all_events": {
+          "sample_count": 177484,
+          "positive_count": 1791,
+          "negative_count": 175693,
+          "positive_rate": 0.010091050460886614,
+          "tie_aware_average_precision": 0.44614624859544016,
+          "roc_auc": 0.9627048396684457,
+          "ap_over_prevalence": 44.21207190715416
+        },
+        "ongoing_vs_negative": {
+          "sample_count": 176438,
+          "positive_count": 745,
+          "negative_count": 175693,
+          "positive_rate": 0.004222446411770707,
+          "tie_aware_average_precision": 0.6808975017522653,
+          "roc_auc": 0.989789472996617,
+          "ap_over_prevalence": 161.2566354552566
+        },
+        "upcoming_vs_negative": {
+          "sample_count": 176739,
+          "positive_count": 1046,
+          "negative_count": 175693,
+          "positive_rate": 0.005918331551044195,
+          "tie_aware_average_precision": 0.10188319232587134,
+          "roc_auc": 0.9434141591431229,
+          "ap_over_prevalence": 17.21485040963879
+        },
+        "events_vs_short_hot_negative": {
+          "sample_count": 4029,
+          "positive_count": 1791,
+          "negative_count": 2238,
+          "positive_rate": 0.4445271779597915,
+          "tie_aware_average_precision": 0.6702863164077884,
+          "roc_auc": 0.7105520652612681,
+          "ap_over_prevalence": 1.5078635225052928
+        }
+      },
+      "saved_threshold_report": {
+        "threshold": 0.55,
+        "report_precision": 0.6821515892420538,
+        "report_recall": 0.31155778894472363,
+        "report_f1": 0.42775009582215406,
+        "report_recall_ongoing": 0.6657718120805369,
+        "report_recall_upcoming": 0.05927342256214149,
+        "report_false_alarm_count": 260,
+        "report_false_alarm_breakdown": {
+          "true_event_wrong_start": 0,
+          "short_observed_horizon_historically_hot": 0,
+          "short_observed_horizon_historically_cold": 0,
+          "hot_without_qualifying_event_historically_hot": 215,
+          "hot_without_qualifying_event_historically_cold": 3,
+          "no_future_hot_historically_hot": 9,
+          "no_future_hot_historically_cold": 33
+        },
+        "n_true_who": 1791.0,
+        "n_pred_who": 818.0
+      }
+    },
+    {
+      "name": "b4_seed43_validation.json",
+      "source_sha256": "d51ed1d99e67529a097d17c1011f4ab45b9cf6ff0c69e3a863e672b37fe7dbf2",
+      "checkpoint_sha256": "4e8492ce0f4b6c6fd6bb2751cb0de647be194a0d71e81044b5b92eaeaa99eff0",
+      "checkpoint": "/home/sci/work/BSTAN_isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset/experiments/factory_pdformer_134_v3/models/tuning/b4_representation_v1/candidate_history/seed43/best.pt",
+      "split": "validation",
+      "epoch": 12,
+      "sample_count": 2589,
+      "groups": {
+        "ongoing": {
+          "count": 108,
+          "will_q10_q50_q90": [
+            0.015033599175512797,
+            0.7097887098789215,
+            0.9393997728824616
+          ],
+          "hist_hot_count": 81,
+          "start_within_tolerance_rate": 0.9351851851851852
+        },
+        "upcoming": {
+          "count": 189,
+          "will_q10_q50_q90": [
+            0.0008956050267443063,
+            0.01955716498196125,
+            0.12176778614521037
+          ],
+          "hist_hot_count": 0,
+          "start_within_tolerance_rate": 0.7619047619047619
+        },
+        "negative": {
+          "count": 33176,
+          "will_q10_q50_q90": [
+            3.1209914368446334e-06,
+            0.0006361307168845087,
+            0.016748244874179363
+          ],
+          "hist_hot_count": 255
+        }
+      },
+      "ranking": {
+        "all_events": {
+          "sample_count": 33473,
+          "positive_count": 297,
+          "negative_count": 33176,
+          "positive_rate": 0.008872822872165627,
+          "tie_aware_average_precision": 0.22323208287851687,
+          "roc_auc": 0.8620073616155121,
+          "ap_over_prevalence": 25.159082525900992
+        },
+        "ongoing_vs_negative": {
+          "sample_count": 33284,
+          "positive_count": 108,
+          "negative_count": 33176,
+          "positive_rate": 0.0032448023074149743,
+          "tie_aware_average_precision": 0.4571639547910896,
+          "roc_auc": 0.953988101617412,
+          "ap_over_prevalence": 140.89115806728358
+        },
+        "upcoming_vs_negative": {
+          "sample_count": 33365,
+          "positive_count": 189,
+          "negative_count": 33176,
+          "positive_rate": 0.005664618612318297,
+          "tie_aware_average_precision": 0.027055445426147344,
+          "roc_auc": 0.8094469387572836,
+          "ap_over_prevalence": 4.776216595996858
+        },
+        "events_vs_short_hot_negative": {
+          "sample_count": 700,
+          "positive_count": 297,
+          "negative_count": 403,
+          "positive_rate": 0.42428571428571427,
+          "tie_aware_average_precision": 0.5036960306507655,
+          "roc_auc": 0.5503421309872922,
+          "ap_over_prevalence": 1.187162361803151
+        }
+      },
+      "saved_threshold_report": {
+        "threshold": 0.55,
+        "report_precision": 0.44594594594594594,
+        "report_recall": 0.2222222222222222,
+        "report_f1": 0.296629213483146,
+        "report_recall_ongoing": 0.6018518518518519,
+        "report_recall_upcoming": 0.005291005291005291,
+        "report_false_alarm_count": 82,
+        "report_false_alarm_breakdown": {
+          "true_event_wrong_start": 1,
+          "short_observed_horizon_historically_hot": 0,
+          "short_observed_horizon_historically_cold": 0,
+          "hot_without_qualifying_event_historically_hot": 53,
+          "hot_without_qualifying_event_historically_cold": 0,
+          "no_future_hot_historically_hot": 2,
+          "no_future_hot_historically_cold": 26
+        },
+        "n_true_who": 297.0,
+        "n_pred_who": 148.0
+      }
+    },
+    {
+      "name": "b5_seed42_train.json",
+      "source_sha256": "ebebecda668b6ac70176597fed59648ccd3ebc474f501c44a7c412ce1a015eb2",
+      "checkpoint_sha256": "2af05c63fe61778a80807ad06fd2075b41ac8c58d8daa19798c14809744bfca7",
+      "checkpoint": "/home/sci/work/BSTAN_isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset/experiments/factory_pdformer_134_v3/models/tuning/b5_representation_v1/candidate_history/seed42/best.pt",
+      "split": "train",
+      "epoch": 13,
+      "sample_count": 13813,
+      "groups": {
+        "ongoing": {
+          "count": 745,
+          "will_q10_q50_q90": [
+            0.12713497132062915,
+            0.7915775775909424,
+            0.9499550461769104
+          ],
+          "hist_hot_count": 589,
+          "start_within_tolerance_rate": 0.9825503355704698
+        },
+        "upcoming": {
+          "count": 1046,
+          "will_q10_q50_q90": [
+            0.010130966547876596,
+            0.04983096197247505,
+            0.2527526915073395
+          ],
+          "hist_hot_count": 0,
+          "start_within_tolerance_rate": 0.9579349904397706
+        },
+        "negative": {
+          "count": 175693,
+          "will_q10_q50_q90": [
+            3.1845997727941726e-05,
+            0.001117525389418006,
+            0.022843913361430174
+          ],
+          "hist_hot_count": 1441
+        }
+      },
+      "ranking": {
+        "all_events": {
+          "sample_count": 177484,
+          "positive_count": 1791,
+          "negative_count": 175693,
+          "positive_rate": 0.010091050460886614,
+          "tie_aware_average_precision": 0.4242700271681852,
+          "roc_auc": 0.9518598254874961,
+          "ap_over_prevalence": 42.04418844328207
+        },
+        "ongoing_vs_negative": {
+          "sample_count": 176438,
+          "positive_count": 745,
+          "negative_count": 175693,
+          "positive_rate": 0.004222446411770707,
+          "tie_aware_average_precision": 0.7147464966335839,
+          "roc_auc": 0.9891088394464154,
+          "ap_over_prevalence": 169.27307701078695
+        },
+        "upcoming_vs_negative": {
+          "sample_count": 176739,
+          "positive_count": 1046,
+          "negative_count": 175693,
+          "positive_rate": 0.005918331551044195,
+          "tie_aware_average_precision": 0.06896169709699969,
+          "roc_auc": 0.9253296960425679,
+          "ap_over_prevalence": 11.65221929562775
+        },
+        "events_vs_short_hot_negative": {
+          "sample_count": 4029,
+          "positive_count": 1791,
+          "negative_count": 2238,
+          "positive_rate": 0.4445271779597915,
+          "tie_aware_average_precision": 0.6377792643870103,
+          "roc_auc": 0.6498041044264117,
+          "ap_over_prevalence": 1.4347362681268925
+        }
+      },
+      "saved_threshold_report": {
+        "threshold": 0.55,
+        "report_precision": 0.6457142857142857,
+        "report_recall": 0.31546621998883306,
+        "report_f1": 0.42385596399099773,
+        "report_recall_ongoing": 0.7154362416107383,
+        "report_recall_upcoming": 0.030592734225621414,
+        "report_false_alarm_count": 310,
+        "report_false_alarm_breakdown": {
+          "true_event_wrong_start": 0,
+          "short_observed_horizon_historically_hot": 0,
+          "short_observed_horizon_historically_cold": 0,
+          "hot_without_qualifying_event_historically_hot": 255,
+          "hot_without_qualifying_event_historically_cold": 3,
+          "no_future_hot_historically_hot": 9,
+          "no_future_hot_historically_cold": 43
+        },
+        "n_true_who": 1791.0,
+        "n_pred_who": 875.0
+      }
+    },
+    {
+      "name": "b5_seed42_validation.json",
+      "source_sha256": "b58f77a3b055160309fddcc054cecd231ff4c46a7f7d089960c9295ea638edef",
+      "checkpoint_sha256": "2af05c63fe61778a80807ad06fd2075b41ac8c58d8daa19798c14809744bfca7",
+      "checkpoint": "/home/sci/work/BSTAN_isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset/experiments/factory_pdformer_134_v3/models/tuning/b5_representation_v1/candidate_history/seed42/best.pt",
+      "split": "validation",
+      "epoch": 13,
+      "sample_count": 2589,
+      "groups": {
+        "ongoing": {
+          "count": 108,
+          "will_q10_q50_q90": [
+            0.08568623289465904,
+            0.6402682363986969,
+            0.9544198393821717
+          ],
+          "hist_hot_count": 81,
+          "start_within_tolerance_rate": 0.9537037037037037
+        },
+        "upcoming": {
+          "count": 189,
+          "will_q10_q50_q90": [
+            0.0018032970372587442,
+            0.024817610159516335,
+            0.14641978144645693
+          ],
+          "hist_hot_count": 0,
+          "start_within_tolerance_rate": 0.8253968253968254
+        },
+        "negative": {
+          "count": 33176,
+          "will_q10_q50_q90": [
+            3.4617049095686525e-05,
+            0.0013449249672703445,
+            0.024672163650393486
+          ],
+          "hist_hot_count": 255
+        }
+      },
+      "ranking": {
+        "all_events": {
+          "sample_count": 33473,
+          "positive_count": 297,
+          "negative_count": 33176,
+          "positive_rate": 0.008872822872165627,
+          "tie_aware_average_precision": 0.26748550958955364,
+          "roc_auc": 0.8723441309648207,
+          "ap_over_prevalence": 30.146607617815246
+        },
+        "ongoing_vs_negative": {
+          "sample_count": 33284,
+          "positive_count": 108,
+          "negative_count": 33176,
+          "positive_rate": 0.0032448023074149743,
+          "tie_aware_average_precision": 0.5482474622520204,
+          "roc_auc": 0.9697544632889461,
+          "ap_over_prevalence": 168.9617456814467
+        },
+        "upcoming_vs_negative": {
+          "sample_count": 33365,
+          "positive_count": 189,
+          "negative_count": 33176,
+          "positive_rate": 0.005664618612318297,
+          "tie_aware_average_precision": 0.03204346435902595,
+          "roc_auc": 0.8166810839224632,
+          "ap_over_prevalence": 5.656773483274607
+        },
+        "events_vs_short_hot_negative": {
+          "sample_count": 700,
+          "positive_count": 297,
+          "negative_count": 403,
+          "positive_rate": 0.42428571428571427,
+          "tie_aware_average_precision": 0.5261665755736553,
+          "roc_auc": 0.5471088051733213,
+          "ap_over_prevalence": 1.2401232420927903
+        }
+      },
+      "saved_threshold_report": {
+        "threshold": 0.55,
+        "report_precision": 0.5076923076923077,
+        "report_recall": 0.2222222222222222,
+        "report_f1": 0.3091334894613583,
+        "report_recall_ongoing": 0.5925925925925926,
+        "report_recall_upcoming": 0.010582010582010581,
+        "report_false_alarm_count": 64,
+        "report_false_alarm_breakdown": {
+          "true_event_wrong_start": 0,
+          "short_observed_horizon_historically_hot": 0,
+          "short_observed_horizon_historically_cold": 0,
+          "hot_without_qualifying_event_historically_hot": 47,
+          "hot_without_qualifying_event_historically_cold": 0,
+          "no_future_hot_historically_hot": 0,
+          "no_future_hot_historically_cold": 17
+        },
+        "n_true_who": 297.0,
+        "n_pred_who": 130.0
+      }
+    },
+    {
+      "name": "b5_seed43_train.json",
+      "source_sha256": "1f106cdadb4d2c5609563b9b8ea4c61ace2976d834385a451a9518be6a7217a2",
+      "checkpoint_sha256": "1471ed2eca2c374cf5cb95777af97b903fac796151cee7b8e3e9bc5597ec3ae1",
+      "checkpoint": "/home/sci/work/BSTAN_isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset/experiments/factory_pdformer_134_v3/models/tuning/b5_representation_v1/candidate_history/seed43/best.pt",
+      "split": "train",
+      "epoch": 17,
+      "sample_count": 13813,
+      "groups": {
+        "ongoing": {
+          "count": 745,
+          "will_q10_q50_q90": [
+            0.21635046899318694,
+            0.8619536757469177,
+            0.9774817109107972
+          ],
+          "hist_hot_count": 589,
+          "start_within_tolerance_rate": 0.9852348993288591
+        },
+        "upcoming": {
+          "count": 1046,
+          "will_q10_q50_q90": [
+            0.013380896765738726,
+            0.07699677720665932,
+            0.45612049102783203
+          ],
+          "hist_hot_count": 0,
+          "start_within_tolerance_rate": 0.9894837476099426
+        },
+        "negative": {
+          "count": 175693,
+          "will_q10_q50_q90": [
+            6.73200547680608e-06,
+            0.000987282837741077,
+            0.026182450726628313
+          ],
+          "hist_hot_count": 1441
+        }
+      },
+      "ranking": {
+        "all_events": {
+          "sample_count": 177484,
+          "positive_count": 1791,
+          "negative_count": 175693,
+          "positive_rate": 0.010091050460886614,
+          "tie_aware_average_precision": 0.4776500028877097,
+          "roc_auc": 0.9599583749969328,
+          "ap_over_prevalence": 47.334021838370894
+        },
+        "ongoing_vs_negative": {
+          "sample_count": 176438,
+          "positive_count": 745,
+          "negative_count": 175693,
+          "positive_rate": 0.004222446411770707,
+          "tie_aware_average_precision": 0.7610131254780262,
+          "roc_auc": 0.9917784365857513,
+          "ap_over_prevalence": 180.23038098401608
+        },
+        "upcoming_vs_negative": {
+          "sample_count": 176739,
+          "positive_count": 1046,
+          "negative_count": 175693,
+          "positive_rate": 0.005918331551044195,
+          "tie_aware_average_precision": 0.10666966311343451,
+          "roc_auc": 0.9372949468098681,
+          "ap_over_prevalence": 18.023603813580593
+        },
+        "events_vs_short_hot_negative": {
+          "sample_count": 4029,
+          "positive_count": 1791,
+          "negative_count": 2238,
+          "positive_rate": 0.4445271779597915,
+          "tie_aware_average_precision": 0.695649181398737,
+          "roc_auc": 0.7114786523222807,
+          "ap_over_prevalence": 1.564919347769688
+        }
+      },
+      "saved_threshold_report": {
+        "threshold": 0.55,
+        "report_precision": 0.6390532544378699,
+        "report_recall": 0.36180904522613067,
+        "report_f1": 0.4620320855614974,
+        "report_recall_ongoing": 0.7704697986577181,
+        "report_recall_upcoming": 0.07074569789674952,
+        "report_false_alarm_count": 366,
+        "report_false_alarm_breakdown": {
+          "true_event_wrong_start": 1,
+          "short_observed_horizon_historically_hot": 0,
+          "short_observed_horizon_historically_cold": 0,
+          "hot_without_qualifying_event_historically_hot": 241,
+          "hot_without_qualifying_event_historically_cold": 0,
+          "no_future_hot_historically_hot": 7,
+          "no_future_hot_historically_cold": 117
+        },
+        "n_true_who": 1791.0,
+        "n_pred_who": 1014.0
+      }
+    },
+    {
+      "name": "b5_seed43_validation.json",
+      "source_sha256": "bab91b6b34fe0795e2e4d003c1fc118e2693f6ce3884c29561ee1ef36575ab64",
+      "checkpoint_sha256": "1471ed2eca2c374cf5cb95777af97b903fac796151cee7b8e3e9bc5597ec3ae1",
+      "checkpoint": "/home/sci/work/BSTAN_isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset/experiments/factory_pdformer_134_v3/models/tuning/b5_representation_v1/candidate_history/seed43/best.pt",
+      "split": "validation",
+      "epoch": 17,
+      "sample_count": 2589,
+      "groups": {
+        "ongoing": {
+          "count": 108,
+          "will_q10_q50_q90": [
+            0.054701296612620354,
+            0.6689246296882629,
+            0.9690091848373413
+          ],
+          "hist_hot_count": 81,
+          "start_within_tolerance_rate": 0.9537037037037037
+        },
+        "upcoming": {
+          "count": 189,
+          "will_q10_q50_q90": [
+            0.002968828706070781,
+            0.03144215792417526,
+            0.20623080432415022
+          ],
+          "hist_hot_count": 0,
+          "start_within_tolerance_rate": 0.798941798941799
+        },
+        "negative": {
+          "count": 33176,
+          "will_q10_q50_q90": [
+            7.831027687643655e-06,
+            0.0011393543682061136,
+            0.029646776616573334
+          ],
+          "hist_hot_count": 255
+        }
+      },
+      "ranking": {
+        "all_events": {
+          "sample_count": 33473,
+          "positive_count": 297,
+          "negative_count": 33176,
+          "positive_rate": 0.008872822872165627,
+          "tie_aware_average_precision": 0.2325671999237095,
+          "roc_auc": 0.887146117553641,
+          "ap_over_prevalence": 26.211184791401777
+        },
+        "ongoing_vs_negative": {
+          "sample_count": 33284,
+          "positive_count": 108,
+          "negative_count": 33176,
+          "positive_rate": 0.0032448023074149743,
+          "tie_aware_average_precision": 0.45139435967160557,
+          "roc_auc": 0.9705610481472551,
+          "ap_over_prevalence": 139.11305432694184
+        },
+        "upcoming_vs_negative": {
+          "sample_count": 33365,
+          "positive_count": 189,
+          "negative_count": 33176,
+          "positive_rate": 0.005664618612318297,
+          "tie_aware_average_precision": 0.0326915852114903,
+          "roc_auc": 0.8394804429287188,
+          "ap_over_prevalence": 5.771189103605153
+        },
+        "events_vs_short_hot_negative": {
+          "sample_count": 700,
+          "positive_count": 297,
+          "negative_count": 403,
+          "positive_rate": 0.42428571428571427,
+          "tie_aware_average_precision": 0.5099801068983791,
+          "roc_auc": 0.562523498007369,
+          "ap_over_prevalence": 1.2019733159221058
+        }
+      },
+      "saved_threshold_report": {
+        "threshold": 0.55,
+        "report_precision": 0.4675324675324675,
+        "report_recall": 0.24242424242424243,
+        "report_f1": 0.3192904656319291,
+        "report_recall_ongoing": 0.6296296296296297,
+        "report_recall_upcoming": 0.021164021164021163,
+        "report_false_alarm_count": 82,
+        "report_false_alarm_breakdown": {
+          "true_event_wrong_start": 0,
+          "short_observed_horizon_historically_hot": 0,
+          "short_observed_horizon_historically_cold": 0,
+          "hot_without_qualifying_event_historically_hot": 51,
+          "hot_without_qualifying_event_historically_cold": 0,
+          "no_future_hot_historically_hot": 2,
+          "no_future_hot_historically_cold": 29
+        },
+        "n_true_who": 297.0,
+        "n_pred_who": 154.0
+      }
+    }
+  ]
+}
