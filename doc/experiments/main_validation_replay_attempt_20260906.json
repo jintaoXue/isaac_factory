@@ -1,0 +1,36 @@
+{
+  "status": "failed",
+  "stage": "strict_checkpoint_loading",
+  "test_evaluated": false,
+  "model_scored": false,
+  "error": "Error(s) in loading state_dict for BNPDFormer:\n\tMissing key(s) in state_dict: \"cluster_emb.weight\". ",
+  "checkpoint_sha256": "c98350d2762499f8bd4f9e8823e95b6c88c640dd350be40502e9bbbaf24d7844",
+  "source_commit": "f322dbf9854e06598d0461af2296ab7c095d7f4b",
+  "sample_count": 2589,
+  "episode_names": [
+    "extra_human__episode_09",
+    "extra_logistics__episode_03",
+    "extra_machine__episode_05",
+    "extra_material__episode_00",
+    "material\u91cd\u91c7__episode_05",
+    "material\u91cd\u91c7__episode_08",
+    "n10_human1.0__episode_06",
+    "n10_human1.0__episode_10",
+    "n10_human1.0__episode_16",
+    "n10_logistics1.0__episode_05",
+    "n10_logistics1.0__episode_07",
+    "n10_logistics1.0__episode_15",
+    "n10_machine1.0__episode_11",
+    "n10_machine1.0__episode_13",
+    "n10_machine1.0__episode_17",
+    "n10_material1.0__episode_04",
+    "n10_material1.0__episode_09"
+  ],
+  "input_audit_sha256": "f95fe36d53798bdbb9b95fcdf5bfb21bd15937c00a81a6f244ec130e12f50a41",
+  "split_audit_sha256": "e724c1523cf416d6bc5f86eaae7db7d085c275c1ffef1e27279d5e4a32063382",
+  "observed_history_prefix_diagnostic": {
+    "different_node_windows": 199,
+    "eligible_node_windows": 33473
+  },
+  "note": "No partial/random-weight model was evaluated. Prefix differences describe only the historical hot flag; they are not a full input-causality audit."
+}
