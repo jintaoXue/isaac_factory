@@ -34,6 +34,70 @@ OCC_SUPERVISE_TYPE_INDICES = (_TYPE_MACHINE_IDX, _TYPE_GANTRY_IDX, _TYPE_AGV_IDX
 # Appended after type one-hot so occupancy type indices stay 21–25.
 _LABOR_FEAT_IDX = 26
 
+# Near-window last / mean / delta plus far-history pool for upcoming onset.
+_PREC_LAST_IDX = (0, 1, 2, 3, 6, 7, 11, 12, 13, 14, 15, 18)
+_PREC_MEAN_IDX = (0, 6, 7, 14, 15)
+_PREC_FAR_IDX = (0, 6, 14, 15)
+_PREC_SCALE = {
+    0: 5.0,
+    1: 60.0,
+    2: 1.0,
+    3: 2.0,
+    6: 60.0,
+    7: 60.0,
+    11: 1.0,
+    12: 1.0,
+    13: 60.0,
+    14: 60.0,
+    15: 1.0,
+    18: 1.0,
+}
+PRECURSOR_LOOKBACK = 5
+PRECURSOR_FAR_WINDOWS = 30
+PRECURSOR_DIM = len(_PREC_LAST_IDX) + len(_PREC_MEAN_IDX) + 1 + len(_PREC_FAR_IDX) + 1
+
+
+def _prec_col(grid: np.ndarray, idx: int, n_nodes: int) -> np.ndarray:
+    if idx >= grid.shape[-1]:
+        return np.zeros((n_nodes,), dtype=np.float32)
+    scale = float(_PREC_SCALE.get(idx, 1.0))
+    return np.clip(grid[..., idx] / max(scale, 1e-6), -3.0, 3.0).astype(np.float32)
+
+
+def pack_precursor_features(
+    near: np.ndarray,
+    far: np.ndarray | None = None,
+    lookback: int = PRECURSOR_LOOKBACK,
+) -> np.ndarray:
+    """Per-node onset cues: last 5 min of X plus the 30 min before the encoder window.
+
+    Shape ``(N, PRECURSOR_DIM)``. Values are clipped raw-scale, not z-scored.
+    """
+    near_a = np.asarray(near, dtype=np.float32)
+    if near_a.ndim != 3:
+        raise ValueError(f"near must be (T,N,F), got {near_a.shape}")
+    t_len, n_nodes, _ = near_a.shape
+    k = max(1, min(int(lookback), t_len))
+    tail = near_a[-k:]
+    last = tail[-1]
+    mean = tail.mean(axis=0)
+    first = tail[0]
+    cols: list[np.ndarray] = [_prec_col(last, i, n_nodes) for i in _PREC_LAST_IDX]
+    cols.extend(_prec_col(mean, i, n_nodes) for i in _PREC_MEAN_IDX)
+    q_delta = np.zeros((n_nodes,), dtype=np.float32)
+    if last.shape[-1] > 0:
+        q_delta = np.clip((last[:, 0] - first[:, 0]) / 5.0, -3.0, 3.0).astype(np.float32)
+    cols.append(q_delta)
+    if far is not None and np.asarray(far).size > 0:
+        far_a = np.asarray(far, dtype=np.float32)
+        fmean = far_a.mean(axis=0)
+        fmax = far_a.max(axis=0)
+        cols.extend(_prec_col(fmean, i, n_nodes) for i in _PREC_FAR_IDX)
+        cols.append(np.clip(fmax[:, 0] / 5.0, 0.0, 3.0).astype(np.float32))
+    else:
+        cols.extend(np.zeros((n_nodes,), dtype=np.float32) for _ in range(len(_PREC_FAR_IDX) + 1))
+    return np.stack(cols, axis=-1).astype(np.float32)
+
 # Future-X recon: occupancy / delay / stall columns only. TPM + type one-hot = 0.
 _OPS_RECON_HIGH = {
     0: 2.0,  # queue
@@ -577,6 +641,15 @@ def match_occupancy_events(
     return n_match, len(pred), len(true)
 
 
+def parse_max_start_windows(raw) -> int | None:
+    """``0`` means ongoing-only. Do not use ``in (..., False)`` — ``0 == False``."""
+    if raw is None or raw == "":
+        return None
+    if raw is False:
+        return None
+    return int(raw)
+
+
 def node_event_targets(
     y_hot: np.ndarray,
     *,
@@ -584,11 +657,16 @@ def node_event_targets(
     remain_mask: np.ndarray | None = None,
     occ_node_mask: np.ndarray | None = None,
     max_start_windows: int | None = None,
+    hist_last_hot: np.ndarray | None = None,
+    ongoing_min_windows: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Longest occupancy run per node in H → will / start_idx / duration_windows.
 
     One event per station in the forecast window (who / when / how long).
-    Runs shorter than ``min_windows`` are not reported.
+    Upcoming runs shorter than ``min_windows`` are not reported.
+    Ongoing leftover (last minute already hot, run starts at window 0) uses
+    ``ongoing_min_windows`` when ``hist_last_hot`` is given — remaining time
+    of an already-smoothed ≥8 min blockage can be shorter than 8.
     ``max_start_windows`` drops runs that start too far into the horizon.
     """
     grid = np.asarray(y_hot, dtype=np.float32)
@@ -602,8 +680,10 @@ def node_event_targets(
     start = np.zeros((batch, n_nodes), dtype=np.int64)
     dur = np.zeros((batch, n_nodes), dtype=np.float32)
     min_w = max(int(min_windows), 1)
+    on_min = min_w if ongoing_min_windows is None else max(int(ongoing_min_windows), 1)
     rm = None if remain_mask is None else np.asarray(remain_mask, dtype=np.float32)
     occ = None if occ_node_mask is None else np.asarray(occ_node_mask, dtype=np.float32)
+    last = None if hist_last_hot is None else np.asarray(hist_last_hot, dtype=np.float32)
     for b in range(batch):
         k_use = k_len
         if rm is not None:
@@ -634,7 +714,14 @@ def node_event_targets(
                     best_len = j - i
                     best_i = i
                 i = j
-            if best_len >= min_w:
+            last_hot = False
+            if last is not None:
+                if last.ndim == 1:
+                    last_hot = float(last[n]) > 0.5
+                elif last.ndim == 2:
+                    last_hot = float(last[b, n]) > 0.5
+            need = on_min if (last_hot and int(best_i) == 0) else min_w
+            if best_len >= need:
                 if max_start_windows is not None and int(best_i) > int(max_start_windows):
                     continue
                 will[b, n] = 1.0
@@ -783,8 +870,16 @@ def apply_ongoing_will_force(
     min_windows: int,
     will_floor: float = 0.62,
     force_will: bool = False,
+    force_to: float | None = None,
+    require_dur: bool = True,
+    report_ongoing_only: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Start=0 if last minute is hot. Optionally force will when remaining is long."""
+    """Start=0 if last minute is hot. Optionally force will when remaining is long.
+
+    Lift only to ``force_to`` (default: ``threshold``). Decode should pass the
+    report bar here so a later threshold sweep can still suppress false ongoing.
+    ``report_ongoing_only`` reports every currently-hot station and drops cold.
+    """
     wp = np.asarray(will_prob, dtype=np.float32)
     start = np.asarray(start_idx, dtype=np.int64)
     if hist_last_hot is None:
@@ -796,13 +891,21 @@ def apply_ongoing_will_force(
         m = min(pred_dur.shape[-1], wp.shape[-1])
         pred_dur = pred_dur[:n, :m]
         last = last[:n, :m]
-    force = (
-        bool(force_will)
-        & (last > 0.5)
-        & (pred_dur >= float(min_windows))
-        & (wp >= float(will_floor))
-    )
-    wp = np.where(force, np.maximum(wp, float(threshold)), wp)
+        wp = wp[:n, :m]
+        start = start[:n, :m]
+    lift = float(threshold if force_to is None else force_to)
+    # Forced stations must clear the bar being applied, or a later τ sweep
+    # drops every lift that sat below the chosen threshold.
+    lift = max(lift, float(threshold))
+    if report_ongoing_only:
+        hot = last > 0.5
+        wp = np.where(hot, np.maximum(wp, lift), np.zeros_like(wp))
+        start = np.where(hot, 0, start)
+        return wp, start
+    force = bool(force_will) & (last > 0.5) & (wp >= float(will_floor))
+    if require_dur:
+        force = force & (pred_dur >= float(min_windows))
+    wp = np.where(force, np.maximum(wp, lift), wp)
     start = np.where(last > 0.5, 0, start)
     return wp, start
 
@@ -847,7 +950,11 @@ def station_report_metrics(
     hist_last_hot: np.ndarray | None = None,
     will_floor: float = 0.62,
     force_ongoing_will: bool = False,
+    force_to: float | None = None,
+    force_require_dur: bool = True,
     max_start_windows: int | None = None,
+    report_ongoing_only: bool = False,
+    ongoing_min_windows: int | None = None,
 ) -> dict[str, float]:
     """Main A.1 score: station match and start error ≤ ``start_tol_windows`` min.
 
@@ -870,6 +977,8 @@ def station_report_metrics(
         remain_mask=rm,
         occ_node_mask=occ,
         max_start_windows=max_start_windows,
+        hist_last_hot=hist_last_hot,
+        ongoing_min_windows=ongoing_min_windows,
     )
     pred_start = np.asarray(sp, dtype=np.int64)
     pred_dur = np.asarray(dp, dtype=np.float32)
@@ -891,6 +1000,9 @@ def station_report_metrics(
         min_windows=int(min_windows),
         will_floor=float(will_floor),
         force_will=bool(force_ongoing_will),
+        force_to=force_to,
+        require_dur=bool(force_require_dur),
+        report_ongoing_only=bool(report_ongoing_only),
     )
     pred_will = (wp >= float(threshold)).astype(np.float32)
     if occ.ndim == 1:

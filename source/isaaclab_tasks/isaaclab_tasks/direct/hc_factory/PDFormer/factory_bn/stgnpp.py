@@ -178,6 +178,25 @@ class PeriodicGatedIntensity(nn.Module):
     def duration(self, h: torch.Tensor) -> torch.Tensor:
         return self.dur_head(h).squeeze(-1)
 
+    def expected_tau(
+        self,
+        h: torch.Tensor,
+        phase: torch.Tensor,
+        t_max: float = 15.0,
+        n_grid: int = 48,
+    ) -> torch.Tensor:
+        """Approximate waiting time as first τ where Λ(τ) ≥ 1, else ``t_max``."""
+        grid = torch.linspace(0.25, float(t_max), int(n_grid), device=h.device, dtype=h.dtype)
+        lead = h.shape[:-1]
+        h_exp = h.unsqueeze(-2).expand(*lead, grid.numel(), h.shape[-1])
+        phase_exp = phase.unsqueeze(-2).expand(*lead, grid.numel(), phase.shape[-1])
+        tau_exp = grid.view(*([1] * len(lead)), grid.numel()).expand(*lead, grid.numel())
+        lam = self.cumulative(h_exp, tau_exp, phase_exp)
+        hit = lam >= 1.0
+        first = hit.float().argmax(dim=-1)
+        idx = torch.where(hit.any(dim=-1), first, torch.full_like(first, grid.numel() - 1))
+        return grid[idx]
+
     def nll_and_duration(
         self,
         h: torch.Tensor,

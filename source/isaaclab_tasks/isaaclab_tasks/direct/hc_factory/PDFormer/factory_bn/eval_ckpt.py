@@ -34,6 +34,7 @@ from factory_bn.dataset import (  # noqa: E402
 )
 from factory_bn.infer import _data_feature_from_ckpt, _load_ckpt  # noqa: E402
 from factory_bn.model import BNPDFormer  # noqa: E402
+from factory_bn.remain import parse_max_start_windows  # noqa: E402
 from factory_bn.train import _epoch_loop  # noqa: E402
 
 NO_HUMAN = {
@@ -110,7 +111,10 @@ def eval_loader(
     start_tol_windows: int = 3,
     ongoing_will_floor: float = 0.62,
     force_ongoing_will: bool = False,
+    force_to: float | None = None,
     max_start_windows: int | None = None,
+    report_ongoing_only: bool = False,
+    force_require_dur: bool = True,
 ) -> dict[str, float]:
     if not samples:
         return {}
@@ -130,7 +134,10 @@ def eval_loader(
         start_tol_windows=start_tol_windows,
         ongoing_will_floor=ongoing_will_floor,
         force_ongoing_will=force_ongoing_will,
+        force_to=force_to,
         max_start_windows=max_start_windows,
+        report_ongoing_only=report_ongoing_only,
+        force_require_dur=force_require_dur,
     )
 
 
@@ -214,11 +221,15 @@ def main() -> None:
         start_tol_windows=int(cfg.get("start_tol_windows", 3)),
         ongoing_will_floor=float(cfg.get("ongoing_will_floor", 0.62)),
         force_ongoing_will=bool(cfg.get("force_ongoing_will", False)),
-        max_start_windows=(
-            None
-            if cfg.get("event_max_start_windows") in (None, "", False)
-            else int(cfg.get("event_max_start_windows"))
+        force_to=float(
+            cfg.get(
+                "event_lift_to",
+                cfg.get("ckpt_min_report_precision", cfg.get("event_report_threshold", 0.70)),
+            )
         ),
+        max_start_windows=parse_max_start_windows(cfg.get("event_max_start_windows")),
+        report_ongoing_only=bool(cfg.get("event_report_ongoing_only", False)),
+        force_require_dur=bool(cfg.get("event_force_require_dur", True)),
     )
 
     by_run: dict[str, list[dict[str, Any]]] = defaultdict(list)

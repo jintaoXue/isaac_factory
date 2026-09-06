@@ -12,7 +12,7 @@ import torch
 
 from factory_bn.dataset import build_dataloaders, make_pattern_keys
 from factory_bn.model import BNPDFormer
-from factory_bn.remain import _prf, node_event_targets
+from factory_bn.remain import _prf, node_event_targets, parse_max_start_windows
 from factory_bn.train import _load_init_ckpt, _move_batch, _near_remain_mask
 
 
@@ -169,8 +169,7 @@ def main() -> None:
     model.event_report_threshold_by_type = {}
     min_w = int(cfg.get("event_min_windows", cfg.get("hot_min_windows", 8)))
     start_tol = int(cfg.get("start_tol_windows", 3))
-    raw_max_start = cfg.get("event_max_start_windows")
-    max_start = None if raw_max_start in (None, "", False) else int(raw_max_start)
+    max_start = parse_max_start_windows(cfg.get("event_max_start_windows"))
 
     cache = {}
     for split, loader in (("val", val_loader), ("test", test_loader)):

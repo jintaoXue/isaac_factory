@@ -5,7 +5,7 @@ Bottleneck prediction for HC Factory, adapted from:
 - **PDFormer** (Jiang et al., AAAI 2023) — propagation-delay-aware ST Transformer
 - **ST-GNN Point Process** (Jin et al., 2023) — kept in the repo, **off** (`use_stgnpp=false`)
 
-Default live head: last **30×60s** windows + `jobs_remaining` → per-station event (`will_block` / `start_min` / `duration_min`) for the next **15 min**, plus `remain_len` and a 6-class process cause. Occupancy grid is auxiliary. Checkpoint metric on the current recipe is **`report_f1`** (station match and start error ≤ 3 min). Train/val/test is an **episode** split, stratified by run prefix.
+Default live head: last **30×60s** windows + `jobs_remaining` → per-station event (`will_block` / `start_min` / `duration_min`) for the next **15 min** (ongoing and upcoming), plus `remain_len` and a 6-class process cause. Occupancy grid is auxiliary. A true event is the longest ≥**8** min run in the horizon. Checkpoint metric is **`report_f1`** (station match and start error ≤ 3 min). Train/val/test is an **episode** split, stratified by run prefix.
 
 Metrics contract for baselines: repo-root [`模型评估指标.md`](../../../../../../../模型评估指标.md).
 
@@ -23,9 +23,9 @@ python -m factory_bn.export_dataset \
 # 2) Train (current recipe)
 python -m factory_bn.train \
   --config factory_bn/configs/FactoryBN_dense_f1_p80.json \
-  --data_dir raw_data/<tag> \
+  --data_dir raw_data/dense_i1 \
   --save_dir libcity/cache/model_cache/<tag> \
-  --max_epoch 30
+  --device cuda --no_wandb
 
 # 3) Infer (30×60s + remaining jobs → 15 min station events)
 python -m factory_bn.infer \
@@ -34,7 +34,7 @@ python -m factory_bn.infer \
   --episode 0
 ```
 
-The only shipped recipe is `FactoryBN_dense_f1_p80.json` (`ckpt_metric=report_f1`, P≥0.80).
+The only shipped recipe is `FactoryBN_dense_f1_p80.json` (`ckpt_metric=report_f1`, P≥0.80). Do not evaluate with `event_report_ongoing_only` or `event_max_start_windows=0`.
 
 `--at last` (default) forecasts after the last observed 60s table.
 `--at all` replays every causal step. Live code path: `BNPredictor.predict_x`.

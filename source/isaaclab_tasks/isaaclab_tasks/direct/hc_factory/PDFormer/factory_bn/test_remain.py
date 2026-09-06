@@ -443,6 +443,28 @@ def test_station_report_metrics_who_and_start_tol() -> None:
         force_ongoing_will=True,
     )
     assert no_force["who_recall"] == 0.0
+    from factory_bn.remain import parse_max_start_windows
+
+    assert parse_max_start_windows(0) == 0
+    assert parse_max_start_windows(None) is None
+    persist = station_report_metrics(
+        y0,
+        cold,
+        far,
+        short,
+        rm,
+        occ,
+        threshold=0.5,
+        min_windows=2,
+        start_tol_windows=3,
+        hist_last_hot=last,
+        max_start_windows=0,
+        report_ongoing_only=True,
+    )
+    assert persist["n_pred_who"] == 1.0
+    assert persist["report_precision"] == 1.0
+    assert persist["report_recall"] == 1.0
+    assert persist["report_f1"] == 1.0
 
 
 def test_occupancy_event_match_iou() -> None:
@@ -463,6 +485,22 @@ def test_occupancy_event_match_iou() -> None:
     assert m2["event_precision"] == 0.0
     ev = occupancy_to_events(y[0], resource_ids=["a", "b"], first_future_start_s=0.0, window_size_s=60.0)
     assert match_occupancy_events(ev, ev, iou_min=0.5) == (1, 1, 1)
+
+
+def test_pack_precursor_features() -> None:
+    from factory_bn.remain import PRECURSOR_DIM, pack_precursor_features
+
+    near = np.zeros((8, 3, 21), dtype=np.float32)
+    near[-1, 0, 0] = 10.0
+    near[-1, 0, 6] = 40.0
+    far = np.zeros((30, 3, 21), dtype=np.float32)
+    far[:, 0, 0] = 5.0
+    p = pack_precursor_features(near, far, lookback=5)
+    assert p.shape == (3, PRECURSOR_DIM)
+    assert float(p[0, 0]) > float(p[1, 0])
+    empty = pack_precursor_features(near, None, lookback=5)
+    assert empty.shape == (3, PRECURSOR_DIM)
+    assert float(empty[0, -1]) == 0.0
 
 
 def test_node_event_targets_and_rasterize() -> None:
@@ -486,6 +524,17 @@ def test_node_event_targets_and_rasterize() -> None:
         y, min_windows=5, occ_node_mask=np.array([1.0, 0.0], dtype=np.float32)
     )[0]
     assert masked.tolist() == [1.0, 0.0]
+    leftover = np.zeros((15, 1), dtype=np.float32)
+    leftover[:3, 0] = 1.0
+    w_drop, _, _ = node_event_targets(leftover, min_windows=8)
+    assert float(w_drop.sum()) == 0.0
+    w_keep, st, du = node_event_targets(
+        leftover,
+        min_windows=8,
+        hist_last_hot=np.array([1.0], dtype=np.float32),
+        ongoing_min_windows=1,
+    )
+    assert float(w_keep.sum()) == 1.0 and int(st[0]) == 0 and int(du[0]) == 3
 
 
 def test_rasterize_node_events_torch() -> None:
@@ -919,6 +968,7 @@ if __name__ == "__main__":
     test_gaussian_start_soft_labels()
     test_station_report_metrics_who_and_start_tol()
     test_occupancy_event_match_iou()
+    test_pack_precursor_features()
     test_node_event_targets_and_rasterize()
     test_rasterize_node_events_torch()
     test_unsupervised_samples_skip_score_hot()

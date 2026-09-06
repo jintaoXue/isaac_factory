@@ -25,7 +25,7 @@ from typing import Any
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 
 # Ensure PDFormer root is on sys.path when run as module or script
 _PDFORMER_ROOT = Path(__file__).resolve().parent.parent
@@ -35,7 +35,12 @@ if str(_PDFORMER_ROOT) not in sys.path:
 from factory_bn.causes import CAUSE_REPORT_CLASSES, cause_ignore_ids
 from factory_bn.dataset import build_dataloaders, make_pattern_keys
 from factory_bn.model import BNPDFormer, OCC_TYPE_NAMES
-from factory_bn.remain import occupancy_event_metrics, station_report_metrics
+from factory_bn.remain import (
+    node_event_targets,
+    occupancy_event_metrics,
+    parse_max_start_windows,
+    station_report_metrics,
+)
 
 
 def _load_config(path: Path) -> dict[str, Any]:
@@ -337,7 +342,11 @@ def _epoch_loop(
     start_tol_windows: int = 3,
     ongoing_will_floor: float = 0.62,
     force_ongoing_will: bool = False,
+    force_to: float | None = None,
+    force_require_dur: bool = True,
     max_start_windows: int | None = None,
+    report_ongoing_only: bool = False,
+    event_ongoing_min_windows: int | None = None,
 ) -> dict[str, float]:
     if train:
         model.train()
@@ -551,7 +560,11 @@ def _epoch_loop(
                         hist_last_hot=last_h,
                         will_floor=ongoing_will_floor,
                         force_ongoing_will=force_ongoing_will,
+                        force_to=force_to,
+                        force_require_dur=force_require_dur,
                         max_start_windows=max_start_windows,
+                        report_ongoing_only=report_ongoing_only,
+                        ongoing_min_windows=event_ongoing_min_windows,
                     )
                     best_rep = station_report_metrics(
                         y_cat,
@@ -570,6 +583,8 @@ def _epoch_loop(
                         thr_f = float(thr)
                         if abs(thr_f - float(event_report_threshold)) < 1e-9:
                             continue
+                        sweep_kw = dict(report_kw)
+                        sweep_kw["force_to"] = max(float(force_to or 0.0), thr_f)
                         cand = station_report_metrics(
                             y_cat,
                             will_np,
@@ -578,7 +593,7 @@ def _epoch_loop(
                             r_cat,
                             o_cat,
                             threshold=thr_f,
-                            **report_kw,
+                            **sweep_kw,
                         )
                         cand_p = float(cand.get("report_precision", 0.0))
                         cand_f = float(cand.get("report_f1", 0.0))
@@ -659,6 +674,52 @@ def train(cfg: dict[str, Any]) -> Path:
         train_only_contains=list(cfg.get("train_only_contains") or []),
         train_mode=str(cfg.get("train_mode") or "supervised"),
     )
+    oversample = float(cfg.get("oversample_event_windows", 0) or 0)
+    oversample_up = float(cfg.get("oversample_upcoming_windows", 0) or 0)
+    if oversample > 1.0 or oversample_up > 1.0:
+        ev_min = int(cfg.get("event_min_windows", cfg.get("hot_min_windows", 8)))
+        max_st = parse_max_start_windows(cfg.get("event_max_start_windows"))
+        weights: list[float] = []
+        n_up = 0
+        n_on = 0
+        for sample in train_loader.dataset.samples:
+            y_hot = sample.get("y_hot")
+            if y_hot is None:
+                weights.append(1.0)
+                continue
+            will, start, _ = node_event_targets(
+                y_hot,
+                min_windows=ev_min,
+                remain_mask=sample.get("remain_mask"),
+                occ_node_mask=sample.get("occ_node_mask"),
+                max_start_windows=max_st,
+                hist_last_hot=sample.get("hist_last_hot"),
+                ongoing_min_windows=int(cfg.get("event_ongoing_min_windows", 1)),
+            )
+            will_a = np.asarray(will)
+            start_a = np.asarray(start)
+            pos = will_a > 0.5
+            if not bool(pos.any()):
+                weights.append(1.0)
+                continue
+            upcoming = bool((pos & (start_a > 0)).any())
+            if upcoming and oversample_up > 1.0:
+                weights.append(oversample_up)
+                n_up += 1
+            else:
+                weights.append(oversample if oversample > 1.0 else 1.0)
+                n_on += 1
+        sampler = WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
+        train_loader = DataLoader(
+            train_loader.dataset,
+            batch_size=int(cfg.get("batch_size", 16)),
+            sampler=sampler,
+            num_workers=0,
+        )
+        print(
+            f"[train] oversample_event={oversample} oversample_upcoming={oversample_up} "
+            f"up_windows={n_up} on_windows={n_on} n={len(weights)}"
+        )
 
     pattern_keys = make_pattern_keys(
         data_feature["train_feature_windows"],
@@ -794,17 +855,23 @@ def train(cfg: dict[str, Any]) -> Path:
         )
     cause_majority = int(data_feature.get("cause_majority", -1))
     hot_eval_threshold = float(cfg.get("hot_eval_threshold", 0.55))
-    raw_max_start = cfg.get("event_max_start_windows")
     event_eval_kw = dict(
         event_iou_min=float(cfg.get("event_iou_min", 0.5)),
         event_min_windows=int(cfg.get("event_min_windows", cfg.get("hot_min_windows", 8))),
+        event_ongoing_min_windows=int(cfg.get("event_ongoing_min_windows", 1)),
         event_report_threshold=float(cfg.get("event_report_threshold", 0.70)),
         start_tol_windows=int(cfg.get("start_tol_windows", 3)),
         ongoing_will_floor=float(cfg.get("ongoing_will_floor", 0.62)),
         force_ongoing_will=bool(cfg.get("force_ongoing_will", False)),
-        max_start_windows=(
-            None if raw_max_start in (None, "", False) else int(raw_max_start)
+        force_to=float(
+            cfg.get(
+                "event_lift_to",
+                cfg.get("ckpt_min_report_precision", cfg.get("event_report_threshold", 0.70)),
+            )
         ),
+        force_require_dur=bool(cfg.get("event_force_require_dur", True)),
+        max_start_windows=parse_max_start_windows(cfg.get("event_max_start_windows")),
+        report_ongoing_only=bool(cfg.get("event_report_ongoing_only", False)),
     )
     counts = data_feature.get("cause_train_counts")
     classes = data_feature.get("cause_classes") or []
@@ -920,6 +987,9 @@ def train(cfg: dict[str, Any]) -> Path:
                     f"rep_f1={va.get('report_f1', 0):.3f} "
                     f"up_r={va.get('report_recall_upcoming', 0):.3f} "
                     f"on_r={va.get('report_recall_ongoing', 0):.3f} "
+                    f"n_up={va.get('n_true_upcoming', 0):.0f} "
+                    f"n_on={va.get('n_true_ongoing', 0):.0f} "
+                    f"thr={va.get('report_threshold_used', 0):.2f} "
                     f"st_mae={va.get('start_mae', 0):.2f} "
                     f"dur_mae={va.get('dur_mae', 0):.2f} "
                     f"type_h={va.get('hot_type_hmean', 0):.3f} "
@@ -1211,6 +1281,25 @@ def train(cfg: dict[str, Any]) -> Path:
                 min_hot_p=float(cfg.get("ckpt_min_hot_precision", 0.0)),
                 phase_patience=patience,
                 allow_early_stop=True,
+            )
+
+        if max_epoch <= 0 and not best_path.is_file():
+            va0 = _epoch_loop(
+                model,
+                val_loader,
+                None,
+                device,
+                train=False,
+                cause_majority=cause_majority,
+                hot_eval_threshold=hot_eval_threshold,
+                **event_eval_kw,
+            )
+            torch.save(_ckpt_payload(0, va0), best_path)
+            print(
+                f"[train] eval-only wrote {best_path.name} "
+                f"rep_p={va0.get('report_precision', 0):.3f} "
+                f"rep_r={va0.get('report_recall', 0):.3f} "
+                f"rep_f1={va0.get('report_f1', 0):.3f}"
             )
 
         if not best_path.is_file():

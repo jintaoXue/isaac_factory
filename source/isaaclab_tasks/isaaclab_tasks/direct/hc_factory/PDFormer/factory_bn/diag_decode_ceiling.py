@@ -23,7 +23,8 @@ def _collect(model, loader, device):
             pred = model.predict(batch)
             near = _near_remain_mask(batch.get("remain_mask"), 15)
             ys.append(batch["y_hot"].cpu().numpy())
-            ws.append(pred["event_will_prob"].cpu().numpy())
+            raw = torch.sigmoid(pred["event_will_logit"]).cpu().numpy()
+            ws.append(raw)
             ss.append(pred["event_start_idx"].cpu().numpy())
             ds.append(pred["event_dur"].cpu().numpy())
             rs.append(near.cpu().numpy())
@@ -60,7 +61,7 @@ def main() -> None:
     cfg = json.loads((root / "factory_bn/configs/FactoryBN_dense_f1_p80.json").read_text(encoding="utf-8"))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     _, val_loader, test_loader, df = build_dataloaders(
-        data_dir=(root / "raw_data/n10_plus20").resolve(),
+        data_dir=(root / "raw_data/dense_i1").resolve(),
         input_window=30,
         output_window=1,
         horizon_s=180,
@@ -79,12 +80,14 @@ def main() -> None:
         df.pop("train_feature_windows"), s_attn_size=3, n_cluster=16, output_channel=4
     )
     model = BNPDFormer(cfg, df).to(device)
-    ckpt = root / "libcity/cache/model_cache/n10_plus20_p80_continue/BNPDFormer_best.pt"
+    ckpt = root / "libcity/cache/model_cache/dense_i1_f1_p80_v3/BNPDFormer_best.pt"
     _load_init_ckpt(model, ckpt, device)
     model.force_ongoing_will = False
     model.event_union_occupancy = False
+    model.event_union_upcoming = False
     model.event_report_threshold_by_type = {}
     model.recall_lift_threshold = 0.0
+    model.event_onset_threshold = 1.0
 
     for split, loader in (("val", val_loader), ("test", test_loader)):
         y, w, s, d, r, o, h, hot = _collect(model, loader, device)

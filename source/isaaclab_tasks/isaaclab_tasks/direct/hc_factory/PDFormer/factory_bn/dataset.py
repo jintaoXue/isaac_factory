@@ -18,12 +18,16 @@ from factory_bn.cause_cluster import (
 )
 from factory_bn.causes import ROOT_CAUSE_CLASSES
 from factory_bn.remain import (
+    PRECURSOR_DIM,
+    PRECURSOR_FAR_WINDOWS,
+    PRECURSOR_LOOKBACK,
     ensure_labor_saturated_feature,
     first_done_index,
     node_hot_mask,
     occupancy_node_mask,
     ops_hot_mask,
     pack_future_features,
+    pack_precursor_features,
     pack_remain_target,
 )
 
@@ -182,6 +186,11 @@ class FactoryBNWindowDataset(Dataset):
         item["y_tpm"] = torch.from_numpy(
             np.asarray(s.get("y_tpm", np.zeros((int(item["X"].shape[1]),), dtype=np.float32)), dtype=np.float32)
         )
+        prec = s.get("precursor")
+        if prec is None:
+            n_hist = int(item["X"].shape[1])
+            prec = np.zeros((n_hist, PRECURSOR_DIM), dtype=np.float32)
+        item["precursor"] = torch.from_numpy(np.asarray(prec, dtype=np.float32))
         if "y_x" in s:
             y_x_raw = np.asarray(s["y_x"], dtype=np.float32)
             item["y_x"] = torch.from_numpy(self.feature_scaler.transform(y_x_raw))
@@ -484,6 +493,11 @@ def _build_samples(
                 sample["hist_cluster_prev"] = np.full((n_nodes,), -1, dtype=np.int64)
             sample["hist_tpm"] = hist_tpm_flag(feats, label_idx)
             sample["y_tpm"] = future_tpm_target(feats, t=t, horizon=int(k_occ))
+            far_lo = max(0, hist_start - PRECURSOR_FAR_WINDOWS)
+            far = feats[far_lo:hist_start] if hist_start > far_lo else None
+            sample["precursor"] = pack_precursor_features(
+                feats[hist_start:t], far, lookback=PRECURSOR_LOOKBACK
+            )
             samples.append(sample)
     return samples
 
@@ -741,6 +755,11 @@ def build_infer_sample(
     sample["hist_tpm"] = hist_tpm_flag(features, label_idx)
     sample["y_tpm"] = future_tpm_target(
         features, t=t, horizon=int(max_remain_windows or 15)
+    )
+    far_lo = max(0, hist_start - PRECURSOR_FAR_WINDOWS)
+    far = features[far_lo:hist_start] if hist_start > far_lo else None
+    sample["precursor"] = pack_precursor_features(
+        features[hist_start:t], far, lookback=PRECURSOR_LOOKBACK
     )
     return sample
 

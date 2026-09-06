@@ -27,7 +27,13 @@ import torch.nn.functional as F
 
 from factory_bn.backbone import DataEmbedding, STEncoderBlock, TokenEmbedding
 from factory_bn.causes import cause_ignore_ids
-from factory_bn.remain import gaussian_start_soft_labels, node_event_targets, ops_recon_channel_weight
+from factory_bn.remain import (
+    PRECURSOR_DIM,
+    gaussian_start_soft_labels,
+    node_event_targets,
+    ops_recon_channel_weight,
+    parse_max_start_windows,
+)
 from factory_bn.stgnpp import ContinuousGRU, PeriodicGatedIntensity, SpatioTemporalInquirer
 
 
@@ -416,7 +422,9 @@ class BNPDFormer(nn.Module):
         self.w_cause = float(config.get("w_cause", 0.4))
         self.pos_weight = float(config.get("will_pos_weight", 20.0))
         self.use_stgnpp = bool(config.get("use_stgnpp", True))
+        self.stgnpp_start_prior = bool(config.get("stgnpp_start_prior", False))
         self.remain_to_jobs_done = bool(config.get("remain_to_jobs_done", False))
+        self.remain_len_use_rate = bool(config.get("remain_len_use_rate", False))
         self.max_remain_windows = int(config.get("max_remain_windows", 15))
         self.w_hot = float(config.get("w_hot", 1.0))
         self.w_dice = float(config.get("w_dice", 1.0))
@@ -440,6 +448,9 @@ class BNPDFormer(nn.Module):
         }
         self.event_will_hard_fp_mult = float(config.get("event_will_hard_fp_mult", 1.0))
         self.event_will_hard_fp_thr = float(config.get("event_will_hard_fp_thr", 0.75))
+        self.event_will_last_hot_fp_weight = float(
+            config.get("event_will_last_hot_fp_weight", 0.0)
+        )
         self.event_f1_beta = float(config.get("event_f1_beta", 1.0))
         self.w_event_onset = float(config.get("w_event_onset", 0.0))
         self.event_will_upcoming_pos_weight = float(
@@ -475,14 +486,32 @@ class BNPDFormer(nn.Module):
         self.event_onset_threshold = float(
             config.get("event_onset_threshold", config.get("event_report_threshold", 0.70))
         )
+        self.event_type_thr_hard_zero = bool(config.get("event_type_thr_hard_zero", False))
+        self.event_will_bias_init = float(config.get("event_will_bias_init", -1.5))
+        self.event_lift_to = float(
+            config.get(
+                "event_lift_to",
+                config.get("ckpt_min_report_precision", config.get("event_report_threshold", 0.70)),
+            )
+        )
+        self.event_force_require_dur = bool(config.get("event_force_require_dur", True))
+        self.event_decode_prefix = bool(config.get("event_decode_prefix", False))
+        self.event_prefix_threshold = float(config.get("event_prefix_threshold", 8.0))
+        self.w_prefix = float(config.get("w_prefix", 0.0))
+        self.upcoming_will_floor = float(config.get("upcoming_will_floor", 0.0))
+        self.event_report_ongoing_only = bool(config.get("event_report_ongoing_only", False))
+        self.event_cold_will_max = bool(config.get("event_cold_will_max", True))
+        self.event_will_use_continue_main = bool(config.get("event_will_use_continue_main", True))
         self.w_tpm = float(config.get("w_tpm", 0.0))
         self.event_report_threshold = float(config.get("event_report_threshold", 0.70))
         self.event_min_windows = int(
             config.get("event_min_windows", config.get("hot_min_windows", 8))
         )
-        raw_max_start = config.get("event_max_start_windows")
-        self.event_max_start_windows = (
-            None if raw_max_start in (None, "", False) else int(raw_max_start)
+        self.event_ongoing_min_windows = int(
+            config.get("event_ongoing_min_windows", 1)
+        )
+        self.event_max_start_windows = parse_max_start_windows(
+            config.get("event_max_start_windows")
         )
         self.event_will_focal_gamma = float(config.get("event_will_focal_gamma", 0.0))
         self.event_will_near_start_pos_weight = float(
@@ -493,6 +522,7 @@ class BNPDFormer(nn.Module):
         self.start_tol_windows = int(config.get("start_tol_windows", 3))
         self.w_contrast = float(config.get("w_contrast", 0.1))
         self.contrast_temp = float(config.get("contrast_temp", 0.2))
+        self.fuse_hist_cluster = bool(config.get("fuse_hist_cluster", True))
         self.type_balanced_occupancy = bool(config.get("type_balanced_occupancy", True))
         self.use_grouped_embed = bool(config.get("use_grouped_embed", True))
         self.hot_pos_weight = float(config.get("hot_pos_weight", 8.0))
@@ -572,6 +602,10 @@ class BNPDFormer(nn.Module):
             torch.from_numpy(np.asarray(pattern_keys, dtype=np.float32)),
         )
         self.register_buffer("lap_mx", self._laplacian_pe(adj_mx, self.lape_dim))
+        adj = np.asarray(adj_mx, dtype=np.float32)
+        adj = adj + np.eye(self.num_nodes, dtype=np.float32)
+        deg = np.maximum(adj.sum(axis=1, keepdims=True), 1e-6)
+        self.register_buffer("adj_row", torch.from_numpy(adj / deg))
 
         drop = float(config.get("drop", 0.0))
         attn_drop = float(config.get("attn_drop", 0.0))
@@ -649,6 +683,16 @@ class BNPDFormer(nn.Module):
                 nn.Linear(hidden, 1),
                 nn.Softplus(),
             )
+            if self.remain_len_use_rate:
+                self.remain_len_rate = nn.Sequential(
+                    nn.Linear(hidden + self.embed_dim, 32),
+                    nn.GELU(),
+                    nn.Linear(32, 1),
+                    nn.Softplus(),
+                )
+                nn.init.constant_(self.remain_len_rate[-2].bias, -4.0)
+            else:
+                self.remain_len_rate = None
             self.remain_score_mlp = nn.Sequential(
                 nn.Linear(self.embed_dim, self.embed_dim),
                 nn.GELU(),
@@ -678,7 +722,7 @@ class BNPDFormer(nn.Module):
                 nn.GELU(),
                 nn.Linear(hidden, 1),
             )
-            nn.init.constant_(self.event_will_mlp[-1].bias, -1.5)
+            nn.init.constant_(self.event_will_mlp[-1].bias, self.event_will_bias_init)
             self.cluster_emb = nn.Embedding(8, self.embed_dim)
             nn.init.zeros_(self.cluster_emb.weight)
             if self.split_will_heads:
@@ -687,7 +731,7 @@ class BNPDFormer(nn.Module):
                     nn.GELU(),
                     nn.Linear(hidden, 1),
                 )
-                nn.init.constant_(self.event_will_onset_mlp[-1].bias, -1.5)
+                nn.init.constant_(self.event_will_onset_mlp[-1].bias, self.event_will_bias_init)
             else:
                 self.event_will_onset_mlp = None
             if self.w_tpm > 0:
@@ -710,6 +754,20 @@ class BNPDFormer(nn.Module):
                 nn.Linear(hidden, 1),
                 nn.Softplus(),
             )
+            self.prefix_mlp = nn.Sequential(
+                nn.Linear(self.embed_dim, hidden),
+                nn.GELU(),
+                nn.Linear(hidden, 1),
+                nn.Softplus(),
+            )
+            nn.init.constant_(self.prefix_mlp[2].bias, 0.0)
+            self.precursor_mlp = nn.Sequential(
+                nn.Linear(PRECURSOR_DIM + 1, hidden),
+                nn.GELU(),
+                nn.Linear(hidden, self.embed_dim),
+            )
+            nn.init.zeros_(self.precursor_mlp[-1].weight)
+            nn.init.zeros_(self.precursor_mlp[-1].bias)
             self.end_conv1 = None
             self.end_conv2 = None
         else:
@@ -719,6 +777,8 @@ class BNPDFormer(nn.Module):
             self.cluster_emb = None
             self.event_start_mlp = None
             self.event_dur_mlp = None
+            self.prefix_mlp = None
+            self.precursor_mlp = None
             self.end_conv1 = nn.Conv2d(self.input_window, self.output_window, kernel_size=1)
             self.end_conv2 = nn.Conv2d(self.skip_dim, self.output_dim, kernel_size=1)
 
@@ -818,6 +878,8 @@ class BNPDFormer(nn.Module):
             self.event_will_onset_mlp,
             self.event_start_mlp,
             self.event_dur_mlp,
+            getattr(self, "prefix_mlp", None),
+            getattr(self, "precursor_mlp", None),
             self.cluster_emb,
         ]
         if occupancy:
@@ -867,7 +929,11 @@ class BNPDFormer(nn.Module):
         self.event_will_onset_mlp.load_state_dict(self.event_will_mlp.state_dict())
 
     def _cluster_fused(self, h_last: torch.Tensor, batch: dict[str, torch.Tensor]) -> torch.Tensor:
-        if self.cluster_emb is None or "hist_cluster" not in batch:
+        if (
+            not getattr(self, "fuse_hist_cluster", True)
+            or self.cluster_emb is None
+            or "hist_cluster" not in batch
+        ):
             return h_last
         cid = batch["hist_cluster"].to(device=h_last.device, dtype=torch.long)
         if cid.dim() == 1:
@@ -875,6 +941,26 @@ class BNPDFormer(nn.Module):
         cid = cid[:, : h_last.shape[1]]
         cid = torch.where(cid < 0, torch.full_like(cid, 7), cid.clamp(0, 7))
         return h_last + self.cluster_emb(cid)
+
+    def _fuse_precursor(
+        self, h_evt: torch.Tensor, batch: dict[str, torch.Tensor]
+    ) -> torch.Tensor:
+        mlp = getattr(self, "precursor_mlp", None)
+        prec = batch.get("precursor")
+        if mlp is None or prec is None:
+            return h_evt
+        p = prec.to(device=h_evt.device, dtype=h_evt.dtype)
+        if p.dim() == 2:
+            p = p.unsqueeze(0).expand(h_evt.shape[0], -1, -1)
+        p = p[:, : h_evt.shape[1], :]
+        q_last = p[..., 0]
+        adj = getattr(self, "adj_row", None)
+        if adj is not None:
+            nbr = torch.matmul(adj.to(dtype=q_last.dtype), q_last.unsqueeze(-1)).squeeze(-1)
+        else:
+            nbr = torch.zeros_like(q_last)
+        p = torch.cat([p, nbr.unsqueeze(-1)], dim=-1)
+        return h_evt + mlp(p)
 
     def _combine_will_logit(
         self,
@@ -891,7 +977,12 @@ class BNPDFormer(nn.Module):
         if lh.dim() == 1:
             lh = lh.view(1, -1).expand_as(continue_logit)
         lh = lh[:, : continue_logit.shape[-1]]
-        return torch.where(lh > 0.5, continue_logit, onset_logit)
+        cold = (
+            torch.maximum(continue_logit, onset_logit)
+            if getattr(self, "event_cold_will_max", False)
+            else onset_logit
+        )
+        return torch.where(lh > 0.5, continue_logit, cold)
 
     def _node_type_mask(self, name: str, n_nodes: int, device: torch.device) -> torch.Tensor | None:
         buf = self._occ_type_masks().get(name)
@@ -924,7 +1015,7 @@ class BNPDFormer(nn.Module):
             node = node.expand_as(out)
             if float(thr) + 1e-6 < report_thr:
                 out = torch.where(node & (will_p >= float(thr)), out.clamp(min=report_thr), out)
-            elif float(thr) > report_thr + 1e-6:
+            elif float(thr) > report_thr + 1e-6 and self.event_type_thr_hard_zero:
                 drop = node & (will_p < float(thr))
                 if hot is not None:
                     drop = drop & ~hot
@@ -982,7 +1073,8 @@ class BNPDFormer(nn.Module):
             hint = hint | (t[:, : will_p.shape[-1]] > 0.5)
         if not bool(hint.any()):
             return will_p
-        return torch.where(bump & hint, will_p.clamp(min=report_thr), will_p)
+        lift_to = max(report_thr, float(getattr(self, "event_lift_to", report_thr)))
+        return torch.where(bump & hint, will_p.clamp(min=lift_to), will_p)
 
     def _apply_occupancy_union(
         self,
@@ -997,11 +1089,21 @@ class BNPDFormer(nn.Module):
         n = will_p.shape[-1]
         hot_p = torch.sigmoid(hot_logit)
         run = hot_p[:, :, :n] >= float(self.event_union_hot_threshold)
+        min_w = max(int(self.event_min_windows), 1)
+        k_len = int(run.shape[1])
         prefix = run.cumprod(dim=1).float().sum(dim=1)
-        occ_ok = prefix >= float(self.event_min_windows)
+        occ_ok = prefix >= float(min_w)
+        has_run = occ_ok
+        first = torch.zeros_like(prefix, dtype=start_idx.dtype)
+        if k_len >= min_w:
+            ok = run[:, : k_len - min_w + 1]
+            for i in range(1, min_w):
+                ok = ok & run[:, i : i + k_len - min_w + 1]
+            has_run = ok.any(dim=1)
+            first = ok.float().argmax(dim=1).to(dtype=start_idx.dtype)
         if last_hot is None:
-            union = occ_ok
-            upcoming = torch.zeros_like(occ_ok)
+            union = has_run
+            upcoming = has_run
         else:
             lh = last_hot.to(device=will_p.device, dtype=will_p.dtype)
             if lh.dim() == 1:
@@ -1009,18 +1111,19 @@ class BNPDFormer(nn.Module):
             lh = lh[:, :n]
             hot_st = lh > 0.5
             union = occ_ok & hot_st
-            remain_len = run.float().sum(dim=1)
-            upcoming = (remain_len >= float(self.event_min_windows)) & (lh <= 0.5)
+            upcoming = has_run & ~hot_st
             if self.event_union_upcoming:
                 union = union | upcoming
-        report_thr = float(self.event_report_threshold)
+        lift_to = max(
+            float(self.event_report_threshold),
+            float(getattr(self, "event_lift_to", self.event_report_threshold)),
+        )
         will_p = torch.where(
             union,
-            torch.maximum(will_p, torch.full_like(will_p, report_thr)),
+            torch.maximum(will_p, torch.full_like(will_p, lift_to)),
             will_p,
         )
         if self.event_union_upcoming and bool(upcoming.any()):
-            first = run.float().argmax(dim=1)
             start_idx = torch.where(upcoming & union, first, start_idx)
         return will_p, start_idx
 
@@ -1084,7 +1187,11 @@ class BNPDFormer(nn.Module):
         cond_e = self.jobs_mlp(cond)
         h = h + cond_e.unsqueeze(1)
         pooled = self.aux_pool(h).mean(dim=1)
-        remain_len = self.remain_len_head(torch.cat([pooled, cond_e], dim=-1)).squeeze(-1)
+        feat_r = torch.cat([pooled, cond_e], dim=-1)
+        remain_len = self.remain_len_head(feat_r).squeeze(-1)
+        rate_head = getattr(self, "remain_len_rate", None)
+        if rate_head is not None:
+            remain_len = remain_len + rate_head(feat_r).squeeze(-1) * jobs
         k_max = self.max_remain_windows
         pe = self._sin_time_pe(k_max, self.embed_dim, h.device)
         h_k = h.unsqueeze(1) + pe.unsqueeze(0).unsqueeze(2)
@@ -1151,6 +1258,7 @@ class BNPDFormer(nn.Module):
             out["remain_len_pred"] = remain_len_pred
         if self.event_will_mlp is not None:
             h_evt = self._cluster_fused(h_last, batch)
+            h_evt = self._fuse_precursor(h_evt, batch)
             will_cont = self.event_will_mlp(h_evt).squeeze(-1)
             will_on = None
             if self.event_will_onset_mlp is not None:
@@ -1160,6 +1268,8 @@ class BNPDFormer(nn.Module):
             out["event_will_logit"] = self._combine_will_logit(will_cont, will_on, batch)
             out["event_start_logit"] = self.event_start_mlp(h_evt)
             out["event_dur"] = self.event_dur_mlp(h_evt).squeeze(-1)
+            if getattr(self, "prefix_mlp", None) is not None:
+                out["prefix_len_pred"] = self.prefix_mlp(h_evt).squeeze(-1)
             if self.tpm_mlp is not None:
                 out["tpm_logit"] = self.tpm_mlp(h_evt).squeeze(-1)
 
@@ -1186,6 +1296,7 @@ class BNPDFormer(nn.Module):
                 Lam = self.intensity.cumulative(h_evt, tau_q.detach(), phase_exp)
             out["Lam"] = Lam
             out["dur_event"] = self.intensity.duration(h_evt)
+            out["tau_phase"] = phase_exp
 
         return out
 
@@ -1296,12 +1407,15 @@ class BNPDFormer(nn.Module):
         y_hot = batch["y_hot"]
         rm = batch.get("remain_mask")
         occ = batch.get("occ_node_mask")
+        last = batch.get("hist_last_hot")
         will_np, start_np, dur_np = node_event_targets(
             y_hot.detach().cpu().numpy(),
             min_windows=self.event_min_windows,
             remain_mask=None if rm is None else rm.detach().cpu().numpy(),
             occ_node_mask=None if occ is None else occ.detach().cpu().numpy(),
             max_start_windows=self.event_max_start_windows,
+            hist_last_hot=None if last is None else last.detach().cpu().numpy(),
+            ongoing_min_windows=getattr(self, "event_ongoing_min_windows", 1),
         )
         y_will = torch.from_numpy(np.asarray(will_np, dtype=np.float32)).to(
             device=y_hot.device, dtype=y_hot.dtype
@@ -1311,6 +1425,8 @@ class BNPDFormer(nn.Module):
             device=y_hot.device, dtype=y_hot.dtype
         )
         logit = out["event_will_logit"]
+        if getattr(self, "event_will_use_continue_main", False) and "event_will_continue_logit" in out:
+            logit = out["event_will_continue_logit"]
         bce = F.binary_cross_entropy_with_logits(logit, y_will, reduction="none")
         if self.event_will_focal_gamma > 0:
             prob = torch.sigmoid(logit).detach()
@@ -1384,6 +1500,13 @@ class BNPDFormer(nn.Module):
                 y_will < 0.5
             )
             fp_w = torch.where(hard, fp_w * self.event_will_hard_fp_mult, fp_w)
+        if self.event_will_last_hot_fp_weight > 0:
+            flicker = ongoing & (y_will < 0.5)
+            fp_w = torch.where(
+                flicker,
+                torch.full_like(fp_w, self.event_will_last_hot_fp_weight),
+                fp_w,
+            )
         w = y_will * pos_w + (1.0 - y_will) * fp_w
         if occ is not None:
             node = occ.float()
@@ -1494,6 +1617,131 @@ class BNPDFormer(nn.Module):
                 node = node.view(1, -1)
             w = w * node[:, : w.shape[-1]]
         return (bce * w).sum() / w.sum().clamp_min(1.0)
+
+    def _prefix_len_loss(
+        self,
+        batch: dict[str, torch.Tensor],
+        out: dict[str, torch.Tensor],
+        zero: torch.Tensor,
+    ) -> torch.Tensor:
+        """Remaining consecutive hot minutes from the first forecast window."""
+        if self.w_prefix <= 0 or "prefix_len_pred" not in out or "y_hot" not in batch:
+            return zero
+        y_hot = batch["y_hot"]
+        run = y_hot >= 0.5
+        rm = batch.get("remain_mask")
+        if rm is not None:
+            if rm.dim() == 2:
+                run = run & (rm.unsqueeze(-1) > 0.5)
+            elif rm.shape == y_hot.shape:
+                run = run & (rm > 0.5)
+        true_p = run.cumprod(dim=1).float().sum(dim=1)
+        pred = out["prefix_len_pred"][:, : true_p.shape[-1]]
+        true_p = true_p[:, : pred.shape[-1]]
+        err = F.smooth_l1_loss(torch.log1p(pred), torch.log1p(true_p), reduction="none")
+        w = torch.ones_like(err)
+        last = batch.get("hist_last_hot")
+        if last is not None:
+            lh = last.float()
+            if lh.dim() == 1:
+                lh = lh.view(1, -1).expand_as(err)
+            w = w + 2.0 * (lh[:, : err.shape[-1]] > 0.5).float()
+        occ = batch.get("occ_node_mask")
+        if occ is not None:
+            node = occ.float()
+            if node.dim() == 1:
+                node = node.view(1, -1)
+            w = w * node[:, : w.shape[-1]]
+        near = ((true_p - float(self.event_min_windows)).abs() <= 3.0).float()
+        w = w * (1.0 + near)
+        if float(w.sum()) <= 0:
+            return zero
+        return (err * w).sum() / w.sum().clamp_min(1.0)
+
+    def _will_mark_tts_loss(
+        self,
+        batch: dict[str, torch.Tensor],
+        out: dict[str, torch.Tensor],
+        zero: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        will = batch.get("will")
+        mark = batch.get("mark")
+        if will is None:
+            return zero, zero, zero
+        if self.w_will > 0:
+            pos_weight = torch.tensor([self.pos_weight], device=will.device)
+            loss_will = F.binary_cross_entropy_with_logits(
+                out["will_logit"], will, pos_weight=pos_weight
+            )
+        else:
+            loss_will = zero
+        if (self.w_mark > 0 or self.w_tts > 0) and mark is not None:
+            pos_mask = (will > 0.5) & (mark >= 0)
+            if pos_mask.any():
+                loss_mark = F.cross_entropy(out["mark_logits"][pos_mask], mark[pos_mask])
+                tts_n = batch["tts"][pos_mask] / 60.0
+                loss_tts = F.smooth_l1_loss(out["tts_aux"][pos_mask] / 60.0, tts_n)
+            else:
+                loss_mark = zero
+                loss_tts = zero
+        else:
+            loss_mark = zero
+            loss_tts = zero
+        return loss_will, loss_mark, loss_tts
+
+    def _stgnpp_nll(
+        self,
+        batch: dict[str, torch.Tensor],
+        out: dict[str, torch.Tensor],
+        zero: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        loss_event = zero
+        nll_v = zero
+        dur_v = zero
+        nll_arr = zero
+        nll_surv = zero
+        if not (self.use_stgnpp and "h_event" in out):
+            return loss_event, nll_v, dur_v, nll_arr, nll_surv
+        h_evt = out["h_event"]
+        phase = batch["phase"]
+        if phase.dim() == 2:
+            phase_exp = phase.unsqueeze(1).expand(-1, self.num_nodes, -1)
+        else:
+            phase_exp = phase
+        next_mask = batch["next_mask"] > 0.5
+        if "surv_mask" in batch:
+            surv_mask = batch["surv_mask"] > 0.5
+        else:
+            surv_mask = ~next_mask
+        n_pos = int(next_mask.sum().item())
+        n_surv = int(surv_mask.sum().item())
+        if n_pos > 0:
+            _loss_arr, stats_e = self.intensity.nll_and_duration(
+                h_evt[next_mask],
+                batch["next_tau"][next_mask].clamp_min(1e-3),
+                batch["next_dur"][next_mask],
+                torch.ones(n_pos, device=h_evt.device),
+                phase_exp[next_mask],
+                dur_weight=1.0,
+            )
+            nll_arr = stats_e["nll"]
+            dur_v = stats_e["dur_mae"]
+        if n_surv > 0:
+            lam_h = self.intensity.cumulative(
+                h_evt[surv_mask],
+                batch["next_tau"][surv_mask].clamp_min(1e-3),
+                phase_exp[surv_mask],
+            )
+            nll_surv = lam_h.mean()
+        if n_pos > 0 and n_surv > 0:
+            nll_v = 0.5 * nll_arr + 0.5 * nll_surv
+        elif n_pos > 0:
+            nll_v = nll_arr
+        elif n_surv > 0:
+            nll_v = nll_surv
+        if n_pos + n_surv > 0:
+            loss_event = nll_v + dur_v
+        return loss_event, nll_v, dur_v, nll_arr, nll_surv
 
     def _occupancy_aux_losses(
         self,
@@ -1624,6 +1872,9 @@ class BNPDFormer(nn.Module):
         loss_cause = self._cause_loss(batch, out, zero)
         loss_ev_will, loss_ev_start, loss_ev_dur = self._event_span_loss(batch, out, zero)
         loss_tpm = self._tpm_loss(batch, out, zero)
+        loss_prefix = self._prefix_len_loss(batch, out, zero)
+        loss_will, loss_mark, loss_tts = self._will_mark_tts_loss(batch, out, zero)
+        loss_event, nll_v, dur_v, nll_arr, nll_surv = self._stgnpp_nll(batch, out, zero)
         total = (
             self.w_recon * loss_recon
             + self.w_cluster * loss_cluster
@@ -1637,7 +1888,12 @@ class BNPDFormer(nn.Module):
             + self.w_event_will * loss_ev_will
             + self.w_event_start * loss_ev_start
             + self.w_event_dur * loss_ev_dur
+            + self.w_prefix * loss_prefix
             + self.w_tpm * loss_tpm
+            + self.w_will * loss_will
+            + self.w_mark * loss_mark
+            + self.w_tts * loss_tts
+            + self.w_event * loss_event
         )
         stats = {
             "loss": float(total.detach().cpu()),
@@ -1654,7 +1910,16 @@ class BNPDFormer(nn.Module):
             "loss_event_will": float(loss_ev_will.detach().cpu()) if torch.is_tensor(loss_ev_will) else float(loss_ev_will),
             "loss_event_start": float(loss_ev_start.detach().cpu()) if torch.is_tensor(loss_ev_start) else float(loss_ev_start),
             "loss_event_dur": float(loss_ev_dur.detach().cpu()) if torch.is_tensor(loss_ev_dur) else float(loss_ev_dur),
+            "loss_prefix": float(loss_prefix.detach().cpu()) if torch.is_tensor(loss_prefix) else float(loss_prefix),
             "loss_tpm": float(loss_tpm.detach().cpu()) if torch.is_tensor(loss_tpm) else float(loss_tpm),
+            "loss_will": float(loss_will.detach().cpu()) if torch.is_tensor(loss_will) else float(loss_will),
+            "loss_mark": float(loss_mark.detach().cpu()) if torch.is_tensor(loss_mark) else float(loss_mark),
+            "loss_tts": float(loss_tts.detach().cpu()) if torch.is_tensor(loss_tts) else float(loss_tts),
+            "loss_event": float(loss_event.detach().cpu()) if torch.is_tensor(loss_event) else float(loss_event),
+            "nll": float(nll_v.detach().cpu()) if torch.is_tensor(nll_v) else float(nll_v),
+            "nll_arrival": float(nll_arr.detach().cpu()) if torch.is_tensor(nll_arr) else float(nll_arr),
+            "nll_surv": float(nll_surv.detach().cpu()) if torch.is_tensor(nll_surv) else float(nll_surv),
+            "dur_mae": float(dur_v.detach().cpu()) if torch.is_tensor(dur_v) else float(dur_v),
             "loss_score": 0.0,
         }
         return total, stats
@@ -1681,26 +1946,7 @@ class BNPDFormer(nn.Module):
         loss_hot, loss_dice, loss_iou, loss_remain_len, loss_agv_id = self._occupancy_aux_losses(
             batch, out, step_w, zero
         )
-        if self.w_will > 0:
-            pos_weight = torch.tensor([self.pos_weight], device=will.device)
-            loss_will = F.binary_cross_entropy_with_logits(
-                out["will_logit"], will, pos_weight=pos_weight
-            )
-        else:
-            loss_will = zero
-
-        if self.w_mark > 0 or self.w_tts > 0:
-            pos_mask = (will > 0.5) & (mark >= 0)
-            if pos_mask.any():
-                loss_mark = F.cross_entropy(out["mark_logits"][pos_mask], mark[pos_mask])
-                tts_n = batch["tts"][pos_mask] / 60.0
-                loss_tts = F.smooth_l1_loss(out["tts_aux"][pos_mask] / 60.0, tts_n)
-            else:
-                loss_mark = zero
-                loss_tts = zero
-        else:
-            loss_mark = zero
-            loss_tts = zero
+        loss_will, loss_mark, loss_tts = self._will_mark_tts_loss(batch, out, zero)
 
         cause = batch.get("cause")
         if cause is not None and self.w_cause > 0:
@@ -1708,56 +1954,12 @@ class BNPDFormer(nn.Module):
         else:
             loss_cause = zero
 
-        loss_event = out["score_pred"].sum() * 0.0
-        nll_v = loss_event
-        dur_v = loss_event
-        nll_arr = loss_event
-        nll_surv = loss_event
-        if self.use_stgnpp and "h_event" in out:
-            h_evt = out["h_event"]
-            phase = batch["phase"]
-            if phase.dim() == 2:
-                phase_exp = phase.unsqueeze(1).expand(-1, self.num_nodes, -1)
-            else:
-                phase_exp = phase
-            next_mask = batch["next_mask"] > 0.5
-            if "surv_mask" in batch:
-                surv_mask = batch["surv_mask"] > 0.5
-            else:
-                surv_mask = ~next_mask
-            n_pos = int(next_mask.sum().item())
-            n_surv = int(surv_mask.sum().item())
-            if n_pos > 0:
-                _loss_arr, stats_e = self.intensity.nll_and_duration(
-                    h_evt[next_mask],
-                    batch["next_tau"][next_mask].clamp_min(1e-3),
-                    batch["next_dur"][next_mask],
-                    torch.ones(n_pos, device=h_evt.device),
-                    phase_exp[next_mask],
-                    dur_weight=1.0,
-                )
-                nll_arr = stats_e["nll"]
-                dur_v = stats_e["dur_mae"]
-            if n_surv > 0:
-                lam_h = self.intensity.cumulative(
-                    h_evt[surv_mask],
-                    batch["next_tau"][surv_mask].clamp_min(1e-3),
-                    phase_exp[surv_mask],
-                )
-                nll_surv = lam_h.mean()
-            # Equal-weight the two means so ~33 censored nodes do not drown
-            # the handful of in-horizon arrivals.
-            if n_pos > 0 and n_surv > 0:
-                nll_v = 0.5 * nll_arr + 0.5 * nll_surv
-            elif n_pos > 0:
-                nll_v = nll_arr
-            elif n_surv > 0:
-                nll_v = nll_surv
-            if n_pos + n_surv > 0:
-                loss_event = nll_v + dur_v
+        loss_event, nll_v, dur_v, nll_arr, nll_surv = self._stgnpp_nll(batch, out, zero)
 
         loss_contrast = self._occupancy_contrast_loss(batch, out, zero)
         loss_ev_will, loss_ev_start, loss_ev_dur = self._event_span_loss(batch, out, zero)
+        loss_prefix = self._prefix_len_loss(batch, out, zero)
+        loss_tpm = self._tpm_loss(batch, out, zero)
 
         total = (
             self.w_score * loss_score
@@ -1775,6 +1977,8 @@ class BNPDFormer(nn.Module):
             + self.w_event_will * loss_ev_will
             + self.w_event_start * loss_ev_start
             + self.w_event_dur * loss_ev_dur
+            + self.w_prefix * loss_prefix
+            + self.w_tpm * loss_tpm
         )
         stats = {
             "loss": float(total.detach().cpu()),
@@ -1793,6 +1997,8 @@ class BNPDFormer(nn.Module):
             "loss_event_will": float(loss_ev_will.detach().cpu()) if torch.is_tensor(loss_ev_will) else float(loss_ev_will),
             "loss_event_start": float(loss_ev_start.detach().cpu()) if torch.is_tensor(loss_ev_start) else float(loss_ev_start),
             "loss_event_dur": float(loss_ev_dur.detach().cpu()) if torch.is_tensor(loss_ev_dur) else float(loss_ev_dur),
+            "loss_prefix": float(loss_prefix.detach().cpu()) if torch.is_tensor(loss_prefix) else float(loss_prefix),
+            "loss_tpm": float(loss_tpm.detach().cpu()) if torch.is_tensor(loss_tpm) else float(loss_tpm),
             "nll": float(nll_v.detach().cpu()) if torch.is_tensor(nll_v) else float(nll_v),
             "nll_arrival": float(nll_arr.detach().cpu()) if torch.is_tensor(nll_arr) else float(nll_arr),
             "nll_surv": float(nll_surv.detach().cpu()) if torch.is_tensor(nll_surv) else float(nll_surv),
@@ -1805,6 +2011,8 @@ class BNPDFormer(nn.Module):
         self.eval()
         # intensity NLL path needs grad for ∂Λ/∂τ only in training; inference uses duration + Lam
         out = self.forward(batch)
+        if self.use_stgnpp and "h_event" in out and "tau_phase" in out:
+            out["tau"] = self.intensity.expected_tau(out["h_event"], out["tau_phase"])
         out["will_prob"] = torch.sigmoid(out["will_logit"])
         out["mark_prob"] = torch.softmax(out["mark_logits"], dim=-1)
         out["cause_prob"] = torch.softmax(out["cause_logits"], dim=-1)
@@ -1821,32 +2029,96 @@ class BNPDFormer(nn.Module):
                     lh = lh.view(1, -1).expand_as(start_idx)
                 lh = lh[:, : start_idx.shape[-1]]
                 start_idx = torch.where(lh > 0.5, 0, start_idx)
-                if self.split_will_heads and self.event_onset_threshold > self.event_report_threshold:
-                    cold_weak = (lh <= 0.5) & (will_p < float(self.event_onset_threshold))
+                report_thr = float(self.event_report_threshold)
+                onset_thr = float(self.event_onset_threshold)
+                if getattr(self, "event_report_ongoing_only", False):
+                    lift_to = max(
+                        report_thr,
+                        float(getattr(self, "event_lift_to", report_thr)),
+                    )
+                    will_p = torch.where(
+                        lh > 0.5,
+                        torch.full_like(will_p, lift_to),
+                        torch.zeros_like(will_p),
+                    )
+                if self.split_will_heads and onset_thr > report_thr:
+                    cold_weak = (lh <= 0.5) & (will_p < onset_thr)
                     will_p = torch.where(cold_weak, torch.zeros_like(will_p), will_p)
                 will_p = self._apply_type_thresholds(will_p, last)
                 will_p = self._apply_recall_lift(will_p, batch, last)
-                if self.force_ongoing_will:
-                    dur = out["event_dur"][:, : will_p.shape[-1]]
-                    force = (
-                        (lh > 0.5)
-                        & (dur >= float(self.event_min_windows))
-                        & (will_p >= float(self.ongoing_will_floor))
-                    )
-                    # Raise to the report bar only — never force to 1.0, or high
-                    # threshold sweeps cannot suppress false ongoing positives.
+                if self.split_will_heads and onset_thr + 1e-6 < report_thr:
+                    cold_ok = (lh <= 0.5) & (will_p >= onset_thr)
                     will_p = torch.where(
-                        force,
-                        torch.maximum(
-                            will_p,
-                            torch.full_like(will_p, float(self.event_report_threshold)),
-                        ),
+                        cold_ok,
+                        torch.maximum(will_p, torch.full_like(will_p, report_thr)),
                         will_p,
                     )
+                up_floor = float(getattr(self, "upcoming_will_floor", 0.0) or 0.0)
+                if up_floor > 0:
+                    lift_to = max(
+                        report_thr,
+                        float(getattr(self, "event_lift_to", report_thr)),
+                    )
+                    cold_force = (lh <= 0.5) & (will_p >= up_floor)
+                    will_p = torch.where(
+                        cold_force,
+                        torch.maximum(will_p, torch.full_like(will_p, lift_to)),
+                        will_p,
+                    )
+                if self.force_ongoing_will:
+                    dur = out["event_dur"][:, : will_p.shape[-1]]
+                    force = (lh > 0.5) & (will_p >= float(self.ongoing_will_floor))
+                    if getattr(self, "event_force_require_dur", True):
+                        force = force & (dur >= float(self.event_min_windows))
+                    lift_to = max(
+                        float(self.event_report_threshold),
+                        float(getattr(self, "event_lift_to", self.event_report_threshold)),
+                    )
+                    will_p = torch.where(
+                        force,
+                        torch.maximum(will_p, torch.full_like(will_p, lift_to)),
+                        will_p,
+                    )
+            if getattr(self, "event_decode_prefix", False) and "prefix_len_pred" in out:
+                pref = out["prefix_len_pred"][:, : will_p.shape[-1]]
+                pref_ok = pref >= float(self.event_prefix_threshold)
+                if last is not None:
+                    pref_ok = pref_ok & (lh > 0.5)
+                lift_to = max(
+                    float(self.event_report_threshold),
+                    float(getattr(self, "event_lift_to", self.event_report_threshold)),
+                )
+                will_p = torch.where(
+                    pref_ok,
+                    torch.maximum(will_p, torch.full_like(will_p, lift_to)),
+                    will_p,
+                )
+                start_idx = torch.where(pref_ok, torch.zeros_like(start_idx), start_idx)
+                dur = out["event_dur"].clone()
+                dur[:, : will_p.shape[-1]] = torch.where(
+                    pref_ok, pref, dur[:, : will_p.shape[-1]]
+                )
+                out["event_dur"] = dur
             if "hot_logit" in out:
                 will_p, start_idx = self._apply_occupancy_union(
                     will_p, start_idx, out["hot_logit"], last
                 )
+            if (
+                getattr(self, "stgnpp_start_prior", False)
+                and "tau" in out
+                and last is not None
+            ):
+                tau_i = out["tau"][:, : start_idx.shape[-1]].round().long().clamp(
+                    0, int(self.max_remain_windows) - 1
+                )
+                cold = lh <= 0.5
+                reported = will_p >= float(self.event_report_threshold)
+                use = cold & reported & (tau_i <= 2)
+                start_idx = torch.where(use, torch.minimum(start_idx, tau_i), start_idx)
+            max_st = getattr(self, "event_max_start_windows", None)
+            if max_st is not None and last is not None:
+                far = (lh <= 0.5) & (start_idx > int(max_st))
+                will_p = torch.where(far, torch.zeros_like(will_p), will_p)
             out["event_will_prob"] = will_p
             if "tpm_logit" in out:
                 out["tpm_prob"] = torch.sigmoid(out["tpm_logit"])
