@@ -1,0 +1,257 @@
+{
+  "scope": "validation inputs, sample anchors, masks and event targets; no test scoring",
+  "test_evaluated": false,
+  "sample_count": 2572,
+  "episode_count": 17,
+  "comparison_match": false,
+  "fields": {
+    "y_hot": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "remain_mask": {
+      "mismatched_samples": 238,
+      "mismatched_cells": 238,
+      "max_absolute_difference": 1.0,
+      "example_samples": [
+        804,
+        805,
+        806,
+        807,
+        808,
+        809,
+        810,
+        811
+      ]
+    },
+    "target_remain_len": {
+      "mismatched_samples": 2572,
+      "mismatched_cells": 2572,
+      "max_absolute_difference": 1.0,
+      "example_samples": [
+        685,
+        686,
+        687,
+        688,
+        689,
+        690,
+        691,
+        692
+      ]
+    },
+    "occ_node_mask": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "hist_last_hot": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "event_will": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "event_start": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "event_duration": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "jobs_remaining": {
+      "mismatched_samples": 153,
+      "mismatched_cells": 153,
+      "max_absolute_difference": 1.0,
+      "example_samples": [
+        704,
+        721,
+        728,
+        735,
+        762,
+        778,
+        783,
+        795
+      ]
+    },
+    "jobs_total": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "raw_x_observed": {
+      "mismatched_samples": 11,
+      "mismatched_cells": 132,
+      "max_absolute_difference": 0.9999999403953552,
+      "example_samples": [
+        18514,
+        18515,
+        18516,
+        18517,
+        18518,
+        18519,
+        18520,
+        18521
+      ]
+    },
+    "anchor_time_s": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "first_future_start_s": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    },
+    "input_window_indices": {
+      "mismatched_samples": 0,
+      "mismatched_cells": 0,
+      "max_absolute_difference": 0.0,
+      "example_samples": []
+    }
+  },
+  "position_mismatches": [
+    {
+      "group_id": "2026-08-29_09-27-14_seed44:env_00:episode_05",
+      "baseline_only": [],
+      "main_only": [
+        163
+      ]
+    },
+    {
+      "group_id": "2026-08-29_20-41-57_seed44:env_00:episode_09",
+      "baseline_only": [],
+      "main_only": [
+        260
+      ]
+    },
+    {
+      "group_id": "2026-08-30_13-03-11_seed44:env_00:episode_03",
+      "baseline_only": [],
+      "main_only": [
+        176
+      ]
+    },
+    {
+      "group_id": "2026-08-31_00-59-46_seed44:env_00:episode_00",
+      "baseline_only": [],
+      "main_only": [
+        142
+      ]
+    },
+    {
+      "group_id": "2026-08-23_09-23-13_seed42:env_00:episode_11",
+      "baseline_only": [],
+      "main_only": [
+        165
+      ]
+    },
+    {
+      "group_id": "2026-08-23_09-23-13_seed42:env_00:episode_13",
+      "baseline_only": [],
+      "main_only": [
+        173
+      ]
+    },
+    {
+      "group_id": "2026-08-23_09-23-13_seed42:env_00:episode_17",
+      "baseline_only": [],
+      "main_only": [
+        175
+      ]
+    },
+    {
+      "group_id": "2026-08-23_13-58-14_seed42:env_00:episode_06",
+      "baseline_only": [],
+      "main_only": [
+        254
+      ]
+    },
+    {
+      "group_id": "2026-08-23_13-58-14_seed42:env_00:episode_10",
+      "baseline_only": [],
+      "main_only": [
+        244
+      ]
+    },
+    {
+      "group_id": "2026-08-23_13-58-14_seed42:env_00:episode_16",
+      "baseline_only": [],
+      "main_only": [
+        250
+      ]
+    },
+    {
+      "group_id": "2026-08-23_20-30-18_seed42:env_00:episode_05",
+      "baseline_only": [],
+      "main_only": [
+        182
+      ]
+    },
+    {
+      "group_id": "2026-08-23_20-30-18_seed42:env_00:episode_07",
+      "baseline_only": [],
+      "main_only": [
+        176
+      ]
+    },
+    {
+      "group_id": "2026-08-23_20-30-18_seed42:env_00:episode_15",
+      "baseline_only": [],
+      "main_only": [
+        168
+      ]
+    },
+    {
+      "group_id": "2026-08-24_01-19-21_seed42:env_00:episode_04",
+      "baseline_only": [],
+      "main_only": [
+        138
+      ]
+    },
+    {
+      "group_id": "2026-08-24_01-19-21_seed42:env_00:episode_09",
+      "baseline_only": [],
+      "main_only": [
+        145
+      ]
+    },
+    {
+      "group_id": "2026-08-28_12-12-48_seed43:env_00:episode_05",
+      "baseline_only": [],
+      "main_only": [
+        135
+      ]
+    },
+    {
+      "group_id": "2026-08-28_12-12-48_seed43:env_00:episode_08",
+      "baseline_only": [],
+      "main_only": [
+        136
+      ]
+    }
+  ],
+  "split_audit_sha256": "8e00dc93918daf40a5addb91dd17e777cf6e325cf4f6743466a40e650a20847e",
+  "main_remain_source_sha256": "b18e2d9fe52922fd9a0a084e6e01838ce9d7b099669c0cab97cddcddb3657a56",
+  "input_tolerance": {
+    "absolute": 0.0001,
+    "relative": 1e-05
+  },
+  "input_scope": "Raw X compared on observed history nodes after undoing baseline continuous-feature scaling. This does not compare architecture-specific scaling, graph construction or padded-node encodings."
+}
