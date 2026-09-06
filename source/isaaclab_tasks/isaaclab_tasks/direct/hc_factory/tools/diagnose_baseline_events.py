@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Decompose validation event misses without selecting on or reading test targets."""
+"""Decompose validation event misses and false alarms without changing scoring."""
 
 from __future__ import annotations
 
@@ -34,6 +34,14 @@ def summarize_events(arrays: dict[str, np.ndarray], thresholds: list[float]) -> 
     decoded_start = np.where(
         arrays["hist_last_hot"] > 0.5, 0, arrays["predicted_start"]
     )
+    future_observed = arrays["remain_mask"] > 0.5
+    short_horizon = np.broadcast_to(future_observed.sum(axis=1)[:, None] < 8, valid.shape)
+    any_future_hot = ((arrays["y_hot"] > 0.5) & future_observed[:, :, None]).any(axis=1)
+    negative_kinds = {
+        "short_observed_horizon": groups["negative"] & short_horizon,
+        "hot_without_qualifying_event": groups["negative"] & ~short_horizon & any_future_hot,
+        "no_future_hot": groups["negative"] & ~short_horizon & ~any_future_hot,
+    }
     output = {"groups": {}, "thresholds": []}
     for name, mask in groups.items():
         values = probability[mask]
@@ -66,6 +74,41 @@ def summarize_events(arrays: dict[str, np.ndarray], thresholds: list[float]) -> 
             row[f"{name}_probability_misses"] = int(probability_miss.sum())
             row[f"{name}_timing_misses"] = int(timing_miss.sum())
         row["false_positive_stations"] = int((predicted & groups["negative"]).sum())
+        timing_error = positive & predicted & (np.abs(decoded_start - start) > 3)
+        hits = positive & predicted & ~timing_error
+        false_alarm = (predicted & groups["negative"]) | timing_error
+        counts = {"true_event_wrong_start": int(timing_error.sum())}
+        historical_hot = arrays["hist_last_hot"] > 0.5
+        for kind, mask in negative_kinds.items():
+            for state, hist_mask in (("historically_hot", historical_hot),
+                                     ("historically_cold", ~historical_hot)):
+                counts[f"{kind}_{state}"] = int((predicted & mask & hist_mask).sum())
+        row["report_false_alarm_breakdown"] = counts
+        row["report_false_alarm_count"] = int(false_alarm.sum())
+        row["per_node"] = [
+            {
+                "node_index": index,
+                "predicted": int((predicted[:, index] & valid[:, index]).sum()),
+                "true": int(positive[:, index].sum()),
+                "report_hits": int(hits[:, index].sum()),
+                "false_alarms": int(false_alarm[:, index].sum()),
+                "wrong_start": int(timing_error[:, index].sum()),
+                "negative_subgroups": {
+                    name: int((predicted[:, index] & mask[:, index]).sum())
+                    for name, mask in negative_kinds.items()
+                },
+            }
+            for index in range(valid.shape[1]) if bool(valid[:, index].any())
+        ]
+        row["predicted_duration_q25_q50_q75"] = (
+            np.quantile(arrays["predicted_duration"][predicted & valid], [.25, .5, .75]).tolist()
+            if bool((predicted & valid).any()) else None
+        )
+        if sum(counts.values()) != int(false_alarm.sum()):
+            raise AssertionError("False-alarm diagnostic groups must be disjoint and exhaustive")
+        expected_precision = float(hits.sum()) / max(int((predicted & valid).sum()), 1)
+        if not np.isclose(expected_precision, row["report_precision"]):
+            raise ValueError("Event diagnostic targets differ from canonical report metrics")
         output["thresholds"].append(row)
     return output
 
@@ -116,12 +159,22 @@ def main() -> None:
             for key, value in values.items():
                 collected.setdefault(key, []).append(value.cpu().numpy())
     arrays = {key: np.concatenate(values) for key, values in collected.items()}
-    report = summarize_events(arrays, args.thresholds)
+    chosen_threshold = float(checkpoint["metadata"]["event_report_threshold"])
+    thresholds = sorted(set([*args.thresholds, chosen_threshold]))
+    report = summarize_events(arrays, thresholds)
+    for row in report["thresholds"]:
+        for node in row["per_node"]:
+            index = node["node_index"]
+            node["resource_id"] = manifest["node_ids"][index]
+            node["resource_type"] = manifest["resource_types"][index]
     report.update(
         split="validation", test_evaluated=False,
         checkpoint=str(args.checkpoint.resolve()), epoch=checkpoint["epoch"],
         dataset_manifest_sha256=checkpoint["metadata"]["dataset_manifest_sha256"],
         sample_count=len(arrays["sample_index"]),
+        saved_report_threshold=chosen_threshold,
+        diagnostic_scope="Future labels and horizon length are retrospective diagnostic strata, "
+                         "not deployable features or proposed alarm filters. No threshold is selected here.",
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
