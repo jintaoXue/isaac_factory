@@ -1,0 +1,32 @@
+{
+  "split": "train",
+  "test_evaluated": false,
+  "samples": 13813,
+  "manifest_sha256": "66c6554d0ae1c7a293e482a201829a4c324f1d9d0b88934c1c2a6c1e27333183",
+  "types": {
+    "machine": {
+      "negative": 63247,
+      "ongoing": 357,
+      "upcoming": 491,
+      "future_start_but_hist_hot": 0
+    },
+    "workbench": {
+      "negative": 24315,
+      "ongoing": 198,
+      "upcoming": 177,
+      "future_start_but_hist_hot": 0
+    },
+    "gantry": {
+      "negative": 43807,
+      "ongoing": 151,
+      "upcoming": 312,
+      "future_start_but_hist_hot": 0
+    },
+    "agv": {
+      "negative": 44324,
+      "ongoing": 39,
+      "upcoming": 66,
+      "future_start_but_hist_hot": 0
+    }
+  }
+}
