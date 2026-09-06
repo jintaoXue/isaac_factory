@@ -20,6 +20,11 @@ from factory_baselines.warm_start import load_warm_start_parent
 
 ARMS = ("scratch_base", "scratch_signal", "warm_base", "warm_signal")
 HARD_NEGATIVE_ARMS = {"weight1_control": 1.0, "weight2": 2.0, "weight4": 4.0}
+SAMPLING_ARMS = {
+    "uniform_control": ("any_event", 1.0),
+    "event4": ("any_event", 4.0),
+    "upcoming4": ("upcoming", 4.0),
+}
 
 
 def stage_configuration(parent: dict, arm: str, profile: str, device: str, seed: int) -> dict:
@@ -59,6 +64,16 @@ def hard_negative_configuration(parent: dict, arm: str, profile: str, device: st
     return config
 
 
+def sampling_configuration(parent: dict, arm: str, profile: str, device: str, seed: int) -> dict:
+    if arm not in SAMPLING_ARMS:
+        raise ValueError(f"Unknown sampling arm: {arm}")
+    config = stage_configuration(parent, "scratch_base", profile, device, seed)
+    config["training"]["max_epochs"] = 60
+    target, factor = SAMPLING_ARMS[arm]
+    config["training"].update(event_oversample_target=target, event_oversample_factor=factor)
+    return config
+
+
 class _Tee:
     def __init__(self, console, log):
         self.console, self.log = console, log
@@ -74,7 +89,7 @@ class _Tee:
 
 def run_study(model: str, dataset_dir: Path, parent_dir: Path, output_dir: Path,
               seeds: list[int], device: str, *, study: str = "staged") -> None:
-    if study not in {"staged", "hard_negatives"}:
+    if study not in {"staged", "hard_negatives", "sampling"}:
         raise ValueError(f"Unknown study: {study}")
     tools_dir = Path(__file__).resolve().parent
     repo = next(path for path in tools_dir.parents if (path / ".git").exists())
@@ -130,8 +145,12 @@ def run_study(model: str, dataset_dir: Path, parent_dir: Path, output_dir: Path,
         del state
         parents[seed], configs[seed], provenance[seed] = parent, config, proof
     trials = []
-    arms = ARMS if study == "staged" else HARD_NEGATIVE_ARMS
-    configure = stage_configuration if study == "staged" else hard_negative_configuration
+    studies = {
+        "staged": (ARMS, stage_configuration, "baseline_staged_training_v1"),
+        "hard_negatives": (HARD_NEGATIVE_ARMS, hard_negative_configuration, "baseline_short_hot_negative_v1"),
+        "sampling": (SAMPLING_ARMS, sampling_configuration, "baseline_event_sampling_v1"),
+    }
+    arms, configure, protocol = studies[study]
     for seed in seeds:
         for arm in arms:
             config = configure(configs[seed], arm, f"{output_dir.name}_{arm}", device, seed)
@@ -139,7 +158,7 @@ def run_study(model: str, dataset_dir: Path, parent_dir: Path, output_dir: Path,
                            "warm_start_checkpoint": str(parents[seed]) if study == "staged" and arm.startswith("warm_") else None})
     output_dir.mkdir(parents=True)
     study_record = {
-        "protocol": "baseline_staged_training_v1" if study == "staged" else "baseline_short_hot_negative_v1",
+        "protocol": protocol,
         "selection_split": "validation",
         "test_evaluated": False, "model": model, "seeds": seeds,
         "dataset_manifest_sha256": manifest_hash,
@@ -147,11 +166,19 @@ def run_study(model: str, dataset_dir: Path, parent_dir: Path, output_dir: Path,
         "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(),
         "parents": provenance, "trials": trials,
     }
-    if study == "hard_negatives":
+    if study in {"hard_negatives", "sampling"}:
         study_record.update(
             initialization="from scratch; parent files supply configuration/provenance, not weights",
             comparison_scope="development under the frozen v5 scoring contract; not a final causal benchmark",
             post_selection_audit="repeat frozen-model observed-prefix decoding sensitivity before interpretation",
+        )
+    if study == "sampling":
+        study_record.update(
+            sampling_scope="training windows only; validation/test order, population and scoring unchanged",
+            draws_per_epoch=int(manifest["sample_counts"]["train"]),
+            importance_correction=False,
+            interpretation="Weighted replacement changes all tasks' training exposure, not just event loss. "
+                           "Epoch draw count is fixed; unique windows seen can differ. No new independent data.",
         )
     (output_dir / "study_config.json").write_text(json.dumps(study_record, indent=2) + "\n")
     for trial in trials:
@@ -176,7 +203,7 @@ def run_study(model: str, dataset_dir: Path, parent_dir: Path, output_dir: Path,
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", choices=("B4", "B5"), required=True)
-    parser.add_argument("--study", choices=("staged", "hard_negatives"), default="staged")
+    parser.add_argument("--study", choices=("staged", "hard_negatives", "sampling"), default="staged")
     parser.add_argument("--dataset_dir", type=Path, required=True)
     parser.add_argument("--parent_dir", type=Path, required=True)
     parser.add_argument("--output_dir", type=Path, required=True)

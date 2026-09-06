@@ -18,7 +18,7 @@ from typing import Any
 import numpy as np
 import torch
 from torch import nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 
 from factory_bn_shared.remain import (
     occupancy_event_metrics,
@@ -57,6 +57,8 @@ class TorchTrainConfig:
     gradient_clip_norm: float = 1.0
     seed: int = 42
     num_workers: int = 0
+    event_oversample_factor: float = 1.0
+    event_oversample_target: str = "any_event"
     device: str = "auto"
     hot_eval_threshold: float = 0.55
     event_report_threshold: float = 0.68
@@ -72,6 +74,10 @@ class TorchTrainConfig:
                 raise ValueError(f"{name} must be positive")
         if self.num_workers < 0:
             raise ValueError("num_workers must be non-negative")
+        if not math.isfinite(self.event_oversample_factor) or self.event_oversample_factor < 1:
+            raise ValueError("event_oversample_factor must be finite and at least one")
+        if self.event_oversample_target not in {"any_event", "upcoming"}:
+            raise ValueError("event_oversample_target must be any_event or upcoming")
         if self.lr_schedule not in {"none", "cosine"}:
             raise ValueError("lr_schedule must be 'none' or 'cosine'")
         for name in (
@@ -219,6 +225,42 @@ def _model_inputs(batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
     }
 
 
+def _event_sampling_weights(
+    dataset: FactoryBaselineTensorDataset, config: TorchTrainConfig
+) -> torch.Tensor:
+    weights = torch.ones(len(dataset), dtype=torch.double)
+    for index in range(len(dataset)):
+        sample = dataset[index]
+        positive = (sample["event_will"] > .5) & sample["occ_node_mask"].bool()
+        if config.event_oversample_target == "upcoming":
+            positive = positive & (sample["event_start"] > 0)
+        if bool(positive.any()):
+            weights[index] = config.event_oversample_factor
+    if not bool((weights > 1).any()):
+        raise ValueError("No eligible training windows for the requested event oversampling")
+    return weights
+
+
+def _training_sampling_metadata(loader: DataLoader, config: TorchTrainConfig) -> dict[str, Any]:
+    metadata = {
+        "split": "train", "draws_per_epoch": len(loader.sampler),
+        "population_windows": len(loader.dataset),
+        "event_oversample_factor": config.event_oversample_factor,
+        "importance_corrected": False,
+    }
+    if isinstance(loader.sampler, WeightedRandomSampler):
+        weights = loader.sampler.weights
+        eligible = weights > 1
+        metadata.update(
+            method="weighted_with_replacement", target=config.event_oversample_target,
+            eligible_windows=int(eligible.sum()),
+            expected_eligible_draw_fraction=float(weights[eligible].sum() / weights.sum()),
+        )
+    else:
+        metadata.update(method="uniform_without_replacement", target=None)
+    return metadata
+
+
 def _loaders(
     payload: dict[str, Any], config: TorchTrainConfig
 ) -> dict[str, DataLoader]:
@@ -226,10 +268,19 @@ def _loaders(
     loaders: dict[str, DataLoader] = {}
     for split_name in ("train", "validation", "test"):
         indices = payload["split_indices"][split_name].tolist()
+        dataset = FactoryBaselineTensorDataset(payload, indices)
+        sampler = None
+        if split_name == "train" and config.event_oversample_factor > 1:
+            print("Preparing train-only event sampling weights", flush=True)
+            sampler = WeightedRandomSampler(
+                _event_sampling_weights(dataset, config), len(dataset), replacement=True,
+                generator=generator,
+            )
         loaders[split_name] = DataLoader(
-            FactoryBaselineTensorDataset(payload, indices),
+            dataset,
             batch_size=config.batch_size,
-            shuffle=split_name == "train",
+            shuffle=split_name == "train" and sampler is None,
+            sampler=sampler,
             num_workers=config.num_workers,
             pin_memory=(
                 torch.cuda.is_available()
@@ -803,6 +854,7 @@ def train_torch_baseline(
         "training_profile": train_config.training_profile,
         "seed": train_config.seed,
         "trainable_parameter_count": trainable_parameter_count,
+        "training_sampling": _training_sampling_metadata(loaders["train"], train_config),
         "pos_weight": pos_weight_value,
         "cause_majority": cause_majority,
         "occupancy_type_masks": {

@@ -31,6 +31,8 @@ def main() -> None:
     parser.add_argument("--lr_schedule", choices=("none", "cosine"), default="cosine")
     parser.add_argument("--gradient_clip_norm", type=float, default=1.0)
     parser.add_argument("--num_workers", type=int, default=0)
+    parser.add_argument("--event_oversample_factor", type=float, default=1.0)
+    parser.add_argument("--event_oversample_target", choices=("any_event", "upcoming"), default="any_event")
     parser.add_argument("--lstm_hidden", type=int, default=128)
     parser.add_argument("--lstm_layers", type=int, default=1)
     parser.add_argument("--node_hidden", type=int, default=128)
@@ -77,6 +79,8 @@ def main() -> None:
             gradient_clip_norm=args.gradient_clip_norm,
             seed=args.seed,
             num_workers=args.num_workers,
+            event_oversample_factor=args.event_oversample_factor,
+            event_oversample_target=args.event_oversample_target,
             device=args.device,
             hot_eval_threshold=args.hot_eval_threshold,
             event_report_threshold=args.event_report_threshold,
