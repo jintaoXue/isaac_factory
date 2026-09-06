@@ -1,0 +1,1123 @@
+{
+  "groups": {
+    "ongoing": {
+      "count": 108,
+      "will_q10_q50_q90": [
+        0.05471776500344277,
+        0.6689151227474213,
+        0.9690120339393615
+      ],
+      "hist_hot_count": 81,
+      "start_within_tolerance_rate": 0.9537037037037037
+    },
+    "upcoming": {
+      "count": 189,
+      "will_q10_q50_q90": [
+        0.0029683983884751797,
+        0.031435392796993256,
+        0.20617413818836228
+      ],
+      "hist_hot_count": 0,
+      "start_within_tolerance_rate": 0.798941798941799
+    },
+    "negative": {
+      "count": 33176,
+      "will_q10_q50_q90": [
+        7.834220014046878e-06,
+        0.0011391709558665752,
+        0.029645641334354877
+      ],
+      "hist_hot_count": 255
+    }
+  },
+  "thresholds": [
+    {
+      "threshold": 0.55,
+      "who_precision": 0.4675324675324675,
+      "who_recall": 0.24242424242424243,
+      "who_f1": 0.3192904656319291,
+      "report_precision": 0.4675324675324675,
+      "report_recall": 0.24242424242424243,
+      "report_f1": 0.3192904656319291,
+      "start_mae": 0.2361111111111111,
+      "dur_mae": 1.5265750885009766,
+      "who_recall_ongoing": 0.6296296296296297,
+      "report_recall_ongoing": 0.6296296296296297,
+      "start_mae_ongoing": 0.19117647058823528,
+      "dur_mae_ongoing": 1.5026357173919678,
+      "n_true_ongoing": 108.0,
+      "who_recall_upcoming": 0.021164021164021163,
+      "report_recall_upcoming": 0.021164021164021163,
+      "start_mae_upcoming": 1.0,
+      "dur_mae_upcoming": 1.9335432052612305,
+      "n_true_upcoming": 189.0,
+      "n_pred_who": 154.0,
+      "n_true_who": 297.0,
+      "ongoing_probability_misses": 40,
+      "ongoing_timing_misses": 0,
+      "upcoming_probability_misses": 185,
+      "upcoming_timing_misses": 0,
+      "false_positive_stations": 82,
+      "report_false_alarm_breakdown": {
+        "true_event_wrong_start": 0,
+        "short_observed_horizon_historically_hot": 0,
+        "short_observed_horizon_historically_cold": 0,
+        "hot_without_qualifying_event_historically_hot": 51,
+        "hot_without_qualifying_event_historically_cold": 0,
+        "no_future_hot_historically_hot": 2,
+        "no_future_hot_historically_cold": 29
+      },
+      "report_false_alarm_count": 82,
+      "per_node": [
+        {
+          "node_index": 18,
+          "predicted": 8,
+          "true": 14,
+          "report_hits": 5,
+          "false_alarms": 3,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 3
+          },
+          "resource_id": "gantry_0",
+          "resource_type": "gantry"
+        },
+        {
+          "node_index": 19,
+          "predicted": 5,
+          "true": 9,
+          "report_hits": 2,
+          "false_alarms": 3,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 1,
+            "no_future_hot": 2
+          },
+          "resource_id": "gantry_1",
+          "resource_type": "gantry"
+        },
+        {
+          "node_index": 20,
+          "predicted": 16,
+          "true": 40,
+          "report_hits": 9,
+          "false_alarms": 7,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 5,
+            "no_future_hot": 2
+          },
+          "resource_id": "gantry_2",
+          "resource_type": "gantry"
+        },
+        {
+          "node_index": 21,
+          "predicted": 12,
+          "true": 22,
+          "report_hits": 7,
+          "false_alarms": 5,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 3,
+            "no_future_hot": 2
+          },
+          "resource_id": "gantry_3",
+          "resource_type": "gantry"
+        },
+        {
+          "node_index": 27,
+          "predicted": 6,
+          "true": 23,
+          "report_hits": 6,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "num00_rotaryPipeAutomaticWeldingMachine_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 28,
+          "predicted": 0,
+          "true": 0,
+          "report_hits": 0,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "num00_rotaryPipeAutomaticWeldingMachine_ws1",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 29,
+          "predicted": 7,
+          "true": 9,
+          "report_hits": 2,
+          "false_alarms": 5,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 4,
+            "no_future_hot": 1
+          },
+          "resource_id": "num01_weldingRobot_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 30,
+          "predicted": 28,
+          "true": 47,
+          "report_hits": 12,
+          "false_alarms": 16,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 6,
+            "no_future_hot": 10
+          },
+          "resource_id": "num02_rollerbedCNCPipeIntersectionCuttingMachine_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 31,
+          "predicted": 16,
+          "true": 63,
+          "report_hits": 6,
+          "false_alarms": 10,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 10,
+            "no_future_hot": 0
+          },
+          "resource_id": "num04_groovingMachineLarge_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 32,
+          "predicted": 23,
+          "true": 22,
+          "report_hits": 6,
+          "false_alarms": 17,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 9,
+            "no_future_hot": 8
+          },
+          "resource_id": "num08_workbench_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 33,
+          "predicted": 25,
+          "true": 27,
+          "report_hits": 12,
+          "false_alarms": 13,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 10,
+            "no_future_hot": 3
+          },
+          "resource_id": "num08_workbench_ws1",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 34,
+          "predicted": 0,
+          "true": 0,
+          "report_hits": 0,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "robot_0",
+          "resource_type": "transport_robot"
+        },
+        {
+          "node_index": 35,
+          "predicted": 8,
+          "true": 21,
+          "report_hits": 5,
+          "false_alarms": 3,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 3,
+            "no_future_hot": 0
+          },
+          "resource_id": "robot_1",
+          "resource_type": "transport_robot"
+        },
+        {
+          "node_index": 36,
+          "predicted": 0,
+          "true": 0,
+          "report_hits": 0,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "robot_2",
+          "resource_type": "transport_robot"
+        },
+        {
+          "node_index": 37,
+          "predicted": 0,
+          "true": 0,
+          "report_hits": 0,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "robot_3",
+          "resource_type": "transport_robot"
+        }
+      ],
+      "predicted_duration_q25_q50_q75": [
+        9.26250696182251,
+        10.156308650970459,
+        11.193470478057861
+      ]
+    },
+    {
+      "threshold": 0.68,
+      "who_precision": 0.4690265486725664,
+      "who_recall": 0.17845117845117844,
+      "who_f1": 0.25853658536585367,
+      "report_precision": 0.4690265486725664,
+      "report_recall": 0.17845117845117844,
+      "report_f1": 0.25853658536585367,
+      "start_mae": 0.22641509433962265,
+      "dur_mae": 1.5706969499588013,
+      "who_recall_ongoing": 0.48148148148148145,
+      "report_recall_ongoing": 0.48148148148148145,
+      "start_mae_ongoing": 0.21153846153846154,
+      "dur_mae_ongoing": 1.5494861602783203,
+      "n_true_ongoing": 108.0,
+      "who_recall_upcoming": 0.005291005291005291,
+      "report_recall_upcoming": 0.005291005291005291,
+      "start_mae_upcoming": 1.0,
+      "dur_mae_upcoming": 2.6736574172973633,
+      "n_true_upcoming": 189.0,
+      "n_pred_who": 113.0,
+      "n_true_who": 297.0,
+      "ongoing_probability_misses": 56,
+      "ongoing_timing_misses": 0,
+      "upcoming_probability_misses": 188,
+      "upcoming_timing_misses": 0,
+      "false_positive_stations": 60,
+      "report_false_alarm_breakdown": {
+        "true_event_wrong_start": 0,
+        "short_observed_horizon_historically_hot": 0,
+        "short_observed_horizon_historically_cold": 0,
+        "hot_without_qualifying_event_historically_hot": 43,
+        "hot_without_qualifying_event_historically_cold": 0,
+        "no_future_hot_historically_hot": 0,
+        "no_future_hot_historically_cold": 17
+      },
+      "report_false_alarm_count": 60,
+      "per_node": [
+        {
+          "node_index": 18,
+          "predicted": 5,
+          "true": 14,
+          "report_hits": 4,
+          "false_alarms": 1,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 1
+          },
+          "resource_id": "gantry_0",
+          "resource_type": "gantry"
+        },
+        {
+          "node_index": 19,
+          "predicted": 5,
+          "true": 9,
+          "report_hits": 2,
+          "false_alarms": 3,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 1,
+            "no_future_hot": 2
+          },
+          "resource_id": "gantry_1",
+          "resource_type": "gantry"
+        },
+        {
+          "node_index": 20,
+          "predicted": 7,
+          "true": 40,
+          "report_hits": 4,
+          "false_alarms": 3,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 3,
+            "no_future_hot": 0
+          },
+          "resource_id": "gantry_2",
+          "resource_type": "gantry"
+        },
+        {
+          "node_index": 21,
+          "predicted": 9,
+          "true": 22,
+          "report_hits": 7,
+          "false_alarms": 2,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 2,
+            "no_future_hot": 0
+          },
+          "resource_id": "gantry_3",
+          "resource_type": "gantry"
+        },
+        {
+          "node_index": 27,
+          "predicted": 5,
+          "true": 23,
+          "report_hits": 5,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "num00_rotaryPipeAutomaticWeldingMachine_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 28,
+          "predicted": 0,
+          "true": 0,
+          "report_hits": 0,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "num00_rotaryPipeAutomaticWeldingMachine_ws1",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 29,
+          "predicted": 6,
+          "true": 9,
+          "report_hits": 2,
+          "false_alarms": 4,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 4,
+            "no_future_hot": 0
+          },
+          "resource_id": "num01_weldingRobot_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 30,
+          "predicted": 15,
+          "true": 47,
+          "report_hits": 5,
+          "false_alarms": 10,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 5,
+            "no_future_hot": 5
+          },
+          "resource_id": "num02_rollerbedCNCPipeIntersectionCuttingMachine_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 31,
+          "predicted": 14,
+          "true": 63,
+          "report_hits": 6,
+          "false_alarms": 8,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 8,
+            "no_future_hot": 0
+          },
+          "resource_id": "num04_groovingMachineLarge_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 32,
+          "predicted": 22,
+          "true": 22,
+          "report_hits": 5,
+          "false_alarms": 17,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 9,
+            "no_future_hot": 8
+          },
+          "resource_id": "num08_workbench_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 33,
+          "predicted": 17,
+          "true": 27,
+          "report_hits": 8,
+          "false_alarms": 9,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 8,
+            "no_future_hot": 1
+          },
+          "resource_id": "num08_workbench_ws1",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 34,
+          "predicted": 0,
+          "true": 0,
+          "report_hits": 0,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "robot_0",
+          "resource_type": "transport_robot"
+        },
+        {
+          "node_index": 35,
+          "predicted": 8,
+          "true": 21,
+          "report_hits": 5,
+          "false_alarms": 3,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 3,
+            "no_future_hot": 0
+          },
+          "resource_id": "robot_1",
+          "resource_type": "transport_robot"
+        },
+        {
+          "node_index": 36,
+          "predicted": 0,
+          "true": 0,
+          "report_hits": 0,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "robot_2",
+          "resource_type": "transport_robot"
+        },
+        {
+          "node_index": 37,
+          "predicted": 0,
+          "true": 0,
+          "report_hits": 0,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "robot_3",
+          "resource_type": "transport_robot"
+        }
+      ],
+      "predicted_duration_q25_q50_q75": [
+        9.562254905700684,
+        10.194537162780762,
+        11.234930038452148
+      ]
+    },
+    {
+      "threshold": 0.8,
+      "who_precision": 0.5384615384615384,
+      "who_recall": 0.1414141414141414,
+      "who_f1": 0.224,
+      "report_precision": 0.5384615384615384,
+      "report_recall": 0.1414141414141414,
+      "report_f1": 0.224,
+      "start_mae": 0.2857142857142857,
+      "dur_mae": 1.73442804813385,
+      "who_recall_ongoing": 0.37962962962962965,
+      "report_recall_ongoing": 0.37962962962962965,
+      "start_mae_ongoing": 0.2682926829268293,
+      "dur_mae_ongoing": 1.7115199565887451,
+      "n_true_ongoing": 108.0,
+      "who_recall_upcoming": 0.005291005291005291,
+      "report_recall_upcoming": 0.005291005291005291,
+      "start_mae_upcoming": 1.0,
+      "dur_mae_upcoming": 2.6736574172973633,
+      "n_true_upcoming": 189.0,
+      "n_pred_who": 78.0,
+      "n_true_who": 297.0,
+      "ongoing_probability_misses": 67,
+      "ongoing_timing_misses": 0,
+      "upcoming_probability_misses": 188,
+      "upcoming_timing_misses": 0,
+      "false_positive_stations": 36,
+      "report_false_alarm_breakdown": {
+        "true_event_wrong_start": 0,
+        "short_observed_horizon_historically_hot": 0,
+        "short_observed_horizon_historically_cold": 0,
+        "hot_without_qualifying_event_historically_hot": 31,
+        "hot_without_qualifying_event_historically_cold": 0,
+        "no_future_hot_historically_hot": 0,
+        "no_future_hot_historically_cold": 5
+      },
+      "report_false_alarm_count": 36,
+      "per_node": [
+        {
+          "node_index": 18,
+          "predicted": 3,
+          "true": 14,
+          "report_hits": 3,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "gantry_0",
+          "resource_type": "gantry"
+        },
+        {
+          "node_index": 19,
+          "predicted": 2,
+          "true": 9,
+          "report_hits": 2,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "gantry_1",
+          "resource_type": "gantry"
+        },
+        {
+          "node_index": 20,
+          "predicted": 6,
+          "true": 40,
+          "report_hits": 3,
+          "false_alarms": 3,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 3,
+            "no_future_hot": 0
+          },
+          "resource_id": "gantry_2",
+          "resource_type": "gantry"
+        },
+        {
+          "node_index": 21,
+          "predicted": 8,
+          "true": 22,
+          "report_hits": 7,
+          "false_alarms": 1,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 1,
+            "no_future_hot": 0
+          },
+          "resource_id": "gantry_3",
+          "resource_type": "gantry"
+        },
+        {
+          "node_index": 27,
+          "predicted": 5,
+          "true": 23,
+          "report_hits": 5,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "num00_rotaryPipeAutomaticWeldingMachine_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 28,
+          "predicted": 0,
+          "true": 0,
+          "report_hits": 0,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "num00_rotaryPipeAutomaticWeldingMachine_ws1",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 29,
+          "predicted": 5,
+          "true": 9,
+          "report_hits": 2,
+          "false_alarms": 3,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 3,
+            "no_future_hot": 0
+          },
+          "resource_id": "num01_weldingRobot_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 30,
+          "predicted": 5,
+          "true": 47,
+          "report_hits": 1,
+          "false_alarms": 4,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 4,
+            "no_future_hot": 0
+          },
+          "resource_id": "num02_rollerbedCNCPipeIntersectionCuttingMachine_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 31,
+          "predicted": 10,
+          "true": 63,
+          "report_hits": 5,
+          "false_alarms": 5,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 5,
+            "no_future_hot": 0
+          },
+          "resource_id": "num04_groovingMachineLarge_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 32,
+          "predicted": 15,
+          "true": 22,
+          "report_hits": 2,
+          "false_alarms": 13,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 8,
+            "no_future_hot": 5
+          },
+          "resource_id": "num08_workbench_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 33,
+          "predicted": 13,
+          "true": 27,
+          "report_hits": 7,
+          "false_alarms": 6,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 6,
+            "no_future_hot": 0
+          },
+          "resource_id": "num08_workbench_ws1",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 34,
+          "predicted": 0,
+          "true": 0,
+          "report_hits": 0,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "robot_0",
+          "resource_type": "transport_robot"
+        },
+        {
+          "node_index": 35,
+          "predicted": 6,
+          "true": 21,
+          "report_hits": 5,
+          "false_alarms": 1,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 1,
+            "no_future_hot": 0
+          },
+          "resource_id": "robot_1",
+          "resource_type": "transport_robot"
+        },
+        {
+          "node_index": 36,
+          "predicted": 0,
+          "true": 0,
+          "report_hits": 0,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "robot_2",
+          "resource_type": "transport_robot"
+        },
+        {
+          "node_index": 37,
+          "predicted": 0,
+          "true": 0,
+          "report_hits": 0,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "robot_3",
+          "resource_type": "transport_robot"
+        }
+      ],
+      "predicted_duration_q25_q50_q75": [
+        9.747604131698608,
+        10.35530710220337,
+        11.375319242477417
+      ]
+    },
+    {
+      "threshold": 0.85,
+      "who_precision": 0.5396825396825397,
+      "who_recall": 0.11447811447811448,
+      "who_f1": 0.18888888888888888,
+      "report_precision": 0.5396825396825397,
+      "report_recall": 0.11447811447811448,
+      "report_f1": 0.18888888888888888,
+      "start_mae": 0.35294117647058826,
+      "dur_mae": 1.7560369968414307,
+      "who_recall_ongoing": 0.3055555555555556,
+      "report_recall_ongoing": 0.3055555555555556,
+      "start_mae_ongoing": 0.3333333333333333,
+      "dur_mae_ongoing": 1.728230357170105,
+      "n_true_ongoing": 108.0,
+      "who_recall_upcoming": 0.005291005291005291,
+      "report_recall_upcoming": 0.005291005291005291,
+      "start_mae_upcoming": 1.0,
+      "dur_mae_upcoming": 2.6736574172973633,
+      "n_true_upcoming": 189.0,
+      "n_pred_who": 63.0,
+      "n_true_who": 297.0,
+      "ongoing_probability_misses": 75,
+      "ongoing_timing_misses": 0,
+      "upcoming_probability_misses": 188,
+      "upcoming_timing_misses": 0,
+      "false_positive_stations": 29,
+      "report_false_alarm_breakdown": {
+        "true_event_wrong_start": 0,
+        "short_observed_horizon_historically_hot": 0,
+        "short_observed_horizon_historically_cold": 0,
+        "hot_without_qualifying_event_historically_hot": 25,
+        "hot_without_qualifying_event_historically_cold": 0,
+        "no_future_hot_historically_hot": 0,
+        "no_future_hot_historically_cold": 4
+      },
+      "report_false_alarm_count": 29,
+      "per_node": [
+        {
+          "node_index": 18,
+          "predicted": 3,
+          "true": 14,
+          "report_hits": 3,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "gantry_0",
+          "resource_type": "gantry"
+        },
+        {
+          "node_index": 19,
+          "predicted": 2,
+          "true": 9,
+          "report_hits": 2,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "gantry_1",
+          "resource_type": "gantry"
+        },
+        {
+          "node_index": 20,
+          "predicted": 3,
+          "true": 40,
+          "report_hits": 1,
+          "false_alarms": 2,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 2,
+            "no_future_hot": 0
+          },
+          "resource_id": "gantry_2",
+          "resource_type": "gantry"
+        },
+        {
+          "node_index": 21,
+          "predicted": 6,
+          "true": 22,
+          "report_hits": 6,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "gantry_3",
+          "resource_type": "gantry"
+        },
+        {
+          "node_index": 27,
+          "predicted": 4,
+          "true": 23,
+          "report_hits": 4,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "num00_rotaryPipeAutomaticWeldingMachine_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 28,
+          "predicted": 0,
+          "true": 0,
+          "report_hits": 0,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "num00_rotaryPipeAutomaticWeldingMachine_ws1",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 29,
+          "predicted": 5,
+          "true": 9,
+          "report_hits": 2,
+          "false_alarms": 3,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 3,
+            "no_future_hot": 0
+          },
+          "resource_id": "num01_weldingRobot_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 30,
+          "predicted": 5,
+          "true": 47,
+          "report_hits": 1,
+          "false_alarms": 4,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 4,
+            "no_future_hot": 0
+          },
+          "resource_id": "num02_rollerbedCNCPipeIntersectionCuttingMachine_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 31,
+          "predicted": 9,
+          "true": 63,
+          "report_hits": 4,
+          "false_alarms": 5,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 5,
+            "no_future_hot": 0
+          },
+          "resource_id": "num04_groovingMachineLarge_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 32,
+          "predicted": 12,
+          "true": 22,
+          "report_hits": 2,
+          "false_alarms": 10,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 6,
+            "no_future_hot": 4
+          },
+          "resource_id": "num08_workbench_ws0",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 33,
+          "predicted": 8,
+          "true": 27,
+          "report_hits": 4,
+          "false_alarms": 4,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 4,
+            "no_future_hot": 0
+          },
+          "resource_id": "num08_workbench_ws1",
+          "resource_type": "machine"
+        },
+        {
+          "node_index": 34,
+          "predicted": 0,
+          "true": 0,
+          "report_hits": 0,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "robot_0",
+          "resource_type": "transport_robot"
+        },
+        {
+          "node_index": 35,
+          "predicted": 6,
+          "true": 21,
+          "report_hits": 5,
+          "false_alarms": 1,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 1,
+            "no_future_hot": 0
+          },
+          "resource_id": "robot_1",
+          "resource_type": "transport_robot"
+        },
+        {
+          "node_index": 36,
+          "predicted": 0,
+          "true": 0,
+          "report_hits": 0,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "robot_2",
+          "resource_type": "transport_robot"
+        },
+        {
+          "node_index": 37,
+          "predicted": 0,
+          "true": 0,
+          "report_hits": 0,
+          "false_alarms": 0,
+          "wrong_start": 0,
+          "negative_subgroups": {
+            "short_observed_horizon": 0,
+            "hot_without_qualifying_event": 0,
+            "no_future_hot": 0
+          },
+          "resource_id": "robot_3",
+          "resource_type": "transport_robot"
+        }
+      ],
+      "predicted_duration_q25_q50_q75": [
+        9.756693363189697,
+        10.245049476623535,
+        11.358535766601562
+      ]
+    }
+  ],
+  "split": "validation",
+  "test_evaluated": false,
+  "checkpoint": "/home/sci/work/BSTAN_isaac_factory/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset/experiments/factory_pdformer_134_v3/models/tuning/b5_staged_training_v1/candidate_warm_base/seed43/best.pt",
+  "epoch": 0,
+  "dataset_manifest_sha256": "66c6554d0ae1c7a293e482a201829a4c324f1d9d0b88934c1c2a6c1e27333183",
+  "sample_count": 2589,
+  "saved_report_threshold": 0.55,
+  "diagnostic_scope": "Future labels and horizon length are retrospective diagnostic strata, not deployable features or proposed alarm filters. No threshold is selected here."
+}
