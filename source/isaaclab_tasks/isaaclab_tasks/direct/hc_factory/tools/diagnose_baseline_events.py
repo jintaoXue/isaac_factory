@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 from pathlib import Path
 
@@ -19,6 +20,23 @@ from factory_baselines.torch_trainer import (
     load_checkpoint,
 )
 from factory_bn_shared.remain import station_report_metrics
+
+
+def attach_node_catalog(report: dict, catalog_path: Path, manifest: dict) -> None:
+    with catalog_path.open(newline="", encoding="utf-8") as stream:
+        catalog = list(csv.DictReader(stream))
+    by_index = {int(node["node_index"]): node for node in catalog}
+    if len(by_index) != len(catalog) or set(by_index) != set(range(len(manifest["node_ids"]))):
+        raise ValueError("Node catalog indices do not match the dataset manifest")
+    for index, node_id in enumerate(manifest["node_ids"]):
+        node = by_index[index]
+        if (node["resource_id"] != node_id or node["resource_type"] !=
+                manifest["resource_types"][int(node["resource_type_index"])]):
+            raise ValueError("Node catalog identities/types differ from the dataset manifest")
+    for row in report["thresholds"]:
+        for node in row["per_node"]:
+            source = by_index[node["node_index"]]
+            node.update(resource_id=source["resource_id"], resource_type=source["resource_type"])
 
 
 def summarize_events(arrays: dict[str, np.ndarray], thresholds: list[float]) -> dict:
@@ -162,11 +180,7 @@ def main() -> None:
     chosen_threshold = float(checkpoint["metadata"]["event_report_threshold"])
     thresholds = sorted(set([*args.thresholds, chosen_threshold]))
     report = summarize_events(arrays, thresholds)
-    for row in report["thresholds"]:
-        for node in row["per_node"]:
-            index = node["node_index"]
-            node["resource_id"] = manifest["node_ids"][index]
-            node["resource_type"] = manifest["resource_types"][index]
+    attach_node_catalog(report, args.dataset_dir / "node_catalog.csv", manifest)
     report.update(
         split="validation", test_evaluated=False,
         checkpoint=str(args.checkpoint.resolve()), epoch=checkpoint["epoch"],

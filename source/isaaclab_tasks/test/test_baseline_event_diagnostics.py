@@ -1,16 +1,33 @@
 """Event diagnostics must partition misses without changing canonical metrics."""
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isaaclab_tasks/direct/hc_factory/tools"))
-from diagnose_baseline_events import summarize_events
+from diagnose_baseline_events import attach_node_catalog, summarize_events
 
 
 class TestEventDiagnostics(unittest.TestCase):
+    def test_catalog_types_are_not_indexed_by_node_position(self):
+        manifest = {"node_ids": ["a", "b", "c"], "resource_types": ["machine", "human"]}
+        report = {"thresholds": [{"per_node": [{"node_index": 2}]}]}
+        with tempfile.TemporaryDirectory() as directory:
+            catalog = Path(directory) / "node_catalog.csv"
+            catalog.write_text(
+                "node_index,resource_id,resource_type,resource_type_index\n"
+                "2,c,machine,0\n0,a,human,1\n1,b,machine,0\n", encoding="utf-8"
+            )
+            attach_node_catalog(report, catalog, manifest)
+            self.assertEqual(report["thresholds"][0]["per_node"][0]["resource_type"], "machine")
+            self.assertEqual(report["thresholds"][0]["per_node"][0]["resource_id"], "c")
+            manifest["node_ids"][2] = "different"
+            with self.assertRaisesRegex(ValueError, "identities/types"):
+                attach_node_catalog(report, catalog, manifest)
+
     def test_probability_and_timing_misses_are_disjoint(self):
         hot = np.zeros((1, 15, 4), dtype=np.float32)
         hot[0, :8, 0] = 1
