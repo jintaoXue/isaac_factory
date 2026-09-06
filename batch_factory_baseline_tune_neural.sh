@@ -37,6 +37,7 @@ TUNING_TAG="${TUNING_TAG:-$DEFAULT_TAG}"
 TUNING_DIR="${DATASET_DIR}/models/tuning/${TUNING_TAG}"
 TUNE_SEEDS="${TUNE_SEEDS:-42 43}"
 DEVICE="${DEVICE:-cuda:0}"
+PYTHON_BIN="${PYTHON_BIN:-python}"
 
 for required in dataset.pt dataset_manifest.json split_manifest.json; do
     if [ ! -f "${DATASET_DIR}/${required}" ]; then
@@ -64,7 +65,7 @@ run_candidate() {
         echo "============================================================"
         echo "${MODEL} candidate=${name} seed=${seed} validation-only"
         echo "============================================================"
-        python "${TOOLS_DIR}/${TOOL_NAME}" \
+        "$PYTHON_BIN" "${TOOLS_DIR}/${TOOL_NAME}" \
             --dataset_dir "$DATASET_DIR" \
             --output_dir "$output_dir" \
             --training_profile "${TUNING_TAG}_${name}" \
@@ -200,6 +201,6 @@ case "$MODEL" in
         ;;
 esac
 
-python "${TOOLS_DIR}/select_baseline_tuning.py" \
+"$PYTHON_BIN" "${TOOLS_DIR}/select_baseline_tuning.py" \
     --tuning_dir "$TUNING_DIR" \
     --expected_seeds $TUNE_SEEDS
