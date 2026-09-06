@@ -35,6 +35,15 @@ train/validation/test 交集分别为 92/17/25；本批数据未触发第 5 节�
 B3 首次启动在导入 PyTorch 阶段失败，未训练；脚本改为显式使用 `PYTHON_BIN` 后
 已成功训练，失败目录 `b3_search_v1` 保留，不计入模型候选分数。
 
+后续输入审计发现一个必须修复的偏移：`validation_jobs_anchor_diagnostic_20260906.json`
+记录 153/2572 个 validation 样本的 `jobs_remaining` 不一致。baseline 构建器取
+`jobs_remaining[position]`，对应第一未来窗口；主实验取 `position-1`，对应最后历史窗口。
+该问题不否定 episode split 审计，但说明 episode 一致不足以证明输入完全对齐。
+需要修正输入索引并重建派生张量，不需要重新采集 raw。现有结果只保留为开发期证据。
+B3/B5 当前完整轮继续保留；尚未启动的 B4 表示对照等待队列已撤下，避免再启动旧输入实验。
+`tools/audit_baseline_validation_contract.py` 用于继续核对 validation 的观测 X、时间锚点、
+mask、hot 和事件目标，不读取 test 指标；正式冻结前必须以修正数据通过实际审计。
+
 首次快照：[`baseline_validation_20260906_round1_partial.json`](baseline_validation_20260906_round1_partial.json)。
 导出时间为 2026-09-06 03:18:41 HKT，仅包含当时已完成的 76 次 validation-only 训练。
 此文件不表示所有排队任务已经完成；未读取 `metrics_test.json` 或综合 `metrics.json`。
@@ -167,5 +176,6 @@ B4 context/focal 整轮完成后，新增 `b4_representation_v1`，不改变数�
 工位身份绑定同一 manifest 的 node_ids，只支持当前已知工位，不据此声称跨布局泛化。
 预算保持 max_epochs=60、min_epochs=10、patience=10、batch=24、lr=3e-4、weight_decay=0.01。
 入口为 `bash batch_factory_baseline_tune_b4_representation.sh`；输出新目录，禁止覆盖旧结果。
+因输入时点偏移审计，本轮尚未实际启动，待修正数据后执行。
 实验开关用于正在执行的消融，不是旧版本兼容路径。最终冻结时应清理无收益的候选实现，
 历史实验的完整代码继续由 Git commit 保留。
