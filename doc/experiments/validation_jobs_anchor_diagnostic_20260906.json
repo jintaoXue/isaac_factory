@@ -1,0 +1,1232 @@
+{
+  "split": "validation",
+  "test_evaluated": false,
+  "sample_count": 2572,
+  "mismatch_count": 153,
+  "mismatches": [
+    {
+      "sample": 704,
+      "main_name": "extra_machine__episode_05",
+      "t": 49,
+      "baseline": 9.0,
+      "main_last_history": 10.0,
+      "main_first_future": 9.0
+    },
+    {
+      "sample": 721,
+      "main_name": "extra_machine__episode_05",
+      "t": 66,
+      "baseline": 8.0,
+      "main_last_history": 9.0,
+      "main_first_future": 8.0
+    },
+    {
+      "sample": 728,
+      "main_name": "extra_machine__episode_05",
+      "t": 73,
+      "baseline": 7.0,
+      "main_last_history": 8.0,
+      "main_first_future": 7.0
+    },
+    {
+      "sample": 735,
+      "main_name": "extra_machine__episode_05",
+      "t": 80,
+      "baseline": 6.0,
+      "main_last_history": 7.0,
+      "main_first_future": 6.0
+    },
+    {
+      "sample": 762,
+      "main_name": "extra_machine__episode_05",
+      "t": 107,
+      "baseline": 5.0,
+      "main_last_history": 6.0,
+      "main_first_future": 5.0
+    },
+    {
+      "sample": 778,
+      "main_name": "extra_machine__episode_05",
+      "t": 123,
+      "baseline": 4.0,
+      "main_last_history": 5.0,
+      "main_first_future": 4.0
+    },
+    {
+      "sample": 783,
+      "main_name": "extra_machine__episode_05",
+      "t": 128,
+      "baseline": 3.0,
+      "main_last_history": 4.0,
+      "main_first_future": 3.0
+    },
+    {
+      "sample": 795,
+      "main_name": "extra_machine__episode_05",
+      "t": 140,
+      "baseline": 2.0,
+      "main_last_history": 3.0,
+      "main_first_future": 2.0
+    },
+    {
+      "sample": 809,
+      "main_name": "extra_machine__episode_05",
+      "t": 154,
+      "baseline": 1.0,
+      "main_last_history": 2.0,
+      "main_first_future": 1.0
+    },
+    {
+      "sample": 3364,
+      "main_name": "extra_human__episode_09",
+      "t": 53,
+      "baseline": 9.0,
+      "main_last_history": 10.0,
+      "main_first_future": 9.0
+    },
+    {
+      "sample": 3392,
+      "main_name": "extra_human__episode_09",
+      "t": 81,
+      "baseline": 8.0,
+      "main_last_history": 9.0,
+      "main_first_future": 8.0
+    },
+    {
+      "sample": 3395,
+      "main_name": "extra_human__episode_09",
+      "t": 84,
+      "baseline": 7.0,
+      "main_last_history": 8.0,
+      "main_first_future": 7.0
+    },
+    {
+      "sample": 3442,
+      "main_name": "extra_human__episode_09",
+      "t": 131,
+      "baseline": 6.0,
+      "main_last_history": 7.0,
+      "main_first_future": 6.0
+    },
+    {
+      "sample": 3468,
+      "main_name": "extra_human__episode_09",
+      "t": 157,
+      "baseline": 5.0,
+      "main_last_history": 6.0,
+      "main_first_future": 5.0
+    },
+    {
+      "sample": 3469,
+      "main_name": "extra_human__episode_09",
+      "t": 158,
+      "baseline": 4.0,
+      "main_last_history": 5.0,
+      "main_first_future": 4.0
+    },
+    {
+      "sample": 3512,
+      "main_name": "extra_human__episode_09",
+      "t": 201,
+      "baseline": 3.0,
+      "main_last_history": 4.0,
+      "main_first_future": 3.0
+    },
+    {
+      "sample": 3533,
+      "main_name": "extra_human__episode_09",
+      "t": 222,
+      "baseline": 2.0,
+      "main_last_history": 3.0,
+      "main_first_future": 2.0
+    },
+    {
+      "sample": 3555,
+      "main_name": "extra_human__episode_09",
+      "t": 244,
+      "baseline": 1.0,
+      "main_last_history": 2.0,
+      "main_first_future": 1.0
+    },
+    {
+      "sample": 4019,
+      "main_name": "extra_logistics__episode_03",
+      "t": 46,
+      "baseline": 9.0,
+      "main_last_history": 10.0,
+      "main_first_future": 9.0
+    },
+    {
+      "sample": 4027,
+      "main_name": "extra_logistics__episode_03",
+      "t": 54,
+      "baseline": 8.0,
+      "main_last_history": 9.0,
+      "main_first_future": 8.0
+    },
+    {
+      "sample": 4035,
+      "main_name": "extra_logistics__episode_03",
+      "t": 62,
+      "baseline": 7.0,
+      "main_last_history": 8.0,
+      "main_first_future": 7.0
+    },
+    {
+      "sample": 4053,
+      "main_name": "extra_logistics__episode_03",
+      "t": 80,
+      "baseline": 6.0,
+      "main_last_history": 7.0,
+      "main_first_future": 6.0
+    },
+    {
+      "sample": 4072,
+      "main_name": "extra_logistics__episode_03",
+      "t": 99,
+      "baseline": 5.0,
+      "main_last_history": 6.0,
+      "main_first_future": 5.0
+    },
+    {
+      "sample": 4096,
+      "main_name": "extra_logistics__episode_03",
+      "t": 123,
+      "baseline": 4.0,
+      "main_last_history": 5.0,
+      "main_first_future": 4.0
+    },
+    {
+      "sample": 4119,
+      "main_name": "extra_logistics__episode_03",
+      "t": 146,
+      "baseline": 3.0,
+      "main_last_history": 4.0,
+      "main_first_future": 3.0
+    },
+    {
+      "sample": 4123,
+      "main_name": "extra_logistics__episode_03",
+      "t": 150,
+      "baseline": 2.0,
+      "main_last_history": 3.0,
+      "main_first_future": 2.0
+    },
+    {
+      "sample": 4135,
+      "main_name": "extra_logistics__episode_03",
+      "t": 162,
+      "baseline": 1.0,
+      "main_last_history": 2.0,
+      "main_first_future": 1.0
+    },
+    {
+      "sample": 5100,
+      "main_name": "extra_material__episode_00",
+      "t": 62,
+      "baseline": 9.0,
+      "main_last_history": 10.0,
+      "main_first_future": 9.0
+    },
+    {
+      "sample": 5102,
+      "main_name": "extra_material__episode_00",
+      "t": 64,
+      "baseline": 8.0,
+      "main_last_history": 9.0,
+      "main_first_future": 8.0
+    },
+    {
+      "sample": 5108,
+      "main_name": "extra_material__episode_00",
+      "t": 70,
+      "baseline": 7.0,
+      "main_last_history": 8.0,
+      "main_first_future": 7.0
+    },
+    {
+      "sample": 5118,
+      "main_name": "extra_material__episode_00",
+      "t": 80,
+      "baseline": 6.0,
+      "main_last_history": 7.0,
+      "main_first_future": 6.0
+    },
+    {
+      "sample": 5126,
+      "main_name": "extra_material__episode_00",
+      "t": 88,
+      "baseline": 5.0,
+      "main_last_history": 6.0,
+      "main_first_future": 5.0
+    },
+    {
+      "sample": 5141,
+      "main_name": "extra_material__episode_00",
+      "t": 103,
+      "baseline": 4.0,
+      "main_last_history": 5.0,
+      "main_first_future": 4.0
+    },
+    {
+      "sample": 5159,
+      "main_name": "extra_material__episode_00",
+      "t": 121,
+      "baseline": 3.0,
+      "main_last_history": 4.0,
+      "main_first_future": 3.0
+    },
+    {
+      "sample": 5170,
+      "main_name": "extra_material__episode_00",
+      "t": 132,
+      "baseline": 2.0,
+      "main_last_history": 3.0,
+      "main_first_future": 2.0
+    },
+    {
+      "sample": 5175,
+      "main_name": "extra_material__episode_00",
+      "t": 137,
+      "baseline": 1.0,
+      "main_last_history": 2.0,
+      "main_first_future": 1.0
+    },
+    {
+      "sample": 7595,
+      "main_name": "n10_machine1.0__episode_11",
+      "t": 58,
+      "baseline": 9.0,
+      "main_last_history": 10.0,
+      "main_first_future": 9.0
+    },
+    {
+      "sample": 7602,
+      "main_name": "n10_machine1.0__episode_11",
+      "t": 65,
+      "baseline": 8.0,
+      "main_last_history": 9.0,
+      "main_first_future": 8.0
+    },
+    {
+      "sample": 7609,
+      "main_name": "n10_machine1.0__episode_11",
+      "t": 72,
+      "baseline": 7.0,
+      "main_last_history": 8.0,
+      "main_first_future": 7.0
+    },
+    {
+      "sample": 7617,
+      "main_name": "n10_machine1.0__episode_11",
+      "t": 80,
+      "baseline": 6.0,
+      "main_last_history": 7.0,
+      "main_first_future": 6.0
+    },
+    {
+      "sample": 7645,
+      "main_name": "n10_machine1.0__episode_11",
+      "t": 108,
+      "baseline": 5.0,
+      "main_last_history": 6.0,
+      "main_first_future": 5.0
+    },
+    {
+      "sample": 7663,
+      "main_name": "n10_machine1.0__episode_11",
+      "t": 126,
+      "baseline": 4.0,
+      "main_last_history": 5.0,
+      "main_first_future": 4.0
+    },
+    {
+      "sample": 7668,
+      "main_name": "n10_machine1.0__episode_11",
+      "t": 131,
+      "baseline": 3.0,
+      "main_last_history": 4.0,
+      "main_first_future": 3.0
+    },
+    {
+      "sample": 7681,
+      "main_name": "n10_machine1.0__episode_11",
+      "t": 144,
+      "baseline": 2.0,
+      "main_last_history": 3.0,
+      "main_first_future": 2.0
+    },
+    {
+      "sample": 7693,
+      "main_name": "n10_machine1.0__episode_11",
+      "t": 156,
+      "baseline": 1.0,
+      "main_last_history": 2.0,
+      "main_first_future": 1.0
+    },
+    {
+      "sample": 7855,
+      "main_name": "n10_machine1.0__episode_13",
+      "t": 41,
+      "baseline": 9.0,
+      "main_last_history": 10.0,
+      "main_first_future": 9.0
+    },
+    {
+      "sample": 7889,
+      "main_name": "n10_machine1.0__episode_13",
+      "t": 75,
+      "baseline": 8.0,
+      "main_last_history": 9.0,
+      "main_first_future": 8.0
+    },
+    {
+      "sample": 7897,
+      "main_name": "n10_machine1.0__episode_13",
+      "t": 83,
+      "baseline": 7.0,
+      "main_last_history": 8.0,
+      "main_first_future": 7.0
+    },
+    {
+      "sample": 7910,
+      "main_name": "n10_machine1.0__episode_13",
+      "t": 96,
+      "baseline": 6.0,
+      "main_last_history": 7.0,
+      "main_first_future": 6.0
+    },
+    {
+      "sample": 7938,
+      "main_name": "n10_machine1.0__episode_13",
+      "t": 124,
+      "baseline": 5.0,
+      "main_last_history": 6.0,
+      "main_first_future": 5.0
+    },
+    {
+      "sample": 7947,
+      "main_name": "n10_machine1.0__episode_13",
+      "t": 133,
+      "baseline": 4.0,
+      "main_last_history": 5.0,
+      "main_first_future": 4.0
+    },
+    {
+      "sample": 7952,
+      "main_name": "n10_machine1.0__episode_13",
+      "t": 138,
+      "baseline": 3.0,
+      "main_last_history": 4.0,
+      "main_first_future": 3.0
+    },
+    {
+      "sample": 7957,
+      "main_name": "n10_machine1.0__episode_13",
+      "t": 143,
+      "baseline": 2.0,
+      "main_last_history": 3.0,
+      "main_first_future": 2.0
+    },
+    {
+      "sample": 7980,
+      "main_name": "n10_machine1.0__episode_13",
+      "t": 166,
+      "baseline": 1.0,
+      "main_last_history": 2.0,
+      "main_first_future": 1.0
+    },
+    {
+      "sample": 8425,
+      "main_name": "n10_machine1.0__episode_17",
+      "t": 56,
+      "baseline": 9.0,
+      "main_last_history": 10.0,
+      "main_first_future": 9.0
+    },
+    {
+      "sample": 8441,
+      "main_name": "n10_machine1.0__episode_17",
+      "t": 72,
+      "baseline": 8.0,
+      "main_last_history": 9.0,
+      "main_first_future": 8.0
+    },
+    {
+      "sample": 8446,
+      "main_name": "n10_machine1.0__episode_17",
+      "t": 77,
+      "baseline": 7.0,
+      "main_last_history": 8.0,
+      "main_first_future": 7.0
+    },
+    {
+      "sample": 8469,
+      "main_name": "n10_machine1.0__episode_17",
+      "t": 100,
+      "baseline": 6.0,
+      "main_last_history": 7.0,
+      "main_first_future": 6.0
+    },
+    {
+      "sample": 8484,
+      "main_name": "n10_machine1.0__episode_17",
+      "t": 115,
+      "baseline": 5.0,
+      "main_last_history": 6.0,
+      "main_first_future": 5.0
+    },
+    {
+      "sample": 8501,
+      "main_name": "n10_machine1.0__episode_17",
+      "t": 132,
+      "baseline": 4.0,
+      "main_last_history": 5.0,
+      "main_first_future": 4.0
+    },
+    {
+      "sample": 8523,
+      "main_name": "n10_machine1.0__episode_17",
+      "t": 154,
+      "baseline": 3.0,
+      "main_last_history": 4.0,
+      "main_first_future": 3.0
+    },
+    {
+      "sample": 8531,
+      "main_name": "n10_machine1.0__episode_17",
+      "t": 162,
+      "baseline": 2.0,
+      "main_last_history": 3.0,
+      "main_first_future": 2.0
+    },
+    {
+      "sample": 8538,
+      "main_name": "n10_machine1.0__episode_17",
+      "t": 169,
+      "baseline": 1.0,
+      "main_last_history": 2.0,
+      "main_first_future": 1.0
+    },
+    {
+      "sample": 10194,
+      "main_name": "n10_human1.0__episode_06",
+      "t": 49,
+      "baseline": 9.0,
+      "main_last_history": 10.0,
+      "main_first_future": 9.0
+    },
+    {
+      "sample": 10219,
+      "main_name": "n10_human1.0__episode_06",
+      "t": 74,
+      "baseline": 8.0,
+      "main_last_history": 9.0,
+      "main_first_future": 8.0
+    },
+    {
+      "sample": 10238,
+      "main_name": "n10_human1.0__episode_06",
+      "t": 93,
+      "baseline": 7.0,
+      "main_last_history": 8.0,
+      "main_first_future": 7.0
+    },
+    {
+      "sample": 10250,
+      "main_name": "n10_human1.0__episode_06",
+      "t": 105,
+      "baseline": 6.0,
+      "main_last_history": 7.0,
+      "main_first_future": 6.0
+    },
+    {
+      "sample": 10312,
+      "main_name": "n10_human1.0__episode_06",
+      "t": 167,
+      "baseline": 5.0,
+      "main_last_history": 6.0,
+      "main_first_future": 5.0
+    },
+    {
+      "sample": 10322,
+      "main_name": "n10_human1.0__episode_06",
+      "t": 177,
+      "baseline": 4.0,
+      "main_last_history": 5.0,
+      "main_first_future": 4.0
+    },
+    {
+      "sample": 10329,
+      "main_name": "n10_human1.0__episode_06",
+      "t": 184,
+      "baseline": 3.0,
+      "main_last_history": 4.0,
+      "main_first_future": 3.0
+    },
+    {
+      "sample": 10367,
+      "main_name": "n10_human1.0__episode_06",
+      "t": 222,
+      "baseline": 2.0,
+      "main_last_history": 3.0,
+      "main_first_future": 2.0
+    },
+    {
+      "sample": 10385,
+      "main_name": "n10_human1.0__episode_06",
+      "t": 240,
+      "baseline": 1.0,
+      "main_last_history": 2.0,
+      "main_first_future": 1.0
+    },
+    {
+      "sample": 11067,
+      "main_name": "n10_human1.0__episode_10",
+      "t": 53,
+      "baseline": 9.0,
+      "main_last_history": 10.0,
+      "main_first_future": 9.0
+    },
+    {
+      "sample": 11097,
+      "main_name": "n10_human1.0__episode_10",
+      "t": 83,
+      "baseline": 8.0,
+      "main_last_history": 9.0,
+      "main_first_future": 8.0
+    },
+    {
+      "sample": 11106,
+      "main_name": "n10_human1.0__episode_10",
+      "t": 92,
+      "baseline": 7.0,
+      "main_last_history": 8.0,
+      "main_first_future": 7.0
+    },
+    {
+      "sample": 11119,
+      "main_name": "n10_human1.0__episode_10",
+      "t": 105,
+      "baseline": 6.0,
+      "main_last_history": 7.0,
+      "main_first_future": 6.0
+    },
+    {
+      "sample": 11169,
+      "main_name": "n10_human1.0__episode_10",
+      "t": 155,
+      "baseline": 5.0,
+      "main_last_history": 6.0,
+      "main_first_future": 5.0
+    },
+    {
+      "sample": 11182,
+      "main_name": "n10_human1.0__episode_10",
+      "t": 168,
+      "baseline": 4.0,
+      "main_last_history": 5.0,
+      "main_first_future": 4.0
+    },
+    {
+      "sample": 11190,
+      "main_name": "n10_human1.0__episode_10",
+      "t": 176,
+      "baseline": 3.0,
+      "main_last_history": 4.0,
+      "main_first_future": 3.0
+    },
+    {
+      "sample": 11235,
+      "main_name": "n10_human1.0__episode_10",
+      "t": 221,
+      "baseline": 2.0,
+      "main_last_history": 3.0,
+      "main_first_future": 2.0
+    },
+    {
+      "sample": 11255,
+      "main_name": "n10_human1.0__episode_10",
+      "t": 241,
+      "baseline": 1.0,
+      "main_last_history": 2.0,
+      "main_first_future": 1.0
+    },
+    {
+      "sample": 12395,
+      "main_name": "n10_human1.0__episode_16",
+      "t": 49,
+      "baseline": 9.0,
+      "main_last_history": 10.0,
+      "main_first_future": 9.0
+    },
+    {
+      "sample": 12416,
+      "main_name": "n10_human1.0__episode_16",
+      "t": 70,
+      "baseline": 8.0,
+      "main_last_history": 9.0,
+      "main_first_future": 8.0
+    },
+    {
+      "sample": 12429,
+      "main_name": "n10_human1.0__episode_16",
+      "t": 83,
+      "baseline": 7.0,
+      "main_last_history": 8.0,
+      "main_first_future": 7.0
+    },
+    {
+      "sample": 12464,
+      "main_name": "n10_human1.0__episode_16",
+      "t": 118,
+      "baseline": 6.0,
+      "main_last_history": 7.0,
+      "main_first_future": 6.0
+    },
+    {
+      "sample": 12500,
+      "main_name": "n10_human1.0__episode_16",
+      "t": 154,
+      "baseline": 5.0,
+      "main_last_history": 6.0,
+      "main_first_future": 5.0
+    },
+    {
+      "sample": 12512,
+      "main_name": "n10_human1.0__episode_16",
+      "t": 166,
+      "baseline": 4.0,
+      "main_last_history": 5.0,
+      "main_first_future": 4.0
+    },
+    {
+      "sample": 12524,
+      "main_name": "n10_human1.0__episode_16",
+      "t": 178,
+      "baseline": 3.0,
+      "main_last_history": 4.0,
+      "main_first_future": 3.0
+    },
+    {
+      "sample": 12570,
+      "main_name": "n10_human1.0__episode_16",
+      "t": 224,
+      "baseline": 2.0,
+      "main_last_history": 3.0,
+      "main_first_future": 2.0
+    },
+    {
+      "sample": 12585,
+      "main_name": "n10_human1.0__episode_16",
+      "t": 239,
+      "baseline": 1.0,
+      "main_last_history": 2.0,
+      "main_first_future": 1.0
+    },
+    {
+      "sample": 13950,
+      "main_name": "n10_logistics1.0__episode_05",
+      "t": 47,
+      "baseline": 9.0,
+      "main_last_history": 10.0,
+      "main_first_future": 9.0
+    },
+    {
+      "sample": 13957,
+      "main_name": "n10_logistics1.0__episode_05",
+      "t": 54,
+      "baseline": 8.0,
+      "main_last_history": 9.0,
+      "main_first_future": 8.0
+    },
+    {
+      "sample": 13964,
+      "main_name": "n10_logistics1.0__episode_05",
+      "t": 61,
+      "baseline": 7.0,
+      "main_last_history": 8.0,
+      "main_first_future": 7.0
+    },
+    {
+      "sample": 13994,
+      "main_name": "n10_logistics1.0__episode_05",
+      "t": 91,
+      "baseline": 6.0,
+      "main_last_history": 7.0,
+      "main_first_future": 6.0
+    },
+    {
+      "sample": 14014,
+      "main_name": "n10_logistics1.0__episode_05",
+      "t": 111,
+      "baseline": 5.0,
+      "main_last_history": 6.0,
+      "main_first_future": 5.0
+    },
+    {
+      "sample": 14029,
+      "main_name": "n10_logistics1.0__episode_05",
+      "t": 126,
+      "baseline": 4.0,
+      "main_last_history": 5.0,
+      "main_first_future": 4.0
+    },
+    {
+      "sample": 14040,
+      "main_name": "n10_logistics1.0__episode_05",
+      "t": 137,
+      "baseline": 3.0,
+      "main_last_history": 4.0,
+      "main_first_future": 3.0
+    },
+    {
+      "sample": 14071,
+      "main_name": "n10_logistics1.0__episode_05",
+      "t": 168,
+      "baseline": 2.0,
+      "main_last_history": 3.0,
+      "main_first_future": 2.0
+    },
+    {
+      "sample": 14076,
+      "main_name": "n10_logistics1.0__episode_05",
+      "t": 173,
+      "baseline": 1.0,
+      "main_last_history": 2.0,
+      "main_first_future": 1.0
+    },
+    {
+      "sample": 14252,
+      "main_name": "n10_logistics1.0__episode_07",
+      "t": 45,
+      "baseline": 9.0,
+      "main_last_history": 10.0,
+      "main_first_future": 9.0
+    },
+    {
+      "sample": 14261,
+      "main_name": "n10_logistics1.0__episode_07",
+      "t": 54,
+      "baseline": 8.0,
+      "main_last_history": 9.0,
+      "main_first_future": 8.0
+    },
+    {
+      "sample": 14269,
+      "main_name": "n10_logistics1.0__episode_07",
+      "t": 62,
+      "baseline": 7.0,
+      "main_last_history": 8.0,
+      "main_first_future": 7.0
+    },
+    {
+      "sample": 14298,
+      "main_name": "n10_logistics1.0__episode_07",
+      "t": 91,
+      "baseline": 6.0,
+      "main_last_history": 7.0,
+      "main_first_future": 6.0
+    },
+    {
+      "sample": 14320,
+      "main_name": "n10_logistics1.0__episode_07",
+      "t": 113,
+      "baseline": 5.0,
+      "main_last_history": 6.0,
+      "main_first_future": 5.0
+    },
+    {
+      "sample": 14333,
+      "main_name": "n10_logistics1.0__episode_07",
+      "t": 126,
+      "baseline": 4.0,
+      "main_last_history": 5.0,
+      "main_first_future": 4.0
+    },
+    {
+      "sample": 14343,
+      "main_name": "n10_logistics1.0__episode_07",
+      "t": 136,
+      "baseline": 3.0,
+      "main_last_history": 4.0,
+      "main_first_future": 3.0
+    },
+    {
+      "sample": 14370,
+      "main_name": "n10_logistics1.0__episode_07",
+      "t": 163,
+      "baseline": 2.0,
+      "main_last_history": 3.0,
+      "main_first_future": 2.0
+    },
+    {
+      "sample": 14379,
+      "main_name": "n10_logistics1.0__episode_07",
+      "t": 172,
+      "baseline": 1.0,
+      "main_last_history": 2.0,
+      "main_first_future": 1.0
+    },
+    {
+      "sample": 15423,
+      "main_name": "n10_logistics1.0__episode_15",
+      "t": 46,
+      "baseline": 9.0,
+      "main_last_history": 10.0,
+      "main_first_future": 9.0
+    },
+    {
+      "sample": 15432,
+      "main_name": "n10_logistics1.0__episode_15",
+      "t": 55,
+      "baseline": 8.0,
+      "main_last_history": 9.0,
+      "main_first_future": 8.0
+    },
+    {
+      "sample": 15440,
+      "main_name": "n10_logistics1.0__episode_15",
+      "t": 63,
+      "baseline": 7.0,
+      "main_last_history": 8.0,
+      "main_first_future": 7.0
+    },
+    {
+      "sample": 15458,
+      "main_name": "n10_logistics1.0__episode_15",
+      "t": 81,
+      "baseline": 6.0,
+      "main_last_history": 7.0,
+      "main_first_future": 6.0
+    },
+    {
+      "sample": 15477,
+      "main_name": "n10_logistics1.0__episode_15",
+      "t": 100,
+      "baseline": 5.0,
+      "main_last_history": 6.0,
+      "main_first_future": 5.0
+    },
+    {
+      "sample": 15496,
+      "main_name": "n10_logistics1.0__episode_15",
+      "t": 119,
+      "baseline": 4.0,
+      "main_last_history": 5.0,
+      "main_first_future": 4.0
+    },
+    {
+      "sample": 15506,
+      "main_name": "n10_logistics1.0__episode_15",
+      "t": 129,
+      "baseline": 3.0,
+      "main_last_history": 4.0,
+      "main_first_future": 3.0
+    },
+    {
+      "sample": 15518,
+      "main_name": "n10_logistics1.0__episode_15",
+      "t": 141,
+      "baseline": 2.0,
+      "main_last_history": 3.0,
+      "main_first_future": 2.0
+    },
+    {
+      "sample": 15533,
+      "main_name": "n10_logistics1.0__episode_15",
+      "t": 156,
+      "baseline": 1.0,
+      "main_last_history": 2.0,
+      "main_first_future": 1.0
+    },
+    {
+      "sample": 16471,
+      "main_name": "n10_material1.0__episode_04",
+      "t": 46,
+      "baseline": 9.0,
+      "main_last_history": 10.0,
+      "main_first_future": 9.0
+    },
+    {
+      "sample": 16475,
+      "main_name": "n10_material1.0__episode_04",
+      "t": 50,
+      "baseline": 8.0,
+      "main_last_history": 9.0,
+      "main_first_future": 8.0
+    },
+    {
+      "sample": 16495,
+      "main_name": "n10_material1.0__episode_04",
+      "t": 70,
+      "baseline": 7.0,
+      "main_last_history": 8.0,
+      "main_first_future": 7.0
+    },
+    {
+      "sample": 16499,
+      "main_name": "n10_material1.0__episode_04",
+      "t": 74,
+      "baseline": 6.0,
+      "main_last_history": 7.0,
+      "main_first_future": 6.0
+    },
+    {
+      "sample": 16510,
+      "main_name": "n10_material1.0__episode_04",
+      "t": 85,
+      "baseline": 5.0,
+      "main_last_history": 6.0,
+      "main_first_future": 5.0
+    },
+    {
+      "sample": 16527,
+      "main_name": "n10_material1.0__episode_04",
+      "t": 102,
+      "baseline": 4.0,
+      "main_last_history": 5.0,
+      "main_first_future": 4.0
+    },
+    {
+      "sample": 16538,
+      "main_name": "n10_material1.0__episode_04",
+      "t": 113,
+      "baseline": 3.0,
+      "main_last_history": 4.0,
+      "main_first_future": 3.0
+    },
+    {
+      "sample": 16546,
+      "main_name": "n10_material1.0__episode_04",
+      "t": 121,
+      "baseline": 2.0,
+      "main_last_history": 3.0,
+      "main_first_future": 2.0
+    },
+    {
+      "sample": 16554,
+      "main_name": "n10_material1.0__episode_04",
+      "t": 129,
+      "baseline": 1.0,
+      "main_last_history": 2.0,
+      "main_first_future": 1.0
+    },
+    {
+      "sample": 16931,
+      "main_name": "n10_material1.0__episode_09",
+      "t": 59,
+      "baseline": 9.0,
+      "main_last_history": 10.0,
+      "main_first_future": 9.0
+    },
+    {
+      "sample": 16939,
+      "main_name": "n10_material1.0__episode_09",
+      "t": 67,
+      "baseline": 8.0,
+      "main_last_history": 9.0,
+      "main_first_future": 8.0
+    },
+    {
+      "sample": 16947,
+      "main_name": "n10_material1.0__episode_09",
+      "t": 75,
+      "baseline": 7.0,
+      "main_last_history": 8.0,
+      "main_first_future": 7.0
+    },
+    {
+      "sample": 16953,
+      "main_name": "n10_material1.0__episode_09",
+      "t": 81,
+      "baseline": 6.0,
+      "main_last_history": 7.0,
+      "main_first_future": 6.0
+    },
+    {
+      "sample": 16967,
+      "main_name": "n10_material1.0__episode_09",
+      "t": 95,
+      "baseline": 5.0,
+      "main_last_history": 6.0,
+      "main_first_future": 5.0
+    },
+    {
+      "sample": 16979,
+      "main_name": "n10_material1.0__episode_09",
+      "t": 107,
+      "baseline": 4.0,
+      "main_last_history": 5.0,
+      "main_first_future": 4.0
+    },
+    {
+      "sample": 16990,
+      "main_name": "n10_material1.0__episode_09",
+      "t": 118,
+      "baseline": 3.0,
+      "main_last_history": 4.0,
+      "main_first_future": 3.0
+    },
+    {
+      "sample": 17004,
+      "main_name": "n10_material1.0__episode_09",
+      "t": 132,
+      "baseline": 2.0,
+      "main_last_history": 3.0,
+      "main_first_future": 2.0
+    },
+    {
+      "sample": 17009,
+      "main_name": "n10_material1.0__episode_09",
+      "t": 137,
+      "baseline": 1.0,
+      "main_last_history": 2.0,
+      "main_first_future": 1.0
+    },
+    {
+      "sample": 18442,
+      "main_name": "material\u91cd\u91c7__episode_05",
+      "t": 52,
+      "baseline": 9.0,
+      "main_last_history": 10.0,
+      "main_first_future": 9.0
+    },
+    {
+      "sample": 18453,
+      "main_name": "material\u91cd\u91c7__episode_05",
+      "t": 63,
+      "baseline": 8.0,
+      "main_last_history": 9.0,
+      "main_first_future": 8.0
+    },
+    {
+      "sample": 18457,
+      "main_name": "material\u91cd\u91c7__episode_05",
+      "t": 67,
+      "baseline": 7.0,
+      "main_last_history": 8.0,
+      "main_first_future": 7.0
+    },
+    {
+      "sample": 18462,
+      "main_name": "material\u91cd\u91c7__episode_05",
+      "t": 72,
+      "baseline": 6.0,
+      "main_last_history": 7.0,
+      "main_first_future": 6.0
+    },
+    {
+      "sample": 18467,
+      "main_name": "material\u91cd\u91c7__episode_05",
+      "t": 77,
+      "baseline": 5.0,
+      "main_last_history": 6.0,
+      "main_first_future": 5.0
+    },
+    {
+      "sample": 18488,
+      "main_name": "material\u91cd\u91c7__episode_05",
+      "t": 98,
+      "baseline": 4.0,
+      "main_last_history": 5.0,
+      "main_first_future": 4.0
+    },
+    {
+      "sample": 18502,
+      "main_name": "material\u91cd\u91c7__episode_05",
+      "t": 112,
+      "baseline": 3.0,
+      "main_last_history": 4.0,
+      "main_first_future": 3.0
+    },
+    {
+      "sample": 18511,
+      "main_name": "material\u91cd\u91c7__episode_05",
+      "t": 121,
+      "baseline": 2.0,
+      "main_last_history": 3.0,
+      "main_first_future": 2.0
+    },
+    {
+      "sample": 18517,
+      "main_name": "material\u91cd\u91c7__episode_05",
+      "t": 127,
+      "baseline": 1.0,
+      "main_last_history": 2.0,
+      "main_first_future": 1.0
+    },
+    {
+      "sample": 18763,
+      "main_name": "material\u91cd\u91c7__episode_08",
+      "t": 46,
+      "baseline": 9.0,
+      "main_last_history": 10.0,
+      "main_first_future": 9.0
+    },
+    {
+      "sample": 18780,
+      "main_name": "material\u91cd\u91c7__episode_08",
+      "t": 63,
+      "baseline": 8.0,
+      "main_last_history": 9.0,
+      "main_first_future": 8.0
+    },
+    {
+      "sample": 18791,
+      "main_name": "material\u91cd\u91c7__episode_08",
+      "t": 74,
+      "baseline": 7.0,
+      "main_last_history": 8.0,
+      "main_first_future": 7.0
+    },
+    {
+      "sample": 18800,
+      "main_name": "material\u91cd\u91c7__episode_08",
+      "t": 83,
+      "baseline": 6.0,
+      "main_last_history": 7.0,
+      "main_first_future": 6.0
+    },
+    {
+      "sample": 18809,
+      "main_name": "material\u91cd\u91c7__episode_08",
+      "t": 92,
+      "baseline": 5.0,
+      "main_last_history": 6.0,
+      "main_first_future": 5.0
+    },
+    {
+      "sample": 18816,
+      "main_name": "material\u91cd\u91c7__episode_08",
+      "t": 99,
+      "baseline": 4.0,
+      "main_last_history": 5.0,
+      "main_first_future": 4.0
+    },
+    {
+      "sample": 18824,
+      "main_name": "material\u91cd\u91c7__episode_08",
+      "t": 107,
+      "baseline": 3.0,
+      "main_last_history": 4.0,
+      "main_first_future": 3.0
+    },
+    {
+      "sample": 18839,
+      "main_name": "material\u91cd\u91c7__episode_08",
+      "t": 122,
+      "baseline": 2.0,
+      "main_last_history": 3.0,
+      "main_first_future": 2.0
+    },
+    {
+      "sample": 18843,
+      "main_name": "material\u91cd\u91c7__episode_08",
+      "t": 126,
+      "baseline": 1.0,
+      "main_last_history": 2.0,
+      "main_first_future": 1.0
+    }
+  ]
+}
