@@ -5,6 +5,7 @@ set -euo pipefail
 # See docs/experiment_protocol.md §1c.
 #
 # Usage:
+#   ./run_2026_journal_experiments.sh E0 [cuda:0] [--dry-run]
 #   ./run_2026_journal_experiments.sh T0|T1|T1R|T1RH [cuda:0]
 #   HC_LOAD_DIR=... ./run_2026_journal_experiments.sh eval-T1 [cuda:0]
 #   ./run_2026_journal_experiments.sh baselines [cuda:0]
@@ -33,6 +34,9 @@ usage() {
   T1RH    T1R + hierarchical credit + B-score
 
 评测:
+  E0 [cuda:N] [--dry-run]
+          固定 step1290000，N10/K10/T40000，seed 42–51 各 1 局，epsilon=0
+          默认 checkpoints/E0_T0_step1290000；HC_E0_LOAD_DIR 可指定目录
   eval-T0 | eval-T1 | eval-T1R | eval-T1RH
           需 HC_LOAD_DIR；可选 HC_LOAD_STEP / HC_EVAL_STEPS
   hier-eval / hier-eval-n16 / hier-eval-n10
@@ -80,7 +84,83 @@ run_eval_variant() {
     run_hier_eval
 }
 
+run_e0_eval() {
+    # Fixed E0 protocol; do not inherit legacy experiment settings.
+    local repo_root load_dir head dry_run="${3:-}"
+    repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
+    cd "${repo_root}"
+    load_dir="${HC_E0_LOAD_DIR:-${repo_root}/checkpoints/E0_T0_step1290000}"
+    if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
+        echo "错误: 设备需为 cuda:N 或 cpu" >&2
+        return 1
+    fi
+    if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
+        echo "用法: $0 E0 [cuda:N] [--dry-run]" >&2
+        return 1
+    fi
+    # Account configuration only; never print credentials.
+    if [[ "${dry_run}" != --dry-run ]]; then
+        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
+        if [[ -f "${local_env}" ]]; then
+            set -a
+            source "${local_env}"
+            set +a
+        fi
+        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
+            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
+        fi
+    fi
+    export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
+    export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
+    # train.py reads this variable independently of Hydra.
+    export HC_WARMSTART=""
+    local -a cmd=(
+        python train.py --task HRTPaHC-v1 --algo hier
+        --device "${DEVICE}" --num_envs 1 --headless --seed 42
+        --test --test_times 1 --test_seeds 42,43,44,45,46,47,48,49,50,51
+        --test_epsilon 0 --train_n_products 10 --max_parallel_cd_dispatch 10
+        --load_dir "${load_dir}" --load_step 1290000
+        --wandb_activate --wandb_project HcFactory_TPA_Eval
+        --wandb_name Hier4TPA-E0-N10-S42-step1290000-eval
+        --ftg_thresh_phy 0.95
+        agent.params.config.t_max_anchor=64000
+        agent.params.config.max_episodic_steps=40000
+        agent.params.config.parallel_producing_limit=10
+        agent.params.config.c_forbid_none_mode=always
+        agent.params.config.curriculum=false
+        agent.params.config.explore=false
+        agent.params.config.explore_catalog=false
+        agent.params.config.catalog_collect=false
+        agent.params.config.oru=false
+        agent.params.config.prioritized_replay=false
+        agent.params.config.dueling_dqn=false
+        agent.params.config.noisy_net=false
+        agent.params.config.hierarchical_credit=false
+        agent.params.config.b_score_rl=false
+        agent.params.config.env_rule_based_exploration=false
+        'agent.params.config.warmstart=""'
+        'agent.params.config.load_name=""'
+    )
+    # Horizon: 64000 * 10 / 16 = 40000. Keep anchor=64000.
+    # One episode per seed reapplies the N10 order on every evaluated reset.
+    echo "[E0] N=10 K=10 dispatch=10 T=40000 epsilon=0; seeds=42..51 x1; step=1290000"
+    echo "[E0] checkpoint=${load_dir}/nn; project=HcFactory_TPA_Eval"
+    if [[ "${dry_run}" == --dry-run ]]; then
+        printf '%q ' "${cmd[@]}"
+        printf '\n'
+        return 0
+    fi
+    for head in state_encoder agent_A agent_B agent_C agent_D_human agent_D_robot; do
+        if [[ ! -s "${load_dir}/nn/${head}_step_1290000.pth" ]]; then
+            echo "错误: 缺少或为空: ${load_dir}/nn/${head}_step_1290000.pth" >&2
+            return 1
+        fi
+    done
+    "${cmd[@]}"
+}
+
 case "${MODE}" in
+    E0) run_e0_eval "$@" ;;
     ""|-h|--help|help) usage; exit 0 ;;
     T0) ./batch_train.sh T0 "${DEVICE}" ;;
     T1|train) ./batch_train.sh T1 "${DEVICE}" ;;

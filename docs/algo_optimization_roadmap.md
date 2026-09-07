@@ -2,21 +2,30 @@
 
 > 对照实现：`source/algo/hierarchical/hc_factory/`  
 > 论文叙事：domain-structured HRL（A→B→C→D + information pool），非自动 option discovery。  
-> 参考：Pateria et al., *ACM Comput. Surv.* 2021（HRL survey）；本仓库 `docs/experiment_protocol.md`（T0–T4 / ORU）。
+> 参考：Pateria et al., *ACM Comput. Surv.* 2021；版本命名见 `docs/experiment_protocol.md` §1。
 
 ## 0. 版本命名（与 protocol 统一）
 
-> **完整规范与主推版本见 `docs/experiment_protocol.md` §1c。**  
-> 公式：`Hier4TPA-{T*}[+R][+H]`；wandb / catalog tag 用短名 `T1`、`T1R`、`T1RH`。
+> 公式：`Hier4TPA-{T*}[+R][+H][+C{r|f}][+A][+E][+W]`  
+> 顺序：**T → R → H → C → A → E → W**。  
+> 例：`T1`、`T1R`、`T1RHC(Cr)`、`T2`、`T2E`、`T2EW`、`T1RA`。
 
-| 字母 | 含义 | 对应本表 ID |
-|------|------|-------------|
-| **T0–T4** | 长时域协议（唯一训练轴） | L1 / L3 / L5 |
-| **+R** | Rainbow 后端（Double + PER，可选 dueling） | R1, R2 |
-| **+H** | 层级学习（B-score RL + 层间信用） | H1, H2 |
+| 字母 | 含义 | 对应本表 |
+|------|------|----------|
+| **T0** | Hard，无 catalog | — |
+| **T1** | 随机 catalog + ORU + hard | L1 |
+| **T2** | **Policy** catalog + ORU（教师/好策略**存数据**） | L5 |
+| **+R** | Double + PER + Dueling | R1, R2 |
+| **+H** | B-score + 层间信用 | H1, H2 |
+| **+C(Cr/Cf)** | 课表倒向/正向 | L3 |
+| **+A** | Autoregressive（自回归）训法（SS/TF、分层 ε、步内采样）；下文简称 AR | 新增 |
+| **+E** | 在线探索问教师（≠ CL） | E1 |
+| **+W** | 从教师 ckpt 热启 | E2 |
 
-**主推（按落地顺序）**：`T0` → `T1`（当前）→ `T1R` → `T1RH` → `T2`。  
-勿把 H1/H2/R1 单独当 run 名；勿把 legacy job 27 标成 `T2`。
+**口诀**：T2=教师存数据 · +E=教师在线探索 · +W=教师起跑权重 · +A=AR 训法。
+
+**主推落地**：`T0` → `T1` → `T1R` → `T1RH` → `T2` → `T2E` →（`T1RHC` / `+A` 消融）。  
+勿把 legacy job 27 标成 `T1C`；勿用旧 T3/T4。
 
 ## 0b. 现状一句话
 
@@ -24,11 +33,10 @@
 |------|------|
 | 决策栈 | A/B/C/D + intra-step information pool + `dispatch_list`（K 并行） |
 | 后端 | Masked DQN（CTCE）；各层共享 Transformer obs encoder |
-| 长时域 | Catalog / progress key；ORU / curriculum 部分落地或推进中（见 protocol） |
+| 长时域 | Catalog / ORU 已接；**T2 / +E / +W / T1C / +A** 待接 |
 | 人因 | Fatigue monitor（旧作延续） |
 
 ---
-
 ## 1. 层级与信用分配（HRL 向 → 版本后缀 **H**）
 
 | ID | 方向 | 说明 | 优先级 |
@@ -55,10 +63,12 @@
 |----|------|------|--------|
 | L1 | **ORU 完整闭环** | explore 存 transition → 训练期 offline update；T1/T2 与 protocol 一致 | 最高 |
 | L2 | **Progress-key 去冗** | 硬去重 → soft cosine / 桶内多样性，避免 catalog 同质化 | 高 |
-| L3 | **Reverse curriculum** | 固定 target=10，start_nfin 8→0；与 warm-up 顺序写清 | 高 |
+| L3 | **Reverse / forward curriculum** | `+C(Cr|Cf)`；与 T1/T2 组合为 T1C / T2C / T1RHC… | 高 |
 | L4 | **HER 式 relabel** | 失败轨迹按「已达到的 nfin / key」重标（稀疏回报） | 中 |
-| L5 | **Policy-guided catalog** | T3/T4：采库用当前策略而非纯 random | 中 |
+| L5 | **Policy-guided catalog** | **T2**：教师/好策略滚库再 ORU | 高 |
 | L6 | **Stagnation 与 ORU 解耦** | 仿真 reset 仅作工程；论文贡献强调 offline update | 叙事 |
+| E1 | **教师在线探索** | **+E**：探索步用 T0（可退火）；非 continual learning | 高 |
+| E2 | **教师热启** | **+W**：加载 T0 ckpt 再训；与 +E / T2 分开消融 | 中 |
 
 ## 4. 信息池与并行派工
 
@@ -90,16 +100,19 @@
 
 | 顺序 | 动作 | 产出版本名 |
 |------|------|------------|
-| 1 | **L1 ORU** + MetricCatalog（对齐 T0–T2） | **T1** ✅ |
-| 2 | **R1/R2** Double DQN + PER | **T1R** ✅ |
-| 3 | **H2** B-score RL + **H1** A/B 信用 | **T1RH** ✅ |
-| 4 | **L3** curriculum + ORU | **T2**（再视需要做 **T2R** / **T2RH**） |
-| 5 | 网络消融 N1、并行 P2/P3 | 论文表内消融，不另起字母 |
+| 1 | **L1 ORU** + MetricCatalog | **T1** ✅ |
+| 2 | **R1/R2** Double + PER + Dueling | **T1R** ✅ |
+| 3 | **H2** B-score + **H1** 信用 | **T1RH** |
+| 4 | **L5** policy catalog | **T2** |
+| 5 | **E1 / E2** 教师探索 / 热启 | **T2E** / **T2EW** |
+| 6 | **L3** curriculum + ORU（Cr） | **T1C / T1RHC(Cr)** |
+| 7 | **+A** AR | **T1RA** 等消融 |
+| 8 | 网络消融 N1、并行 P2/P3 | 表内消融，不另起 T 号 |
 
 ---
 
 ## 8. 与论文写作的边界
 
-- **可写进 Method 的**：四层 + pool、masked DQN、ORU、curriculum（实现到哪写到哪）；版本名用 `T*` / `T*R` / `T*RH`。  
-- **适合 Ablation / Future**：Rainbow 全套 noisy/distributional、HER、自动 subtask discovery、分散执行。  
-- **Related work 引用**：Pateria survey 支撑「长 horizon → 层级抽象」；明确我们是 **handcrafted production hierarchy**，不是 option discovery。
+- **可写进 Method 的**：四层 + pool、masked DQN、ORU、curriculum、教师引导（T2/+E/+W）、版本名。  
+- **适合 Ablation / Future**：Noisy/C51、HER、option discovery、DT/Diffusion、continual learning（多任务序列时再称）。  
+- **Related work**：Pateria survey；**handcrafted production hierarchy**，不是 option discovery。
