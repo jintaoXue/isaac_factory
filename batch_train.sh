@@ -4,8 +4,9 @@
 HC_RULE_EPISODES="${HC_RULE_EPISODES:-2}"
 # job 26（N10 HierRandom）单独 episode 数，不跟 HC_RULE_EPISODES
 HC_RANDOM_EPISODES="${HC_RANDOM_EPISODES:-2}"
-# Baseline wrapper runs 5 seeds × HC_RULE_EPISODES; direct invocation runs one seed.
+# Baseline wrapper runs seeds × HC_RULE_EPISODES; direct invocation runs one seed.
 HC_N16_RANDOM_EPISODES="${HC_N16_RANDOM_EPISODES:-2}"
+# Unified eval: 10 seeds × 1 episode each (override with HC_TEST_SEEDS / HC_TEST_TIMES).
 HC_TEST_TIMES="${HC_TEST_TIMES:-1}"
 HC_TEST_SEEDS="${HC_TEST_SEEDS:-43,44,45,46,47,48,49,50,51,52}"
 HC_TRAIN_N_PRODUCTS="${HC_TRAIN_N_PRODUCTS:-16}"
@@ -434,7 +435,7 @@ run_test_24() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_BASELINE_PROJECT}" \
-        --wandb_name "rule_K1_N10_T${HC_T_MAX_N10}_5seed_x${HC_TEST_TIMES}" \
+        --wandb_name "rule_K1_N10_T${HC_T_MAX_N10}_10seed_x${HC_TEST_TIMES}" \
         --train_n_products 10 \
         --max_parallel_cd_dispatch 1 \
         $(hc_test_args) \
@@ -452,7 +453,7 @@ run_test_25() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_BASELINE_PROJECT}" \
-        --wandb_name "rule_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}_5seed_x${HC_TEST_TIMES}" \
+        --wandb_name "rule_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}_10seed_x${HC_TEST_TIMES}" \
         --train_n_products 10 \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         $(hc_test_args) \
@@ -471,7 +472,7 @@ run_test_26() {
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         --wandb_activate \
         --wandb_project "${HC_WANDB_BASELINE_PROJECT}" \
-        --wandb_name "random_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}_5seed_x${HC_TEST_TIMES}" \
+        --wandb_name "random_K${HC_MULTI_K}_N10_T${HC_T_MAX_N10}_10seed_x${HC_TEST_TIMES}" \
         --train_n_products 10 \
         --test_epsilon 1 \
         $(hc_test_args) \
@@ -653,7 +654,7 @@ run_test_30() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_BASELINE_PROJECT}" \
-        --wandb_name "rule_K1_N16_T${HC_T_MAX_N16}_5seed_x${HC_TEST_TIMES}" \
+        --wandb_name "rule_K1_N16_T${HC_T_MAX_N16}_10seed_x${HC_TEST_TIMES}" \
         --train_n_products 16 \
         --max_parallel_cd_dispatch 1 \
         $(hc_test_args) \
@@ -671,7 +672,7 @@ run_test_31() {
         --headless \
         --wandb_activate \
         --wandb_project "${HC_WANDB_BASELINE_PROJECT}" \
-        --wandb_name "rule_K${HC_MULTI_K}_N16_T${HC_T_MAX_N16}_5seed_x${HC_TEST_TIMES}" \
+        --wandb_name "rule_K${HC_MULTI_K}_N16_T${HC_T_MAX_N16}_10seed_x${HC_TEST_TIMES}" \
         --train_n_products 16 \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         $(hc_test_args) \
@@ -690,7 +691,7 @@ run_test_32() {
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
         --wandb_activate \
         --wandb_project "${HC_WANDB_BASELINE_PROJECT}" \
-        --wandb_name "random_K${HC_MULTI_K}_N16_T${HC_T_MAX_N16}_5seed_x${HC_TEST_TIMES}" \
+        --wandb_name "random_K${HC_MULTI_K}_N16_T${HC_T_MAX_N16}_10seed_x${HC_TEST_TIMES}" \
         --train_n_products 16 \
         --test_epsilon 1 \
         $(hc_test_args) \

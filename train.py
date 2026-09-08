@@ -231,6 +231,22 @@ if getattr(args_cli, "active_livestream", False):
 # clear out sys.argv for Hydra
 sys.argv = [sys.argv[0]] + hydra_args
 
+# Windows GUI: Isaac Kit can put its own hdf5/zlib DLLs ahead of conda on the
+# search path (sensors/RTX extensions). That breaks pip/conda h5py with:
+#   ImportError: DLL load failed while importing _errors
+# Prepend conda Library\bin and import h5py before AppLauncher so the correct
+# HDF5 is already mapped into the process.
+if sys.platform == "win32":
+    _conda_library_bin = os.path.join(sys.prefix, "Library", "bin")
+    if os.path.isdir(_conda_library_bin):
+        os.environ["PATH"] = _conda_library_bin + os.pathsep + os.environ.get("PATH", "")
+        if hasattr(os, "add_dll_directory"):
+            os.add_dll_directory(_conda_library_bin)
+    try:
+        import h5py  # noqa: F401
+    except ImportError:
+        pass
+
 # launch omniverse app
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
