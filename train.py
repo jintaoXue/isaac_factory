@@ -92,6 +92,12 @@ parser.add_argument(
     help="Hard train: write decision-equivalent checkpoints to catalog while learning (policy-guided catalog).",
 )
 parser.add_argument(
+    "--teacher_collect",
+    action="store_true",
+    default=False,
+    help="Frozen teacher rollouts (ε=0, no DQN backward); dump offline_replay/episodes/ep_XXX for E2 ORU.",
+)
+parser.add_argument(
     "--oru",
     action="store_true",
     default=False,
@@ -318,6 +324,17 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         algo_cfg["params"]["config"]["explore_save_catalog"] = False
     if getattr(args_cli, "catalog_collect", False):
         algo_cfg["params"]["config"]["catalog_collect"] = True
+    if getattr(args_cli, "teacher_collect", False):
+        algo_cfg["params"]["config"]["teacher_collect"] = True
+        algo_cfg["params"]["config"]["explore"] = False
+        algo_cfg["params"]["config"]["explore_catalog"] = False
+        algo_cfg["params"]["config"]["catalog_collect"] = False
+        algo_cfg["params"]["config"]["oru"] = False
+        algo_cfg["params"]["config"]["curriculum"] = False
+        # Decision catalog pkls are optional; offline_replay is the E2 payload.
+        algo_cfg["params"]["config"]["explore_save_catalog"] = False
+        if args_cli.seed is not None:
+            algo_cfg["params"]["config"]["seed"] = int(args_cli.seed)
     if getattr(args_cli, "oru", False):
         algo_cfg["params"]["config"]["oru"] = True
     if getattr(args_cli, "prioritized_replay", False):

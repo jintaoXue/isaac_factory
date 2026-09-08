@@ -7,6 +7,7 @@ set -euo pipefail
 # Usage:
 #   ./run_2026_journal_experiments.sh E0 [cuda:0] [--dry-run]
 #   ./run_2026_journal_experiments.sh T0|T1|T1R|T1RH [cuda:0]
+#   ./run_2026_journal_experiments.sh TEACHER [cuda:0]
 #   HC_LOAD_DIR=... ./run_2026_journal_experiments.sh eval-T1 [cuda:0]
 #   ./run_2026_journal_experiments.sh baselines [cuda:0]
 #   HC_LOAD_DIR=... HC_LOAD_STEP=... ./run_2026_journal_experiments.sh hier-eval [cuda:0]
@@ -32,6 +33,7 @@ usage() {
   T1      explore → ORU + hard
   T1R     ORU + PER + Dueling（复用 catalog）
   T1RH    T1R + hierarchical credit + B-score
+  TEACHER 冻结 T0 教师采库（E2，ε=0，默认 50 ep，seed 42）
 
 评测:
   E0 [cuda:N] [--dry-run]
@@ -161,6 +163,7 @@ case "${MODE}" in
     T1|train) ./batch_train.sh T1 "${DEVICE}" ;;
     T1R) ./batch_train.sh T1R "${DEVICE}" ;;
     T1RH) ./batch_train.sh T1RH "${DEVICE}" ;;
+    TEACHER|teacher|E2-collect) ./batch_train.sh TEACHER "${DEVICE}" ;;
     eval-T0) run_eval_variant T0 ;;
     eval-T1) run_eval_variant T1 ;;
     eval-T1R) run_eval_variant T1R ;;

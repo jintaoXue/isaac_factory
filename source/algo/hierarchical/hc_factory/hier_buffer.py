@@ -26,6 +26,8 @@ class Transition:
     next_pre: dict | None = None
     obs: torch.Tensor | None = None
     next_obs: torch.Tensor | None = None
+    # 1-based episode index for teacher/offline subsetting (None = unmarked).
+    episode_id: int | None = None
 
 
 class ReplayBuffer:

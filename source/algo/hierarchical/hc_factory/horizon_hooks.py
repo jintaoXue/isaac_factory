@@ -109,6 +109,9 @@ def hc_env_list(vec_env):
 class HorizonHooks:
     def __init__(self, config: dict) -> None:
         self.explore = bool(config.get("explore") or config.get("explore_catalog"))
+        self.teacher_collect = bool(config.get("teacher_collect"))
+        if self.explore and self.teacher_collect:
+            raise ValueError("explore and teacher_collect are mutually exclusive")
         self.warmstart_path = str(config.get("warmstart") or "").strip() or None
         self.ring_k = int(config.get("decision_ring_k", 20))
         self.cosine_th = float(config.get("soft_cosine_th", 0.95))
@@ -117,13 +120,22 @@ class HorizonHooks:
         self.explore_n_products = explore_n if explore_n > 0 else _curr.N_FULL_ORDER
         self.catalog_collect = bool(config.get("catalog_collect"))
         self.explore_save_catalog = bool(config.get("explore_save_catalog", True))
+        # Teacher collect dumps offline_replay only; skip decision catalog pkls by default.
         self.save_catalog = self.explore_save_catalog and (self.explore or self.catalog_collect)
         self.catalog_stats = CatalogCollectStats()
-        collect_mode = "explore" if self.explore else ("policy_train" if self.catalog_collect else "readonly")
+        if self.explore:
+            collect_mode = "explore"
+        elif self.teacher_collect:
+            collect_mode = "teacher_collect"
+        elif self.catalog_collect:
+            collect_mode = "policy_train"
+        else:
+            collect_mode = "readonly"
         print(
-            f"[Horizon] explore={self.explore} catalog_collect={self.catalog_collect} "
-            f"N={self.explore_n_products} "
-            f"T_max={_curr.t_max_for(self.explore_n_products, anchor)} "
+            f"[Horizon] explore={self.explore} teacher_collect={self.teacher_collect} "
+            f"catalog_collect={self.catalog_collect} "
+            f"N={self.explore_n_products if self.explore else _curr.N_TRAIN_TARGET} "
+            f"T_max={_curr.t_max_for(self.explore_n_products if self.explore else _curr.N_TRAIN_TARGET, anchor)} "
             f"save_catalog={self.save_catalog} collect_mode={collect_mode}"
         )
         self.curriculum = _curr.CurriculumScheduler(
@@ -135,7 +147,7 @@ class HorizonHooks:
         # (e.g. N10_T40000), NOT N_FULL_ORDER — otherwise pick_by_nfin silently misses the collect library.
         catalog_root = config.get("explore_catalog_dir") or None
         if catalog_root:
-            catalog_n = self.explore_n_products
+            catalog_n = self.explore_n_products if self.explore else _curr.N_TRAIN_TARGET
         elif self.explore:
             catalog_n = self.explore_n_products
         else:
@@ -161,19 +173,34 @@ class HorizonHooks:
         self.env_list = None
         self.stall_counts = {"L1": 0, "L2": 0, "L3": 0}
         self.last_restore_info: dict[int, dict] = {}
-        mode_dir = "collect" if (self.explore or self.catalog_collect) else "train"
+        mode_dir = "collect" if (self.explore or self.catalog_collect or self.teacher_collect) else "train"
         self.stall_root = Path("env_checkpoints") / "stagnation" / mode_dir
         self.stall_root.mkdir(parents=True, exist_ok=True)
         if self.save_catalog:
             meta = {
-                "epsilon": 1.0 if self.explore else None,
+                "epsilon": 1.0 if self.explore else (0.0 if self.teacher_collect else None),
                 "t_max": _curr.t_max_for(
                     self.explore_n_products if self.explore else _curr.N_TRAIN_TARGET, anchor
                 ),
                 "n_products": self.explore_n_products if self.explore else _curr.N_TRAIN_TARGET,
-                "mode": "explore" if self.explore else "catalog_collect",
+                "mode": collect_mode,
             }
             self.catalog.write_round_meta(**{k: v for k, v in meta.items() if v is not None})
+        elif self.teacher_collect:
+            # Ensure catalog root exists for offline_replay even without decision pkls.
+            self.catalog.root.mkdir(parents=True, exist_ok=True)
+            (self.catalog.root / "round_meta.json").write_text(
+                json.dumps(
+                    {
+                        "mode": "teacher_collect",
+                        "epsilon": 0.0,
+                        "n_products": _curr.N_TRAIN_TARGET,
+                        "t_max": _curr.t_max_for(_curr.N_TRAIN_TARGET, anchor),
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
 
     @property
     def catalog_metrics_enabled(self) -> bool:

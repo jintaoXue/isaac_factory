@@ -137,8 +137,10 @@ class MaskedDQNAgent:
         next_mask: torch.Tensor,
         done: bool,
         discount: float | None = None,
+        episode_id: int | None = None,
     ) -> None:
         """Legacy flat path: store detached obs tensors."""
+        ep = episode_id if episode_id is not None else getattr(self, "collect_episode_id", None)
         self.buffer.push(
             Transition(
                 action=action_idx,
@@ -149,6 +151,7 @@ class MaskedDQNAgent:
                 discount=discount,
                 obs=obs.detach().cpu(),
                 next_obs=next_obs.detach().cpu(),
+                episode_id=None if ep is None else int(ep),
             )
         )
 
@@ -163,9 +166,11 @@ class MaskedDQNAgent:
         done: bool,
         discount: float | None = None,
         context: torch.Tensor | None = None,
+        episode_id: int | None = None,
     ) -> None:
         from .hier_utils import detach_pre_to_cpu
 
+        ep = episode_id if episode_id is not None else getattr(self, "collect_episode_id", None)
         self.buffer.push(
             Transition(
                 action=action_idx,
@@ -177,6 +182,7 @@ class MaskedDQNAgent:
                 context=None if context is None else context.detach().cpu(),
                 pre=detach_pre_to_cpu(pre),
                 next_pre=detach_pre_to_cpu(next_pre),
+                episode_id=None if ep is None else int(ep),
             )
         )
 

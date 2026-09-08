@@ -29,10 +29,12 @@ from .hier_utils import compute_team_reward, count_busy_agents, crossed_interval
 from .horizon_hooks import HorizonHooks
 from .offline_replay import (
     ORUController,
+    _clear_buffer,
     default_warmup_updates,
     load_offline_replay,
     offline_replay_dir,
     save_offline_replay,
+    write_offline_replay_index,
 )
 from .wandb_metrics import (
     HumanFatigueMonitor,
@@ -204,8 +206,8 @@ class HierarchicalTPA:
         self.credit_scale_B = float(config.get("credit_scale_B", 1.5 if self.hierarchical_credit else 1.0))
         self.credit_scale_CD = float(config.get("credit_scale_CD", 1.0))
         self.b_score_rl = bool(config.get("b_score_rl", self.hierarchical_credit))
-        # Explore dumps the whole online buffer as offline replay — keep enough capacity.
-        if bool(config.get("explore") or config.get("explore_catalog")) and bool(
+        # Explore / teacher dumps the whole online buffer as offline replay — keep enough capacity.
+        if bool(config.get("explore") or config.get("explore_catalog") or config.get("teacher_collect")) and bool(
             config.get("explore_save_offline_replay", True)
         ):
             offline_cap = int(config.get("offline_replay_capacity", 100000))
@@ -239,7 +241,7 @@ class HierarchicalTPA:
         dqn_kwargs_A = dict(dqn_kwargs)
         dqn_kwargs_A["batch_size"] = int(config.get("batch_size_A", 16))
         dqn_kwargs_A["buffer_capacity"] = int(config.get("replay_buffer_size_A", 5000))
-        if bool(config.get("explore") or config.get("explore_catalog")) and bool(
+        if bool(config.get("explore") or config.get("explore_catalog") or config.get("teacher_collect")) and bool(
             config.get("explore_save_offline_replay", True)
         ):
             dqn_kwargs_A["buffer_capacity"] = max(
@@ -262,7 +264,7 @@ class HierarchicalTPA:
 
         self.oru: ORUController | None = None
         self._oru_enabled = bool(config.get("oru", False)) and not bool(
-            config.get("explore") or config.get("explore_catalog")
+            config.get("explore") or config.get("explore_catalog") or config.get("teacher_collect")
         )
 
         self.train_dir = config.get("train_dir", "runs")
@@ -294,6 +296,15 @@ class HierarchicalTPA:
             print(
                 f"[Hier] explore mode: epsilon=1, no DQN backward, "
                 f"N={self.horizon.explore_n_products} T_max={self.max_episodic_steps}"
+            )
+        elif self.horizon.teacher_collect:
+            anchor = int(config.get("t_max_anchor", _curr.T_MAX_ANCHOR))
+            self.max_episodic_steps = _curr.t_max_for(_curr.N_TRAIN_TARGET, anchor)
+            print(
+                f"[Hier] teacher_collect: epsilon=0, no DQN backward, "
+                f"N={_curr.N_TRAIN_TARGET} T_max={self.max_episodic_steps} "
+                f"load_dir={config.get('load_dir')} load_step={config.get('load_step')} "
+                f"catalog={self.horizon.catalog.root}"
             )
         elif not self.horizon.curriculum.enabled:
             # Hard train: same N/T as curriculum final stage (N_TRAIN_TARGET), not N16 anchor.
@@ -350,6 +361,8 @@ class HierarchicalTPA:
     def get_epsilon(self) -> float:
         if getattr(self, "horizon", None) is not None and self.horizon.explore:
             return 1.0
+        if getattr(self, "horizon", None) is not None and self.horizon.teacher_collect:
+            return 0.0
         ratio = min(1.0, self.global_step / max(1, self.epsilon_decay_steps))
         return self.epsilon_start + (self.epsilon_end - self.epsilon_start) * ratio
     def _all_dqns(self):
@@ -572,7 +585,8 @@ class HierarchicalTPA:
             return losses
 
         explore = getattr(self, "horizon", None) is not None and self.horizon.explore
-        should_learn = bool(learn) and not explore
+        teacher = getattr(self, "horizon", None) is not None and self.horizon.teacher_collect
+        should_learn = bool(learn) and not explore and not teacher
         mix = float(self.oru.mix_ratio) if self.oru is not None else 0.0
         off = self.oru.offline if self.oru is not None else {}
         loss_entries: list[tuple[str, torch.Tensor, object | None]] = []
@@ -807,19 +821,68 @@ class HierarchicalTPA:
         self.oru.mark_online_started(0)
         print("[ORU] warmup done → online hard train with decaying offline mix")
 
-    def _dump_explore_offline_replay(self) -> None:
-        if not (self.horizon.explore and bool(self.config.get("explore_save_offline_replay", True))):
-            return
-        buffers = {
+    def _replay_buffers(self) -> dict:
+        return {
             "A": self.agent_A.dqn.buffer if self.agent_A.dqn is not None else None,
             "B": self.agent_B.dqn.buffer if self.agent_B.dqn is not None else None,
             "C": self.agent_C.dqn.buffer if self.agent_C.dqn is not None else None,
             "D_human": self.agent_D.human_dqn.buffer if self.agent_D.human_dqn is not None else None,
             "D_robot": self.agent_D.robot_dqn.buffer if self.agent_D.robot_dqn is not None else None,
         }
+
+    def _set_collect_episode_id(self, episode_id: int | None) -> None:
+        for dqn in self._all_dqns():
+            if dqn is not None:
+                dqn.collect_episode_id = None if episode_id is None else int(episode_id)
+
+    def _flush_teacher_episode(self, episode_id: int) -> None:
+        if not (self.horizon.teacher_collect and bool(self.config.get("explore_save_offline_replay", True))):
+            return
         save_offline_replay(
             self.horizon.catalog.root,
-            buffers,
+            self._replay_buffers(),
+            meta={
+                "epsilon": 0.0,
+                "mode": "teacher_collect",
+                "load_dir": str(self.config.get("load_dir") or ""),
+                "load_step": self.config.get("load_step"),
+                "seed": self.config.get("seed"),
+            },
+            episode_id=int(episode_id),
+        )
+        for buf in self._replay_buffers().values():
+            _clear_buffer(buf)
+        write_offline_replay_index(
+            self.horizon.catalog.root,
+            meta={
+                "mode": "teacher_collect",
+                "epsilon": 0.0,
+                "load_dir": str(self.config.get("load_dir") or ""),
+                "load_step": self.config.get("load_step"),
+                "seed": self.config.get("seed"),
+            },
+        )
+
+    def _dump_explore_offline_replay(self) -> None:
+        if self.horizon.teacher_collect:
+            write_offline_replay_index(
+                self.horizon.catalog.root,
+                meta={
+                    "mode": "teacher_collect",
+                    "epsilon": 0.0,
+                    "episodes": self.episodes_done,
+                    "load_dir": str(self.config.get("load_dir") or ""),
+                    "load_step": self.config.get("load_step"),
+                    "seed": self.config.get("seed"),
+                    "catalog_root": str(self.horizon.catalog.root),
+                },
+            )
+            return
+        if not (self.horizon.explore and bool(self.config.get("explore_save_offline_replay", True))):
+            return
+        save_offline_replay(
+            self.horizon.catalog.root,
+            self._replay_buffers(),
             meta={
                 "epsilon": 1.0,
                 "explore_n_products": self.horizon.explore_n_products,
@@ -873,7 +936,18 @@ class HierarchicalTPA:
         last_learned_env_steps = 0
 
         # Init DQNs via one act, then optional ORU warmup (T1 Phase B).
+        if self.horizon.teacher_collect:
+            self._set_collect_episode_id(1)
         self.act(obs, prev_pre_list=prev_pre_list)
+        if self.horizon.teacher_collect:
+            self._maybe_load_checkpoint(obs[0])
+            self._set_eval_mode()
+            for buf in self._replay_buffers().values():
+                _clear_buffer(buf)
+            print(
+                f"[Hier] teacher ckpt loaded step={self.config.get('load_step')} "
+                f"dir={self.config.get('load_dir')} → greedy collect"
+            )
         if self._oru_enabled:
             self._setup_oru()
             self._run_oru_warmup()
@@ -1093,6 +1167,9 @@ class HierarchicalTPA:
                     self._ep_peak_ongoing_robot[env_id] = 0
                     _clear_rl(next_obs[env_id])
                     self.horizon.on_episode_end(env_id, success=success, ep_len=ep_len)
+                    if self.horizon.teacher_collect:
+                        self._flush_teacher_episode(self.episodes_done)
+                        self._set_collect_episode_id(self.episodes_done + 1)
                     prev_pre_list[env_id] = self.obs_encoder.preprocess(next_obs[env_id])
                     pending_decisions[env_id] = None
                     episode_n_finished[env_id] = 0
@@ -1233,17 +1310,25 @@ class HierarchicalTPA:
                     payload.update(self.horizon.catalog_step_metrics())
                 self._log_metrics(payload)
 
-            if crossed_interval(last_saved_env_steps, env_step, self.save_interval):
+            if (
+                not self.horizon.teacher_collect
+                and crossed_interval(last_saved_env_steps, env_step, self.save_interval)
+            ):
                 self.save_checkpoint(env_step)
                 last_saved_env_steps = env_step
                 print(f"[Hier] checkpoint saved at step {env_step}")
 
         env_step = env_steps(self.global_step, self.num_actors)
-        if env_step > last_saved_env_steps:
+        if (not self.horizon.teacher_collect) and env_step > last_saved_env_steps:
             self.save_checkpoint(env_step)
             print(f"[Hier] checkpoint saved at step {env_step} (final)")
 
         self._dump_explore_offline_replay()
+        if self.horizon.teacher_collect:
+            print(
+                f"[Hier] teacher_collect done → {self.horizon.catalog.root}/offline_replay "
+                f"episodes={self.episodes_done}"
+            )
 
         wall = self._wall_time_sec()
         spm = steps_per_min(self.global_step, wall, self.num_actors)

@@ -18,6 +18,11 @@ HC_T_MAX_N16="${HC_T_MAX_ANCHOR}"
 HC_EXPLORE_EPISODES="${HC_EXPLORE_EPISODES:-20}"
 HC_POLICY_CATALOG_EPISODES="${HC_POLICY_CATALOG_EPISODES:-80}"
 HC_WANDB_CATALOG_PROJECT="${HC_WANDB_CATALOG_PROJECT:-HcFactory_Catalog}"
+# E2 冻结教师采库（job 34 / TEACHER）
+HC_TEACHER_LOAD_DIR="${HC_TEACHER_LOAD_DIR:-logs/rl_games/HcFactory/hier_2026-08-27_23-17-41}"
+HC_TEACHER_LOAD_STEP="${HC_TEACHER_LOAD_STEP:-1290000}"
+HC_TEACHER_EPISODES="${HC_TEACHER_EPISODES:-50}"
+HC_TEACHER_SEED="${HC_TEACHER_SEED:-42}"
 
 # 用法:
 #   ./batch_train.sh 22 cuda:0
@@ -27,17 +32,20 @@ HC_WANDB_CATALOG_PROJECT="${HC_WANDB_CATALOG_PROJECT:-HcFactory_Catalog}"
 #   ./batch_train.sh A cuda:0
 #   ./batch_train.sh B
 #   HC_WARMSTART=/path/to/ckpt.pkl ./batch_train.sh 22   # 可选：explore/curriculum 从 pkl 续跑
+#   ./batch_train.sh TEACHER cuda:0          # E2 冻结教师采库（ε=0，~50 ep）
 #
 # HcFactory 编号（按流水线，旧 1–21 不动）:
 #   22 采库 → 23 采库debug → 24/25 N10 rule → 26 N10 random
-#   → 27 hier课程 → 28 hier硬训 → 29 N16评测 → 30/31/32 N16 基线
+#   → 27 hier课程 → 28 hier硬训 → 29 N16评测 → 30/31/32 N16 基线 → 33 policy catalog
+#   → 34 冻结教师 offline_replay（E2）
 if [ $# -eq 0 ]; then
-    echo "用法: $0 <T0|T1|T1R|T1RH|E|序号...> [cuda:N]"
+    echo "用法: $0 <T0|T1|T1R|T1RH|TEACHER|E|序号...> [cuda:N]"
     echo "  ---- 主推版本（见 docs/experiment_protocol.md；旧看板 docs/experiment_protocol_old.md）----"
     echo "  T0:   hard train（无 ORU）"
     echo "  T1:   22 explore → 28 hard+ORU"
     echo "  T1R:  22(可选) → 28 ORU+PER+Dueling（复用 T1 catalog）"
     echo "  T1RH: 22(可选) → 28 T1R + hier_credit+B-score"
+    echo "  TEACHER / 34: 冻结 T0 教师采库（ε=0，offline_replay/episodes）"
     echo "  E:    基线矩阵 (24 25 26 | 30 31 32)"
     echo "  ---- job 序号 ----"
     echo "  22: explore 采库 (+offline_replay)"
@@ -46,8 +54,11 @@ if [ $# -eq 0 ]; then
     echo "  28: hard train（由 HC_ORU/HC_PER/HC_HIER_CREDIT 选变体）"
     echo "  29: hier eval（需 HC_LOAD_DIR；HC_EVAL_VARIANT=T1|T1R|T1RH）"
     echo "  30/31/32: Rule / Random eval N=16"
+    echo "  33: policy catalog（边训边采，≠冻结教师）"
+    echo "  34: teacher_collect（E2）"
     echo "  环境变量: HC_CATALOG_TAG HC_ORU HC_PER HC_HIER_CREDIT HC_ALGO_VARIANT"
     echo "            HC_LOAD_DIR HC_LOAD_STEP HC_TEST_SEEDS HC_TEST_TIMES HC_WANDB_MODE"
+    echo "            HC_TEACHER_LOAD_DIR HC_TEACHER_LOAD_STEP HC_TEACHER_EPISODES"
     exit 1
 fi
 
@@ -56,14 +67,15 @@ JOBS=()
 for arg in "$@"; do
     if [[ "$arg" =~ ^cuda:[0-9]+$ ]]; then
         DEVICE="$arg"
-    elif [[ "$arg" =~ ^([1-9]|1[0-9]|2[0-9]|3[0-3])$ ]] \
+    elif [[ "$arg" =~ ^([1-9]|1[0-9]|2[0-9]|3[0-4])$ ]] \
         || [ "$arg" = "E" ] \
         || [ "$arg" = "T0" ] || [ "$arg" = "T1" ] || [ "$arg" = "T1R" ] || [ "$arg" = "T1RH" ] \
+        || [ "$arg" = "TEACHER" ] \
         || [ "$arg" = "A" ] || [ "$arg" = "B" ] || [ "$arg" = "C" ] || [ "$arg" = "D" ]; then
         JOBS+=("$arg")
     else
         echo "错误: 无法识别参数 '$arg'"
-        echo "用法: $0 <T0|T1|T1R|T1RH|E|序号...> [cuda:N]"
+        echo "用法: $0 <T0|T1|T1R|T1RH|TEACHER|E|序号...> [cuda:N]"
         exit 1
     fi
 done
@@ -712,6 +724,50 @@ run_test_33() {
         ${DEVICE_ARG}
 }
 
+run_test_34() {
+    # E2 冻结教师采库：ε=0，不反传；offline_replay/episodes/ep_XXX（带 episode_id）
+    HC_CATALOG_SOURCE="${HC_CATALOG_SOURCE:-policy_explore}"
+    HC_CATALOG_TAG="${HC_CATALOG_TAG:-E2_teacher_ep${HC_TEACHER_EPISODES}}"
+    export HC_CATALOG_SOURCE HC_CATALOG_TAG
+    hc_print_catalog_hint
+    local _load="${HC_TEACHER_LOAD_DIR}"
+    local _step="${HC_TEACHER_LOAD_STEP}"
+    local _ep="${HC_TEACHER_EPISODES}"
+    local _seed="${HC_TEACHER_SEED}"
+    local _wp="${HC_WANDB_CATALOG_PROJECT}"
+    if [ ! -d "${_load}/nn" ] && [ ! -d "${_load}" ]; then
+        echo "错误: 教师权重目录不存在: ${_load}"
+        echo "设置 HC_TEACHER_LOAD_DIR=logs/rl_games/HcFactory/<run>"
+        exit 1
+    fi
+    echo "运行 34: teacher_collect (ε=0, ep=${_ep}, seed=${_seed}, step=${_step}, load=${_load})"
+    python train.py \
+        --task "${HC_TASK}" \
+        --algo hier \
+        --num_envs 1 \
+        --headless \
+        --seed "${_seed}" \
+        --teacher_collect \
+        --max_sim_episodes "${_ep}" \
+        --train_n_products 10 \
+        --max_parallel_cd_dispatch "${HC_MULTI_K}" \
+        --load_dir "${_load}" \
+        --load_step "${_step}" \
+        --wandb_activate \
+        --wandb_project "${_wp}" \
+        --wandb_name "teacher_collect_E2_N10_ep${_ep}_S${_seed}_step${_step}__${HC_CATALOG_TAG}" \
+        --ftg_thresh_phy 0.95 \
+        $(hc_t_max_args) \
+        $(hc_catalog_args) \
+        agent.params.config.c_forbid_none_mode=always \
+        ${DEVICE_ARG}
+}
+
+run_teacher() {
+    echo "=== TEACHER: frozen T0 → offline_replay (${HC_TEACHER_EPISODES} ep, seed ${HC_TEACHER_SEED}) ==="
+    run_test_34
+}
+
 # 调度：按序号 / A / B / C 调用上面的 run_test_*
 run_one_job() {
     local id=$1
@@ -749,10 +805,12 @@ run_one_job() {
         31) run_test_31 ;;
         32) run_test_32 ;;
         33) run_test_33 ;;
+        34) run_test_34 ;;
         T0) run_t0 ;;
         T1) run_t1 ;;
         T1R) run_t1r ;;
         T1RH) run_t1rh ;;
+        TEACHER) run_teacher ;;
         A)
             echo "=== 运行A组训练 (1-5) ==="
             run_test_1; run_test_2; run_test_3; run_test_4; run_test_5; run_test_6

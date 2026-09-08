@@ -100,6 +100,7 @@ params:
     offline_replay_capacity: 100000
     offline_replay_capacity_A: 20000
     catalog_collect: False
+    teacher_collect: False
     warmstart: ''
     curriculum: False
     curriculum_start_stage: 0
