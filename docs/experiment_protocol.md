@@ -1,195 +1,83 @@
-# Hier4TPA 实验协议（精简看板）
+# T0 热启动：递进实验命名与方案（E0–E5）
 
-> wandb entity：`rl-driving` · 快照日期：**2026-09-07**  
-> 训练 project：`HcFactory_TPA` · 评测：`HcFactory_TPA_Eval` · 采库：`HcFactory_Catalog`  
-> 主指标（训练曲线）：`MetricFullorderCore/05_makespan`（越低越好；≈40000 多为截断失败）
+> **现行实验协议**（原 `t0_finetuning_research_plan.md`）。旧版 T0–T4 / +RHC 看板见 `docs/experiment_protocol_old.md`。  
+> E0 评测入口已接入：`./run_2026_journal_experiments.sh E0 [cuda:0]`。E1–E5 训练名尚未全部接入命令行。
 
-```bash
-conda activate isaaclab
-cd <repo_root>
-```
+**目标：固定 N=10，从同一个 T0 checkpoint 出发，在有限新增预算下改善 makespan 与成功率。**
 
----
+**论文主线：教师经验复用 → 教师引导探索 → 层级信用分配 → 自回归决策改进。** 重点验证各机制如何改善层级协作；组合本身不等于已证明的新颖性。
 
-## 1. 命名与协议总表
+## 教师模型选择（2026-09-07）
 
-### 1.1 公式
+按训练曲线低点选择教师候选，已实时读取 [T0 run zynalxhz](https://wandb.ai/rl-driving/HcFactory_TPA/runs/zynalxhz) 的 135 条 episode 记录。
 
-```text
-Hier4TPA-{T*}[+R][+H][+C{r|f}][+A][+E][+W]
-```
+| 项目 | 选择 |
+|---|---|
+| 训练 run | `hier_hard_K10_N10_T40000`（`zynalxhz`） |
+| 指标最低点 | `MetricFullorderCore/05_makespan = 14600`，episode 70 |
+| 对应训练步数 | `Train/step = 1290374`（不是 W&B 内部 `_step=12972`） |
+| 教师候选 checkpoint | **step 1290000**：距低点最近的保存点，用户已确认文件存在 |
+| 源机器模型目录 | `/home/sci/work/isaac_factory_tpa/logs/rl_games/HcFactory/hier_2026-08-27_23-17-41/nn/` |
+| 当前状态 | 用户已提供远端文件列表：encoder、A、B、C、D_human、D_robot 共 6 个文件齐全且非空；尚未验证反序列化、结构兼容性和实际加载 |
 
-字母顺序固定：**T → R → H → C → A → E → W**。
+选定此组作为教师：E0 评测、E1–E5 热启动及冻结教师统一使用 step 1290000。14600 是训练 episode 的结果，并非该 checkpoint 的独立评测成绩，正式使用前做 E0 评测与完整性校验。
 
-| 字母 | 轴 | 含义 |
-|------|----|------|
-| **T0 / T1 / T2** | 协议（互斥） | 无库 hard / 随机 catalog+ORU / **policy** catalog+ORU |
-| **+R** | 后端 | Double DQN + PER + Dueling（无 Noisy / n-step / C51） |
-| **+H** | 层级学习 | B-score RL + A/B 信用缩放 |
-| **+C** | 课表 | 叠在 T1/T2 的 online 上；**Cr**=倒向（8→0），**Cf**=正向（0→难） |
-| **+A** | Autoregressive（自回归）训法 | Scheduled sampling / TF、分层 ε、步内 multi-sample（**不是**新 T 号）；下文简称 **AR** |
-| **+E** | 教师探索 | **在线**探索步用教师（如 T0）出动作，而非均匀随机；≠ 持续学习 |
-| **+W** | 热启 | 学生网络从教师 ckpt **加载权重**再训 |
+## E0 运行入口
 
-**三件套（勿混）**
+`bash run_2026_journal_experiments.sh E0 cuda:0`（先加 `--dry-run` 可预览）。模型默认在项目下 `checkpoints/E0_T0_step1290000/nn/`，必须包含 6 个非空权重文件。
 
-| 代号 | 教师帮你做什么 |
-|------|----------------|
-| **T2** | **存数据**：用教师/好策略滚 `offline_replay` 再 ORU |
-| **+E** | **在线探索**：训练中 ε-探索时问教师要动作 |
-| **+W** | **起跑权重**：初始化=教师 ckpt |
+固定 N=10、K=10、每步最多 10 次 C/D dispatch、实际 T=40000、epsilon=0；seed 42–51 每种子 1 局，共 10 局。采用每种子 1 局以确保每局重新应用 N10 订单；后续 E1–E5 评测沿用该协议，不直接混用历史 5 seeds×2 局结果。内部 `t_max_anchor=64000` 经 N10/16 换算为 40000，不能直接改成 40000。
 
-**旧名对照**
+## 1. 命名规则与主实验表
 
-| 旧 | 新 |
-|----|-----|
-| T2（随机+ORU+curriculum） | **T1C** / 主推 **T1RHC(Cr)** |
-| T3（policy+ORU+hard） | **T2** |
-| T4（policy+ORU+curriculum） | **T2C** / **T2RHC** |
-| AR 改进 | **+A**（Autoregressive；如 `T1RA`），不占 T3 |
-| 教师在线探索 | **+E**（如 `T1E` / `T2E`） |
-| 教师权重热启 | **+W**（如 `T2EW`） |
-| job 27 curriculum reset | **legacy**，≠ 任何 `T*C`（无 ORU loss） |
+**主线用 E0–E5，编号每增加 1，就增加一项技术。** E 表示 Experiment，不是旧协议的教师探索 `+E`；展示时写“E3 教师探索版”，不再拼接技术字母。
 
-### 1.2 总表
+E0 只评测；E1–E5 分别从同一个 T0 checkpoint 初始化，教师固定为 T0。递增的是技术配置，不是接着上一组模型继续训练，也不表示性能必然递增。
 
-| 短名 | Catalog | ORU | Online | 可叠加 | 命令 / 状态 |
-|------|---------|-----|--------|--------|-------------|
-| **T0** | 无 | 无 | Hard | +R +H +A +E +W | `./batch_train.sh T0` · ✅ 已训 |
-| **T1** | 随机 ε=1 | ✅ | Hard | +R +H +C +A +E +W | `./batch_train.sh T1` · ✅ 已训 |
-| **T1R** | 同 T1 | ✅ | Hard | | `./batch_train.sh T1R` · 🟡 训中 |
-| **T1RH** | 同 T1 | ✅ | Hard | | `./batch_train.sh T1RH` · ❌ 未跑 |
-| **T1C(Cr/Cf)** | 同 T1 | ✅ | Curriculum | 可无 R/H | 🔲 ORU+课表未接 |
-| **T1RHC** | 同 T1 | ✅ | Curriculum | 主推课表形态 | 🔲 |
-| **T1E / T1WE** | 同 T1 | ✅ | Hard+教师探索 | | 🔲 |
-| **T2** | **Policy** | ✅ | Hard | +R +H +C +A +E +W | 🔲 未实现 |
-| **T2E / T2EW** | Policy | ✅ | +教师探索 / +热启 | | 🔲 推荐消融 |
-| **T2RHC** | Policy | ✅ | Curr. | | 🔲 |
-| **\*A**（如 T1RA） | 随基底 | | | AR 技巧 | 🔲 |
+| 新编号 | 直观名称 | 相对上一级新增 | 完整设置 | 旧协议对照 |
+|---|---|---|---|---|
+| **E0** | 原始版 | — | 已有 T0，仅评测 | T0 |
+| **E1** | 微调版 | 权重热启动后继续训练 | T0 权重＋低学习率在线微调 | T0+W |
+| **E2** | 数据复用版 | 教师数据＋ORU | E1＋冻结 T0 采库、混合回放 | T2+W |
+| **E3** | 教师探索版 | 教师引导在线探索 | E2＋探索分支中教师/随机动作混合，教师比例衰减 | T2+E+W |
+| **E4** | 层级学习版 | B-score RL＋A/B 信用缩放 | E3＋层级学习机制 | T2+H+E+W |
+| **E5** | 自回归增强版 | 分层 epsilon＋步内候选采样 | E4＋依上游动作重建下游条件与 mask | T2+H+A+E+W |
 
-```text
-T0 ──► T1 ──► T1R ──► T1RH ──► T1RHC(Cr)     ← 随机库主链
-         │      └(+E)(+A)(+W)
-         │
-         └──► T2 ──► T2E / T2EW ──► T2RHC     ← policy 库 + 教师探索/热启
-```
+**先跑 E0–E3，再推进 E4–E5。** E1 是公平微调基线，E5 是候选完整方法。相邻组比较新增机制收益；E4 的 B 探索率与 E5 的分层探索率统一配置，避免重复缩放。
 
-**经验**：随机库强 ORU（T1）**不保证**优于 T0；下一步优先 **T2（教师存数据）**，再试 **+E / +W**；**+A** 治 AR exposure，与教师正交。
+## 2. 消融和扩展命名
 
-**消融**：课表可报 `T1C(Cr)`；教师三件套不要绑死——主表可只报 `T0 | T1 | T1R | T2 | T2E`。
+**消融用“编号-no-模块”，扩展用“编号-plus-模块”，替换用“编号-random-data”。** 分支不占主线编号，避免把独立扩展误解为逐级叠加。
 
----
-## 2. 训练状态分类（对照 wandb）
+| 名称 | 设置 | 对照 / 目的 |
+|---|---|---|
+| `E2-random-data` | E2 的教师库换为随机库（旧 T1+W） | vs E2：教师数据质量收益，采库与更新预算对齐 |
+| `E5-no-guide` | E5 去掉教师探索 | vs E5：教师探索贡献 |
+| `E5-no-hier` | E5 去掉层级学习 | vs E5：层级学习贡献 |
+| `E5-no-ar` | E5 去掉自回归增强，等同 E4 | 复用 E4，不重复训练 |
+| `E5-plus-replay` | E5＋旧 R：PER、Dueling（Double DQN 已开启） | 后端增强；Dueling 需等价权重迁移验证，否则单列迁移对照 |
+| `E5-plus-curriculum` | E5＋旧 Cr：从后期状态逐步扩展到完整订单 | 总订单仍为 N=10；完整订单起点评测，计入采库成本 |
+| `E5-plus-staged` | E5＋先固定 encoder、A/B，再解冻 | 分阶段微调，冻结时长预先固定 |
 
-### 2.1 主线
+完整方法有效后，先补 `no-guide`、`no-hier`；三个 `plus` 分支最多先选一个。不做全组合搜索，不做去热启动的从零训练消融，因此不宣称热启动的独立贡献。
 
-| 版本 | 状态 | 代表 run（`HcFactory_TPA`） | wandb | 备注 |
-|------|------|------------------------------|-------|------|
-| **T0** | ✅ 已训（可停） | `hier_hard_K10_N10_T40000` | `zynalxhz` | 曲线已平台 |
-| **T1** | ✅ 已训（可停） | `hier_hard_ORU_…__legacy` | `jmy3yhun` | `p469o8sx` 重启可停 |
-| **T1R** | 🟡 训中 | `hier_T1R_…__T1_random_ep20` | `78tdddig` | 5090 |
-| **T1RH** | ❌ 未跑 | — | — | 代码已有 |
-| **T1C / T1RHC** | ❌ 未实现 | `hier_curriculum_*` = legacy 27 | — | **勿标 T1C** |
-| **T2…** | ❌ 未实现 | — | — | policy catalog（教师**存数据**） |
-| **+E / +W** | ❌ 未实现 | — | — | 教师探索 / 热启 |
-| **+A** | ❌ 未实现 | — | — | AR 技巧 |
+**W&B / 输出目录统一格式：** `Hier4TPA-{实验名}-N{产品数}-S{训练种子}`，例如 `Hier4TPA-E3-N10-S42`、`Hier4TPA-E5-no-guide-N10-S42`。评测加 `-eval`；重复运行可加 `-r2`。checkpoint 来源、教师版本和详细超参数放配置中。旧实验保留原名，新旧对应以表为准。
 
-### 2.2 配套 / 基线
+## 3. 最小实施约定
 
-| 类别 | 状态 | 代表 | 说明 |
-|------|------|------|------|
-| Explore 采库 | ✅ | Catalog: `…__T1_random_ep20` | 供 T1/T1R |
-| Rule / Random eval | 🟡/⚠️ | 见 §3.2 | N=16 random crashed 等 |
-| Hier 正式 eval | ⚠️ | `hier_eval_*` 部分 crashed | 缺统一 seed 协议 |
+- **热启动（旧 W）**：先接通训练加载，严格校验 encoder 和各 Q head；更新前与教师输出一致。当前 checkpoint 是权重热启动，不是完整续训。
+- **教师数据（旧 T2 / ORU）**：教师仅在训练订单采库。建议先取 25% 教师＋75% 在线样本，不做大量离线 warmup；当前 `oru_warmup_updates=0` 是自动设置，不是关闭。
+- **教师探索（旧 +E）**：只在 epsilon 探索分支选择教师/随机动作，教师比例逐步下降；动作必须满足当前 mask。初始师生相同时可能无收益，需看实际偏离和失败率。
+- **层级学习（旧 H）**：核对关闭 H 时的实际缩放值；当前 YAML 显式 A/B 缩放可能让开关失效。首轮固定缩放参数，不额外搜索。
+- **自回归增强（旧 A）**：先实现分层 epsilon 和少量合法候选采样，固定候选评分规则。不能替换 replay 的上游动作后沿用原奖励/下一状态；不同动作的真实转移需重新采集。Scheduled sampling / TF 留待单独设计，不直接搬入 DQN 的 TD 更新。
 
-| 标签 | 含义 |
-|------|------|
-| ✅ | 可引用 |
-| 🟡 | 进行中 / 未满程 |
-| ⚠️ | 不完整 |
-| ❌ | 未训或未实现 |
+## 4. 统一预算与论文指标
 
----
+- **起始参数**：Q 学习率 `2e-5`、encoder `1e-5`、基础 epsilon `0.05`，均为建议起点；教师探索、层级学习、自回归增强的差异按表显式记录。
+- **筛选预算**：每个训练组相同新增环境步数，先取原 T0 的 10%–20%；同时记录梯度更新数、候选推理开销、采库与墙钟时间。环境、硬件和其他超参数保持一致。
+- **主结果**：成功率、成功订单 makespan、含失败惩罚的整体指标；效率报告达到预定性能目标的新增步数与实际时间，未达到则明确标注。
+- **机制证据**：教师探索看早期退化/失败，层级学习看各层样本与 TD 误差，自回归增强看候选改选率及最终调度收益；不只报告总 reward。
+- **确认实验**：至少 3 个微调种子、固定独立测试订单、配对差值与置信区间；验证集选配置，测试集不参与选择。单个 T0 起点结论限于该起点，预训练和采库成本单列。
 
-## 3. 表现速览（训练曲线 · 非最终论文表）
-
-口径：`MetricFullorderCore/05_makespan` **后期 1/3 episode**；`sr` = success 均值。
-
-### 3.1 Hier 训练（N=10 hard）
-
-| 方法 | Run | Ep | late_med ↓ | late_std | min | trunc | sr | 相对 T0 |
-|------|-----|----|------------|----------|-----|-------|-----|---------|
-| **T0** | `zynalxhz` | 135 | **18300** | **1060** | **14600** | 0 | **1.00** | 基准；最稳 |
-| **T1** | `jmy3yhun` | 112 | **17923** | 1071 | 15495 | 5 | 0.93 | 中位略好，尖峰多 |
-| **T1R** | `78tdddig` | 82 | 18159 | 1271 | 15464 | 1 | 0.98 | 接近；未满程 |
-| Legacy curr. | `yrmr4uxp` | 173 | ~17916 | 1439 | — | 3 | 0.97 | ≠T1C |
-| Random 探 | `1r3e2wux` | 95 | 19144 | 3769 | 15788 | 3 | 0.97 | 下界 |
-
-1. T0 最稳；T1 受随机 ORU 分布错配影响。  
-2. 论文数字靠统一 **eval**，不靠训练曲线。
-
-### 3.2 Eval 片段（`HcFactory_TPA_Eval`）
-
-| 方法 | Run | n | med | 备注 |
-|------|-----|---|-----|------|
-| Random N=10 | `q850okke` | 10 | ~24890 | finished |
-| Rule 短跑 N=10 | `k0zko3r6` | 10 | ~24200 | 非正式 |
-| Hier≈1.6M | `7zeqtyf1` | 9 | ~19731 | crashed |
-| Hier≈2.5M | `pmya4v6p` | 10 | ~22376 | ckpt 需核对 |
-| Rule N=16 K10 | `e29hbc1s` | 10 | ~34988 | 勿与 N=10 横比 |
-
----
-
-## 4. 最短命令
-
-```bash
-./batch_train.sh T0 cuda:0
-HC_CATALOG_TAG=T1_random_ep20 ./batch_train.sh T1 cuda:0
-HC_CATALOG_TAG=T1_random_ep20 ./batch_train.sh T1R cuda:0
-HC_CATALOG_TAG=T1_random_ep20 ./batch_train.sh T1RH cuda:1
-
-HC_CATALOG_TAG=T1_random_ep20 ./batch_train.sh 22 cuda:0   # 采库
-
-HC_EVAL_VARIANT=T0 HC_LOAD_DIR=logs/rl_games/HcFactory/<dir> ./batch_train.sh 29 cuda:0
-./batch_train.sh 24 25 26 cuda:0    # Rule/Random N=10
-./batch_train.sh 30 31 32 cuda:0    # N=16
-```
-
-Catalog：`env_checkpoints/random_explore/N10_T40000__${HC_CATALOG_TAG}/`（需 `offline_replay/`）。
-
----
-
-## 5. 环境变量（常用）
-
-| 变量 | 作用 |
-|------|------|
-| `HC_CATALOG_TAG` | 采库/读库标签 |
-| `HC_LOAD_DIR` / `HC_LOAD_STEP` | 评测权重 |
-| `HC_TEST_SEEDS` / `HC_TEST_TIMES` | 评测 |
-| `HC_ORU_*` | ORU warmup / mix 衰减 |
-
----
-
-## 6. 下一步
-
-| # | 动作 |
-|---|------|
-| 1 | 停 T0/T1；T1R 对齐步数后停 |
-| 2 | 统一 eval：T0 / T1 / T1R |
-| 3 | 跑 **T1RH** |
-| 4 | 实现 **T2**（T0 作教师滚库）→ 可选 **T2E / T2EW** |
-| 5 | **T1C(Cr)+ORU** → **T1RHC(Cr)**（≠ job 27） |
-| 6 | **+A** 消融（如 T1RA）；收齐基线 eval |
-
----
-
-## 7. Job 速查
-
-| Job | 用途 |
-|-----|------|
-| 22 | explore + `offline_replay` |
-| 24–26 | Rule/Random eval N=10 |
-| 27 | legacy curr. **reset only** ≠ T1C |
-| 28 | hard train（±ORU/PER） |
-| 29 | hier eval |
-| 30–32 | N=16 基线 eval |
+本文为现行 E0–E5 方案；旧协议看板已归档为 `docs/experiment_protocol_old.md`。  
+E0 加载旧 T0 权重时，loader 会自动把 pre-Rainbow 的 `net.0/2/4` 映射到当前 `feature`+`net`（无需重训）。

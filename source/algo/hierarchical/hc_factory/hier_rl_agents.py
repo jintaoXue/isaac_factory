@@ -13,6 +13,35 @@ from .hier_networks import QNetwork
 from .hier_utils import index_to_one_hot, masked_select_action, one_hot_to_index
 
 
+def _migrate_q_net_state_dict(state: dict, q_net: nn.Module) -> dict:
+    """Map pre-Rainbow flat ``net`` checkpoints onto current ``feature``+``net`` QNetwork.
+
+    Old (T0-era): ``net.0/2/4`` = Linear(obs→H), Linear(H→H), Linear(H→A)
+    New: ``feature.0/2`` + ``net.0`` (non-dueling). Same math; only Module names changed.
+    """
+    if not isinstance(state, dict):
+        return state
+    has_old = "net.0.weight" in state and "net.2.weight" in state and "net.4.weight" in state
+    has_new = "feature.0.weight" in state
+    if not has_old or has_new:
+        return state
+    if getattr(q_net, "dueling", False):
+        raise RuntimeError(
+            "Cannot load legacy flat QNet checkpoint into a dueling network; "
+            "retrain or disable --dueling_dqn for this load."
+        )
+    migrated = {
+        "feature.0.weight": state["net.0.weight"],
+        "feature.0.bias": state["net.0.bias"],
+        "feature.2.weight": state["net.2.weight"],
+        "feature.2.bias": state["net.2.bias"],
+        "net.0.weight": state["net.4.weight"],
+        "net.0.bias": state["net.4.bias"],
+    }
+    print("[Hier] migrated legacy QNetwork state_dict (net.0/2/4 → feature+net)")
+    return migrated
+
+
 class MaskedDQNAgent:
     """Single-agent masked DQN for discrete one-hot actions."""
 
@@ -328,7 +357,8 @@ class MaskedDQNAgent:
 
     def load(self, path: str) -> None:
         checkpoint = torch.load(path, weights_only=True)
-        self.q_net.load_state_dict(checkpoint["q_net"])
+        state = _migrate_q_net_state_dict(checkpoint["q_net"], self.q_net)
+        self.q_net.load_state_dict(state)
         self.target_net.load_state_dict(self.q_net.state_dict())
 
 

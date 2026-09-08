@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-# Hier4TPA journal entry — versions T0 / T1 / T1R / T1RH (+ baselines / eval).
-# See docs/experiment_protocol.md §1c.
+# Hier4TPA journal entry — E0 eval + legacy T0/T1/T1R/T1RH.
+# See docs/experiment_protocol.md (E0–E5); old board: docs/experiment_protocol_old.md.
 #
 # Usage:
 #   ./run_2026_journal_experiments.sh E0 [cuda:0] [--dry-run]

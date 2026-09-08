@@ -33,7 +33,7 @@ HC_WANDB_CATALOG_PROJECT="${HC_WANDB_CATALOG_PROJECT:-HcFactory_Catalog}"
 #   → 27 hier课程 → 28 hier硬训 → 29 N16评测 → 30/31/32 N16 基线
 if [ $# -eq 0 ]; then
     echo "用法: $0 <T0|T1|T1R|T1RH|E|序号...> [cuda:N]"
-    echo "  ---- 主推版本（见 docs/experiment_protocol.md §1c）----"
+    echo "  ---- 主推版本（见 docs/experiment_protocol.md；旧看板 docs/experiment_protocol_old.md）----"
     echo "  T0:   hard train（无 ORU）"
     echo "  T1:   22 explore → 28 hard+ORU"
     echo "  T1R:  22(可选) → 28 ORU+PER+Dueling（复用 T1 catalog）"
