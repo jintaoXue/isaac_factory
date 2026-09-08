@@ -60,3 +60,7 @@ _build
 
 # Pre-Trained Checkpoints
 /.pretrained_checkpoints/
+
+.wandb_local.env
+*.pid
+logs_eval_*.pid
