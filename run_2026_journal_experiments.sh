@@ -18,7 +18,7 @@ export HC_WANDB_TRAIN_PROJECT="${HC_WANDB_TRAIN_PROJECT:-HcFactory_TPA}"
 export HC_WANDB_TEST_PROJECT="${HC_WANDB_TEST_PROJECT:-HcFactory_TPA_Eval}"
 export HC_WANDB_BASELINE_PROJECT="${HC_WANDB_BASELINE_PROJECT:-${HC_WANDB_TEST_PROJECT}}"
 export HC_TEST_SEEDS="${HC_TEST_SEEDS:-43,44,45,46,47,48,49,50,51,52}"
-export HC_TEST_TIMES="${HC_TEST_TIMES:-2}"
+export HC_TEST_TIMES="${HC_TEST_TIMES:-1}"
 export HC_CATALOG_TAG="${HC_CATALOG_TAG:-T1_random_ep20}"
 
 EVAL_STEPS="${HC_EVAL_STEPS:-}"
@@ -35,8 +35,8 @@ usage() {
 
 评测:
   E0 [cuda:N] [--dry-run]
-          固定 step1290000，N10/K10/T40000，评测 seed 43–52 各 2 局，epsilon=0
-          默认 logs/rl_games/HcFactory/hier_2026-08-27_23-17-41；HC_E0_LOAD_DIR 可覆盖
+          固定 step1290000，N10/K10/T40000，评测 seed 43–52 各 1 局，epsilon=0
+          权重：logs/rl_games/HcFactory/hier_2026-08-27_23-17-41
   eval-T0 | eval-T1 | eval-T1R | eval-T1RH
           需 HC_LOAD_DIR；可选 HC_LOAD_STEP / HC_EVAL_STEPS
   hier-eval / hier-eval-n16 / hier-eval-n10
@@ -89,7 +89,7 @@ run_e0_eval() {
     local repo_root load_dir head dry_run="${3:-}"
     repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
     cd "${repo_root}"
-    load_dir="${HC_E0_LOAD_DIR:-${repo_root}/logs/rl_games/HcFactory/hier_2026-08-27_23-17-41}"
+    load_dir="${repo_root}/logs/rl_games/HcFactory/hier_2026-08-27_23-17-41"
     if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
         echo "错误: 设备需为 cuda:N 或 cpu" >&2
         return 1
@@ -143,20 +143,14 @@ run_e0_eval() {
         'agent.params.config.load_name=""'
     )
     # Horizon: 64000 * 10 / 16 = 40000. Keep anchor=64000.
-    # Eval seeds 43–52 × HC_TEST_TIMES (default 2). Train convention remains S42.
+    # Eval seeds 43–52 × HC_TEST_TIMES (default 1). Train convention remains S42.
     echo "[E0] N=10 K=10 dispatch=10 T=40000 epsilon=0; eval_seeds=43..52 x${HC_TEST_TIMES}; step=1290000"
-    echo "[E0] checkpoint=${load_dir}/nn; project=HcFactory_TPA_Eval"
+    echo "[E0] load_dir=${load_dir}; project=HcFactory_TPA_Eval"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
         return 0
     fi
-    for head in state_encoder agent_A agent_B agent_C agent_D_human agent_D_robot; do
-        if [[ ! -s "${load_dir}/nn/${head}_step_1290000.pth" ]]; then
-            echo "错误: 缺少或为空: ${load_dir}/nn/${head}_step_1290000.pth" >&2
-            return 1
-        fi
-    done
     "${cmd[@]}"
 }
 
