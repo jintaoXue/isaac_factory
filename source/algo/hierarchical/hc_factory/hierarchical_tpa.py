@@ -948,6 +948,13 @@ class HierarchicalTPA:
                 f"[Hier] teacher ckpt loaded step={self.config.get('load_step')} "
                 f"dir={self.config.get('load_dir')} → greedy collect"
             )
+        elif self.config.get("load_dir") or self.config.get("load_name"):
+            # E1+ finetune: warm-start Q/encoder from a checkpoint, keep train mode.
+            self._maybe_load_checkpoint(obs[0])
+            print(
+                f"[Hier] train warmstart loaded step={self.config.get('load_step')} "
+                f"dir={self.config.get('load_dir')}"
+            )
         if self._oru_enabled:
             self._setup_oru()
             self._run_oru_warmup()
