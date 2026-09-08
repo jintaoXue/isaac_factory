@@ -79,7 +79,7 @@ params:
 
     test: False
     test_times: 1
-    test_seeds: [42, 43, 44, 45, 46]
+    test_seeds: [43, 44, 45, 46, 47, 48, 49, 50, 51, 52]
     test_epsilon: 0.0
     test_progress_log_interval: 100
     env_rule_based_exploration: False

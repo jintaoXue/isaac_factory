@@ -23,7 +23,7 @@ parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--algo", type=str, default=None, help="Name of the algorithm.")
 parser.add_argument("--test", action="store_true", default=False, help="Run evaluation (Makespan / Success / Truncation) instead of training.")
 parser.add_argument("--test_times", type=int, default=None, help="Episodes per seed during --test.")
-parser.add_argument("--test_seeds", type=str, default=None, help="Comma-separated seeds for --test, e.g. 42,43,44,45,46.")
+parser.add_argument("--test_seeds", type=str, default=None, help="Comma-separated seeds for --test, e.g. 43,44,...,52.")
 parser.add_argument(
     "--test_epsilon",
     type=float,

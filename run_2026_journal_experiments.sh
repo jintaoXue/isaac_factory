@@ -17,7 +17,7 @@ DEVICE="${2:-cuda:0}"
 export HC_WANDB_TRAIN_PROJECT="${HC_WANDB_TRAIN_PROJECT:-HcFactory_TPA}"
 export HC_WANDB_TEST_PROJECT="${HC_WANDB_TEST_PROJECT:-HcFactory_TPA_Eval}"
 export HC_WANDB_BASELINE_PROJECT="${HC_WANDB_BASELINE_PROJECT:-${HC_WANDB_TEST_PROJECT}}"
-export HC_TEST_SEEDS="${HC_TEST_SEEDS:-42,43,44,45,46}"
+export HC_TEST_SEEDS="${HC_TEST_SEEDS:-43,44,45,46,47,48,49,50,51,52}"
 export HC_TEST_TIMES="${HC_TEST_TIMES:-2}"
 export HC_CATALOG_TAG="${HC_CATALOG_TAG:-T1_random_ep20}"
 
@@ -35,8 +35,8 @@ usage() {
 
 评测:
   E0 [cuda:N] [--dry-run]
-          固定 step1290000，N10/K10/T40000，seed 42–51 各 1 局，epsilon=0
-          默认 checkpoints/E0_T0_step1290000；HC_E0_LOAD_DIR 可指定目录
+          固定 step1290000，N10/K10/T40000，评测 seed 43–52 各 2 局，epsilon=0
+          默认 logs/rl_games/HcFactory/hier_2026-08-27_23-17-41；HC_E0_LOAD_DIR 可覆盖
   eval-T0 | eval-T1 | eval-T1R | eval-T1RH
           需 HC_LOAD_DIR；可选 HC_LOAD_STEP / HC_EVAL_STEPS
   hier-eval / hier-eval-n16 / hier-eval-n10
@@ -89,7 +89,7 @@ run_e0_eval() {
     local repo_root load_dir head dry_run="${3:-}"
     repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
     cd "${repo_root}"
-    load_dir="${HC_E0_LOAD_DIR:-${repo_root}/checkpoints/E0_T0_step1290000}"
+    load_dir="${HC_E0_LOAD_DIR:-${repo_root}/logs/rl_games/HcFactory/hier_2026-08-27_23-17-41}"
     if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
         echo "错误: 设备需为 cuda:N 或 cpu" >&2
         return 1
@@ -117,12 +117,13 @@ run_e0_eval() {
     local -a cmd=(
         python train.py --task HRTPaHC-v1 --algo hier
         --device "${DEVICE}" --num_envs 1 --headless --seed 42
-        --test --test_times 1 --test_seeds 42,43,44,45,46,47,48,49,50,51
+        --test --test_times "${HC_TEST_TIMES}" --test_seeds "${HC_TEST_SEEDS}"
         --test_epsilon 0 --train_n_products 10 --max_parallel_cd_dispatch 10
         --load_dir "${load_dir}" --load_step 1290000
         --wandb_activate --wandb_project HcFactory_TPA_Eval
         --wandb_name Hier4TPA-E0-N10-S42-step1290000-eval
         --ftg_thresh_phy 0.95
+        --seed 42
         agent.params.config.t_max_anchor=64000
         agent.params.config.max_episodic_steps=40000
         agent.params.config.parallel_producing_limit=10
@@ -142,8 +143,8 @@ run_e0_eval() {
         'agent.params.config.load_name=""'
     )
     # Horizon: 64000 * 10 / 16 = 40000. Keep anchor=64000.
-    # One episode per seed reapplies the N10 order on every evaluated reset.
-    echo "[E0] N=10 K=10 dispatch=10 T=40000 epsilon=0; seeds=42..51 x1; step=1290000"
+    # Eval seeds 43–52 × HC_TEST_TIMES (default 2). Train convention remains S42.
+    echo "[E0] N=10 K=10 dispatch=10 T=40000 epsilon=0; eval_seeds=43..52 x${HC_TEST_TIMES}; step=1290000"
     echo "[E0] checkpoint=${load_dir}/nn; project=HcFactory_TPA_Eval"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
