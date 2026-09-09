@@ -748,8 +748,10 @@ run_test_33() {
 
 run_test_34() {
     # E2 冻结教师采库：ε=0，不反传；offline_replay/episodes/ep_XXX（带 episode_id）
-    HC_CATALOG_SOURCE="${HC_CATALOG_SOURCE:-policy_explore}"
-    HC_CATALOG_TAG="${HC_CATALOG_TAG:-E2_teacher_ep${HC_TEACHER_EPISODES}}"
+    # Force canonical teacher catalog identity (do not inherit T1_random_ep20).
+    HC_CATALOG_SOURCE="${HC_TEACHER_CATALOG_SOURCE:-policy_explore}"
+    HC_CATALOG_TAG="${HC_TEACHER_CATALOG_TAG:-E2_teacher_ep${HC_TEACHER_EPISODES}}"
+    unset HC_EXPLORE_CATALOG_DIR
     export HC_CATALOG_SOURCE HC_CATALOG_TAG
     hc_print_catalog_hint
     local _load="${HC_TEACHER_LOAD_DIR}"
@@ -763,6 +765,7 @@ run_test_34() {
         exit 1
     fi
     echo "运行 34: teacher_collect (ε=0, ep=${_ep}, seed=${_seed}, step=${_step}, load=${_load})"
+    echo "[TEACHER] catalog=$(hc_catalog_root)"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \

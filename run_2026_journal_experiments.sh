@@ -246,7 +246,20 @@ run_e2_train() {
     repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
     cd "${repo_root}"
     load_dir="${repo_root}/logs/rl_games/HcFactory/hier_2026-08-27_23-17-41"
-    catalog_root="${HC_EXPLORE_CATALOG_DIR:-${repo_root}/env_checkpoints/policy_explore/N10_T40000__E2_teacher_ep${teacher_eps}}"
+    # Prefer explicit override; else canonical E2 teacher path; else tolerate
+    # mis-tagged teacher dumps under T1_random_ep20 (journal default leak).
+    if [[ -n "${HC_EXPLORE_CATALOG_DIR:-}" ]]; then
+        catalog_root="${HC_EXPLORE_CATALOG_DIR}"
+    else
+        catalog_root="${repo_root}/env_checkpoints/policy_explore/N10_T40000__E2_teacher_ep${teacher_eps}"
+        if [[ ! -d "${catalog_root}/offline_replay" ]]; then
+            local alt="${repo_root}/env_checkpoints/random_explore/N10_T40000__T1_random_ep20"
+            if [[ -d "${alt}/offline_replay" ]]; then
+                echo "[E2] WARN: canonical teacher catalog missing; using ${alt}" >&2
+                catalog_root="${alt}"
+            fi
+        fi
+    fi
     if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
         echo "错误: 设备需为 cuda:N 或 cpu" >&2
         return 1
@@ -336,7 +349,11 @@ case "${MODE}" in
     T1|train) ./batch_train.sh T1 "${DEVICE}" ;;
     T1R) ./batch_train.sh T1R "${DEVICE}" ;;
     T1RH) ./batch_train.sh T1RH "${DEVICE}" ;;
-    TEACHER|teacher|E2-collect) ./batch_train.sh TEACHER "${DEVICE}" ;;
+    TEACHER|teacher|E2-collect)
+        # Do not inherit journal default T1_random_ep20 into teacher catalog.
+        unset HC_CATALOG_TAG HC_CATALOG_SOURCE HC_EXPLORE_CATALOG_DIR
+        ./batch_train.sh TEACHER "${DEVICE}"
+        ;;
     eval-T0) run_eval_variant T0 ;;
     eval-T1) run_eval_variant T1 ;;
     eval-T1R) run_eval_variant T1R ;;
