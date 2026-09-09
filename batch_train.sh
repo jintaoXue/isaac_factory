@@ -19,6 +19,9 @@ HC_T_MAX_N16="${HC_T_MAX_ANCHOR}"
 HC_EXPLORE_EPISODES="${HC_EXPLORE_EPISODES:-20}"
 HC_POLICY_CATALOG_EPISODES="${HC_POLICY_CATALOG_EPISODES:-80}"
 HC_WANDB_CATALOG_PROJECT="${HC_WANDB_CATALOG_PROJECT:-HcFactory_Catalog}"
+# 微调（E1–E5）默认 30；hard train（T0/T1 job 28）默认 100（原低点 ~ep70 @ step129万）
+HC_MAX_TRAIN_EPISODES="${HC_MAX_TRAIN_EPISODES:-30}"
+HC_MAX_HARD_EPISODES="${HC_MAX_HARD_EPISODES:-100}"
 # E2 冻结教师采库（job 34 / TEACHER）
 HC_TEACHER_LOAD_DIR="${HC_TEACHER_LOAD_DIR:-logs/rl_games/HcFactory/hier_2026-08-27_23-17-41}"
 HC_TEACHER_LOAD_STEP="${HC_TEACHER_LOAD_STEP:-1290000}"
@@ -60,6 +63,8 @@ if [ $# -eq 0 ]; then
     echo "  环境变量: HC_CATALOG_TAG HC_ORU HC_PER HC_HIER_CREDIT HC_ALGO_VARIANT"
     echo "            HC_LOAD_DIR HC_LOAD_STEP HC_TEST_SEEDS HC_TEST_TIMES HC_WANDB_MODE"
     echo "            HC_TEACHER_LOAD_DIR HC_TEACHER_LOAD_STEP HC_TEACHER_EPISODES"
+    echo "            HC_MAX_TRAIN_EPISODES（默认 30，E1–E5 微调）"
+    echo "            HC_MAX_HARD_EPISODES（默认 100，T0/T1 hard / curriculum）"
     exit 1
 fi
 
@@ -183,6 +188,20 @@ hc_test_args() {
     echo "--test --test_times ${HC_TEST_TIMES} --test_seeds ${HC_TEST_SEEDS}"
 }
 
+
+hc_max_train_ep_args() {
+    # E1–E5 finetune budget
+    if [ -n "${HC_MAX_TRAIN_EPISODES}" ] && [ "${HC_MAX_TRAIN_EPISODES}" != "0" ]; then
+        echo "--max_sim_episodes ${HC_MAX_TRAIN_EPISODES}"
+    fi
+}
+
+hc_max_hard_ep_args() {
+    # T0 / T1 hard train (+ curriculum) budget
+    if [ -n "${HC_MAX_HARD_EPISODES}" ] && [ "${HC_MAX_HARD_EPISODES}" != "0" ]; then
+        echo "--max_sim_episodes ${HC_MAX_HARD_EPISODES}"
+    fi
+}
 
 # 统一 T_max anchor（22–32 共用；可用 HC_T_MAX_ANCHOR 覆盖做极限探测）
 # Hydra root is {env, agent}; must set under agent.params.config (not top-level +t_max_anchor).
@@ -483,7 +502,7 @@ run_test_26() {
 run_test_27() {
     # 倒序课程：target=10；T_budget=ΔN×per_T_max；catalog 按 start_nfin 切片
     hc_print_catalog_hint
-    echo "运行 27: hier curriculum (reverse ΔN →10, per_T=${HC_PER_T_MAX}, catalog entries at bind)"
+    echo "运行 27: hier curriculum (reverse ΔN →10, per_T=${HC_PER_T_MAX}, catalog entries at bind, max_ep=${HC_MAX_HARD_EPISODES})"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -494,6 +513,7 @@ run_test_27() {
         --wandb_project "${HC_WANDB_PROJECT}" \
         --wandb_name "hier_curriculum_K${HC_MULTI_K}_T${HC_T_MAX_N10}__${HC_CATALOG_TAG:-legacy}" \
         --max_parallel_cd_dispatch "${HC_MULTI_K}" \
+        $(hc_max_hard_ep_args) \
         $(hc_t_max_args) \
         $(hc_catalog_args) \
         $(hc_warmstart_args) \
@@ -524,7 +544,7 @@ run_test_28() {
         _credit_flag="--hierarchical_credit"
         _bscore_flag="--b_score_rl"
     fi
-    echo "运行 28: hier hard train variant=${_variant} (N=10, T_max=${HC_T_MAX_N10}, wandb=${HC_WANDB_PROJECT})"
+    echo "运行 28: hier hard train variant=${_variant} (N=10, T_max=${HC_T_MAX_N10}, max_ep=${HC_MAX_HARD_EPISODES}, wandb=${HC_WANDB_PROJECT})"
     python train.py \
         --task "${HC_TASK}" \
         --algo hier \
@@ -540,6 +560,7 @@ run_test_28() {
         ${_dueling_flag} \
         ${_credit_flag} \
         ${_bscore_flag} \
+        $(hc_max_hard_ep_args) \
         $(hc_t_max_args) \
         $(hc_catalog_args) \
         $(hc_warmstart_args) \

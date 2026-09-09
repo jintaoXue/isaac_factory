@@ -1,7 +1,7 @@
 # T0 热启动：递进实验命名与方案（E0–E5）
 
 > **现行实验协议**（原 `t0_finetuning_research_plan.md`）。旧版 T0–T4 / +RHC 看板见 `docs/experiment_protocol_old.md`。  
-> E0 评测入口已接入：`./run_2026_journal_experiments.sh E0 [cuda:0]`。E1–E5 训练名尚未全部接入命令行。
+> E0 / E1 / TEACHER 入口：`./run_2026_journal_experiments.sh E0|E1|TEACHER [cuda:0]`。
 
 **目标：固定 N=10，从同一个 T0 checkpoint 出发，在有限新增预算下改善 makespan 与成功率。**
 
@@ -30,12 +30,29 @@
 | **评测**（E0 及所有 E* 横比） | **43–52**（10 个，每 seed **1** 局，共 10） | 与训练主 seed 42 错开；`HC_TEST_TIMES` 默认 1 |
 | **教师采库** | 可用 **42**（分布对齐）或 42+其它 | **不要**用 43–52 整段扫满当库；入口：`./run_2026_journal_experiments.sh TEACHER`（默认 50 ep，ε=0，按 `offline_replay/episodes/ep_XXX` 落盘） |
 
+## 训练预算（强制对齐）
+
+| 用途 | 默认 | 说明 |
+|------|------|------|
+| **微调**（E1–E5） | **`HC_MAX_TRAIN_EPISODES=30`** | 约原 T0 到低点（~70 ep）的 **40%**；E1–E5 横比必须同预算 |
+| **Hard train**（T0/T1 / curriculum） | **`HC_MAX_HARD_EPISODES=100`** | 覆盖原低点（~ep70 @ step≈129万）并留余量；原 run 共约 135 ep |
+| Explore 采库 | `HC_EXPLORE_EPISODES=20` | 独立 |
+| 教师采库 | `HC_TEACHER_EPISODES=50` | 独立；E2 用子集 |
+
+**step 1290000 ≈ 第 70 个 episode**：教师低点 `makespan=14600` 记在 ep70，`Train/step≈1290374`；均值约 `1290374/70 ≈ 1.84e4` step/ep。设 hard=100 是「过低点后再多训一段」的上限，不是要重跑到 129 万步。
+
+设为 `0` 可关闭上限（不推荐用于正式横比）。
+
 ## E0 运行入口
 
 `bash run_2026_journal_experiments.sh E0 cuda:0`（先加 `--dry-run` 可预览）。权重固定  
 `logs/rl_games/HcFactory/hier_2026-08-27_23-17-41`（step 1290000）。
 
 固定 N=10、K=10、每步最多 10 次 C/D dispatch、实际 T=40000、epsilon=0；**评测 seed 43–52** 各 1 局，共 10 局。后续 E1–E5 评测沿用该协议，不直接混用历史 5 seeds（42–46）结果。内部 `t_max_anchor=64000` 经 N10/16 换算为 40000，不能直接改成 40000。
+
+## E1 运行入口
+
+`bash run_2026_journal_experiments.sh E1 cuda:0`（`--dry-run` 可预览）。从同一教师 ckpt 热启，低 lr（Q `2e-5` / enc `1e-5`）、ε=0.05、seed 42，**最多 `HC_MAX_TRAIN_EPISODES`（默认 30）局**。
 
 ## 1. 命名规则与主实验表
 
@@ -83,7 +100,7 @@ E0 只评测；E1–E5 分别从同一个 T0 checkpoint 初始化，教师固定
 ## 4. 统一预算与论文指标
 
 - **起始参数**：Q 学习率 `2e-5`、encoder `1e-5`、基础 epsilon `0.05`，均为建议起点；教师探索、层级学习、自回归增强的差异按表显式记录。
-- **筛选预算**：每个训练组相同新增环境步数，先取原 T0 的 10%–20%；同时记录梯度更新数、候选推理开销、采库与墙钟时间。环境、硬件和其他超参数保持一致。
+- **筛选预算**：微调默认 **`HC_MAX_TRAIN_EPISODES=30`**；从零 hard 默认 **`HC_MAX_HARD_EPISODES=100`**。同时记录梯度更新数、候选推理开销、采库与墙钟时间。环境、硬件和其他超参数保持一致。
 - **主结果**：成功率、成功订单 makespan、含失败惩罚的整体指标；效率报告达到预定性能目标的新增步数与实际时间，未达到则明确标注。
 - **机制证据**：教师探索看早期退化/失败，层级学习看各层样本与 TD 误差，自回归增强看候选改选率及最终调度收益；不只报告总 reward。
 - **确认实验**：主跑训练 S42；额外训练种子作方差时再开 S；**评测固定 43–52×1**；配对差值与置信区间；验证集选配置，测试集不参与选择。单个 T0 起点结论限于该起点，预训练和采库成本单列。

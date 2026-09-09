@@ -22,6 +22,9 @@ export HC_WANDB_BASELINE_PROJECT="${HC_WANDB_BASELINE_PROJECT:-${HC_WANDB_TEST_P
 export HC_TEST_SEEDS="${HC_TEST_SEEDS:-43,44,45,46,47,48,49,50,51,52}"
 export HC_TEST_TIMES="${HC_TEST_TIMES:-1}"
 export HC_CATALOG_TAG="${HC_CATALOG_TAG:-T1_random_ep20}"
+# E1–E5 微调默认 30；T0/T1 hard 见 batch_train HC_MAX_HARD_EPISODES=100
+export HC_MAX_TRAIN_EPISODES="${HC_MAX_TRAIN_EPISODES:-30}"
+export HC_MAX_HARD_EPISODES="${HC_MAX_HARD_EPISODES:-100}"
 
 EVAL_STEPS="${HC_EVAL_STEPS:-}"
 
@@ -34,7 +37,7 @@ usage() {
   T1      explore → ORU + hard
   T1R     ORU + PER + Dueling（复用 catalog）
   T1RH    T1R + hierarchical credit + B-score
-  E1      T0 权重热启动微调（step1290000，低 lr / ε≈0.05，S42）
+  E1      T0 权重热启动微调（step1290000，低 lr / ε≈0.05，S42，默认 ${HC_MAX_TRAIN_EPISODES:-30} ep）
   TEACHER 冻结 T0 教师采库（E2，ε=0，默认 50 ep，seed 42）
 
 评测:
@@ -193,6 +196,7 @@ run_e1_train() {
         python train.py --task HRTPaHC-v1 --algo hier
         --device "${DEVICE}" --num_envs 1 --headless --seed 42
         --train_n_products 10 --max_parallel_cd_dispatch 10
+        --max_sim_episodes "${HC_MAX_TRAIN_EPISODES}"
         --load_dir "${load_dir}" --load_step 1290000
         --wandb_activate --wandb_project HcFactory_TPA
         --wandb_name Hier4TPA-E1-N10-S42
@@ -224,7 +228,7 @@ run_e1_train() {
         'agent.params.config.load_name=""'
     )
     echo "[E1] warmstart step=1290000; N=10 K=10 T=40000; lr_q=2e-5 lr_enc=1e-5 eps=0.05; seed=42"
-    echo "[E1] load_dir=${load_dir}; project=HcFactory_TPA; wandb=Hier4TPA-E1-N10-S42"
+    echo "[E1] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; project=HcFactory_TPA; wandb=Hier4TPA-E1-N10-S42"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'

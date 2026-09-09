@@ -58,6 +58,9 @@ _build
 **/logs/*
 **/recordings/*
 
+# Local sim dumps (explore catalog, offline_replay, stagnation stalls) — do not commit
+/env_checkpoints/
+
 # Pre-Trained Checkpoints
 /.pretrained_checkpoints/
 
