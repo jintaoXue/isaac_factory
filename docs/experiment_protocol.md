@@ -1,7 +1,7 @@
 # T0 热启动：递进实验命名与方案（E0–E5）
 
 > **现行实验协议**（原 `t0_finetuning_research_plan.md`）。旧版 T0–T4 / +RHC 看板见 `docs/experiment_protocol_old.md`。  
-> E0 / E1 / TEACHER 入口：`./run_2026_journal_experiments.sh E0|E1|TEACHER [cuda:0]`。
+> E0 / E1 / E2 / TEACHER 入口：`./run_2026_journal_experiments.sh E0|E1|E2|TEACHER [cuda:0]`。
 
 **目标：固定 N=10，从同一个 T0 checkpoint 出发，在有限新增预算下改善 makespan 与成功率。**
 
@@ -53,6 +53,19 @@
 ## E1 运行入口
 
 `bash run_2026_journal_experiments.sh E1 cuda:0`（`--dry-run` 可预览）。从同一教师 ckpt 热启，低 lr（Q `2e-5` / enc `1e-5`）、ε=0.05、seed 42，**最多 `HC_MAX_TRAIN_EPISODES`（默认 30）局**。
+
+## E2 运行入口
+
+先 TEACHER 采库，再训：
+
+```bash
+./run_2026_journal_experiments.sh TEACHER cuda:0   # 已完成后可跳过
+./run_2026_journal_experiments.sh E2 cuda:0
+```
+
+E2 = E1 热启设定 + `--oru` 读教师库  
+`env_checkpoints/policy_explore/N10_T40000__E2_teacher_ep50/offline_replay`  
+（可用 `HC_EXPLORE_CATALOG_DIR` / `HC_TEACHER_EPISODES` 覆盖）。`oru_mix_start=0.25`（约 25% 教师 + 75% 在线），`oru_warmup_updates=0`（自动 warmup）。wandb：`Hier4TPA-E2-N10-S42`。
 
 ## 1. 命名规则与主实验表
 
