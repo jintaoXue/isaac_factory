@@ -23,8 +23,8 @@ export HC_WANDB_BASELINE_PROJECT="${HC_WANDB_BASELINE_PROJECT:-${HC_WANDB_TEST_P
 export HC_TEST_SEEDS="${HC_TEST_SEEDS:-43,44,45,46,47,48,49,50,51,52}"
 export HC_TEST_TIMES="${HC_TEST_TIMES:-1}"
 export HC_CATALOG_TAG="${HC_CATALOG_TAG:-T1_random_ep20}"
-# E1–E5 微调默认 30；T0/T1 hard 见 batch_train HC_MAX_HARD_EPISODES=100
-export HC_MAX_TRAIN_EPISODES="${HC_MAX_TRAIN_EPISODES:-30}"
+# E1–E5 微调默认 50；T0/T1 hard 见 batch_train HC_MAX_HARD_EPISODES=100
+export HC_MAX_TRAIN_EPISODES="${HC_MAX_TRAIN_EPISODES:-50}"
 export HC_MAX_HARD_EPISODES="${HC_MAX_HARD_EPISODES:-100}"
 
 EVAL_STEPS="${HC_EVAL_STEPS:-}"
@@ -38,7 +38,7 @@ usage() {
   T1      explore → ORU + hard
   T1R     ORU + PER + Dueling（复用 catalog）
   T1RH    T1R + hierarchical credit + B-score
-  E1      T0 权重热启动微调（step1290000，低 lr / ε≈0.05，S42，默认 ${HC_MAX_TRAIN_EPISODES:-30} ep）
+  E1      T0 权重热启动微调（step1290000，低 lr / ε≈0.05，S42，默认 ${HC_MAX_TRAIN_EPISODES:-50} ep）
   E2      E1＋教师 offline_replay ORU（25% 教师混合；需先 TEACHER 采库）
   TEACHER 冻结 T0 教师采库（ε=0，默认 50 ep，seed 42）
 
