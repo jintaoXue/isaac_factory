@@ -161,6 +161,10 @@ def define_shared_metrics(
         "14_per_beta",
         "15_dueling_dqn",
         "16_noisy_net",
+        "17_teacher_explore",
+        "18_teacher_explore_ratio",
+        "19_explore_teacher_frac",
+        "20_explore_random_frac",
     ):
         wandb.define_metric(f"MetricTrain/{key}", step_metric="Train/step")
     wandb.define_metric("MetricTrain/algo_variant", step_metric="Train/step")
@@ -423,6 +427,9 @@ def train_metrics(
     per_beta: float | None = None,
     dueling_dqn: bool | None = None,
     noisy_net: bool | None = None,
+    teacher_explore: bool | None = None,
+    teacher_explore_ratio: float | None = None,
+    teacher_explore_counts: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {}
     if epsilon is not None:
@@ -452,6 +459,17 @@ def train_metrics(
         payload["MetricTrain/15_dueling_dqn"] = float(bool(dueling_dqn))
     if noisy_net is not None:
         payload["MetricTrain/16_noisy_net"] = float(bool(noisy_net))
+    if teacher_explore is not None:
+        payload["MetricTrain/17_teacher_explore"] = float(bool(teacher_explore))
+    if teacher_explore_ratio is not None:
+        payload["MetricTrain/18_teacher_explore_ratio"] = float(teacher_explore_ratio)
+    if teacher_explore_counts is not None:
+        n_teacher = int(teacher_explore_counts.get("teacher", 0) or 0)
+        n_random = int(teacher_explore_counts.get("random", 0) or 0)
+        n_explore = n_teacher + n_random
+        if n_explore > 0:
+            payload["MetricTrain/19_explore_teacher_frac"] = float(n_teacher) / float(n_explore)
+            payload["MetricTrain/20_explore_random_frac"] = float(n_random) / float(n_explore)
     return payload
 
 

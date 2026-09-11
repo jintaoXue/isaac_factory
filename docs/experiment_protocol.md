@@ -1,7 +1,7 @@
 # T0 热启动：递进实验命名与方案（E0–E5）
 
 > **现行实验协议**（原 `t0_finetuning_research_plan.md`）。旧版 T0–T4 / +RHC 看板见 `docs/experiment_protocol_old.md`。  
-> E0 / E1 / E2 / TEACHER 入口：`./run_2026_journal_experiments.sh E0|E1|E2|TEACHER [cuda:0]`。
+> E0 / E1 / E2 / E3 / TEACHER 入口：`./run_2026_journal_experiments.sh E0|E1|E2|E3|TEACHER [cuda:0]`。
 
 **目标：固定 N=10，从同一个 T0 checkpoint 出发，在有限新增预算下改善 makespan 与成功率。**
 
@@ -66,6 +66,16 @@
 E2 = E1 热启设定 + `--oru` 读教师库  
 `env_checkpoints/policy_explore/N10_T40000__E2_teacher_ep50/offline_replay`  
 （可用 `HC_EXPLORE_CATALOG_DIR` / `HC_TEACHER_EPISODES` 覆盖）。`oru_mix_start=0.25`（约 25% 教师 + 75% 在线），`oru_warmup_updates=0`（自动 warmup）。wandb：`Hier4TPA-E2-N10-S42`。
+
+## E3 运行入口
+
+```bash
+./run_2026_journal_experiments.sh TEACHER cuda:0   # 已完成后可跳过
+./run_2026_journal_experiments.sh E2 cuda:0 && \
+./run_2026_journal_experiments.sh E3 cuda:0
+```
+
+E3 = E2 全套 + `--teacher_explore`：ε 探索分支上，以衰减的教师比例选冻结 T0 贪心动作，其余为 mask 合法随机；利用分支仍用学生 ε=0。默认 `teacher_explore_ratio` 1→0 / 300k env steps。wandb：`Hier4TPA-E3-N10-S42`。预算同 E1/E2（`HC_MAX_TRAIN_EPISODES`，默认 60）。
 
 ## 1. 命名规则与主实验表
 

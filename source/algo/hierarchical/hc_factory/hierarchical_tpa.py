@@ -36,6 +36,11 @@ from .offline_replay import (
     save_offline_replay,
     write_offline_replay_index,
 )
+from .teacher_explore import (
+    build_frozen_teacher,
+    choose_explore_policy,
+    teacher_explore_ratio,
+)
 from .wandb_metrics import (
     HumanFatigueMonitor,
     LocalMetricsWriter,
@@ -253,18 +258,29 @@ class HierarchicalTPA:
         self.agent_B.b_score_rl = self.b_score_rl
         self.agent_C = RLProcessTaskPlanningAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
         self.agent_D = RLHumanRobotAllocatorAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
+
+        self.oru: ORUController | None = None
+        self._oru_enabled = bool(config.get("oru", False)) and not bool(
+            config.get("explore") or config.get("explore_catalog") or config.get("teacher_collect")
+        )
+        # E3 (+E): on ε-explore branch, mix frozen-teacher greedy vs random.
+        self.teacher_explore = bool(config.get("teacher_explore", False)) and not bool(
+            config.get("explore") or config.get("explore_catalog") or config.get("teacher_collect")
+        )
+        self._teacher_policy = None
+        self._teacher_explore_counts = {"exploit": 0, "teacher": 0, "random": 0}
+        self.teacher_explore_ratio_start = float(config.get("teacher_explore_ratio_start", 1.0))
+        self.teacher_explore_ratio_end = float(config.get("teacher_explore_ratio_end", 0.0))
+        self.teacher_explore_decay_env_steps = int(
+            config.get("teacher_explore_decay_env_steps", 300_000) or 300_000
+        )
         print(
             f"[Hier] variant={self.algo_variant} "
             f"PER={dqn_kwargs['prioritized_replay']} "
             f"dueling={dqn_kwargs['dueling']} noisy={dqn_kwargs['noisy']} "
             f"hier_credit={self.hierarchical_credit} "
             f"(A={self.credit_scale_A} B={self.credit_scale_B} CD={self.credit_scale_CD}) "
-            f"b_score_rl={self.b_score_rl}"
-        )
-
-        self.oru: ORUController | None = None
-        self._oru_enabled = bool(config.get("oru", False)) and not bool(
-            config.get("explore") or config.get("explore_catalog") or config.get("teacher_collect")
+            f"b_score_rl={self.b_score_rl} teacher_explore={self.teacher_explore}"
         )
 
         self.train_dir = config.get("train_dir", "runs")
@@ -503,20 +519,59 @@ class HierarchicalTPA:
         print(f"[Hier] eval saved: {json_path}\n[Hier] summary: {summary_path}")
         return payload
 
+    def get_teacher_explore_ratio(self) -> float:
+        if not self.teacher_explore:
+            return 0.0
+        return teacher_explore_ratio(
+            env_step=env_steps(self.global_step, self.num_actors),
+            ratio_start=self.teacher_explore_ratio_start,
+            ratio_end=self.teacher_explore_ratio_end,
+            decay_env_steps=self.teacher_explore_decay_env_steps,
+        )
+
+    def _maybe_init_teacher_explore(self) -> None:
+        if not self.teacher_explore or self._teacher_policy is not None:
+            return
+        if self.agent_A.dqn is None:
+            return
+        self._teacher_policy = build_frozen_teacher(self)
+        print(
+            f"[Hier] teacher_explore: frozen T0 copy ready; "
+            f"ratio {self.teacher_explore_ratio_start:g}→{self.teacher_explore_ratio_end:g} "
+            f"over {self.teacher_explore_decay_env_steps} env steps"
+        )
+
     def act_one_env(
         self, env_state_action_dict: dict, epsilon: float, pre: dict | None = None
     ) -> tuple[dict, dict]:
         from .hierarchical_dispatch import build_hier_rl_action
 
+        agents = self
+        act_eps = float(epsilon)
+        mode = "exploit"
+        if self.teacher_explore and self._teacher_policy is not None:
+            mode = choose_explore_policy(
+                epsilon=act_eps,
+                teacher_ratio=self.get_teacher_explore_ratio(),
+            )
+            self._teacher_explore_counts[mode] = self._teacher_explore_counts.get(mode, 0) + 1
+            if mode == "exploit":
+                act_eps = 0.0
+            elif mode == "teacher":
+                agents = self._teacher_policy
+                act_eps = 0.0
+            else:
+                act_eps = 1.0
+
         action = build_hier_rl_action(
             env_state_action_dict,
             self.cuda_device,
-            self,
-            epsilon,
+            agents,
+            act_eps,
             max_parallel_cd_dispatch=self.max_parallel_cd_dispatch,
             pre=pre,
         )
-        return action, {}
+        return action, {"explore_mode": mode}
 
     def act(
         self,
@@ -955,6 +1010,7 @@ class HierarchicalTPA:
                 f"[Hier] train warmstart loaded step={self.config.get('load_step')} "
                 f"dir={self.config.get('load_dir')}"
             )
+        self._maybe_init_teacher_explore()
         if self._oru_enabled:
             self._setup_oru()
             self._run_oru_warmup()
@@ -1307,6 +1363,13 @@ class HierarchicalTPA:
                         ),
                         noisy_net=bool(
                             self.agent_B.dqn is not None and getattr(self.agent_B.dqn, "noisy", False)
+                        ),
+                        teacher_explore=self.teacher_explore,
+                        teacher_explore_ratio=(
+                            self.get_teacher_explore_ratio() if self.teacher_explore else None
+                        ),
+                        teacher_explore_counts=(
+                            dict(self._teacher_explore_counts) if self.teacher_explore else None
                         ),
                     )
                 )

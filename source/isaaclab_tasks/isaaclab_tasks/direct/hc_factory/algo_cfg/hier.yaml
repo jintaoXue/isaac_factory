@@ -114,6 +114,11 @@ params:
     oru_mix_start: 1.0             # right after warmup
     oru_mix_decay_env_steps: 300000  # linear 1→0 over this many env steps
     oru_shrink_offline: True       # shrink offline buffer with mix_ratio
+    # E3 (+E): guided explore — ε branch mixes frozen teacher vs random
+    teacher_explore: False
+    teacher_explore_ratio_start: 1.0
+    teacher_explore_ratio_end: 0.0
+    teacher_explore_decay_env_steps: 300000
     stagnation_l1: 400
     stagnation_l2: 600
     stagnation_l3: 800

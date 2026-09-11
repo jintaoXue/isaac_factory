@@ -104,6 +104,12 @@ parser.add_argument(
     help="T1/T2 ORU: offline warmup from catalog offline_replay/, then decaying offline mix into online train.",
 )
 parser.add_argument(
+    "--teacher_explore",
+    action="store_true",
+    default=False,
+    help="E3 (+E): on ε-explore branch, mix frozen-teacher greedy vs random (ratio decays).",
+)
+parser.add_argument(
     "--prioritized_replay",
     action="store_true",
     default=False,
@@ -353,6 +359,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
             algo_cfg["params"]["config"]["seed"] = int(args_cli.seed)
     if getattr(args_cli, "oru", False):
         algo_cfg["params"]["config"]["oru"] = True
+    if getattr(args_cli, "teacher_explore", False):
+        algo_cfg["params"]["config"]["teacher_explore"] = True
     if getattr(args_cli, "prioritized_replay", False):
         algo_cfg["params"]["config"]["prioritized_replay"] = True
     if getattr(args_cli, "dueling_dqn", False):
