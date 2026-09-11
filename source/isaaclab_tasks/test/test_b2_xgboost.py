@@ -167,9 +167,9 @@ class TestB2XGBoost(unittest.TestCase):
         self.assertEqual(config.event_will_scale_pos_weight, 4.0)
         self.assertTrue(config.evaluate_test)
         self.assertEqual(config.hot_eval_threshold, 0.55)
-        self.assertEqual(config.event_report_threshold, 0.68)
+        self.assertEqual(config.event_report_threshold, 0.70)
         self.assertEqual(config.report_threshold_min_precision, 0.80)
-        self.assertEqual(config.checkpoint_min_report_recall, 0.35)
+        self.assertEqual(config.checkpoint_min_report_recall, 0.70)
         with self.assertRaisesRegex(ValueError, "hot_eval_threshold"):
             B2XGBoostConfig(hot_eval_threshold=1.01)
         with self.assertRaisesRegex(ValueError, "event_report_threshold"):

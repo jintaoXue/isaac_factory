@@ -60,8 +60,8 @@ for seed in "${SEEDS[@]}"; do
       --event_focal_gamma 0 --lambda_event_will 2.5 \
       --event_will_upcoming_pos_weight 4 --event_will_ongoing_pos_weight 3 \
       --event_will_fp_weight 2 \
-      --checkpoint_min_report_precision 0.80 --checkpoint_min_report_recall 0.35 \
-      --report_threshold_sweep 0.55 0.60 0.62 0.65 0.68 0.70 0.72 0.75 0.78 0.80 0.82 0.85 \
+      --checkpoint_min_report_precision 0.80 --checkpoint_min_report_recall 0.70 \
+      --report_threshold_sweep 0.55 0.60 0.65 0.70 0.75 0.80 0.82 0.85 0.88 0.90 0.94 0.98 \
       "${CONFIG[@]}" --node_embedding "$IDENTITY" --temporal_readout "$READOUT" \
       2>&1 | tee "$DEST/training.log"
   done

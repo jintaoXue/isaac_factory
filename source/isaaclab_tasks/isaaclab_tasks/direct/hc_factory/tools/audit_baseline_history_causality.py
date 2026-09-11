@@ -13,6 +13,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from factory_baselines.dataset import FactoryBaselineTensorDataset, load_shared_dataset
+from factory_baselines.evaluation import event_rule_kwargs
 from factory_baselines.torch_trainer import _manifest_hash, _model_inputs, _resolve_device, load_checkpoint
 from factory_bn_shared.remain import station_report_metrics
 from reevaluate_main_validation import compare_reports, file_hash, load_standalone_metrics
@@ -141,7 +142,9 @@ def main():
             scores[policy] = station_report_metrics(
                 arrays["y_hot"], arrays["probability"], arrays["start"], arrays["duration"],
                 arrays["remain_mask"], arrays["occ_node_mask"], threshold=threshold,
-                min_windows=min_hot, start_tol_windows=3, hist_last_hot=arrays[key], force_ongoing_will=False,
+                **event_rule_kwargs(min_hot), start_tol_windows=3,
+                hist_last_hot=arrays[key], target_hist_last_hot=arrays["hist_last_hot"],
+                force_ongoing_will=False,
             )
         saved_path = path.parent / "metrics.json"
         saved = json.loads(saved_path.read_text())["validation"]["station_report"]

@@ -31,10 +31,10 @@ def main() -> None:
     parser.add_argument("--empty_sample_negative_cells", type=int, default=32)
     parser.add_argument("--prediction_cell_chunk_size", type=int, default=65536)
     parser.add_argument("--hot_eval_threshold", type=float, default=0.55)
-    parser.add_argument("--event_report_threshold", type=float, default=0.68)
+    parser.add_argument("--event_report_threshold", type=float, default=0.70)
     parser.add_argument("--report_threshold_sweep", type=float, nargs="+")
     parser.add_argument("--report_threshold_min_precision", type=float, default=0.80)
-    parser.add_argument("--checkpoint_min_report_recall", type=float, default=0.35)
+    parser.add_argument("--checkpoint_min_report_recall", type=float, default=0.70)
     parser.add_argument("--validation_only", action="store_true")
     args = parser.parse_args()
     config = B2XGBoostConfig(

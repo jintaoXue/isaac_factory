@@ -47,10 +47,10 @@ def main() -> None:
     parser.add_argument("--event_will_upcoming_pos_weight", type=float, default=4.0)
     parser.add_argument("--event_will_ongoing_pos_weight", type=float, default=3.0)
     parser.add_argument("--hot_eval_threshold", type=float, default=0.55)
-    parser.add_argument("--event_report_threshold", type=float, default=0.68)
+    parser.add_argument("--event_report_threshold", type=float, default=0.70)
     parser.add_argument("--report_threshold_sweep", type=float, nargs="+")
     parser.add_argument("--checkpoint_min_report_precision", type=float, default=0.80)
-    parser.add_argument("--checkpoint_min_report_recall", type=float, default=0.35)
+    parser.add_argument("--checkpoint_min_report_recall", type=float, default=0.70)
     parser.add_argument("--validation_only", action="store_true")
     args = parser.parse_args()
     summary = train_torch_baseline(

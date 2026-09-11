@@ -584,11 +584,14 @@ def node_event_targets(
     remain_mask: np.ndarray | None = None,
     occ_node_mask: np.ndarray | None = None,
     max_start_windows: int | None = None,
+    hist_last_hot: np.ndarray | None = None,
+    ongoing_min_windows: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Longest occupancy run per node in H → will / start_idx / duration_windows.
 
     One event per station in the forecast window (who / when / how long).
-    Runs shorter than ``min_windows`` are not reported.
+    Upcoming runs use ``min_windows``. A run starting at zero with hot history
+    uses ``ongoing_min_windows``, matching dev_tyx 20c40e2's training evaluator.
     """
     grid = np.asarray(y_hot, dtype=np.float32)
     squeeze = grid.ndim == 2
@@ -601,8 +604,10 @@ def node_event_targets(
     start = np.zeros((batch, n_nodes), dtype=np.int64)
     dur = np.zeros((batch, n_nodes), dtype=np.float32)
     min_w = max(int(min_windows), 1)
+    on_min = min_w if ongoing_min_windows is None else max(int(ongoing_min_windows), 1)
     rm = None if remain_mask is None else np.asarray(remain_mask, dtype=np.float32)
     occ = None if occ_node_mask is None else np.asarray(occ_node_mask, dtype=np.float32)
+    last = None if hist_last_hot is None else np.asarray(hist_last_hot, dtype=np.float32)
     for b in range(batch):
         k_use = k_len
         if rm is not None:
@@ -633,7 +638,14 @@ def node_event_targets(
                     best_len = j - i
                     best_i = i
                 i = j
-            if best_len >= min_w:
+            last_hot = False
+            if last is not None:
+                if last.ndim == 1:
+                    last_hot = float(last[n]) > 0.5
+                elif last.ndim == 2:
+                    last_hot = float(last[b, n]) > 0.5
+            need = on_min if (last_hot and int(best_i) == 0) else min_w
+            if best_len >= need:
                 if max_start_windows is not None and int(best_i) > int(max_start_windows):
                     continue
                 will[b, n] = 1.0
@@ -821,11 +833,15 @@ def _empty_report_metrics() -> dict[str, float]:
         "start_mae_ongoing",
         "dur_mae_ongoing",
         "n_true_ongoing",
+        "n_matched_who_ongoing",
         "who_recall_upcoming",
         "report_recall_upcoming",
         "start_mae_upcoming",
         "dur_mae_upcoming",
         "n_true_upcoming",
+        "n_matched_who_upcoming",
+        "n_matched_who",
+        "n_matched_report",
         "n_pred_who",
         "n_true_who",
     )
@@ -847,6 +863,8 @@ def station_report_metrics(
     will_floor: float = 0.62,
     force_ongoing_will: bool = False,
     max_start_windows: int | None = None,
+    ongoing_min_windows: int | None = None,
+    target_hist_last_hot: np.ndarray | None = None,
 ) -> dict[str, float]:
     """Main A.1 score: station match and start error ≤ ``start_tol_windows`` min.
 
@@ -869,6 +887,8 @@ def station_report_metrics(
         remain_mask=rm,
         occ_node_mask=occ,
         max_start_windows=max_start_windows,
+        hist_last_hot=(hist_last_hot if target_hist_last_hot is None else target_hist_last_hot),
+        ongoing_min_windows=ongoing_min_windows,
     )
     pred_start = np.asarray(sp, dtype=np.int64)
     pred_dur = np.asarray(dp, dtype=np.float32)
@@ -919,6 +939,8 @@ def station_report_metrics(
     out["report_f1"] = rf
     out["n_pred_who"] = n_pred
     out["n_true_who"] = n_true
+    out["n_matched_who"] = tp_who
+    out["n_matched_report"] = float(report_hit.sum())
     if tp_who > 0:
         out["start_mae"] = float(start_err[who_tp].mean())
         out["dur_mae"] = float(np.abs(pred_dur - y_dur)[who_tp].mean())
@@ -927,6 +949,7 @@ def station_report_metrics(
     for name, mask in (("ongoing", ongoing), ("upcoming", upcoming)):
         n_m = float(mask.sum())
         out[f"n_true_{name}"] = n_m
+        out[f"n_matched_who_{name}"] = float((who_tp & mask).sum())
         if n_m <= 0:
             continue
         out[f"who_recall_{name}"] = float((who_tp & mask).sum()) / n_m

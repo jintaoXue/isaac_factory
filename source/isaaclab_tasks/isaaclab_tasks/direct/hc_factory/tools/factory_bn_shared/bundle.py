@@ -54,7 +54,7 @@ def load_frozen_cause_labels(
     """Read the shared A.3 target artifact, not model predictions or new CSV labels."""
     paths = {"meta": Path(bundle_dir) / "meta.json", "episodes": Path(bundle_dir) / "episodes.npz"}
     provenance = {
-        "kind": "frozen_main_bundle",
+        "kind": "frozen_canonical_bundle",
         "anchor": "last_history_window",
         "files": {name: {"path": str(path.resolve()), "sha256": file_hash(path)}
                   for name, path in paths.items()},

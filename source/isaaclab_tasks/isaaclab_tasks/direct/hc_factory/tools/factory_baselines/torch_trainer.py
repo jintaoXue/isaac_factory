@@ -27,6 +27,7 @@ from factory_bn_shared.remain import (
 )
 
 from .dataset import FactoryBaselineTensorDataset, load_shared_dataset
+from .evaluation import EVALUATION_CONTRACT, add_time_metric_metadata, event_rule_kwargs
 from .torch_losses import MultiTaskLossConfig, compute_multitask_loss
 from .metrics import (
     REPORT_THRESHOLD_SWEEP,
@@ -61,10 +62,10 @@ class TorchTrainConfig:
     event_oversample_target: str = "any_event"
     device: str = "auto"
     hot_eval_threshold: float = 0.55
-    event_report_threshold: float = 0.68
+    event_report_threshold: float = 0.70
     report_threshold_sweep: tuple[float, ...] = REPORT_THRESHOLD_SWEEP
     checkpoint_min_report_precision: float = 0.80
-    checkpoint_min_report_recall: float = 0.35
+    checkpoint_min_report_recall: float = 0.70
 
     def __post_init__(self) -> None:
         if not self.training_profile.strip():
@@ -396,13 +397,15 @@ def _evaluate_loader(
     cause_class_count: int,
     cause_classes: list[str] | tuple[str, ...] | None = None,
     cause_majority: int = -1,
-    event_threshold: float = 0.68,
+    event_threshold: float = 0.70,
     report_threshold_sweep: tuple[float, ...] | list[float] = (),
     min_report_precision: float = 0.80,
     hot_threshold: float = 0.55,
     occupancy_type_masks: dict[str, torch.Tensor] | None = None,
 ) -> tuple[dict[str, Any], dict[str, np.ndarray], np.ndarray]:
     model.eval()
+    event_min_windows = int(loader.dataset.payload["event_min_windows"])
+    window_size_s = float(loader.dataset.payload["window_size_s"])
     collected: dict[str, list[np.ndarray]] = {}
     totals: dict[str, float] = {}
     sample_count = 0
@@ -526,7 +529,7 @@ def _evaluate_loader(
             default_threshold=event_threshold,
             threshold_sweep=report_threshold_sweep,
             min_precision=min_report_precision,
-            min_windows=8,
+            min_windows=event_min_windows,
             start_tol_windows=3,
             hist_last_hot=arrays["hist_last_hot_grid"],
         )
@@ -539,7 +542,7 @@ def _evaluate_loader(
             arrays["remain_mask_grid"],
             arrays["occ_node_mask_grid"],
             threshold=event_threshold,
-            min_windows=8,
+            **event_rule_kwargs(event_min_windows),
             start_tol_windows=3,
             hist_last_hot=arrays["hist_last_hot_grid"],
             force_ongoing_will=False,
@@ -579,12 +582,13 @@ def _evaluate_loader(
         threshold=0.5,
         min_windows=8,
         iou_min=0.5,
-        window_size_s=60.0,
+        window_size_s=window_size_s,
     )
     metrics["occupancy_event"] = occupancy_metrics
     metrics.update(occupancy_metrics)
     metrics["loss"] = {name: value / sample_count for name, value in totals.items()}
     metrics["sample_count"] = sample_count
+    add_time_metric_metadata(metrics, window_size_s=window_size_s, sample_count=sample_count)
     return metrics, arrays, confusion
 
 
@@ -841,6 +845,7 @@ def train_torch_baseline(
         "dataset_dir": str(dataset_dir),
         "dataset_manifest_sha256": _manifest_hash(manifest_path),
         "dataset_version": manifest["dataset_version"],
+        "evaluation_contract": dict(EVALUATION_CONTRACT),
         "dataset_contract": manifest["dataset_contract"],
         "label_version": manifest["label_version"],
         "feature_names": manifest["feature_names"],
@@ -1180,9 +1185,11 @@ def train_torch_baseline(
         "trainable_parameter_count": trainable_parameter_count,
         "dataset_contract": manifest["dataset_contract"],
         "dataset_version": manifest["dataset_version"],
+        "evaluation_contract": dict(EVALUATION_CONTRACT),
         "label_version": manifest["label_version"],
         "best_epoch": best_epoch,
         "epochs_trained": len(history),
+        "dataset_manifest_sha256": metadata["dataset_manifest_sha256"],
         "best_validation_report_f1": best_score,
         "best_validation_report_precision": best_precision,
         "best_validation_report_recall": best_recall,

@@ -14,13 +14,14 @@ from torch.utils.data import DataLoader
 
 from factory_baselines.dataset import FactoryBaselineTensorDataset, load_shared_dataset
 from factory_baselines.metrics import _binary_metrics
+from factory_baselines.evaluation import event_rule_kwargs
 from factory_baselines.torch_trainer import (
     _manifest_hash,
     _model_inputs,
     _resolve_device,
     load_checkpoint,
 )
-from factory_bn_shared.remain import station_report_metrics
+from factory_bn_shared.remain import node_event_targets, station_report_metrics
 
 
 def attach_node_catalog(report: dict, catalog_path: Path, manifest: dict) -> None:
@@ -42,6 +43,15 @@ def attach_node_catalog(report: dict, catalog_path: Path, manifest: dict) -> Non
 
 def summarize_events(arrays: dict[str, np.ndarray], thresholds: list[float]) -> dict:
     valid = arrays["occ_node_mask"] > 0.5
+    will, start_target, _ = node_event_targets(
+        arrays["y_hot"], remain_mask=arrays["remain_mask"],
+        occ_node_mask=arrays["occ_node_mask"], hist_last_hot=arrays["hist_last_hot"],
+        **event_rule_kwargs(8),
+    )
+    if not np.array_equal(will[valid], arrays["event_will"][valid]) or not np.array_equal(
+        start_target[will > .5], arrays["event_start"][will > .5]
+    ):
+        raise ValueError("Diagnostic targets differ from the current event contract")
     positive = (arrays["event_will"] > 0.5) & valid
     start = arrays["event_start"]
     groups = {
@@ -104,7 +114,7 @@ def summarize_events(arrays: dict[str, np.ndarray], thresholds: list[float]) -> 
             arrays["y_hot"], probability, arrays["predicted_start"],
             arrays["predicted_duration"], arrays["remain_mask"],
             arrays["occ_node_mask"], threshold=threshold,
-            min_windows=8, start_tol_windows=3,
+            **event_rule_kwargs(8), start_tol_windows=3,
             hist_last_hot=arrays["hist_last_hot"], force_ongoing_will=False,
         )
         row = {"threshold": threshold, **report}

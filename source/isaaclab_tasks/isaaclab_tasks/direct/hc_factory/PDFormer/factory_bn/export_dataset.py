@@ -476,11 +476,13 @@ def export_runs(
     write_atomic: bool = True,
     require_complete: int = 0,
     skip_deadlock: bool = False,
+    prepared_episodes: list[tuple] | None = None,
 ) -> Path:
     """Export one or more bottleneck runs into a single FactoryBN training bundle.
 
-    Multiple runs get episode names ``{run_id}__episode_XX`` to avoid collisions.
+    All runs get episode names ``{run_id}__episode_XX`` to avoid collisions.
     Nodes / adjacency are the union across all runs.
+    ``prepared_episodes`` accepts audited in-memory aggregation tables.
     """
     if not run_dirs:
         raise ValueError("At least one run_dir is required")
@@ -489,7 +491,6 @@ def export_runs(
     for p in run_dirs:
         p = Path(p)
         labeled.append((p.name, p.resolve()))
-    multi = len(labeled) > 1
 
     all_ids: dict[str, str] = {}
     per_ep_rows: list[
@@ -501,18 +502,27 @@ def export_runs(
             list[dict[str, str]],
         ]
     ] = []
-    for prefix_name, run_dir in labeled:
-        prefix = prefix_name if multi else None
-        ids, rows = _collect_run_episodes(
-            run_dir,
-            window_size,
-            name_prefix=prefix,
-            require_complete=require_complete,
-            skip_deadlock=skip_deadlock,
-        )
-        for rid, rtype in ids.items():
-            all_ids.setdefault(rid, rtype)
-        per_ep_rows.extend(rows)
+    if prepared_episodes is None:
+        for prefix_name, run_dir in labeled:
+            ids, rows = _collect_run_episodes(
+                run_dir, window_size, name_prefix=prefix_name,
+                require_complete=require_complete, skip_deadlock=skip_deadlock,
+            )
+            for rid, rtype in ids.items():
+                all_ids.setdefault(rid, rtype)
+            per_ep_rows.extend(rows)
+    else:
+        if require_complete or skip_deadlock:
+            raise ValueError("Prepared tables require upstream raw quality auditing")
+        per_ep_rows = prepared_episodes
+        aliases = {name for name, _ in labeled}
+        for name, rows, *_ in per_ep_rows:
+            if name.partition("__")[0] not in aliases:
+                raise ValueError(f"Unknown prepared episode alias: {name}")
+            ids, types = _collect_nodes(rows)
+            for rid, rtype in zip(ids, types, strict=True):
+                if all_ids.setdefault(rid, rtype) != rtype:
+                    raise ValueError(f"Conflicting resource types for {rid}")
 
     if not per_ep_rows:
         raise RuntimeError("No feature rows found for the requested window_size")

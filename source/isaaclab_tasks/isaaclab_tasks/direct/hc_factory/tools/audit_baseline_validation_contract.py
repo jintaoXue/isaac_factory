@@ -59,7 +59,7 @@ def main():
             raise ValueError(f"{name} changed since the episode split audit")
     payload, manifest = load_shared_dataset(args.dataset_dir)
     cause_source = manifest["cause_label_source"]
-    if cause_source["kind"] != "frozen_main_bundle":
+    if cause_source["kind"] != "frozen_canonical_bundle":
         raise ValueError("Expected explicitly frozen main cause labels")
     for name, filename in (("meta", "meta.json"), ("episodes", "episodes.npz")):
         if file_hash(args.main_bundle / filename) != cause_source["files"][name]["sha256"]:
@@ -78,6 +78,8 @@ def main():
     min_hot = int(config["hot_min_windows"])
     gap_hot = int(config["hot_gap_windows"])
     event_min = int(config["event_min_windows"])
+    if config.get("event_ongoing_min_windows") != 1 or config.get("event_max_start_windows") != 2:
+        raise ValueError("Main checkpoint does not use the current dense event contract")
     window_size = float(config["window_size_s"])
     normalization = json.loads((args.dataset_dir / "normalization.json").read_text())
     mean = np.asarray(normalization["feature_mean"], dtype=np.float32)
@@ -125,6 +127,8 @@ def main():
                 )
                 will, start, duration = reference.node_event_targets(
                     target_hot, min_windows=event_min, remain_mask=remain_mask, occ_node_mask=occ_mask,
+                    hist_last_hot=hot[t-1], ongoing_min_windows=config["event_ongoing_min_windows"],
+                    max_start_windows=config["event_max_start_windows"],
                 )
                 expected = dict(y_score=target_score, y_hot=target_hot,
                                 y_cause=bundle[name + "_cause"][t-1],

@@ -39,16 +39,16 @@ class TestEventDiagnostics(unittest.TestCase):
     def test_probability_and_timing_misses_are_disjoint(self):
         hot = np.zeros((1, 15, 4), dtype=np.float32)
         hot[0, :8, 0] = 1
-        hot[0, 5:13, 1:3] = 1
+        hot[0, 2:10, 1:3] = 1
         arrays = {
             "y_hot": hot,
             "remain_mask": np.ones((1, 15)),
             "occ_node_mask": np.ones((1, 4)),
             "hist_last_hot": np.array([[1, 0, 0, 0]]),
             "event_will": np.array([[1, 1, 1, 0]]),
-            "event_start": np.array([[0, 5, 5, -1]]),
+            "event_start": np.array([[0, 2, 2, -1]]),
             "will_probability": np.array([[.9, .2, .8, .8]]),
-            "predicted_start": np.array([[9, 5, 0, 0]]),
+            "predicted_start": np.array([[9, 2, 6, 0]]),
             "predicted_duration": np.full((1, 4), 8),
         }
         result = summarize_events(arrays, [.5])
@@ -72,9 +72,10 @@ class TestEventDiagnostics(unittest.TestCase):
 
     def test_false_alarm_partition_handles_short_horizon_and_short_hot_runs(self):
         hot = np.zeros((2, 15, 3), dtype=np.float32)
-        hot[0, :3, 0] = 1
+        hot[0, 1:4, 0] = 1
         hot[0, :8, 1] = 1
         hot[1, :4, :] = 1
+        hot[1, 0, 0] = 0
         remain = np.ones((2, 15))
         remain[1, 5:] = 0
         arrays = {

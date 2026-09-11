@@ -54,7 +54,7 @@ fi
 mkdir -p "$TUNING_DIR"
 
 REPORT_SWEEP=(
-    0.55 0.60 0.62 0.65 0.68 0.70 0.72 0.75 0.78 0.80 0.82 0.85
+    0.55 0.60 0.65 0.70 0.75 0.80 0.82 0.85 0.88 0.90 0.94 0.98
 )
 
 run_candidate() {
@@ -74,7 +74,7 @@ run_candidate() {
             --seed "$seed" \
             --report_threshold_sweep "${REPORT_SWEEP[@]}" \
             --checkpoint_min_report_precision 0.80 \
-            --checkpoint_min_report_recall 0.35 \
+            --checkpoint_min_report_recall 0.70 \
             "$@"
     done
 }

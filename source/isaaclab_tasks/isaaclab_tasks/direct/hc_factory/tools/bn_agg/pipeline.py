@@ -29,7 +29,7 @@ def _max_timestamp(events: list, job_rows: list) -> float:
 
 def process_env_dir(
     env_dir: Path,
-    out_dir: Path,
+    out_dir: Path | None,
     window_sizes: list[float],
     horizon: float,
     score_threshold: float,
@@ -38,6 +38,7 @@ def process_env_dir(
     closed_windows_only: bool = False,
     label_mode: str = "supervised",
 ) -> dict:
+    """Aggregate raw rows; None returns tables without creating output folders."""
     events = _read_jsonl(env_dir / "resource_event_log.jsonl")
     job_rows = _read_csv(env_dir / "job_trace.csv")
     buffer_rows = _read_csv(env_dir / "buffer_event_log.csv")
@@ -107,25 +108,15 @@ def process_env_dir(
         episode_id=episode_id,
     )
 
-    _write_csv(out_dir / "window_feature_table.csv", all_features)
-    _write_csv(out_dir / "bottleneck_label.csv", labels)
-    _write_csv(out_dir / "bottleneck_event.csv", event_rows)
-    _write_csv(
-        out_dir / "job_kpi.csv",
-        job_kpi_rows,
-        fieldnames=[
-            "run_id",
-            "env_id",
-            "episode_id",
-            "job_id",
-            "product_type",
-            "start_s",
-            "complete_s",
-            "cycle_time_s",
-            "completed",
-            "complete_source",
-        ],
-    )
+    if out_dir is not None:
+        _write_csv(out_dir / "window_feature_table.csv", all_features)
+        _write_csv(out_dir / "bottleneck_label.csv", labels)
+        _write_csv(out_dir / "bottleneck_event.csv", event_rows)
+        _write_csv(
+            out_dir / "job_kpi.csv", job_kpi_rows,
+            fieldnames=["run_id", "env_id", "episode_id", "job_id", "product_type",
+                        "start_s", "complete_s", "cycle_time_s", "completed", "complete_source"],
+        )
 
     # Summary stats
     top_nodes = []
@@ -172,6 +163,9 @@ def process_env_dir(
             for ws in window_sizes
         },
     }
+    if out_dir is None:
+        return {"summary": summary, "features": all_features, "labels": labels,
+                "events": event_rows, "job_kpi": job_kpi_rows}
     (out_dir / "pipeline_summary.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )

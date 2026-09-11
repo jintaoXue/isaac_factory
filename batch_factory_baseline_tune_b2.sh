@@ -28,8 +28,7 @@ fi
 mkdir -p "$TUNING_DIR"
 
 REPORT_SWEEP=(
-    0.55 0.60 0.62 0.65 0.68 0.70 0.72 0.75 0.78
-    0.80 0.82 0.85 0.88 0.90 0.92 0.95
+    0.55 0.60 0.65 0.70 0.75 0.80 0.82 0.85 0.88 0.90 0.94 0.98
 )
 
 run_candidate() {
@@ -67,10 +66,10 @@ run_candidate() {
             --event_will_scale_pos_weight "$event_positive_weight" \
             --n_jobs "$N_JOBS" \
             --hot_eval_threshold 0.55 \
-            --event_report_threshold 0.68 \
+            --event_report_threshold 0.70 \
             --report_threshold_sweep "${REPORT_SWEEP[@]}" \
             --report_threshold_min_precision 0.80 \
-            --checkpoint_min_report_recall 0.35
+            --checkpoint_min_report_recall 0.70
     done
 }
 

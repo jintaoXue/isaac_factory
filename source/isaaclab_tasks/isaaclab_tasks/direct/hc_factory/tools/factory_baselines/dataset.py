@@ -17,6 +17,7 @@ import torch
 from torch.utils.data import Dataset
 
 from .graph_builder import build_static_graph
+from .evaluation import EVALUATION_CONTRACT, event_rule_kwargs
 from factory_bn_shared.causes import ROOT_CAUSE_CLASSES
 from factory_bn_shared.bundle import align_frozen_causes, load_frozen_cause_labels
 from factory_bn_shared.remain import (
@@ -357,9 +358,10 @@ class FactoryBaselineTensorDataset(Dataset):
         )
         event_will, event_start, event_duration = node_event_targets(
             y_hot,
-            min_windows=int(self.payload["event_min_windows"]),
+            **event_rule_kwargs(int(self.payload["event_min_windows"])),
             remain_mask=remain_mask,
             occ_node_mask=sample["occ_node_mask"].numpy(),
+            hist_last_hot=sample["hist_last_hot"].numpy(),
         )
         sample["y_score"] = torch.from_numpy(y_score)
         sample["y_hot"] = torch.from_numpy(y_hot)
@@ -386,6 +388,7 @@ def load_shared_dataset(dataset_dir: Path) -> tuple[dict[str, Any], dict[str, An
     payload = torch.load(dataset_path, **load_options)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     expected_manifest = {
+        "validation": "passed",
         "dataset_contract": DATASET_CONTRACT,
         "dataset_version": DATASET_VERSION,
         "label_version": LABEL_VERSION,
@@ -396,6 +399,12 @@ def load_shared_dataset(dataset_dir: Path) -> tuple[dict[str, Any], dict[str, An
         actual = manifest.get(key)
         if actual != expected:
             raise ValueError(f"Unexpected {key}: expected {expected!r}, got {actual!r}")
+    if manifest.get("evaluation_contract") != EVALUATION_CONTRACT:
+        raise ValueError("Dataset evaluation contract differs; rebuild labels before training")
+    if payload.get("evaluation_contract") != EVALUATION_CONTRACT:
+        raise ValueError("Tensor evaluation contract differs from current manifest")
+    if payload.get("window_size_s") != manifest["window_size_s"]:
+        raise ValueError("Tensor window duration differs from manifest")
     required = {
         "x",
         "adjacency",
@@ -430,6 +439,8 @@ def build_factory_baseline_dataset(
     max_remain_windows: int = 15,
     hot_min_windows: int = 8,
     hot_gap_windows: int = 1,
+    episode_groups: list[dict[str, Any]] | None = None,
+    frozen_split_groups: dict[str, list[str]] | None = None,
 ) -> dict[str, Any]:
     """Build B2-B5 tensors using the main experiment's operational targets."""
     if input_windows <= 0:
@@ -443,13 +454,21 @@ def build_factory_baseline_dataset(
     ):
         if (out_dir / name).exists():
             raise FileExistsError(f"Refusing to overwrite dataset output: {out_dir / name}")
-    groups = _discover_groups(run_dirs, Path(derived_root).resolve())
+    groups = (
+        _discover_groups(run_dirs, Path(derived_root).resolve())
+        if episode_groups is None else episode_groups
+    )
+    group_ids = [group["group_id"] for group in groups]
+    if len(set(group_ids)) != len(group_ids):
+        raise ValueError("Duplicate physical episode identities")
     if allowed_group_ids is not None:
         groups = [group for group in groups if group["group_id"] in allowed_group_ids]
         if not groups:
             raise ValueError(
                 "No shared-derived episode groups matched the accepted allowlist"
             )
+        if {group["group_id"] for group in groups} != allowed_group_ids:
+            raise ValueError("Accepted cohort is missing derived episodes")
     for group in groups:
         if group["collector_version"] != COLLECTOR_VERSION:
             raise ValueError(
@@ -633,9 +652,10 @@ def build_factory_baseline_dataset(
             )
             event_will, event_start, _event_duration = node_event_targets(
                 y_hot_np,
-                min_windows=hot_min_windows,
+                **event_rule_kwargs(hot_min_windows),
                 remain_mask=remain_mask_np,
                 occ_node_mask=target_node_mask.numpy(),
+                hist_last_hot=raw_hot[position - 1].numpy(),
             )
             event_nodes = np.flatnonzero(event_will > 0.5)
             occurrence = int(event_nodes.size > 0)
@@ -704,7 +724,15 @@ def build_factory_baseline_dataset(
 
     group_scenarios = {group["group_id"]: group["scenario_id"] for group in groups}
     group_run_names = {group["group_id"]: group["run_name"] for group in groups}
-    split_groups = _split_groups(group_sample_indices, group_run_names, seed)
+    if frozen_split_groups is None:
+        split_groups = _split_groups(group_sample_indices, group_run_names, seed)
+    else:
+        if set(frozen_split_groups) != {"train", "validation", "test"}:
+            raise ValueError("Frozen split must specify train, validation and test")
+        declared = [group for values in frozen_split_groups.values() for group in values]
+        if len(set(declared)) != len(declared) or set(declared) != set(group_sample_indices):
+            raise ValueError("Frozen split must cover each sample-bearing episode exactly once")
+        split_groups = {name: sorted(values) for name, values in frozen_split_groups.items()}
     split_indices = {
         split_name: sorted(
             index for group_id in group_ids for index in group_sample_indices[group_id]
@@ -765,6 +793,8 @@ def build_factory_baseline_dataset(
         "remain_series": remain_series,
         "max_remain_windows": max_remain_windows,
         "event_min_windows": hot_min_windows,
+        "evaluation_contract": dict(EVALUATION_CONTRACT),
+        "window_size_s": window_size,
         "sample_group_id": torch.tensor(
             [target["group_number"] for target in targets], dtype=torch.int64
         ),
@@ -883,6 +913,7 @@ def build_factory_baseline_dataset(
             for group in sorted(groups, key=lambda item: item["group_id"])
         ],
         "derived_root": str(Path(derived_root).resolve()),
+        "derived_storage": "in_memory_canonical_export" if episode_groups is not None else "csv_tables",
         "cause_label_source": cause_provenance,
         "aggregation_mode": "main_offline_with_terminal_partial_target",
         "jobs_remaining_anchor": "last_history_window_start",
@@ -899,6 +930,7 @@ def build_factory_baseline_dataset(
         "hot_min_windows": hot_min_windows,
         "hot_gap_windows": hot_gap_windows,
         "event_min_windows": hot_min_windows,
+        "evaluation_contract": dict(EVALUATION_CONTRACT),
         "cause_classes": list(ROOT_CAUSE_CLASSES),
         "feature_names": feature_names,
         "global_feature_names": list(GLOBAL_FEATURES),
@@ -930,7 +962,7 @@ def build_factory_baseline_dataset(
         },
         "git_commit": _git_commit(repo_root),
         "seed": seed,
-        "validation": "passed",
+        "validation": "pending_shared_bundle_alignment" if episode_groups is not None else "passed",
     }
     (out_dir / "dataset_manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"

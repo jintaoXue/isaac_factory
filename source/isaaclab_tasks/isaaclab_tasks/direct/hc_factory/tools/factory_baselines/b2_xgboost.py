@@ -23,6 +23,7 @@ from factory_bn_shared.remain import (
 )
 
 from .dataset import FactoryBaselineTensorDataset, load_shared_dataset
+from .evaluation import EVALUATION_CONTRACT, add_time_metric_metadata, event_rule_kwargs
 from .metrics import (
     REPORT_THRESHOLD_SWEEP,
     _binary_metrics,
@@ -55,10 +56,10 @@ class B2XGBoostConfig:
     empty_sample_negative_cells: int = 32
     prediction_cell_chunk_size: int = 65536
     hot_eval_threshold: float = 0.55
-    event_report_threshold: float = 0.68
+    event_report_threshold: float = 0.70
     report_threshold_sweep: tuple[float, ...] = REPORT_THRESHOLD_SWEEP
     report_threshold_min_precision: float = 0.80
-    checkpoint_min_report_recall: float = 0.35
+    checkpoint_min_report_recall: float = 0.70
 
     def __post_init__(self) -> None:
         if not self.training_profile.strip():
@@ -882,7 +883,7 @@ def train_b2_xgboost(
                 remain_mask_array,
                 occupancy_mask_array,
                 threshold=threshold,
-                min_windows=8,
+                **event_rule_kwargs(int(payload["event_min_windows"])),
                 start_tol_windows=3,
                 hist_last_hot=history_hot_array,
             )
@@ -931,6 +932,10 @@ def train_b2_xgboost(
         metrics["occupancy_event"] = occupancy_metrics
         metrics.update(occupancy_metrics)
         metrics["sample_count"] = len(arrays["sample_index"])
+        add_time_metric_metadata(
+            metrics, window_size_s=float(manifest["window_size_s"]),
+            sample_count=metrics["sample_count"],
+        )
         all_metrics[split_name] = metrics
         _write_json(output_dir / f"metrics_{split_name}.json", metrics)
         prediction_rows = []
@@ -1031,6 +1036,7 @@ def train_b2_xgboost(
         ),
         "dataset_contract": manifest["dataset_contract"],
         "dataset_version": manifest["dataset_version"],
+        "evaluation_contract": dict(EVALUATION_CONTRACT),
         "label_version": manifest["label_version"],
         "prediction_target_version": manifest["prediction_target_version"],
         "config": asdict(config),
@@ -1063,8 +1069,10 @@ def train_b2_xgboost(
         "seed": config.seed,
         "dataset_contract": manifest["dataset_contract"],
         "dataset_version": manifest["dataset_version"],
+        "evaluation_contract": dict(EVALUATION_CONTRACT),
         "label_version": manifest["label_version"],
         "validation_hot_f1": all_metrics["validation"]["remain"]["hot_f1"],
+        "dataset_manifest_sha256": metadata["dataset_manifest_sha256"],
         "validation_event_will_pr_auc": all_metrics["validation"]["event_will"][
             "pr_auc"
         ],

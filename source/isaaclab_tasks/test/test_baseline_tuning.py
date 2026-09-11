@@ -34,8 +34,13 @@ class TestBaselineTuning(unittest.TestCase):
             "training_profile": candidate_dir.name,
             "checkpoint_constraint_met": False,
             "elapsed_seconds": 1.0,
+            "dataset_manifest_sha256": "fixture_hash",
+            "evaluation_contract": {"version": "fixture_dense_v1"},
+            "checkpoint_precision_constraint": .8,
+            "checkpoint_recall_constraint": .7,
         }
         validation = {
+            "evaluation_contract": {"version": "fixture_dense_v1"},
             "station_report": {
                 "report_precision": 0.5,
                 "report_recall": 0.3,

@@ -12,21 +12,22 @@ from factory_bn_shared.causes import (
     cause_ignore_ids,
 )
 from factory_bn_shared.remain import station_report_metrics
+from .evaluation import event_rule_kwargs
 
 
 REPORT_THRESHOLD_SWEEP: tuple[float, ...] = (
     0.55,
     0.60,
-    0.62,
     0.65,
-    0.68,
     0.70,
-    0.72,
     0.75,
-    0.78,
     0.80,
     0.82,
     0.85,
+    0.88,
+    0.90,
+    0.94,
+    0.98,
 )
 OCCUPANCY_EVAL_TYPES: tuple[str, ...] = (
     "machine",
@@ -179,7 +180,7 @@ def select_report_threshold(
             remain_mask,
             occ_node_mask,
             threshold=threshold,
-            min_windows=min_windows,
+            **event_rule_kwargs(min_windows),
             start_tol_windows=start_tol_windows,
             hist_last_hot=hist_last_hot,
             force_ongoing_will=False,

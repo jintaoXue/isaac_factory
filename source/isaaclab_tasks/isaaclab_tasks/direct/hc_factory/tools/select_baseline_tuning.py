@@ -34,6 +34,7 @@ def summarize_candidate(
     expected_seeds: set[int] | None = None,
 ) -> dict[str, Any]:
     runs = []
+    signatures = set()
     for seed_dir in sorted(candidate_dir.glob("seed*")):
         summary_path = seed_dir / "run_summary.json"
         metrics_path = seed_dir / "metrics.json"
@@ -46,6 +47,15 @@ def summarize_candidate(
         if "test" in metrics or any(key.startswith("test_") for key in summary):
             raise ValueError(f"{seed_dir}: tuning candidate contains test metrics")
         validation = metrics["validation"]
+        contract = summary["evaluation_contract"]
+        if any(validation["evaluation_contract"][key] != value for key, value in contract.items()):
+            raise ValueError(f"{seed_dir}: summary and metrics evaluation contracts differ")
+        signatures.add(json.dumps({
+            "dataset_manifest_sha256": summary["dataset_manifest_sha256"],
+            "evaluation_contract": contract,
+            "precision_gate": summary["checkpoint_precision_constraint"],
+            "recall_gate": summary["checkpoint_recall_constraint"],
+        }, sort_keys=True))
         report = validation["station_report"]
         remain = validation["remain"]
         will = validation.get("event_will", {})
@@ -68,6 +78,8 @@ def summarize_candidate(
         )
     if not runs:
         raise FileNotFoundError(f"No completed validation runs under {candidate_dir}")
+    if len(signatures) != 1:
+        raise ValueError("Candidate seeds use different datasets or evaluation contracts")
     observed_seeds = {int(run["seed"]) for run in runs}
     if expected_seeds is not None and observed_seeds != expected_seeds:
         raise ValueError(
@@ -77,6 +89,7 @@ def summarize_candidate(
 
     aggregate = {
         "candidate": candidate_dir.name,
+        "comparison_signature": next(iter(signatures)),
         "run_count": len(runs),
         "seeds": ",".join(str(run["seed"]) for run in runs),
         "all_constraints_met": all(run["constraint_met"] for run in runs),
@@ -123,17 +136,25 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tuning_dir", type=Path, required=True)
     parser.add_argument("--expected_seeds", type=int, nargs="+")
+    parser.add_argument("--candidate_names", nargs="+")
     args = parser.parse_args()
 
     tuning_dir = args.tuning_dir.resolve()
     expected_seeds = set(args.expected_seeds) if args.expected_seeds else None
+    paths = (
+        [tuning_dir / name for name in args.candidate_names]
+        if args.candidate_names else sorted(tuning_dir.glob("candidate_*"))
+    )
+    if any(path.parent != tuning_dir or not path.is_dir() for path in paths):
+        raise ValueError("Candidates must be existing direct-child directories")
     candidates = [
         summarize_candidate(path, expected_seeds)
-        for path in sorted(tuning_dir.glob("candidate_*"))
-        if path.is_dir()
+        for path in paths
     ]
     if not candidates:
         raise FileNotFoundError(f"No candidate directories under {tuning_dir}")
+    if len({candidate["comparison_signature"] for candidate in candidates}) != 1:
+        raise ValueError("Cannot rank different datasets or evaluation contracts together")
     candidates.sort(key=candidate_rank, reverse=True)
 
     csv_rows = [

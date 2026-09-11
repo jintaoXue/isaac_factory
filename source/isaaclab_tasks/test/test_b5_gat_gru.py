@@ -329,10 +329,10 @@ class TestB5GatGru(unittest.TestCase):
     def test_latest_main_evaluation_defaults(self) -> None:
         config = TorchTrainConfig()
 
-        self.assertEqual(config.event_report_threshold, 0.68)
+        self.assertEqual(config.event_report_threshold, 0.70)
         self.assertEqual(config.report_threshold_sweep, REPORT_THRESHOLD_SWEEP)
         self.assertEqual(config.checkpoint_min_report_precision, 0.80)
-        self.assertEqual(config.checkpoint_min_report_recall, 0.35)
+        self.assertEqual(config.checkpoint_min_report_recall, 0.70)
 
     def test_occurrence_threshold_is_selected_on_validation_predictions(self) -> None:
         import numpy as np

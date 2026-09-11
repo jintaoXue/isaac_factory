@@ -351,20 +351,21 @@ class TestFactoryBaselineDataset(unittest.TestCase):
             self.assertTrue(payload["target_node_mask"][:, machine_index].all())
             self.assertFalse(payload["target_node_mask"][:, buffer_index].any())
             self.assertTrue(torch.isfinite(payload["x"]).all())
-            self.assertEqual(manifest["dataset_version"], "factory_baseline_dataset_v5")
-            self.assertEqual(manifest["cause_label_source"]["kind"], "frozen_main_bundle")
+            self.assertEqual(manifest["dataset_version"], "factory_baseline_dataset_v6")
+            self.assertEqual(manifest["cause_label_source"]["kind"], "frozen_canonical_bundle")
             self.assertTrue(torch.equal(payload["y_cause"], torch.tensor([
                 int(row["anchor_window_index"]) % len(ROOT_CAUSE_CLASSES)
                 for row in result["sample_rows"]
             ])))
             self.assertEqual(
                 manifest["prediction_target_version"],
-                "factory_ops_event_30m_to_15m_v1",
+                "factory_ops_event_30m_to_15m_dense_v2",
             )
             self.assertEqual(manifest["dataset_contract"], "tyx_bn_agg_unsupervised_v2")
             self.assertEqual(manifest["label_version"], "factory_ops_hot_v1")
             self.assertEqual(manifest["target_node_category"], "machine_gantry_agv")
-            self.assertEqual(manifest["event_positive_samples"], 6)
+            # Already-hot history keeps short ongoing tails positive in dense v2.
+            self.assertEqual(manifest["event_positive_samples"], 48)
             for row in result["sample_rows"]:
                 history = json.loads(row["input_window_indices"])
                 self.assertEqual(len(history), 12)
