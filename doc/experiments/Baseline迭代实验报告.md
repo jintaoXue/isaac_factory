@@ -1721,3 +1721,36 @@ P/R/F1、ongoing、MAE 与支持数，不以精度崩溃换取表面提前召回
 
 本地相关测试 138 项及 12 个子测试通过，shell 语法检查通过。此节写入时修改尚未部署、
 新诊断和候选训练尚未启动；完成状态与结果需在实际运行后另行补录。
+
+### 26.3 已部署与实际诊断结果
+
+2026-09-11 已提交并推送 `d0f7368`，服务器 `BSTAN_isaac_factory/dev_xwt` fast-forward
+同步成功。八次 train/validation 诊断在原 `baseline_dense_diag` 会话完成，退出码 0；
+文件为现有 benchmark 内的 `*_diagnostics_upcoming20260911.json`。旧权重先完成诊断，
+再归档用于后续训练，未打开 test。
+
+每次 train 为 4191 ongoing、595 upcoming、297152 negative；validation 为
+950、145、67331。两个 split 的历史 hot 但未来 start>0 正例都为 **0**。因此前述分组
+修正对当前冻结包不改变实际 loss 分组，不能把低召回归因于该 bug。跳过没有差异的
+重复控制训练，旧控制组仍可作为当前候选的训练语义对照；未来数据出现此类重启时修正有效。
+
+| 旧最佳 checkpoint 诊断 | B4 seed42 | B4 seed43 | B5 seed42 | B5 seed43 |
+|---|---:|---:|---:|---:|
+| Train upcoming AP | 0.0069 | 0.0100 | 0.0244 | 0.0090 |
+| Validation upcoming AP | 0.0064 | 0.0086 | 0.0087 | 0.0077 |
+| Train upcoming recall（使用保存的 validation 阈值） | 0.0000 | 0.0101 | 0.0420 | 0.0000 |
+| Validation upcoming recall | 0.0138 | 0.0069 | 0.0138 | 0.0138 |
+| Train upcoming 置信度漏报 / 起点漏报 | 595 / 0 | 589 / 0 | 570 / 0 | 595 / 0 |
+| Validation upcoming 置信度漏报 / 起点漏报 | 143 / 0 | 144 / 0 | 143 / 0 | 143 / 0 |
+| 整段旧训练历史最高 validation upcoming recall | 0.0345 | 0.0276 | 0.0345 | 0.0345 |
+
+训练集提前目标也未充分学到，不能只解释为验证分布或过拟合。后期最高 upcoming recall
+同样很低，说明仅换成更晚 checkpoint 不能解决当前问题。这仍不能单凭观察断言是
+骨干容量限制；接下来区分事件头输入上下文和正例训练权重。
+
+已在已有 `baseline_dense_v6` 会话启动 `TRAIN_VARIANT=graph_context`，依次运行
+B4/B5 seed42/43，归档标签 `upcontext20260911`。写入时 B4 seed42 已到 epoch3，
+其余按队列执行；还没有这轮最终结果，不把中途分数称作提升。旧控制参数量 B4=253470、
+B5=266398，各次旧训练耗时约 433/535/1255/1060 秒，不能沿用早期 v5 的参数量。
+保留原数据、原阈值/评分及训练预算，不额外启用加权候选，不新增目录。下一步先检查
+完整上下文对照，未完成前不选择最终配置或运行 test。

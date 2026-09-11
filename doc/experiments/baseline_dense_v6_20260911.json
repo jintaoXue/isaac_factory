@@ -1,7 +1,7 @@
 {
-  "status": "controls_completed_upcoming_optimization_prepared",
+  "status": "controls_diagnosed_graph_context_training_in_progress",
   "experiment_role": "exploratory_dense_migration_control_not_formal_main_comparison",
-  "next_search_started": false,
+  "next_search_started": true,
   "full_metric_collection": {
     "status": "remote_restored_full_metrics_preserved_summary_extended",
     "last_attempt_date": "2026-09-11",
@@ -277,7 +277,16 @@
     "hot_f1_agv": [0.558511, 0.560554, 0.596886, 0.575021]
   },
   "upcoming_optimization": {
-    "status": "locally_tested_not_deployed_or_trained_yet",
+    "status": "deployed_diagnostics_complete_graph_context_training_in_progress",
+    "deployed_code_commit": "d0f7368",
+    "diagnostic_archive_tag": "upcoming20260911",
+    "diagnostic_files_completed": 8,
+    "diagnostic_tmux_exit_code": 0,
+    "active_training_tmux": "baseline_dense_v6",
+    "active_training_archive_tag": "upcontext20260911",
+    "active_variant": "graph_context",
+    "active_training_progress_at_recording": "B4 seed42 reached epoch3; B4 seed43 and B5 seed42/43 queued sequentially",
+    "corrected_control_rerun": "Skipped: actual train and validation both have zero restarted upcoming positives; old and corrected supervision partitions coincide for this frozen cohort",
     "dataset_changed": false,
     "metric_changed": false,
     "test_evaluated": false,
@@ -290,7 +299,29 @@
     "profile_version": "dense_<variant>_v2",
     "confirmation_seeds": [42, 43],
     "selection": "Canonical validation threshold/checkpoint selection unchanged; compare per-seed upcoming AP/recall and P/R/F1/MAE, not test",
-    "code_tests": {"passed": 138, "subtests_passed": 12}
+    "code_tests": {"passed": 138, "subtests_passed": 12},
+    "prior_control_training_seconds": [433.20121908187866, 535.3831107616425, 1254.9563789367676, 1059.747685432434],
+    "prior_control_parameter_counts": [253470, 253470, 266398, 266398],
+    "diagnostic_summary": {
+      "source": "Existing benchmark *_diagnostics_upcoming20260911.json; rounded terminal extraction, original JSON retained on server",
+      "column_order": ["B4_seed42", "B4_seed43", "B5_seed42", "B5_seed43"],
+      "train_counts_ongoing_upcoming_negative": [4191, 595, 297152],
+      "validation_counts_ongoing_upcoming_negative": [950, 145, 67331],
+      "restarted_upcoming_count_train_and_validation": 0,
+      "train_ongoing_ap": [0.86118, 0.88829, 0.91098, 0.87863],
+      "train_upcoming_ap": [0.00694, 0.01003, 0.02442, 0.00902],
+      "validation_upcoming_ap": [0.00641, 0.00863, 0.00872, 0.00769],
+      "train_upcoming_recall_at_saved_validation_threshold": [0.0, 0.01008, 0.04202, 0.0],
+      "train_upcoming_probability_misses": [595, 589, 570, 595],
+      "train_upcoming_timing_misses": [0, 0, 0, 0],
+      "validation_upcoming_probability_misses": [143, 144, 143, 143],
+      "validation_upcoming_timing_misses": [0, 0, 0, 0],
+      "train_upcoming_probability_q10_q50_q90": [[0.00223, 0.00832, 0.04846], [0.01001, 0.03532, 0.15303], [0.00323, 0.01942, 0.18045], [0.00534, 0.01521, 0.0688]],
+      "validation_upcoming_probability_q10_q50_q90": [[0.00143, 0.00663, 0.04829], [0.00917, 0.03207, 0.12325], [0.00148, 0.00881, 0.05501], [0.00266, 0.01423, 0.059]],
+      "maximum_upcoming_recall_in_old_validation_history": [0.034482758620689655, 0.027586206896551724, 0.034482758620689655, 0.034482758620689655],
+      "maximum_upcoming_recall_epoch": [12, 9, 20, 19],
+      "conclusion": "Upcoming is weak on train as well as validation. Observed mask correction exposure is zero. Late control epochs do not recover substantial upcoming recall. Next bounded test is event-head graph/job context with unchanged evaluation."
+    }
   },
   "b4_seed42_diagnostic": {
     "source_file": "b4_dense_seed42_diagnostics_20260911.json",
