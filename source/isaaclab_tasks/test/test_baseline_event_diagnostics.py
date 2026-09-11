@@ -12,6 +12,28 @@ from diagnose_baseline_events import attach_node_catalog, parse_args, summarize_
 
 
 class TestEventDiagnostics(unittest.TestCase):
+    def test_restarted_upcoming_is_audited_without_relabeling(self):
+        hot = np.zeros((1, 15, 3), dtype=np.float32)
+        hot[0, 1:9, 0] = 1
+        hot[0, :8, 1] = 1
+        hot[0, 1:9, 2] = 1
+        arrays = {
+            "y_hot": hot, "remain_mask": np.ones((1, 15)),
+            "occ_node_mask": np.array([[1, 1, 0]]),
+            "hist_last_hot": np.array([[1, 0, 1]]),
+            "event_will": np.array([[1, 1, 1]]),
+            "event_start": np.array([[1, 0, 1]]),
+            "will_probability": np.ones((1, 3)), "predicted_start": np.zeros((1, 3)),
+            "predicted_duration": np.full((1, 3), 8),
+        }
+        report = summarize_events(arrays, [.65])
+        audit = report["training_partition_audit"]
+        self.assertEqual(audit["upcoming_with_hot_history"], 1)
+        self.assertEqual(audit["upcoming_with_hot_history_windows"], 1)
+        self.assertEqual(audit["ongoing_with_cold_history"], 1)
+        self.assertEqual(report["groups"]["upcoming"]["count"], 1)
+        self.assertEqual(report["thresholds"][0]["report_f1"], 1)
+
     def test_diagnostic_accepts_train_and_validation_but_not_test(self):
         common = ["--dataset_dir", "data", "--checkpoint", "best.pt", "--output", "result.json"]
         self.assertEqual(parse_args(common).split, "validation")

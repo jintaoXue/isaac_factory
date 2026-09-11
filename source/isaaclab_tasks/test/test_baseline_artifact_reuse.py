@@ -1,4 +1,5 @@
 from pathlib import Path
+from dataclasses import asdict
 import json
 import sys
 import zipfile
@@ -106,7 +107,8 @@ def test_extension_keeps_old_test_and_validation_membership():
 
 
 @pytest.mark.parametrize("model,batch_size", [("B4", 24), ("B5", 16)])
-def test_control_archives_stale_test_and_starts_fresh_validation_only(tmp_path, monkeypatch, model, batch_size):
+@pytest.mark.parametrize("variant", control.DENSE_VARIANTS)
+def test_control_archives_stale_test_and_starts_fresh_validation_only(tmp_path, monkeypatch, model, batch_size, variant):
     repo = tmp_path / "BSTAN_isaac_factory"
     dataset, output = repo / "dataset", repo / "models"
     dataset.mkdir(parents=True)
@@ -127,12 +129,17 @@ def test_control_archives_stale_test_and_starts_fresh_validation_only(tmp_path, 
         assert not (output / "best.pt").exists()
         return {"status": "validation_completed"}
     monkeypatch.setattr(control, "train_torch_baseline", train)
-    result = control.run_control(model, dataset, output, "dense", 42, "cpu")
+    result = control.run_control(model, dataset, output, "dense", 42, "cpu", variant)
     assert result["status"] == "validation_completed"
     assert calls[0]["train_config"].evaluate_test is False
     assert calls[0]["train_config"].batch_size == batch_size
     assert "warm_start_checkpoint" not in calls[0]
     assert calls[0]["model_overrides"]["temporal_readout"] == "last_mean"
+    assert calls[0]["model_overrides"]["event_context"] == (variant == "graph_context")
+    assert calls[0]["train_config"].training_profile == f"dense_{variant}_v2"
+    assert calls[0]["loss_config"].event_will_upcoming_pos_weight == (
+        12.0 if variant == "upcoming_weighted" else 4.0
+    )
     assert (output / "notes.md").read_text() == "keep notes"
     assert {p for p in repo.rglob("*") if p.is_dir()} == directories
     with zipfile.ZipFile(output / "model_before_dense.zip") as archive:
@@ -142,3 +149,23 @@ def test_control_archives_stale_test_and_starts_fresh_validation_only(tmp_path, 
         control.run_control(model, dataset, output, "dense", 42, "cpu")
     with pytest.raises(ValueError, match="existing directory"):
         control.run_control(model, dataset, output / "missing", "dense2", 42, "cpu")
+
+
+@pytest.mark.parametrize("model", ["B4", "B5"])
+def test_dense_candidates_are_single_variable_and_leave_scoring_unchanged(model):
+    configurations = {}
+    for variant in control.DENSE_VARIANTS:
+        training, overrides, loss = control.dense_configuration(model, variant, 42, "cpu")
+        training_values = asdict(training)
+        training_values.pop("training_profile")
+        configurations[variant] = (training_values, overrides, loss.to_dict())
+    base, context, weighted = (configurations[name] for name in control.DENSE_VARIANTS)
+    assert base[0] == context[0] == weighted[0]
+    assert base[0]["evaluate_test"] is False
+    assert base[0]["event_oversample_factor"] == 1
+    assert base[2] == context[2]
+    assert {k for k in base[1] if base[1][k] != context[1][k]} == {"event_context"}
+    assert base[1] == weighted[1]
+    assert {k for k in base[2] if base[2][k] != weighted[2][k]} == {"event_will_upcoming_pos_weight"}
+    with pytest.raises(ValueError, match="registered dense variant"):
+        control.dense_configuration(model, "unknown", 42, "cpu")

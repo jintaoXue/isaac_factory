@@ -267,12 +267,11 @@ def compute_multitask_loss(
 
     occ_mask = batch["occ_node_mask"].bool()
     event_will_target = batch["event_will"].float()
-    hist_hot = batch["hist_last_hot"].bool()
-    ongoing = (
-        hist_hot | ((batch["event_start"] == 0) & (event_will_target > 0.5))
-    ) & occ_mask
-    ongoing = ongoing & (event_will_target > 0.5)
-    upcoming = (event_will_target > 0.5) & ~ongoing & occ_mask
+    positive_event = (event_will_target > 0.5) & occ_mask
+    # A previously hot station can cool and start a new event in the horizon.
+    # Match the scored event's start, not its historical state, for supervision.
+    ongoing = positive_event & (batch["event_start"] == 0)
+    upcoming = positive_event & (batch["event_start"] > 0)
     event_weight = torch.where(
         event_will_target > 0.5,
         torch.full_like(event_will_target, config.event_will_pos_weight),
@@ -333,7 +332,6 @@ def compute_multitask_loss(
         )
     else:
         event_start = zero
-    positive_event = (upcoming | ongoing) & occ_mask
     event_duration = (
         F.smooth_l1_loss(
             torch.log1p(outputs["event_duration"][positive_event].clamp_min(0.0)),

@@ -14,6 +14,32 @@ from factory_baselines.dataset import load_shared_dataset
 from factory_bn_shared.bundle import file_hash
 
 
+DENSE_VARIANTS = ("history_control", "graph_context", "upcoming_weighted")
+
+
+def dense_configuration(model: str, variant: str, seed: int, device: str) -> tuple:
+    if model not in {"B4", "B5"}:
+        raise ValueError("Expected B4 or B5")
+    if variant not in DENSE_VARIANTS:
+        raise ValueError("Expected a registered dense variant")
+    b4 = model == "B4"
+    training = TorchTrainConfig(
+        training_profile=f"dense_{variant}_v2", evaluate_test=False,
+        seed=seed, device=device, batch_size=24 if b4 else 16,
+        max_epochs=60, min_epochs=10 if b4 else 15, patience=10 if b4 else 20,
+        learning_rate=3e-4 if b4 else 1.5e-4, weight_decay=1e-2,
+        event_oversample_factor=1.0,
+    )
+    overrides = dict(gru_hidden=128, gru_layers=1, dropout=.2,
+                     temporal_readout="last_mean", node_embedding=0,
+                     event_context=variant == "graph_context")
+    overrides.update({"gcn_hidden": 64} if b4 else {"gat_hidden": 64, "gat_heads": 4})
+    loss = MultiTaskLossConfig(
+        event_will_upcoming_pos_weight=12.0 if variant == "upcoming_weighted" else 4.0,
+    )
+    return training, overrides, loss
+
+
 TRAINING_FILES = [
     "best.pt", "fallback_best.pt", "last.pt", "config.json", "history.csv",
     "run_summary.json", "metrics.json", "metrics_initial_validation.json",
@@ -29,7 +55,7 @@ TRAINING_FILES = [
 
 
 def run_control(model: str, dataset_dir: Path, output_dir: Path, archive_tag: str,
-                seed: int, device: str) -> dict:
+                seed: int, device: str, variant: str = "history_control") -> dict:
     repo = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip())
     branch = subprocess.check_output(["git", "branch", "--show-current"], cwd=repo, text=True).strip()
     if branch != "dev_xwt" or repo.name != "BSTAN_isaac_factory":
@@ -38,8 +64,7 @@ def run_control(model: str, dataset_dir: Path, output_dir: Path, archive_tag: st
     for directory in (dataset_dir, output_dir):
         if not directory.is_dir() or not directory.is_relative_to(repo):
             raise ValueError(f"Reuse an existing directory inside BSTAN_isaac_factory: {directory}")
-    if model not in {"B4", "B5"}:
-        raise ValueError("Expected B4 or B5")
+    train_config, overrides, loss_config = dense_configuration(model, variant, seed, device)
     if not archive_tag or not all(c.isalnum() or c in "_-" for c in archive_tag):
         raise ValueError("Invalid archive tag")
     record_path = output_dir / f"dense_control_{archive_tag}.json"
@@ -54,30 +79,21 @@ def run_control(model: str, dataset_dir: Path, output_dir: Path, archive_tag: st
     if any((output_dir / name).exists() for name in TRAINING_FILES):
         saved = str(archive_files(output_dir, TRAINING_FILES, archive_path.name))
     record = {
-        "status": "started", "baseline_id": model, "seed": seed,
+        "status": "started", "baseline_id": model, "seed": seed, "variant": variant,
         "dataset_manifest_sha256": file_hash(dataset_dir / "dataset_manifest.json"),
         "prior_model_archive": saved, "initialization": "from_scratch",
         "selection_split": "validation", "test_evaluated": False,
+        "comparison_role": "exploratory_upcoming_optimization_not_verified_main_cohort",
+        "event_supervision_partition": "positive_start_zero_ongoing_positive_start_greater_zero_upcoming",
         "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(),
     }
     record_path.write_text(json.dumps(record, indent=2) + "\n")
-    b4 = model == "B4"
-    train_config = TorchTrainConfig(
-        training_profile="dense_history_control_v1", evaluate_test=False,
-        seed=seed, device=device, batch_size=24 if b4 else 16,
-        max_epochs=60, min_epochs=10 if b4 else 15, patience=10 if b4 else 20,
-        learning_rate=3e-4 if b4 else 1.5e-4, weight_decay=1e-2,
-        event_oversample_factor=1.0,
-    )
-    overrides = dict(gru_hidden=128, gru_layers=1, dropout=.2,
-                     temporal_readout="last_mean", node_embedding=0, event_context=False)
-    overrides.update({"gcn_hidden": 64} if b4 else {"gat_hidden": 64, "gat_heads": 4})
     try:
         summary = train_torch_baseline(
-            model_kind="b4_gcn_gru" if b4 else "b5_gat_gru",
+            model_kind="b4_gcn_gru" if model == "B4" else "b5_gat_gru",
             dataset_dir=dataset_dir, output_dir=output_dir,
             model_overrides=overrides, train_config=train_config,
-            loss_config=MultiTaskLossConfig(),
+            loss_config=loss_config,
         )
     except Exception as error:
         record.update(status="failed", error=str(error))
@@ -96,6 +112,7 @@ def main() -> None:
     parser.add_argument("--archive_tag", required=True)
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--device", default="cuda:0")
+    parser.add_argument("--variant", choices=DENSE_VARIANTS, default="history_control")
     print(json.dumps(run_control(**vars(parser.parse_args())), indent=2))
 
 

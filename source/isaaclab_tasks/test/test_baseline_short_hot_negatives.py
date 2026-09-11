@@ -15,6 +15,43 @@ from run_staged_baseline import hard_negative_configuration
 
 
 class TestShortHotNegatives(unittest.TestCase):
+    def test_restarted_event_receives_upcoming_weight_and_start_gradient(self):
+        heads = FactoryPredictionHeads(8, 0, 5, 180, 15, 10)
+        mask = torch.tensor([[1, 1, 1, 1, 0]], dtype=torch.bool)
+        outputs = heads(torch.zeros(1, 5, 8), mask, mask, torch.empty(1, 4, 0),
+                        torch.ones(1), torch.ones(1))
+        outputs["event_will_logit"] = torch.zeros(1, 5, requires_grad=True)
+        outputs["event_start_logit"] = torch.zeros(1, 5, 15, requires_grad=True)
+        batch = {
+            "remain_mask": torch.ones(1, 15), "occ_node_mask": mask,
+            "y_score": torch.zeros(1, 15, 5, 1), "y_hot": torch.zeros(1, 15, 5),
+            "target_remain_len": torch.ones(1), "y_cause": torch.tensor([-1]),
+            "event_will": torch.tensor([[1., 1., 1., 0., 1.]]),
+            "event_start": torch.tensor([[0, 2, 1, -1, 1]]),
+            "event_duration": torch.tensor([[2., 8., 8., 0., 8.]]),
+            "hist_last_hot": torch.tensor([[1., 1., 0., 1., 1.]]),
+        }
+        original = {key: value.clone() for key, value in batch.items()}
+        config = MultiTaskLossConfig(event_will_upcoming_pos_weight=12.)
+        _, components = compute_multitask_loss(outputs, batch, config)
+        event_gradient = torch.autograd.grad(
+            components["event_will"], outputs["event_will_logit"], retain_graph=True,
+        )[0]
+        self.assertAlmostEqual(float(event_gradient[0, 1] / event_gradient[0, 0]), 4.)
+        self.assertEqual(float(event_gradient[0, 1]), float(event_gradient[0, 2]))
+        self.assertGreater(float(event_gradient[0, 3]), 0)
+        self.assertEqual(float(event_gradient[0, 4]), 0)
+        start_gradient = torch.autograd.grad(
+            components["event_start"], outputs["event_start_logit"], retain_graph=True,
+        )[0].abs().sum(-1)
+        self.assertEqual((start_gradient > 0).tolist(), [[False, True, True, False, False]])
+        changed_history = {**batch, "hist_last_hot": 1 - batch["hist_last_hot"]}
+        _, changed = compute_multitask_loss(outputs, changed_history, config)
+        self.assertTrue(torch.equal(components["event_will"], changed["event_will"]))
+        self.assertTrue(torch.equal(components["event_start"], changed["event_start"]))
+        for key in batch:
+            self.assertTrue(torch.equal(original[key], batch[key]), key)
+
     def test_only_observed_eligible_event_negatives_are_weighted(self):
         hot = torch.zeros(2, 15, 5)
         hot[0, :3, 0:3] = 1

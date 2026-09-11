@@ -71,7 +71,19 @@ def summarize_events(arrays: dict[str, np.ndarray], thresholds: list[float]) -> 
         "hot_without_qualifying_event": groups["negative"] & ~short_horizon & any_future_hot,
         "no_future_hot": groups["negative"] & ~short_horizon & ~any_future_hot,
     }
-    output = {"groups": {}, "thresholds": [], "ranking": {}}
+    historical_hot = arrays["hist_last_hot"] > 0.5
+    restarted = groups["upcoming"] & historical_hot
+    output = {
+        "groups": {}, "thresholds": [], "ranking": {},
+        "training_partition_audit": {
+            "definition": "positive start==0 ongoing; positive start>0 upcoming",
+            "upcoming_with_hot_history": int(restarted.sum()),
+            "upcoming_with_hot_history_windows": int(restarted.any(axis=1).sum()),
+            "ongoing_with_cold_history": int((groups["ongoing"] & ~historical_hot).sum()),
+            "note": "The previous hist_hot-based loss grouped restarted upcoming as ongoing "
+                    "and omitted their start loss. Counts audit potential exposure, not effect size.",
+        },
+    }
     ranking_groups = {
         "all_events": (positive, valid),
         "ongoing_vs_negative": (groups["ongoing"], groups["ongoing"] | groups["negative"]),
@@ -236,6 +248,7 @@ def main() -> None:
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report["groups"], indent=2), flush=True)
     print(json.dumps(report["ranking"], indent=2), flush=True)
+    print(json.dumps(report["training_partition_audit"], indent=2), flush=True)
     print("threshold P R F1 upcoming_R upcoming_probability_misses upcoming_timing_misses")
     for row in report["thresholds"]:
         print(row["threshold"], *[round(row[k], 4) for k in (
