@@ -2795,3 +2795,85 @@ model_before_timeattn20260913.zip全部11个文件与归档manifest一致，关�
 GPU可用约28.7GiB，既有Isaac进程PID3347767保持原样。后三组尚未开始，普通路径仍为
 far权重；按每组开训时归档，不能写成已经全部归档。训练源码固定abc6713，尚无本轮
 最终成绩，也没有改用upcoming单项选模。
+
+### 33.2 冻结时间汇聚观察诊断
+
+新增 `--inspect_temporal_attention`，代码4b48e2b80e08ef7045d779cb0918834cd2cb8994，
+诊断源码SHA-256：
+`7224e47f953b4af714b6dcf6bb285f0f27bae65edf631ece09c23fb641c72aae`。
+通过一次原始forward的临时hook读取历史GRU状态及实际汇聚输出；由同一个已学习query
+重建时间权重，记录query范数、权重距均匀分布的总变差、最大权重、归一化熵、实际
+汇聚相对原均值的L2改变量。按ongoing/upcoming/negative事后分组，保留各时间位置的
+平均权重及分位数。输入仅历史状态和query，未来标签只用于诊断分组；不改变预测、
+阈值或选模。注意力权重不是因果重要性，表示改变量也不能直接等同于召回贡献。
+
+本地19项检查及5个子测试通过，新增的3项也在服务器内存执行通过；验证单次forward、
+预测/参数/RNG不变、hook在成功和异常后均移除、零query均匀权重、分组和mask、
+空组/单时间步及非法输入。仅fetch新Git对象，模型相关6个模块的blob与abc6713相同，
+服务器HEAD及训练模块保持abc6713；诊断代码经stdin运行，不在训练期间pull。
+
+### 33.3 B4 seed42完成，首组四份诊断启动
+
+B4 seed42正常完成，best2/total12；validation P/R/F1/upcoming R为
+0.80876068/0.69132420/0.74544559/0.01379310（2/145），ongoing R为0.79473684，
+保存阈值0.60。Start/duration/remain MAE为0.04095112/2.27932024/28.95911663分钟。
+按相同seed的near父对照比较，F1由0.74531096微升至0.74544559，upcoming仍2/145；
+不能与父对照两seed均值混比，也不能从这一组确定整批效果。
+
+B4 seed43已开始，实际Python PID192940，最近观察到epoch11。其far归档11文件、
+关键文件与完整far导出及实际last_attention/near/aux关闭/test关闭配置均核验通过。
+B5两组尚未开始。复用已退出的baseline_dense_diag，启动seed42 best/last ×
+train/validation四份冻结诊断，并加入33.2节观察；标签timeattn20260913及
+timeattnlast20260913，日志timeattn20260913_b4s42_diagnose.log，pane PID196237、
+实际Python PID196242。当前诊断仍运行，尚无完成核验结论，不重复启动。
+
+### 33.4 B4两组训练完成，首组汇聚统计与泛化差距
+
+B4 seed43已正常完成，best5/total15；validation P/R/F1/upcoming R为
+0.81925134/0.69954338/0.75467980/0.01379310（2/145），ongoing R为0.80421053，
+阈值0.55。Start/duration/remain MAE为0.02872063/2.29687619/15.09694913分钟。
+两颗seed的upcoming均为2/145，与各自near父对照相同；F1均值约0.7500627，父对照
+约0.7510204，尚未显示稳定改善。数值转录八位小数，正式指标保留原CUDA评估值。
+
+首组四份诊断已全部输出、外壳正常退出0。四份权重/源码/manifest/epoch/样本数及
+分组计数核验通过；best validation出现一个负例跨阈值的CPU/CUDA差异，完整复现与
+处理见33.5，不能写成两设备报告完全相同。
+
+| B4 s42 upcoming组 | Best train | Best validation | Last train | Last validation |
+|---|---:|---:|---:|---:|
+| Upcoming-vs-negative AP | 0.00687252 | 0.00644431 | 0.07918116 | 0.00968419 |
+| Query L2 | 0.21593310 | 0.21593310 | 0.81003129 | 0.81003129 |
+| 时间权重距均匀分布TV中位数 | 0.00195198 | 0.00197301 | 0.01282728 | 0.01561396 |
+| 汇聚相对均值改变量中位数 | 0.00135524 | 0.00144304 | 0.01385991 | 0.01708787 |
+
+最佳权重的汇聚仍很接近均值；最后权重的表示改变量中位数约1.4%/1.7%，训练排序
+提高而验证未跟上。该观察只说明当前轻量查询的实际行为，不证明所有时间注意力无效，
+更不能根据权重大小直接宣称因果重要性或骨干上限。
+
+B5 seed42已开始，实际Python PID198500，最近epoch23；其far归档全部11成员及实际
+配置核验通过，seed43尚未开始。完成数值核对后复用诊断pane启动B4 seed43的四份
+best/last train/validation诊断，日志timeattn20260913_b4s43_diagnose.log，pane
+PID207920、实际Python PID207925。该四份尚未完成，不重复启动。
+
+### 33.5 冻结验证报告的设备数值差异已定位
+
+B4 seed42 best的CPU batch32诊断报告935条、命中757条；原CUDA batch24正式评估
+报告936条、命中同为757条，upcoming均2/145。因此原1e-10完全复现检查未通过；
+没有静默放宽容差、修改阈值或覆盖原结果。为定位原因，固定同一权重、5439个validation
+样本及0.60阈值，逐batch比较CPU观察诊断开/关，再复现原CUDA设置，并在差异样本
+上交叉核验CPU batch24、CUDA batch32及重复CUDA batch24。
+
+数值审计正常退出0，权重/manifest前后哈希不变，完整检查通过：CPU观察开关对所有
+样本的全部预测输出严格相同；CPU32复现原CPU诊断，CUDA24完整复现保存的正式指标。
+唯一概率跨阈值发生在sample_index26422、node32（num08_workbench_ws0），真实负例：
+CPU24/32均为0.5999934673309326，CUDA24/32及重复CUDA24均为0.6000308990478516。
+全有效目标概率最大绝对差为0.0003158450126647949；另有一个预测起点argmax不同，
+未改变最终命中数。结果支持设备推理数值差异，而不是观察hook改变预测；不将之概括为
+所有设备/所有checkpoint都已经审计。正式成绩继续使用原CUDA值，CPU诊断值单独保留。
+
+审计保存为baseline_timeattn_b4s42_numerical_audit20260913.json（22132 bytes），含
+完整审计脚本、脚本哈希、两路报告、交叉设置概率和来源，SHA-256：
+`9172284d23cf648a7079c52faa45f8ab58bdce1c1c66f4ed72fb238ce7185759`。
+最初审计启动因tmux缺少DENSE_DIR环境变量退出1，未开始推理/生成结果；补齐参数并
+将复用检查改为确认该已失败终态后，仅重试审计。原失败日志保留，成功日志为
+timeattn20260913_b4s42_numerical_audit_retry1.log；未重启训练、未覆盖四份原诊断。

@@ -73,9 +73,26 @@ d1f2519da3448f19262d9a3caf0199f923671786b86bea47197b933ba4111e50。详见第32.5
 只将GRU历史均值改为内容注意力加权均值，保留末状态及融合层，新增128参数。原参数、
 RNG与首次输出一致；13项定向测试及28项相关检查（11子测试）通过，服务器四组实际
 配置预检也通过。源码固定abc6713，日志timeattn20260913_train.log，pane PID188079、
-首组B4 seed42实际Python PID188096。首组far归档11文件核验通过，新配置last_attention、
-near、aux关闭、test关闭；其余组尚未开始。诊断pane已退出0。详见第33.1节，运行中
-不pull文档提交，不重复训练；当前尚无时间汇聚对照的最终成绩。
+首组B4 seed42已正常完成（best2/total12），P/R/F1为0.80876068/0.69132420/0.74544559，
+upcoming仍2/145，与相同seed的near父对照相同；F1微升，不能与两seed均值混比。
+B4 seed43也已正常完成（best5/total15），P/R/F1为0.81925134/0.69954338/0.75467980，
+upcoming仍2/145。两组实际配置last_attention、near、aux关闭、test关闭，far归档均通过。
+B5 seed42正在训练，实际Python PID198500、最近epoch23，其far归档11文件及新配置已
+核验；B5 seed43尚未开始。
+
+首组best/last × train/validation四份诊断已正常退出0，来源/权重/样本核验通过。
+Best validation与正式CUDA值相差1个负例报告，数值审计已定位为CPU0.599993与CUDA0.600031
+跨过0.60阈值；CUDA重现正式指标，观察hook对全部5439样本输出不变。正式指标仍用原
+CUDA值，不声称CPU报告完全相同。审计文件baseline_timeattn_b4s42_numerical_audit20260913.json，
+SHA 9172284d23cf648a7079c52faa45f8ab58bdce1c1c66f4ed72fb238ce7185759。详见33.5。
+
+首组last upcoming AP train/validation为0.07918116/0.00968419，仍有泛化差距；best汇聚
+接近均值，last upcoming表示改变量中位数约1.4%/1.7%，不是骨干上限证据。
+当前运行B4 seed43的四份诊断，日志timeattn20260913_b4s43_diagnose.log，pane PID207920、
+实际Python PID207925。新增--inspect_temporal_attention观察组件实际
+权重和表示改变量，不改预测；本地19项/5子测试及服务器3项检查通过。诊断代码4b48e2b
+通过Git对象经stdin执行，模型模块和HEAD保持abc6713。详见第33.2–33.5节，运行中不pull，
+不重复训练/诊断；当前尚无时间汇聚整批结论。
 
 ### 2026-09-12 新对话续接：输入审计已完成
 
@@ -218,7 +235,7 @@ B4/B5 onset 候选均已完成，表内为原正式事件头结果。独立分�
 
 已完成控制组、图上下文、upcoming 正例权重 4->12、三分类事件头四组对照，
 每组两模型各 seed42/43。没有稳定的 upcoming 提升，三分类不提升为正式最优方案。
-普通路径正按组从far转为时间汇聚候选，首组B4 seed42已启动，其余三组仍为far。
+普通路径正按组从far转为时间汇聚候选，B4两组已完成、B5 seed42正在运行，B5 seed43仍为far。
 旧近窗和onset分别保留在model_before_onsetaux20260912.zip和model_before_farprec20260913.zip，
 far在每组时间汇聚训练前保存到model_before_timeattn20260913.zip。
 必须核验 config 与归档来源，不能按路径猜候选。
