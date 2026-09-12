@@ -4,13 +4,19 @@
 
 ## 1. 交接状态
 
-**当前最新状态：**event_fbeta四组串行训练已在1728ca6启动，pane326665、driver
-Python326668，首组B4 seed42实际Python326721。首组实际配置和旧图交互归档11成员
-已核验，首次观察epoch2；其余三组尚未开始。保持1728ca6，不在训练中pull文档更新。
-真实预检已完成：全部29298个train/validation近窗摘要契约相同，四组初始参数/RNG/
-输出相同，只新增F-beta损失；预检文件baseline_fbeta_preflight20260913.json，
-16640 bytes，SHA eea6a7bd545063b22d7d34daa6e60e06985c72ea4e40cb83ca558d3c5c272235。
-日志fbeta20260913_train.log，精确配置、一次list/tuple比较修正及来源见37.2–37.4。
+**当前最新状态：**event_fbeta的B4两次训练及八份best/last × train/validation诊断
+全部完成并核验，best3/6、total13/16，upcoming命中0/2（各145）。平均F1
+0.7594687038，近窗父对照0.7510203841，但upcoming由2/2降为0/2，尚非解决方案。
+完整B4汇总baseline_dense_fbeta_b4_metrics_20260913.json，1343096 bytes，SHA
+5b3fbc9ce9df2a0fbc08e9c9eab3cd6fc955734c2bc4ba734ceda89d86495f1f。详见37.5。
+最新实时核验：B5 seed42已完成（best7/total27、F1=0.7615694165、upcoming0/145），
+其配置/源码/旧归档核验后冻结快照30956 bytes，四份标准诊断已在pane351899启动。
+训练pane326665、driver326668仍live，B5 seed43实际Python350531运行；详见37.6。
+服务器保持1728ca6，训练中不pull文档更新；勿重跑已完成训练/诊断。
+
+新增第38节只读源码核查：主参考在训练时已组合continue/onset分数，并对组合值施加
+主事件损失；baseline旧onset_aux及事后raw-max/独立阈值诊断不等同于这条联合训练
+路径。此差异尚无因果收益证据，也未登记新训练；先收尾当前F-beta四组及16份诊断。
 
 history_graph_refine四次训练及16份诊断已全部正常结束并核验，
 upcoming命中1/1/0/2（各145），未优于near的2/2/1/2，不采用这次新增图层。

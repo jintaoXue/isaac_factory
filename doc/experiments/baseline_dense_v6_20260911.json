@@ -1,4 +1,236 @@
 {
+  "event_fbeta_B5_seed42_training_completed_20260913": {
+    "status": "training_completed_four_frozen_diagnostics_started_not_yet_verified",
+    "training_source_commit": "1728ca69bd85e695f6004522ff774a20eaaab8e4",
+    "best_epoch": 7,
+    "epochs_trained": 27,
+    "parameter_count": 285982,
+    "report_precision": 0.8477043673012318,
+    "report_recall": 0.691324200913242,
+    "report_f1": 0.7615694164989939,
+    "upcoming_hits": 0,
+    "upcoming_targets": 145,
+    "saved_threshold": 0.8,
+    "actual_config_matches_real_preflight": true,
+    "eight_runtime_source_files_match_training_commit": true,
+    "prior_graph_archive_members_verified": 11,
+    "snapshot": "baseline_fbeta_b5s42_diagnostic_inputs20260913.json",
+    "snapshot_bytes": 30956,
+    "diagnostic_pane_pid": 351899,
+    "diagnostic_dead_at_launch": 0,
+    "diagnostic_log": "fbeta20260913_b5s42_diagnose.log",
+    "diagnostic_device": "cpu",
+    "diagnostic_threads": 2,
+    "diagnostic_batch_size": 32,
+    "diagnostics_completed_verified": false,
+    "test_evaluated": false,
+    "B5_seed43_live_python_pid": 350531,
+    "training_pane_pid": 326665,
+    "driver_python_pid": 326668,
+    "do_not_pull_during_training": true
+  },
+  "event_fbeta_B4_completed_20260913": {
+    "status": "B4_two_training_runs_and_eight_diagnostics_completed_verified_B5_still_live",
+    "training_source_commit": "1728ca69bd85e695f6004522ff774a20eaaab8e4",
+    "seeds": [
+      42,
+      43
+    ],
+    "best_epochs": [
+      3,
+      6
+    ],
+    "epochs_trained": [
+      13,
+      16
+    ],
+    "parameter_count_each": 273054,
+    "validation_precision": [
+      0.8353591160220994,
+      0.828693790149893
+    ],
+    "validation_recall": [
+      0.6904109589041096,
+      0.7068493150684931
+    ],
+    "validation_f1": [
+      0.756,
+      0.7629374075899458
+    ],
+    "upcoming_hits": [
+      0,
+      2
+    ],
+    "near_parent_upcoming_hits": [
+      2,
+      2
+    ],
+    "upcoming_targets_each": 145,
+    "saved_thresholds": [
+      0.88,
+      0.98
+    ],
+    "mean_metric_order": [
+      "P",
+      "R",
+      "F1",
+      "upcoming_recall"
+    ],
+    "mean_metrics_rounded": [
+      0.8320264531,
+      0.698630137,
+      0.7594687038,
+      0.0068965517
+    ],
+    "near_parent_means_rounded": [
+      0.8220531728,
+      0.6913242009,
+      0.7510203841,
+      0.0137931034
+    ],
+    "diagnostic_order": [
+      "best_train",
+      "best_validation",
+      "last_train",
+      "last_validation"
+    ],
+    "upcoming_ap_rounded_by_seed": [
+      [
+        0.007035,
+        0.006204,
+        0.176375,
+        0.012447
+      ],
+      [
+        0.014783,
+        0.008983,
+        0.235693,
+        0.008248
+      ]
+    ],
+    "probability_misses_by_seed": [
+      [
+        595,
+        145,
+        462,
+        137
+      ],
+      [
+        582,
+        143,
+        425,
+        140
+      ]
+    ],
+    "timing_misses_by_seed": [
+      [
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0
+      ]
+    ],
+    "false_alarms_by_seed": [
+      [
+        488,
+        149,
+        378,
+        176
+      ],
+      [
+        538,
+        160,
+        308,
+        152
+      ]
+    ],
+    "existing_finite_grid_P80_max_observed_upcoming_hits_by_seed": [
+      [
+        1,
+        0,
+        166,
+        8
+      ],
+      [
+        29,
+        2,
+        203,
+        5
+      ]
+    ],
+    "grid_scope": "Descriptive existing finite grid, not exact frontier, formal score, upper bound or selected policy",
+    "snapshot_bytes": [
+      30866,
+      31083
+    ],
+    "diagnostic_pane_pids": [
+      333459,
+      340516
+    ],
+    "diagnostic_exit_codes": [
+      0,
+      0
+    ],
+    "canonical_best_validation_14_keys_match_saved_at_abs_tol_1e_10": true,
+    "all_eight_runtime_source_hashes_and_weights_verified": true,
+    "prior_graph_archive_verified_members_each": 11,
+    "test_evaluated": false,
+    "server_exports": [
+      {
+        "file": "baseline_dense_fbeta_b4s42_metrics_20260913.json",
+        "bytes": 579386,
+        "sha256": "9396dc112dea1d7cb2dcc30ca14058e1016e5502734f58f0bf6c8916f531bea9"
+      },
+      {
+        "file": "baseline_dense_fbeta_b4s43_metrics_20260913.json",
+        "bytes": 562239,
+        "sha256": "078534f21146f169e4e069ee33135efdb607ed381375addcedefff9411c6fcc6"
+      },
+      {
+        "file": "baseline_dense_fbeta_b4_metrics_20260913.json",
+        "bytes": 1343096,
+        "sha256": "5b3fbc9ce9df2a0fbc08e9c9eab3cd6fc955734c2bc4ba734ceda89d86495f1f"
+      }
+    ],
+    "decision": "Retain overall F1 gain as a separate finding; no upcoming solution or backbone ceiling claim; do not substitute last weights",
+    "live_status_at_verification": {
+      "training_pane_pid": 326665,
+      "driver_python_pid": 326668,
+      "model": "B5",
+      "seed": 42,
+      "model_python_pid": 337927,
+      "last_observed_epoch": 25,
+      "seed43_record_present": false,
+      "diagnostic_pane_pid": 340516,
+      "diagnostic_dead": 1,
+      "diagnostic_exit_code": 0,
+      "server_commit": "1728ca6",
+      "do_not_pull_during_training": true
+    }
+  },
+  "joint_onset_training_source_audit_20260913": {
+    "status": "reference_source_difference_verified_no_candidate_registered",
+    "main_reference_commit": "20c40e230aedee6aef2429d352413fbcf0fa571a",
+    "main_source": "PDFormer/factory_bn/model.py",
+    "reference_config": "FactoryBN_dense_f1_p80.json",
+    "split_will_heads": true,
+    "event_cold_will_max": true,
+    "event_will_use_continue_main": false,
+    "main_combined_event_score_used_during_training": true,
+    "baseline_onset_aux_combined_during_training": false,
+    "prior_rawmax_and_independent_threshold_checks": "frozen posthoc weights, not joint training",
+    "formal_main_checkpoint_verified": false,
+    "causal_benefit_established": false,
+    "new_candidate_registered": false,
+    "server_runtime_modified": false,
+    "next_action": "Finish current F-beta four runs and 16 diagnostics before registering a separate joint-onset training control"
+  },
   "event_fbeta_launch_20260913": {
     "status": "four_serial_runs_started_first_B4_seed42_live_not_final",
     "training_source_commit": "1728ca69bd85e695f6004522ff774a20eaaab8e4",
@@ -350,7 +582,7 @@
     "next_action": "Follow running event_fbeta_launch_20260913; preserve fixed runtime and validation-only protocol",
     "deployed_checkout": "1728ca69bd85e695f6004522ff774a20eaaab8e4"
   },
-  "status": "event_fbeta_training_live_preflight_passed_history_graph_complete_goal_not_met",
+  "status": "event_fbeta_B4_complete_B5_seed42_diagnostics_live_seed43_training_goal_not_met",
   "history_graph_B4_both_completed_20260913": {
     "status": "two_training_runs_and_eight_diagnostics_completed_verified",
     "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",

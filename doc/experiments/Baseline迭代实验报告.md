@@ -3474,3 +3474,93 @@ last_mean、refine关闭、aux关闭、test关闭。
 这只是中间进度，不是最终成绩。其余三组尚未开始，普通权重路径会依次转为F-beta，
 不能据目录名误认来源。训练中不pull后续文档提交；保持原阈值/选模，待每组终态后
 做best/last × train/validation冻结诊断，不重复已完成的图交互或其他搜索。
+
+
+### 37.5 B4两次训练与八份诊断完成
+
+通过UU/Leo终端重新读取完整B4汇总的成功输出，两个seed均VERIFIED，未重跑训练或
+诊断。B4两组普通权重、冻结快照、八份原诊断、八个运行源码文件与1728ca6、预检配置、
+近窗父对照导出以及旧图交互归档各11成员均已核验。Best validation的14项事件计数、
+P/R/F1、ongoing/upcoming及who指标与原正式保存值在1e-10绝对容差内相同；不将CPU与
+CUDA的连续时长输出宣称为逐位相同。所有诊断仅用train/validation。
+
+| B4 F-beta正式validation | seed42 | seed43 |
+|---|---:|---:|
+| Best / total epoch | 3 / 13 | 6 / 16 |
+| 参数量 | 273054 | 273054 |
+| P | 0.8353591160220994 | 0.828693790149893 |
+| R | 0.6904109589041096 | 0.7068493150684931 |
+| F1 | 0.756 | 0.7629374075899458 |
+| Upcoming命中（各145） | 0 | 2 |
+| 原保存阈值 | 0.88 | 0.98 |
+| 相同seed近窗F1 | 0.7453109575518262 | 0.7567298105682951 |
+| 相同seed近窗upcoming命中 | 2 | 2 |
+
+两颗seed均值P/R/F1/upcoming R为0.8320264531/0.6986301370/0.7594687038/
+0.0068965517，近窗父对照为0.8220531728/0.6913242009/0.7510203841/0.0137931034。
+平均F1增加0.0084483197，但upcoming命中下降，因此保留总体指标收益，不能将其
+认定为upcoming解决方案，也不换用last权重或诊断阈值作为正式结果。
+
+| Upcoming排序AP及保存阈值诊断 | s42 best train | s42 best val | s42 last train | s42 last val | s43 best train | s43 best val | s43 last train | s43 last val |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| AP | 0.007035 | 0.006204 | 0.176375 | 0.012447 | 0.014783 | 0.008983 | 0.235693 | 0.008248 |
+| 概率漏报 | 595 | 145 | 462 | 137 | 582 | 143 | 425 | 140 |
+| 时间漏报 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 误报 | 488 | 149 | 378 | 176 | 538 | 160 | 308 | 152 |
+
+AP转录至六位小数，完整原值保存在服务器导出。训练/验证目标分别595/145；last训练
+排序明显提高、验证没有同步提高，仍支持泛化差距。已计算的有限诊断阈值网格在P>=0.8
+下最大观察命中依次为1/0/166/8、29/2/203/5。该统计不是精确阈值上界、部署策略或
+正式成绩，不能与第34节的冻结双头精确范围混淆。
+
+Seed42诊断pane333459、seed43诊断pane340516均退出0，对应日志均以
+DIAG_BATCH_EXIT_CODE=0结束。两个输入快照baseline_fbeta_b4s42_diagnostic_inputs20260913.json
+和baseline_fbeta_b4s43_diagnostic_inputs20260913.json分别30866/31083 bytes。
+完整单seed导出及SHA-256：
+
+- baseline_dense_fbeta_b4s42_metrics_20260913.json，579386 bytes，
+  9396dc112dea1d7cb2dcc30ca14058e1016e5502734f58f0bf6c8916f531bea9。
+- baseline_dense_fbeta_b4s43_metrics_20260913.json，562239 bytes，
+  078534f21146f169e4e069ee33135efdb607ed381375addcedefff9411c6fcc6。
+- baseline_dense_fbeta_b4_metrics_20260913.json，1343096 bytes，
+  5b3fbc9ce9df2a0fbc08e9c9eab3cd6fc955734c2bc4ba734ceda89d86495f1f。
+
+本次实时检查训练pane326665和driver326668仍live，B5 seed42原Python337927运行，
+日志最新epoch25；B5 seed43尚无新tag记录。诊断pane340516为dead1/exit0，服务器
+HEAD1728ca6。不中断原进程、不在训练中pull；B5最终结果尚待收尾。
+
+### 37.6 B5 seed42训练完成及冻结诊断启动
+
+继续读取同一训练会话：B5 seed42已validation_completed，best7/total27，参数285982；
+P/R/F1为0.8477043673012318/0.691324200913242/0.7615694164989939，阈值0.80，
+upcoming为0/145。B5 seed43实际Python350531已进入训练，driver326668和pane326665
+仍live；未重新启动训练。
+
+仅对完成的seed42核验实际配置与四组真实预检、near输入契约、manifest、1728ca6的
+八个运行文件、诊断源码704a4fc9及旧图交互归档11成员，通过后冻结七个当前文件的
+SHA和完整训练记录。快照baseline_fbeta_b5s42_diagnostic_inputs20260913.json，
+30956 bytes。随后复用已确认dead1/exit0的诊断pane，新pane351899、dead0；标准
+best/last × train/validation四份诊断已启动，CPU2线程、batch32，不启用图或时间
+观察器。日志fbeta20260913_b5s42_diagnose.log。当前尚未核验四份终态输出，不能
+把诊断启动当作完成；服务器继续保持1728ca6，训练中不pull。
+
+## 38. 主模型联合onset报警训练路径的源码差异
+
+再次只读检查固定主参考20c40e230aedee6aef2429d352413fbcf0fa571a的model.py和
+FactoryBN_dense_f1_p80.json。配置split_will_heads=true、event_cold_will_max=true、
+event_will_use_continue_main=false。model.py的_combine_will_logit（965–985行）在
+历史末窗hot时使用continue分数，cold时取continue与onset的maximum；forward
+（1260–1268行）将组合值写入event_will_logit，事件损失（1430–1434行）直接读取
+该组合值。因此该参考方案在训练时已经让主事件损失约束组合后的报警分数；对cold
+负例，若onset分数较高，它会收到主事件损失的误报梯度。两分数相等时的梯度分配
+由torch.maximum定义，不能笼统说任何时刻两头都收到主损失梯度。
+
+Baseline的onset_aux实现则将event_onset_logit作为独立辅助输出，event_will_logit
+仍由原事件头生成。第32节raw-max和第34节独立双阈值均在已冻结权重上进行，未按
+组合输出重新训练。故既有负结果不能排除联合训练该报警路径的收益；同时源码差异
+本身不是收益证据，实际主204-episode权重与覆盖配置仍未核验。
+
+此处只记录机制核查，未新增训练候选、未叠加F-beta或修改服务器运行代码。先完成
+当前F-beta四组及16份诊断，再依B5结果决定是否登记保持GCN/GAT-GRU、共同208数据/
+输入/阈值/选模的联合onset单项对照。原骨干已有事件发生、未来起点、时长和hot预测
+头，不能解释成没有未来输出；训练排序改善而验证弱也不能证明骨干已经达到上限。
