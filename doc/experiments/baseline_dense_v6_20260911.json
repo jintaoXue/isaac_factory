@@ -286,10 +286,10 @@
     "active_training_archive_tag": "upclass20260912",
     "active_variant": "three_class",
     "active_training_code_commit": "33628fc",
-    "active_training_progress_at_recording": "Weighted four runs completed with tmux exit 0. Three-class B4 seed42 Python PID3996650 confirmed live and epoch9 observed; B4 seed43 and both B5 seeds queued",
+    "active_training_progress_at_recording": "Both three-class B4 seeds validation_completed (13 and 15 epochs). B5 seed42 Python PID4006578 confirmed live; B5 seed43 queued",
     "active_archived_diagnostic": {
       "tmux": "baseline_dense_diag",
-      "status": "launched_pane_alive_not_yet_completed",
+      "status": "eight_files_completed_source_checks_passed_tmux_exit_zero",
       "models": ["B4", "B5"],
       "seeds": [42, 43],
       "splits": ["train", "validation"],
@@ -315,7 +315,7 @@
     "profile_version": "dense_<variant>_v2",
     "confirmation_seeds": [42, 43],
     "selection": "Canonical validation threshold/checkpoint selection unchanged; compare per-seed upcoming AP/recall and P/R/F1/MAE, not test",
-    "code_tests": {"passed": 149, "subtests_passed": 12, "server_three_class_prelaunch_passed": 5},
+    "code_tests": {"passed": 152, "subtests_passed": 15, "server_three_class_prelaunch_passed": 5},
     "prior_control_training_seconds": [433.20121908187866, 535.3831107616425, 1254.9563789367676, 1059.747685432434],
     "prior_control_parameter_counts": [253470, 253470, 266398, 266398],
     "diagnostic_summary": {
@@ -373,6 +373,29 @@
     "upcoming_mae_support": [0, 2, 3, 2],
     "decision": "No stable upcoming improvement; do not promote context candidate based on marginal aggregate F1 differences"
   },
+  "graph_context_learning_diagnostics": {
+    "status": "all_eight_train_validation_diagnostics_completed",
+    "source_files": "*_diagnostics_upcontext20260912.json in existing server benchmark",
+    "source_archive": "model_before_upweight20260912.zip/best.pt",
+    "source_verification": "All eight dataset hashes, member hashes, graph_context profiles and saved epochs checked against archived metadata",
+    "precision": "Six-decimal terminal extraction; full JSON files remain on server",
+    "column_order": ["B4_seed42", "B4_seed43", "B5_seed42", "B5_seed43"],
+    "train_samples_per_run": 23859,
+    "validation_samples_per_run": 5439,
+    "train_upcoming_targets_per_run": 595,
+    "validation_upcoming_targets_per_run": 145,
+    "train_upcoming_ap": [0.007318, 0.014483, 0.011602, 0.009032],
+    "validation_upcoming_ap": [0.006518, 0.009206, 0.006183, 0.007868],
+    "train_ongoing_ap": [0.871394, 0.906825, 0.900788, 0.879706],
+    "validation_ongoing_ap": [0.834853, 0.841453, 0.844019, 0.852070],
+    "train_upcoming_recall_at_saved_validation_threshold": [0.0, 0.015126, 0.015126, 0.001681],
+    "train_upcoming_probability_misses": [595, 586, 586, 594],
+    "validation_upcoming_probability_misses": [145, 143, 142, 143],
+    "train_upcoming_timing_misses": [0, 0, 0, 0],
+    "validation_upcoming_timing_misses": [0, 0, 0, 0],
+    "test_evaluated": false,
+    "conclusion": "Graph/job context does not materially learn upcoming on train either. This is not explained solely by validation overfitting; finish the registered subtype-head comparison before further training changes"
+  },
   "upcoming_weighted_results": {
     "status": "four_runs_validation_completed",
     "code_commit": "516b71e",
@@ -429,6 +452,17 @@
     "prior_binary_head_exact_state_forward_backward_comparisons": 10,
     "shared_initialization_matches_binary_arm": true,
     "deployment_gate": "Satisfied: weighted batch exited 0, all four full validation records exported, clean server dev_xwt fast-forwarded, five prelaunch tests passed; old weights archived in existing model directories"
+  },
+  "subtype_diagnostic_preparation": {
+    "status": "implemented_and_tested_locally_not_yet_deployed",
+    "classification_order": ["none", "ongoing", "upcoming"],
+    "additional_outputs": ["true_vs_argmax_confusion", "per_true_class_probability_means", "argmax_recall_with_support", "upcoming_class_vs_negative_ap"],
+    "report_decoding_changed": false,
+    "threshold_selection_changed": false,
+    "tests_passed": 152,
+    "subtests_passed": 15,
+    "integration_evidence": "Both B4 and B5 real train/checkpoint/diagnostic CLI executions match saved validation report F1 and write no test metrics",
+    "deployment_gate": "Keep running three-class batch source fixed; deploy diagnostics after batch completion"
   },
   "b4_seed42_diagnostic": {
     "source_file": "b4_dense_seed42_diagnostics_20260911.json",

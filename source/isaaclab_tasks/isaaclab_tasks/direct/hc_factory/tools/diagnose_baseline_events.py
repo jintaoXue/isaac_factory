@@ -68,6 +68,53 @@ def attach_node_catalog(report: dict, catalog_path: Path, manifest: dict) -> Non
             node.update(resource_id=source["resource_id"], resource_type=source["resource_type"])
 
 
+def summarize_event_kinds(arrays: dict[str, np.ndarray], groups: dict[str, np.ndarray]) -> dict:
+    classes = ("none", "ongoing", "upcoming")
+    valid = groups["negative"] | groups["ongoing"] | groups["upcoming"]
+    probabilities = arrays["event_kind_probability"]
+    if probabilities.shape != (*valid.shape, 3):
+        raise ValueError("Event class probabilities must have shape (samples, nodes, 3)")
+    scores = probabilities[valid]
+    if (not np.isfinite(scores).all() or (scores < 0).any() or (scores > 1).any()
+            or not np.allclose(scores.sum(-1), 1.0, atol=1e-6)):
+        raise ValueError("Invalid event class probability distribution")
+    if not np.allclose(scores[:, 1:].sum(-1), arrays["will_probability"][valid], atol=1e-6):
+        raise ValueError("Event class probabilities do not match the common event probability")
+    target = np.where(groups["ongoing"], 1, np.where(groups["upcoming"], 2, 0))[valid]
+    predicted = scores.argmax(-1)
+    confusion = np.bincount(target * 3 + predicted, minlength=9).reshape(3, 3)
+    per_class = {}
+    for index, name in enumerate(classes):
+        selected = target == index
+        count = int(selected.sum())
+        per_class[name] = {
+            "count": count,
+            "argmax_recall": float(confusion[index, index] / count) if count else None,
+            "mean_predicted_probabilities": scores[selected].mean(0).tolist() if count else None,
+        }
+    upcoming_or_negative = target != 1
+    upcoming_ranking = _binary_metrics(
+        (target[upcoming_or_negative] == 2).astype(np.int64),
+        scores[upcoming_or_negative, 2],
+    )
+    return {
+        "class_order": list(classes),
+        "sample_count": len(target),
+        "confusion_rows_true_columns_argmax": confusion.tolist(),
+        "argmax_accuracy": float((target == predicted).mean()) if len(target) else None,
+        "per_true_class": per_class,
+        "upcoming_class_vs_negative": {
+            "positive_count": upcoming_ranking["positive_count"],
+            "negative_count": upcoming_ranking["negative_count"],
+            "tie_aware_average_precision": upcoming_ranking["pr_auc"],
+            "roc_auc": upcoming_ranking["roc_auc"],
+        },
+        "scope": "Retrospective subtype diagnostic, not the event report decision. "
+                 "Report probabilities remain the sum of ongoing and upcoming probabilities; "
+                 "argmax classes and subtype scores do not select thresholds or checkpoints.",
+    }
+
+
 def summarize_events(arrays: dict[str, np.ndarray], thresholds: list[float]) -> dict:
     valid = arrays["occ_node_mask"] > 0.5
     will, start_target, _ = node_event_targets(
@@ -201,6 +248,8 @@ def summarize_events(arrays: dict[str, np.ndarray], thresholds: list[float]) -> 
         if not np.isclose(expected_precision, row["report_precision"]):
             raise ValueError("Event diagnostic targets differ from canonical report metrics")
         output["thresholds"].append(row)
+    if "event_kind_probability" in arrays:
+        output["event_kind_diagnostics"] = summarize_event_kinds(arrays, groups)
     return output
 
 
@@ -237,7 +286,7 @@ def main() -> None:
     if int(manifest["event_min_windows"]) != 8:
         raise ValueError("This diagnostic requires the canonical 8-window event contract")
     loader = DataLoader(
-        FactoryBaselineTensorDataset(payload, payload["split_indices"][args.split]),
+        FactoryBaselineTensorDataset(payload, payload["split_indices"][args.split].tolist()),
         batch_size=args.batch_size, shuffle=False,
     )
     collected: dict[str, list[np.ndarray]] = {}
@@ -255,6 +304,8 @@ def main() -> None:
                 predicted_start=result["event_start_logit"].argmax(-1),
                 predicted_duration=result["event_duration"],
             )
+            if "event_kind_logits" in result:
+                values["event_kind_probability"] = result["event_kind_logits"].softmax(-1)
             for key, value in values.items():
                 collected.setdefault(key, []).append(value.cpu().numpy())
     arrays = {key: np.concatenate(values) for key, values in collected.items()}
@@ -271,9 +322,9 @@ def main() -> None:
         saved_report_threshold=chosen_threshold,
         diagnostic_scope="Future labels and horizon length are retrospective diagnostic strata, "
                          "not deployable features or proposed alarm filters. No threshold is selected here.",
-        ranking_scope="One existing will score is ranked in each retrospective subgroup. "
-                      "Ongoing/upcoming are not separate predicted heads. Tie-aware AP is diagnostic, "
-                      "not a replacement for the canonical checkpoint-selection metric.",
+        ranking_scope="The common event-existence score is ranked in each retrospective subgroup. "
+                      "Optional event_kind_diagnostics separately inspect subtype probabilities. "
+                      "Neither diagnostic replaces the canonical checkpoint-selection metric.",
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

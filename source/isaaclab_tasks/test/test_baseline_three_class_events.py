@@ -18,6 +18,7 @@ from factory_baselines.torch_losses import MultiTaskLossConfig, compute_multitas
 from factory_baselines import torch_trainer as trainer
 import test_b5_gat_gru as model_fixture
 from test_baseline_warm_start import stage_parents
+import diagnose_baseline_events as event_diagnostics
 
 
 @pytest.mark.parametrize("kind", ("B4", "B5"))
@@ -122,7 +123,7 @@ def test_three_class_head_can_fit_all_three_distinguishable_training_classes():
 
 
 @pytest.mark.parametrize("kind", ("b4_gcn_gru", "b5_gat_gru"))
-def test_three_class_real_training_and_checkpoint_loading_do_not_evaluate_test(stage_parents, tmp_path, kind):
+def test_three_class_real_training_and_checkpoint_loading_do_not_evaluate_test(stage_parents, tmp_path, kind, monkeypatch):
     _, dataset, _, models = stage_parents
     output = tmp_path / kind
     summary = trainer.train_torch_baseline(
@@ -137,4 +138,20 @@ def test_three_class_real_training_and_checkpoint_loading_do_not_evaluate_test(s
     metrics = json.loads((output / "metrics_validation.json").read_text())
     assert 0 <= metrics["station_report"]["report_f1"] <= 1
     assert "time_mae_sample_count" in metrics["station_report"]
+    assert not (output / "metrics_test.json").exists()
+    diagnosis = output / "event_diagnostics.json"
+    monkeypatch.setattr(sys, "argv", [
+        "diagnose_baseline_events.py", "--dataset_dir", str(dataset),
+        "--checkpoint", str(output / "best.pt"), "--output", str(diagnosis),
+        "--split", "validation", "--threads", "1",
+    ])
+    event_diagnostics.main()
+    diagnostic = json.loads(diagnosis.read_text())
+    classes = diagnostic["event_kind_diagnostics"]
+    assert classes["sample_count"] == sum(x["count"] for x in diagnostic["groups"].values())
+    assert classes["class_order"] == ["none", "ongoing", "upcoming"]
+    assert diagnostic["test_evaluated"] is False
+    selected = next(row for row in diagnostic["thresholds"]
+                    if row["threshold"] == diagnostic["saved_report_threshold"])
+    assert selected["report_f1"] == metrics["station_report"]["report_f1"]
     assert not (output / "metrics_test.json").exists()

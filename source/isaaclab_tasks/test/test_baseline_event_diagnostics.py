@@ -19,6 +19,71 @@ from factory_baselines.b4_gcn_gru import B4GcnGru, B4ModelConfig
 
 
 class TestEventDiagnostics(unittest.TestCase):
+    def _three_class_arrays(self):
+        hot = np.zeros((1, 15, 4), dtype=np.float32)
+        hot[0, :8, 0] = 1
+        hot[0, 1:9, 1] = 1
+        return {
+            "y_hot": hot, "remain_mask": np.ones((1, 15)),
+            "occ_node_mask": np.array([[1, 1, 1, 0]]),
+            "hist_last_hot": np.array([[1, 0, 0, 0]]),
+            "event_will": np.array([[1, 1, 0, 0]]),
+            "event_start": np.array([[0, 1, 0, 0]]),
+            "will_probability": np.array([[.95, .95, .1, .5]]),
+            "predicted_start": np.zeros((1, 4)),
+            "predicted_duration": np.full((1, 4), 8),
+            "event_kind_probability": np.array([[
+                [.05, .9, .05], [.05, .85, .1], [.9, .05, .05], [np.nan, np.nan, np.nan],
+            ]]),
+        }
+
+    def test_three_class_diagnostic_does_not_change_binary_event_report(self):
+        arrays = self._three_class_arrays()
+        original = {key: value.copy() for key, value in arrays.items()}
+        result = summarize_events(arrays, [.55])
+        kinds = result.pop("event_kind_diagnostics")
+        binary = summarize_events({k: v for k, v in arrays.items() if k != "event_kind_probability"}, [.55])
+        self.assertEqual(result, binary)
+        self.assertEqual(result["thresholds"][0]["report_recall_upcoming"], 1)
+        self.assertEqual(kinds["sample_count"], 3)
+        self.assertEqual(kinds["confusion_rows_true_columns_argmax"], [[1, 0, 0], [0, 1, 0], [0, 1, 0]])
+        self.assertEqual(kinds["per_true_class"]["upcoming"]["argmax_recall"], 0)
+        self.assertEqual(kinds["per_true_class"]["upcoming"]["mean_predicted_probabilities"], [.05, .85, .1])
+        self.assertEqual(kinds["upcoming_class_vs_negative"]["tie_aware_average_precision"], 1)
+        for key, value in original.items():
+            np.testing.assert_array_equal(arrays[key], value)
+
+    def test_three_class_diagnostic_rejects_invalid_or_mismatched_probabilities(self):
+        for change in ("shape", "distribution", "marginal"):
+            with self.subTest(change=change):
+                arrays = self._three_class_arrays()
+                if change == "shape":
+                    arrays["event_kind_probability"] = arrays["event_kind_probability"][..., :2]
+                elif change == "distribution":
+                    arrays["event_kind_probability"][0, 0, 0] = .5
+                else:
+                    arrays["will_probability"][0, 0] = .1
+                with self.assertRaises(ValueError):
+                    summarize_events(arrays, [.55])
+
+    def test_three_class_diagnostic_empty_and_missing_classes_are_explicit(self):
+        arrays = self._three_class_arrays()
+        arrays["occ_node_mask"][:] = 0
+        kinds = summarize_events(arrays, [.55])["event_kind_diagnostics"]
+        self.assertEqual(kinds["sample_count"], 0)
+        self.assertIsNone(kinds["argmax_accuracy"])
+        self.assertEqual(kinds["confusion_rows_true_columns_argmax"], [[0, 0, 0]] * 3)
+        for row in kinds["per_true_class"].values():
+            self.assertEqual(row["count"], 0)
+            self.assertIsNone(row["argmax_recall"])
+            self.assertIsNone(row["mean_predicted_probabilities"])
+        self.assertIsNone(kinds["upcoming_class_vs_negative"]["tie_aware_average_precision"])
+        arrays["occ_node_mask"][0, 2] = 1
+        kinds = summarize_events(arrays, [.55])["event_kind_diagnostics"]
+        self.assertEqual(kinds["sample_count"], 1)
+        self.assertEqual(kinds["per_true_class"]["none"]["argmax_recall"], 1)
+        self.assertIsNone(kinds["per_true_class"]["upcoming"]["argmax_recall"])
+
     def test_archived_checkpoint_matches_direct_load_without_extraction(self):
         config = B4ModelConfig(input_dim=3, global_dim=0, num_nodes=2, gcn_hidden=2, gru_hidden=4)
         model = B4GcnGru(config)
