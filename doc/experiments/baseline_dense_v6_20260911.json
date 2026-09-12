@@ -1,5 +1,5 @@
 {
-  "status": "user_requested_handoff_all_registered_runs_completed_no_active_training",
+  "status": "resumed_input_budget_audit_completed_pending_formal_main_artifact_paths",
   "handoff_date": "2026-09-12",
   "optimization_goal_met": false,
   "continue_automatically": false,
@@ -26,7 +26,7 @@
     "local_detailed_transcription_pending": ["full per-class confusion matrix", "probability quantiles", "training cost; exact values retained in server export"],
     "policy": "Do not substitute zero, older runs, training-epoch values or main test values for missing validation metrics"
   },
-  "next_search_prerequisite": "Wait for user continuation in a new conversation. Audit common historical information budget and main bundle/split before registering another controlled comparison; do not automatically launch more training.",
+  "next_search_prerequisite": "User continuation received. Input availability audit completed without training; obtain actual main dense bundle/split/checkpoint/config paths and fix the shared observation budget before the next controlled comparison.",
   "code_commit": "5394034",
   "branch": "dev_xwt",
   "server_repo": "/home/sci/work/BSTAN_isaac_factory",
@@ -594,6 +594,59 @@
     "formal_main_checkpoint_usage_verified": false,
     "dataset_or_scoring_changed": false,
     "next_step": "Fix the common observation budget explicitly before an independent input comparison; do not silently change v6 or attribute all score differences to this mismatch"
+  },
+  "resume_input_audit_20260912": {
+    "status": "passed_input_availability_audit_not_model_comparison",
+    "code_commit": "2d6bbd01c1af265adf4871a98e7a4451b2f07fb6",
+    "server_initial_commit": "6b2b216",
+    "server_initial_worktree_clean": true,
+    "dense_training_and_diagnostic_panes": "both dead=1 exit=0 before and after audit",
+    "matching_training_diagnostic_processes_after_audit": 0,
+    "source_reference": "20c40e230aedee6aef2429d352413fbcf0fa571a",
+    "main_server_checkout": "f322dbf9854e06598d0461af2296ab7c095d7f4b",
+    "main_dense_artifact_search": "No dense* directory in main PDFormer/raw_data or libcity/cache/model_cache; actual formal artifacts remain unlocated, user asked for paths",
+    "server_result": "baseline_precursor_history_audit_20260912.json",
+    "server_result_sha256": "3308c7bb55856d70dff79e1d9185afde7faf8c3ebde9d2be1be966dcd71319b6",
+    "dataset_manifest_sha256": "e3d7b2008ad7c5d0844c10a4c0670ff36c5ba961382706695689daf7a050244f",
+    "export_hash_matches_original_v6_alignment": true,
+    "test_arrays_loaded": false,
+    "labels_used": false,
+    "new_training": false,
+    "data_model_scoring_modified": false,
+    "local_tests_passed": 3,
+    "server_tests_passed": 3,
+    "server_precheck_recovery": "Missing pinned main Git object; fetched origin dev_tyx inside BSTAN, then all three tests and full audit passed",
+    "statistics": {
+      "train": {"episodes": 138, "samples": 23859, "far_windows_zero": 138, "far_windows_partial_1_to_29": 4002, "far_windows_full_30": 19719, "samples_with_nonzero_far_summary": 23721},
+      "validation": {"episodes": 30, "samples": 5439, "far_windows_zero": 30, "far_windows_partial_1_to_29": 870, "far_windows_full_30": 4539, "samples_with_nonzero_far_summary": 5409}
+    },
+    "nonzero_statistic_scope": "all 38 nodes, including inapplicable nodes; input availability, not event performance",
+    "input_contract": {
+      "first_future_window": "t",
+      "encoder_slice": "[t-30,t)",
+      "far_slice": "[max(0,t-60),t-30)",
+      "near_summary_dim": 18,
+      "far_summary_dim": 5,
+      "main_neighbor_queue_dim": 1,
+      "far_fields": ["queue_mean", "blocked_mean", "inbound_wait_mean", "material_shortage_mean", "queue_max"],
+      "future_truncation_invariance_verified": true,
+      "main_precursor_projection_last_layer_zero_initialized": true,
+      "formal_checkpoint_precursor_use_verified": false
+    },
+    "bounded_next_comparison_proposal": {
+      "status": "not_launched_pending_common_bundle_and_information_budget",
+      "arms": ["near_summary_with_five_zero_far_fields", "same_near_summary_with_five_actual_far_fields"],
+      "shared_capacity_and_initialization": true,
+      "event_head": "binary_original_control",
+      "backbones": ["B4_GCN_GRU", "B5_GAT_GRU"],
+      "seeds": [42, 43],
+      "max_epochs_each": 60,
+      "total_runs_if_adopted": 8,
+      "new_feature_contract_required": true,
+      "scoring_threshold_selection_and_splits_unchanged": true,
+      "main_decoder_copied": false,
+      "test_for_selection": false
+    }
   },
   "b4_seed42_diagnostic": {
     "source_file": "b4_dense_seed42_diagnostics_20260911.json",
