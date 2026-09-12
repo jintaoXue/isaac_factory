@@ -48,6 +48,8 @@ class MultiTaskLossConfig:
     event_will_ongoing_pos_weight: float = 3.0
     event_short_hot_fp_multiplier: float = 1.0
     event_focal_gamma: float = 0.0
+    event_fbeta_weight: float = 0.0
+    event_fbeta_beta: float = 1.5
     event_start_sigma: float = 1.0
     near_remain_windows: int = 15
     remain_loss_tau: float = 40.0
@@ -60,6 +62,10 @@ class MultiTaskLossConfig:
             raise ValueError("event_short_hot_fp_multiplier must be finite and at least one")
         if not math.isfinite(self.event_focal_gamma) or self.event_focal_gamma < 0:
             raise ValueError("event_focal_gamma must be finite and non-negative")
+        if not math.isfinite(self.event_fbeta_weight) or self.event_fbeta_weight < 0:
+            raise ValueError("event_fbeta_weight must be finite and non-negative")
+        if not math.isfinite(self.event_fbeta_beta) or self.event_fbeta_beta < .1:
+            raise ValueError("event_fbeta_beta must be finite and at least 0.1")
         if self.prediction_horizon <= 0:
             raise ValueError("prediction_horizon must be positive")
         for name in (
@@ -107,6 +113,48 @@ def _event_binary_loss(logits: torch.Tensor, target: torch.Tensor, gamma: float)
         return error
     # exp(-BCE) is the probability assigned to the true binary class.
     return error * (-torch.expm1(-error)).pow(gamma)
+
+
+def _event_soft_fbeta(logits: torch.Tensor, target: torch.Tensor,
+                      upcoming: torch.Tensor, weights: torch.Tensor, beta: float) -> torch.Tensor:
+    """Main-recipe soft F-beta over all events and upcoming versus negatives.
+
+    Existing masked BCE weights are detached, as in the reference recipe. When
+    upcoming is absent the all-event term is used alone. No valid weighted nodes
+    contribute zero, rather than making padding into observations.
+    """
+    if not (logits.shape == target.shape == upcoming.shape == weights.shape):
+        raise ValueError("Soft F-beta inputs must share the event grid")
+    if not math.isfinite(beta) or beta < .1:
+        raise ValueError("Soft F-beta beta must be finite and at least 0.1")
+    if not torch.isfinite(weights).all() or (weights < 0).any():
+        raise ValueError("Soft F-beta weights must be finite and non-negative")
+    valid = weights > 0
+    if not valid.any():
+        return logits[valid].sum() * 0.0
+    probability, y = logits[valid].sigmoid(), target[valid].to(logits.dtype)
+    up = upcoming[valid].bool()
+    fw = weights[valid].detach()
+    if not torch.isfinite(probability).all() or not torch.isin(y, y.new_tensor([0., 1.])).all():
+        raise ValueError("Soft F-beta requires finite scores and binary valid targets")
+    if (up & (y < .5)).any():
+        raise ValueError("Upcoming must be a subset of positive events")
+
+    def score(p: torch.Tensor, labels: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
+        tp = (p * labels * w).sum()
+        fp = (p * (1.0 - labels) * w).sum()
+        fn = ((1.0 - p) * labels * w).sum()
+        precision = tp / (tp + fp + 1e-6)
+        recall = tp / (tp + fn + 1e-6)
+        b2 = beta * beta
+        return (1.0 + b2) * precision * recall / (b2 * precision + recall + 1e-6)
+
+    all_events = score(probability, y, fw)
+    if up.any():
+        selected = up | (y < .5)
+        upcoming_events = score(probability[selected], y[selected], fw[selected])
+        return 1.0 - .5 * (all_events + upcoming_events)
+    return 1.0 - all_events
 
 
 def _onset_auxiliary_loss(
@@ -410,4 +458,11 @@ def compute_multitask_loss(
     if config.lambda_event_onset_aux > 0:
         components["event_onset_aux"] = event_onset_aux
         total = total + config.lambda_event_onset_aux * event_onset_aux
+    if config.event_fbeta_weight > 0:
+        event_fbeta = _event_soft_fbeta(
+            outputs["event_will_logit"], event_will_target, upcoming,
+            event_weight, config.event_fbeta_beta,
+        )
+        components["event_fbeta"] = event_fbeta
+        total = total + config.lambda_event_will * config.event_fbeta_weight * event_fbeta
     return total, components

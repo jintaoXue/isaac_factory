@@ -1,5 +1,120 @@
 {
-  "status": "history_graph_B4_both_completed_verified_B5_training_live_goal_not_met",
+  "history_graph_B5_seed42_completed_20260913": {
+    "status": "training_and_four_diagnostics_completed_verified",
+    "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",
+    "diagnostic_source_commit": "5cfce2d65074860d17e454dc7c32f7375d294312",
+    "best_epoch": 7,
+    "epochs_trained": 27,
+    "trainable_parameter_count": 302686,
+    "validation_metrics": {
+      "report_precision": 0.8359375,
+      "report_recall": 0.6840182648401827,
+      "report_f1": 0.7523857358111502,
+      "report_recall_upcoming": 0.0,
+      "upcoming_hits": 0,
+      "upcoming_targets": 145,
+      "report_threshold": 0.6
+    },
+    "diagnostic_column_order": [
+      "best_train",
+      "best_validation",
+      "last_train",
+      "last_validation"
+    ],
+    "upcoming_ap": [
+      0.010409,
+      0.006376,
+      0.422239,
+      0.008441
+    ],
+    "upcoming_relative_graph_update_median": [
+      0.69867,
+      0.839081,
+      0.439568,
+      0.530445
+    ],
+    "output_projection_weight_l2": [
+      3.661362,
+      3.661362,
+      4.945151,
+      4.945151
+    ],
+    "rounded_transcription_note": "Observation values six decimals; exact values in server export",
+    "all_weight_source_manifest_epoch_sample_and_group_count_checks_passed": true,
+    "canonical_best_validation_counts_and_P_R_F1_match_saved_within_1e_10": true,
+    "six_runtime_modules_match_371afb6": true,
+    "old_timeattention_archive_members_verified": 11,
+    "training_snapshot": "baseline_postgru_b5s42_diagnostic_inputs20260913.json",
+    "training_snapshot_bytes": 29041,
+    "diagnostic_pane_pid": 295800,
+    "diagnostic_exit_code": 0,
+    "server_export": "baseline_dense_postgru_b5s42_metrics_20260913.json",
+    "server_export_bytes": 548987,
+    "server_export_sha256": "bddea7fa14a9e665fa96529155c89addf158a1c3cc9d19116ea897c996479334",
+    "remaining_training_live": {
+      "model": "B5",
+      "seed": 43,
+      "python_pid": 294501,
+      "pane_pid": 272151
+    },
+    "test_evaluated": false,
+    "decision": "No upcoming gain in this seed; train/validation ranking gap persists despite active graph path. Await seed43 and complete batch; no universal architecture ceiling claim."
+  },
+  "event_fbeta_preparation_20260913": {
+    "status": "local_implementation_tested_and_registered_not_deployed_not_trained",
+    "variant": "event_fbeta",
+    "archive_tag": "fbeta20260913",
+    "parent_control": "near_precursor",
+    "models": [
+      "B4",
+      "B5"
+    ],
+    "seeds": [
+      42,
+      43
+    ],
+    "max_epochs": 60,
+    "main_reference_commit": "20c40e230aedee6aef2429d352413fbcf0fa571a",
+    "single_change": "add_equal_all_event_and_upcoming_vs_negative_soft_Fbeta_to_original_event_BCE",
+    "beta": 1.5,
+    "inside_event_loss_weight": 0.8,
+    "lambda_event_will": 2.5,
+    "effective_coefficient": 2.0,
+    "existing_masked_BCE_weights_preserved_and_detached": true,
+    "absent_upcoming_behavior": "all_event_Fbeta_only",
+    "no_valid_weighted_nodes_behavior": "differentiable_zero_not_main_fallback_ones_on_padding",
+    "parameter_counts": {
+      "B4": 273054,
+      "B5": 285982
+    },
+    "history_graph_refine": false,
+    "onset_aux": false,
+    "temporal_readout": "last_mean",
+    "event_precursor": "near",
+    "event_context": false,
+    "event_head": "binary",
+    "event_focal_gamma": 0.0,
+    "initialization": "from_scratch",
+    "event_oversample_factor": 1.0,
+    "model_architecture_and_original_loss_components_unchanged": true,
+    "threshold_and_checkpoint_selection": "unchanged_from_near_parent_not_upcoming_only",
+    "test_evaluated": false,
+    "local_verification": {
+      "tests": 62,
+      "subtests": 10,
+      "new_test_file": "source/isaaclab_tasks/test/test_baseline_event_fbeta.py",
+      "main_source_formula_random_grids": 16,
+      "formula_and_logit_gradient_match": true,
+      "gradient_reaches_GRU_event_head_and_precursor": true,
+      "four_dense_configurations_only_loss_coefficient_changes": true
+    },
+    "deployment_gate": "all_four_postgru_training_runs_and_16_diagnostics_terminal_verified_and_complete_export_preserved_then_real_data_preflight",
+    "server_runtime_until_gate": "371afb69d29118a3c42b3274a65e5b07509c1032",
+    "reuse_existing_model_directories": true,
+    "prior_result_archive": "model_before_fbeta20260913.zip",
+    "interpretation_limit": "Single loss-form ablation, not full main recipe alignment or hard precision guarantee; negative result does not prove backbone ceiling."
+  },
+  "status": "history_graph_B5_seed42_completed_verified_seed43_training_live_event_fbeta_local_prepared_goal_not_met",
   "history_graph_B4_both_completed_20260913": {
     "status": "two_training_runs_and_eight_diagnostics_completed_verified",
     "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",

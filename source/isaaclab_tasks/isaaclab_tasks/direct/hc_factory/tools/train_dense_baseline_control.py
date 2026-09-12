@@ -14,7 +14,7 @@ from factory_baselines.dataset import load_shared_dataset
 from factory_bn_shared.bundle import file_hash
 
 
-DENSE_VARIANTS = ("history_control", "graph_context", "upcoming_weighted", "three_class", "near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine")
+DENSE_VARIANTS = ("history_control", "graph_context", "upcoming_weighted", "three_class", "near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta")
 
 
 def dense_configuration(model: str, variant: str, seed: int, device: str) -> tuple:
@@ -34,7 +34,7 @@ def dense_configuration(model: str, variant: str, seed: int, device: str) -> tup
                      temporal_readout="last_mean", node_embedding=0,
                      event_context=variant == "graph_context",
                      event_head="three_class" if variant == "three_class" else "binary")
-    if variant in {"near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine"}:
+    if variant in {"near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta"}:
         overrides["event_precursor"] = "near_far" if variant == "far_precursor" else "near"
     if variant == "temporal_attention":
         overrides["temporal_readout"] = "last_attention"
@@ -46,6 +46,7 @@ def dense_configuration(model: str, variant: str, seed: int, device: str) -> tup
     loss = MultiTaskLossConfig(
         event_will_upcoming_pos_weight=12.0 if variant == "upcoming_weighted" else 4.0,
         lambda_event_onset_aux=1.0 if variant == "onset_aux" else 0.0,
+        event_fbeta_weight=.8 if variant == "event_fbeta" else 0.0,
     )
     return training, overrides, loss
 
@@ -101,7 +102,14 @@ def run_control(model: str, dataset_dir: Path, output_dir: Path, archive_tag: st
         "event_supervision_partition": "positive_start_zero_ongoing_positive_start_greater_zero_upcoming",
         "event_head": overrides["event_head"],
         "temporal_readout": overrides["temporal_readout"],
-        "parent_control": "near_precursor" if variant in {"far_precursor", "onset_aux", "temporal_attention", "history_graph_refine"} else None,
+        "parent_control": "near_precursor" if variant in {"far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta"} else None,
+        "event_soft_fbeta": {
+            "enabled": variant == "event_fbeta",
+            "inside_event_loss_weight": loss_config.event_fbeta_weight,
+            "beta": loss_config.event_fbeta_beta,
+            "main_reference_commit": "20c40e230aedee6aef2429d352413fbcf0fa571a",
+            "scope": "equal_all_events_and_upcoming_soft_Fbeta_using_existing_BCE_weights",
+        },
         "history_graph_refinement": {
             "enabled": variant == "history_graph_refine",
             "mechanism": "extra_residual_GCN_or_GAT_on_pooled_GRU_histories_zero_output_projection",

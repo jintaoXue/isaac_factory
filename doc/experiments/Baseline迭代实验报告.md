@@ -3269,3 +3269,71 @@ e8c5f415bc16b823275077166cc6f933b3bd1997b20e354dd7369b145817118b。
 交互或GCN-GRU无效。B5 seed42实际Python282818在运行，配置和旧归档11成员已
 核验，首次复核观察epoch5；seed43尚未启动。训练pane272151保持live，模型HEAD
 371afb6不变，未使用test，待B5完成后才能判断整批。
+
+### 36.5 B5 seed42训练及四份诊断完成
+
+B5 seed42已正常完成，best7/total27，总参数302686，validation正式P/R/F1为
+0.8359375/0.6840182648401827/0.7523857358111502，阈值0.60，upcoming为0/145。
+旧timeattention归档11成员及其中关键文件与旧完整导出相符；实际配置保持
+near/last_mean/refine开启/aux关闭/test关闭。训练快照
+baseline_postgru_b5s42_diagnostic_inputs20260913.json为29041 bytes。
+
+复用诊断pane，PID295800，四份best/last train/validation诊断正常退出0；日志
+postgru20260913_b5s42_diagnose.log末行为DIAG_BATCH_EXIT_CODE=0。核验四份权重
+哈希、诊断源码5cfce2d、manifest、epoch7/27、样本数23859/5439及事件分组分母；
+best validation离散计数及P/R/F1与原保存正式指标在1e-10内相同。六个实际运行
+模块仍与371afb6 Git对象一致，服务器tracked clean，近窗父对照导出哈希也通过。
+
+| B5 seed42观察项 | Best train | Best validation | Last train | Last validation |
+|---|---:|---:|---:|---:|
+| upcoming-vs-negative AP | 0.010409 | 0.006376 | 0.422239 | 0.008441 |
+| upcoming图残差/原历史表示L2，中位数 | 0.698670 | 0.839081 | 0.439568 | 0.530445 |
+| 输出投影权重L2 | 3.661362 | 3.661362 | 4.945151 | 4.945151 |
+
+观察值保留六位小数。最后权重的训练排序明显提高，验证排序仍低；图交互路径实际
+参与计算，但此seed没有upcoming收益，不能据此外推所有图时空编码的上限。
+完整导出baseline_dense_postgru_b5s42_metrics_20260913.json，548987 bytes，SHA-256：
+bddea7fa14a9e665fa96529155c89addf158a1c3cc9d19116ea897c996479334。
+
+B5 seed43已接续，实际Python294501和训练pane272151仍live；四组训练和16份诊断
+尚未全部结束。不要重复seed42已完成的四份检查，不在训练中更新371afb6模型模块。
+
+## 37. Upcoming soft F-beta损失单项对照准备
+
+登记event_fbeta / fbeta20260913，父对照near_precursor，B4/B5各seed42/43，最多
+60 epoch。它检查主参考配方中的事件损失形式，而非增加新骨干：原两层GCN/GAT、
+GRU、last_mean汇聚、二分类事件头、近窗摘要及原参数量273054/285982均保持。
+history_graph_refine和onset_aux均关闭，远历史5维仍为零。该项不能与上一轮新增图层
+混在一起归因，也不称为主模型完整训练配方的复刻。
+
+固定主参考20c40e230aedee6aef2429d352413fbcf0fa571a，采用其all-event与
+upcoming-vs-negative soft F-beta的等权组合，beta=1.5，事件损失内系数0.8：
+
+`L_new = L_near + lambda_event_will * 0.8 * (1 - 0.5 * (F_beta_all + F_beta_upcoming))`
+
+保留baseline现有BCE权重并detach用于该项，upcoming子项排除ongoing。batch中
+没有upcoming时只用all-event项；没有任何有效加权节点时返回可微零，避免把padding
+变成观测。后一边界刻意不同于主源码的全零权重转全一兜底，正常有效节点下的公式及
+梯度已与主源码块核对。原lambda_event_will=2.5，因此新增项有效系数为2.0；主配置
+相应为2.4*0.8=1.92。其他正负/资源类型权重、BCE、focal=0、辅助损失及抽样均不变，
+不能把这一项称为主损失全部对齐。
+
+训练保持从头初始化和均匀抽样，B4 batch24/lr3e-4/min10/patience10，B5
+batch16/lr1.5e-4/min15/patience20，weight_decay=0.01。阈值、事件定义和checkpoint
+选择沿用near父对照，不根据upcoming单项改选epoch，不使用test。soft F-beta只是
+可微训练目标，并不保证硬阈值下precision>=0.8或提高validation recall。
+
+实现涉及torch_losses.py和train_dense_baseline_control.py，默认系数0时旧损失
+计算路径不变。新增test_baseline_event_fbeta.py的六项测试覆盖：从固定主Git对象
+提取实际公式块，对16组随机输入逐项比较数值与梯度；upcoming梯度方向和beta权衡；
+padding/无正例/无有效节点及极端logit；B4/B5真实forward中的梯度通路；四组实际
+控制配置只改变损失系数；非法配置和目标网格拒绝。与onset、归档及B4/B5模型相关
+检查合计62 tests、10 subtests通过。F-beta项的梯度到达GRU和事件头，不直接改变
+起点或hot头；参数、RNG以及原损失分项保持不变。
+
+当前仅完成本地实现及登记，尚未部署或训练。服务器继续保持371afb6。只有当前图
+交互四次训练、16份诊断和完整汇总全部终态并核验后，才进行新源码部署及四组真实
+数据预检；复用原目录，逐成员验证model_before_fbeta20260913.zip后再使用正常权重
+路径。不得覆盖未核验的当前结果，不重新执行已完成的near/onset/far/timeattention
+或阈值搜索。评判同时看两颗seed正式P/R/F1/upcoming、误报及best/last训练与验证
+排序；失败只否定这个固定单项配方，不宣称GCN/GAT-GRU普遍无法提前预测。
