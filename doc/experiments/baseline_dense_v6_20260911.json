@@ -1,7 +1,7 @@
 {
-  "status": "independent_onset_frontier_completed_input_identity_audit_registered_not_run",
+  "status": "input_identity_audit_completed_verified_upcoming_goal_not_met",
   "input_identity_audit_registered_20260913": {
-    "status": "implemented_and_locally_tested_not_run_on_real_data",
+    "status": "completed_verified_on_real_train_validation_data",
     "tool": "audit_baseline_input_identity.py",
     "tag": "baseline_input_identity20260913",
     "splits": [
@@ -27,7 +27,31 @@
     "event_branch_scope": "For event_context=false B4/B5, omit target_node_mask (ignored), global_features/jobs_remaining/jobs_total (other heads only). Retain entire graph X, adjacency, node_mask, optional precursor and decoder hist_last_hot. Actual B4/B5 none/near forward tests verify identical event outputs when excluded fields change.",
     "conditional_precursor_policy": "For each view independently, unique core observations prove appended precursors cannot create duplicates. Build actual near/near_far only if at least one view has repeated cores.",
     "server_output": "baseline_input_identity20260913.json",
-    "server_log": "input_identity20260913_audit.log"
+    "server_log": "input_identity20260913_audit.log",
+    "audit_source_commit": "d85212f10b9bcd73936c2a5d498e1210ac93c1a4",
+    "audit_source_sha256": "006607ffbf165c89ec7efd6b665a59a32b860283c42bc274b008071f8acb4e2e",
+    "server_tests": 7,
+    "server_output_bytes": 10334,
+    "server_output_sha256": "63b2c5e46cdee806030165fa00c54ab0e6d79e0f2689445f365462454f27288b",
+    "pane_pid": 264887,
+    "pane_exit_code": 0,
+    "full_adapter_unique_inputs": {
+      "train": 23859,
+      "validation": 5439,
+      "union": 29298
+    },
+    "event_branch_unique_inputs": {
+      "train": 23859,
+      "validation": 5439,
+      "union": 29298
+    },
+    "both_views_repeated_input_groups": 0,
+    "both_views_cross_split_shared_groups": 0,
+    "precursor_rebuilt": false,
+    "target_counts_match": true,
+    "all_five_dataset_hashes_independently_rechecked_unchanged": true,
+    "six_runtime_modules_match_recorded_hashes_and_abc6713": true,
+    "conclusion": "No exact complete-input duplicates even after excluding fields unused by the event branch. Does not establish predictability or a model ceiling; approximate ambiguity and representation loss remain possible."
   },
   "independent_onset_frontier_completed_20260913": {
     "status": "all_eight_completed_and_verified_exit_zero",
@@ -37,137 +61,51 @@
     "server_export": "baseline_onset_frontier_metrics_20260913.json",
     "server_export_bytes": 1092127,
     "server_export_sha256": "22c883374b9bc1d2423ddc87a871890f2d417fc28cdfeaef866901a40591d478",
-    "run_order": [
-      "B4_seed42",
-      "B4_seed43",
-      "B5_seed42",
-      "B5_seed43"
-    ],
-    "frozen_best_epochs": [
-      1,
-      5,
-      7,
-      5
-    ],
-    "train_upcoming_targets_each": 595,
-    "validation_upcoming_targets_each": 145,
-    "train_max_hits_saved_event_threshold_P80": [
-      23,
-      66,
-      79,
-      53
-    ],
-    "train_max_hits_both_thresholds_P80": [
-      31,
-      94,
-      97,
-      70
-    ],
-    "train_max_hits_both_thresholds_P80_R70": [
-      null,
-      89,
-      93,
-      63
-    ],
-    "validation_max_hits_saved_event_threshold_P80": [
-      1,
-      7,
-      7,
-      6
-    ],
-    "validation_max_hits_both_thresholds_P80": [
-      3,
-      10,
-      10,
-      7
-    ],
-    "validation_max_hits_both_thresholds_P80_R70": [
-      null,
-      null,
-      null,
-      null
-    ],
+    "run_order": ["B4_seed42", "B4_seed43", "B5_seed42", "B5_seed43"],
+    "frozen_best_epochs": [1, 5, 7, 5],
+    "train_upcoming_targets_each": 595, "validation_upcoming_targets_each": 145,
+    "train_max_hits_saved_event_threshold_P80": [23, 66, 79, 53],
+    "train_max_hits_both_thresholds_P80": [31, 94, 97, 70],
+    "train_max_hits_both_thresholds_P80_R70": [null, 89, 93, 63],
+    "validation_max_hits_saved_event_threshold_P80": [1, 7, 7, 6],
+    "validation_max_hits_both_thresholds_P80": [3, 10, 10, 7],
+    "validation_max_hits_both_thresholds_P80_R70": [null, null, null, null],
     "null_meaning": "No nonempty report set satisfies the stated constraints",
-    "validation_P80_witness_precision": [
-      0.8,
-      0.8,
-      0.80021954,
-      0.8
-    ],
-    "validation_P80_witness_recall": [
-      0.55159817,
-      0.36164384,
-      0.66575342,
-      0.53333333
-    ],
-    "validation_P80_witness_f1": [
-      0.65297297,
-      0.49811321,
-      0.72681954,
-      0.64
-    ],
-    "validation_P80_witness_false_alarms": [
-      151,
-      99,
-      182,
-      146
-    ],
+    "validation_P80_witness_precision": [0.8, 0.8, 0.80021954, 0.8],
+    "validation_P80_witness_recall": [0.55159817, 0.36164384, 0.66575342, 0.53333333],
+    "validation_P80_witness_f1": [0.65297297, 0.49811321, 0.72681954, 0.64],
+    "validation_P80_witness_false_alarms": [151, 99, 182, 146],
     "witness_note": "One witness for maximum upcoming hits; not F1-optimal tie selection, not deployed thresholds or unbiased validation performance",
     "all_archive_member_source_manifest_epoch_sample_count_checks_passed": true,
     "original_groups_rankings_auxiliary_and_complete_canonical_reports_exactly_preserved": true,
     "validation_saved_metrics_tolerance": 1e-10,
     "all_witnesses_verified_with_canonical_report_function": true,
-    "local_tests": 25,
-    "local_subtests": 5,
-    "server_in_memory_tests": 4,
+    "local_tests": 25, "local_subtests": 5, "server_in_memory_tests": 4,
     "random_exhaustive_cases_each_environment": 80,
     "log": "onsetfrontier20260913_diagnose.log",
-    "startup_pane_pid": 240076,
-    "first_python_pid": 240081,
+    "startup_pane_pid": 240076, "first_python_pid": 240081,
     "initial_launch_failure": "tmux command too long, rejected before a new log/process/result; verified unchanged terminal state, factored shared shell parameters, then launched successfully",
-    "both_panes_exited_zero": true,
-    "matching_active_baseline_python_at_verification": 0,
-    "new_training": false,
-    "new_threshold_or_checkpoint_selected": false,
-    "test_evaluated": false,
+    "both_panes_exited_zero": true, "matching_active_baseline_python_at_verification": 0,
+    "new_training": false, "new_threshold_or_checkpoint_selected": false, "test_evaluated": false,
     "conclusion": "Even the label-informed oracle for independent scalar event/onset thresholds cannot materially solve upcoming for these selected weights. This rules out that threshold family as a sufficient fix, not new weights, other fusion policies or backbones."
   },
   "independent_onset_frontier_registered_20260913": {
     "status": "implemented_tested_and_all_eight_diagnostics_completed_verified",
     "tag": "onsetfrontier20260913",
     "flag": "--inspect_onset_frontier",
-    "models": [
-      "B4",
-      "B5"
-    ],
-    "seeds": [
-      42,
-      43
-    ],
-    "splits": [
-      "train",
-      "validation"
-    ],
+    "models": ["B4", "B5"], "seeds": [42, 43], "splits": ["train", "validation"],
     "files": 8,
     "weights": "Original onset_aux selected best.pt from model_before_farprec20260913.zip",
     "model_runtime_commit": "abc671383c92135483fdd6c5e09971018015364c",
     "policy": "event>=thresholdE OR (observed history_hot<=0.5 AND onset>=thresholdO), each branch optionally disabled",
     "coverage": "All distinct scalar-threshold report sets; ties atomic; exact integer precision feasibility",
-    "constraints": [
-      "fixed saved event threshold, P>=0.8",
-      "both thresholds free, P>=0.8",
-      "both thresholds free, P>=0.8 and total R>=0.7"
-    ],
+    "constraints": ["fixed saved event threshold, P>=0.8", "both thresholds free, P>=0.8", "both thresholds free, P>=0.8 and total R>=0.7"],
     "interpretation": "Label-informed empirical oracle for this split and frozen checkpoint, not an unbiased validation score or deployed calibration. Does not bound other weights, fusion functions or backbones.",
-    "local_tests": 25,
-    "local_subtests": 5,
-    "random_exhaustive_comparison_cases": 80,
+    "local_tests": 25, "local_subtests": 5, "random_exhaustive_comparison_cases": 80,
     "canonical_witness_verification": true,
     "original_reports_and_input_arrays_unchanged": true,
-    "new_training": false,
-    "new_threshold_or_checkpoint_selected": false,
-    "test_evaluated": false,
-    "new_directories_created": false
+    "new_training": false, "new_threshold_or_checkpoint_selected": false,
+    "test_evaluated": false, "new_directories_created": false
   },
   "temporal_attention_all_completed_20260913": {
     "status": "four_training_runs_and_sixteen_diagnostics_completed_verified",
@@ -179,156 +117,35 @@
     "B4_partial_export": "baseline_dense_timeattn_b4_20260913.json",
     "B4_partial_export_bytes": 257125,
     "B4_partial_export_sha256": "7030c7505836dbc935f5e8120c0f02cd1a028255077a2ac1ebb2e34956235abf",
-    "run_order": [
-      "B4_seed42",
-      "B4_seed43",
-      "B5_seed42",
-      "B5_seed43"
-    ],
-    "best_epochs": [
-      2,
-      5,
-      3,
-      5
-    ],
-    "total_epochs": [
-      12,
-      15,
-      23,
-      25
-    ],
-    "upcoming_hits": [
-      2,
-      2,
-      2,
-      2
-    ],
-    "upcoming_targets_each": 145,
-    "report_precision": [
-      0.80876068,
-      0.81925134,
-      0.83652762,
-      0.81936888
-    ],
-    "report_recall": [
-      0.6913242,
-      0.69954338,
-      0.67762557,
-      0.68767123
-    ],
-    "report_f1": [
-      0.74544559,
-      0.7546798,
-      0.74873865,
-      0.74776564
-    ],
-    "report_threshold": [
-      0.6,
-      0.55,
-      0.55,
-      0.6
-    ],
-    "report_recall_ongoing": [
-      0.79473684,
-      0.80421053,
-      0.77894737,
-      0.79052632
-    ],
-    "start_mae_minutes": [
-      0.04095112,
-      0.02872063,
-      0.04851752,
-      0.0252324
-    ],
-    "duration_mae_minutes": [
-      2.27932024,
-      2.29687619,
-      2.28531456,
-      2.41945028
-    ],
-    "remain_mae_minutes": [
-      28.95911663,
-      15.09694913,
-      20.49183636,
-      13.84202161
-    ],
-    "model_order_for_means": [
-      "B4",
-      "B5"
-    ],
-    "mean_precision": [
-      0.8140060103,
-      0.8279482502
-    ],
-    "mean_recall": [
-      0.69543379,
-      0.6826484018
-    ],
-    "mean_f1": [
-      0.7500626981,
-      0.7482521442
-    ],
-    "mean_upcoming_recall": [
-      0.0137931034,
-      0.0137931034
-    ],
-    "diagnostic_order": [
-      "best_train",
-      "best_validation",
-      "last_train",
-      "last_validation"
-    ],
+    "run_order": ["B4_seed42", "B4_seed43", "B5_seed42", "B5_seed43"],
+    "best_epochs": [2, 5, 3, 5],
+    "total_epochs": [12, 15, 23, 25],
+    "upcoming_hits": [2, 2, 2, 2], "upcoming_targets_each": 145,
+    "report_precision": [0.80876068, 0.81925134, 0.83652762, 0.81936888],
+    "report_recall": [0.69132420, 0.69954338, 0.67762557, 0.68767123],
+    "report_f1": [0.74544559, 0.75467980, 0.74873865, 0.74776564],
+    "report_threshold": [0.60, 0.55, 0.55, 0.60],
+    "report_recall_ongoing": [0.79473684, 0.80421053, 0.77894737, 0.79052632],
+    "start_mae_minutes": [0.04095112, 0.02872063, 0.04851752, 0.02523240],
+    "duration_mae_minutes": [2.27932024, 2.29687619, 2.28531456, 2.41945028],
+    "remain_mae_minutes": [28.95911663, 15.09694913, 20.49183636, 13.84202161],
+    "model_order_for_means": ["B4", "B5"],
+    "mean_precision": [0.8140060103, 0.8279482502],
+    "mean_recall": [0.6954337900, 0.6826484018],
+    "mean_f1": [0.7500626981, 0.7482521442],
+    "mean_upcoming_recall": [0.0137931034, 0.0137931034],
+    "diagnostic_order": ["best_train", "best_validation", "last_train", "last_validation"],
     "upcoming_AP": [
-      [
-        0.00687252,
-        0.00644431,
-        0.07918116,
-        0.00968419
-      ],
-      [
-        0.0101192,
-        0.00879545,
-        0.1921859,
-        0.0102491
-      ],
-      [
-        0.00650444,
-        0.00611549,
-        0.18110063,
-        0.00801939
-      ],
-      [
-        0.00918577,
-        0.00784095,
-        0.31128931,
-        0.00858045
-      ]
+      [0.00687252, 0.00644431, 0.07918116, 0.00968419],
+      [0.01011920, 0.00879545, 0.19218590, 0.01024910],
+      [0.00650444, 0.00611549, 0.18110063, 0.00801939],
+      [0.00918577, 0.00784095, 0.31128931, 0.00858045]
     ],
     "upcoming_relative_pool_shift_median": [
-      [
-        0.00135524,
-        0.00144304,
-        0.01385991,
-        0.01708787
-      ],
-      [
-        0.00598663,
-        0.00594889,
-        0.02001793,
-        0.02281547
-      ],
-      [
-        0.0027826,
-        0.00296816,
-        0.02326306,
-        0.02498073
-      ],
-      [
-        0.00592527,
-        0.00727255,
-        0.03036844,
-        0.03325982
-      ]
+      [0.00135524, 0.00144304, 0.01385991, 0.01708787],
+      [0.00598663, 0.00594889, 0.02001793, 0.02281547],
+      [0.00278260, 0.00296816, 0.02326306, 0.02498073],
+      [0.00592527, 0.00727255, 0.03036844, 0.03325982]
     ],
     "all_weight_source_manifest_epoch_sample_group_checks_passed": true,
     "all_input_feature_contracts_equal_to_same_seed_near_parent": true,
@@ -351,103 +168,28 @@
     "manifest_sha256": "66c6554d0ae1c7a293e482a201829a4c324f1d9d0b88934c1c2a6c1e27333183",
     "train_windows": 13813,
     "completed_runs": 12,
-    "models": [
-      "B4",
-      "B5"
-    ],
-    "seeds": [
-      42,
-      43
-    ],
-    "arms": [
-      "uniform_control",
-      "event4",
-      "upcoming4"
-    ],
+    "models": ["B4", "B5"], "seeds": [42, 43],
+    "arms": ["uniform_control", "event4", "upcoming4"],
     "historical_decision": "Both models retained uniform_control because weighted sampling increased some recall at a precision/F1 cost",
     "limitation": "Not a controlled current208 result; also not an untried idea that should be blindly rerun"
   },
   "temporal_attention_B4_two_runs_progress_20260913": {
     "status": "both_B4_training_runs_and_eight_diagnostics_completed_verified_with_documented_seed42_runtime_difference",
-    "seed_order": [
-      42,
-      43
-    ],
-    "best_epochs": [
-      2,
-      5
-    ],
-    "total_epochs": [
-      12,
-      15
-    ],
-    "upcoming_hits": [
-      2,
-      2
-    ],
-    "upcoming_targets_each": 145,
-    "report_precision": [
-      0.80876068,
-      0.81925134
-    ],
-    "report_recall": [
-      0.6913242,
-      0.69954338
-    ],
-    "report_f1": [
-      0.74544559,
-      0.7546798
-    ],
-    "report_threshold": [
-      0.6,
-      0.55
-    ],
-    "report_recall_ongoing": [
-      0.79473684,
-      0.80421053
-    ],
-    "start_mae_minutes": [
-      0.04095112,
-      0.02872063
-    ],
-    "duration_mae_minutes": [
-      2.27932024,
-      2.29687619
-    ],
-    "remain_mae_minutes": [
-      28.95911663,
-      15.09694913
-    ],
-    "seed42_diagnostic_order": [
-      "best_train",
-      "best_validation",
-      "last_train",
-      "last_validation"
-    ],
-    "seed42_upcoming_AP": [
-      0.00687252,
-      0.00644431,
-      0.07918116,
-      0.00968419
-    ],
-    "seed42_query_L2": [
-      0.2159331,
-      0.2159331,
-      0.81003129,
-      0.81003129
-    ],
-    "seed42_upcoming_TV_from_uniform_median": [
-      0.00195198,
-      0.00197301,
-      0.01282728,
-      0.01561396
-    ],
-    "seed42_upcoming_relative_pool_shift_median": [
-      0.00135524,
-      0.00144304,
-      0.01385991,
-      0.01708787
-    ],
+    "seed_order": [42, 43], "best_epochs": [2, 5], "total_epochs": [12, 15],
+    "upcoming_hits": [2, 2], "upcoming_targets_each": 145,
+    "report_precision": [0.80876068, 0.81925134],
+    "report_recall": [0.69132420, 0.69954338],
+    "report_f1": [0.74544559, 0.75467980],
+    "report_threshold": [0.60, 0.55],
+    "report_recall_ongoing": [0.79473684, 0.80421053],
+    "start_mae_minutes": [0.04095112, 0.02872063],
+    "duration_mae_minutes": [2.27932024, 2.29687619],
+    "remain_mae_minutes": [28.95911663, 15.09694913],
+    "seed42_diagnostic_order": ["best_train", "best_validation", "last_train", "last_validation"],
+    "seed42_upcoming_AP": [0.00687252, 0.00644431, 0.07918116, 0.00968419],
+    "seed42_query_L2": [0.21593310, 0.21593310, 0.81003129, 0.81003129],
+    "seed42_upcoming_TV_from_uniform_median": [0.00195198, 0.00197301, 0.01282728, 0.01561396],
+    "seed42_upcoming_relative_pool_shift_median": [0.00135524, 0.00144304, 0.01385991, 0.01708787],
     "seed42_four_weight_source_manifest_epoch_sample_group_checks_passed": true,
     "seed42_CPU_report_exactly_equal_to_saved_CUDA_report": false,
     "seed42_runtime_difference_reconciled_by_frozen_numerical_audit": true,
@@ -468,25 +210,19 @@
     "audit_source_embedded_with_hash": true,
     "model_runtime_commit": "abc671383c92135483fdd6c5e09971018015364c",
     "diagnostic_source_commit": "4b48e2b80e08ef7045d779cb0918834cd2cb8994",
-    "sample_count": 5439,
-    "split": "validation",
-    "threshold": 0.6,
+    "sample_count": 5439, "split": "validation", "threshold": 0.6,
     "cpu32_observer_on_off_all_predictions_exact": true,
     "cpu32_reproduces_existing_CPU_diagnostic": true,
     "cuda24_reproduces_saved_official_metrics": true,
     "checkpoint_and_manifest_before_after_hashes_equal": true,
     "probability_max_absolute_difference": 0.0003158450126647949,
     "threshold_crossing_count": 1,
-    "crossing_sample_index": 26422,
-    "crossing_node_index": 32,
-    "crossing_resource_id": "num08_workbench_ws0",
-    "crossing_target_will": 0,
+    "crossing_sample_index": 26422, "crossing_node_index": 32,
+    "crossing_resource_id": "num08_workbench_ws0", "crossing_target_will": 0,
     "cpu24_and_cpu32_probability": 0.5999934673309326,
     "cuda24_cuda32_and_repeat_cuda24_probability": 0.6000308990478516,
-    "cpu32_report_count": 935,
-    "cuda24_report_count": 936,
-    "matched_reports_both": 757,
-    "upcoming_hits_both": 2,
+    "cpu32_report_count": 935, "cuda24_report_count": 936,
+    "matched_reports_both": 757, "upcoming_hits_both": 2,
     "predicted_start_argmax_differences": 1,
     "original_official_metrics_and_threshold_unchanged": true,
     "test_evaluated": false,
@@ -498,14 +234,12 @@
   "temporal_attention_B4_seed42_completed_20260913": {
     "status": "first_training_run_completed_four_frozen_diagnostics_active",
     "source_commit": "abc671383c92135483fdd6c5e09971018015364c",
-    "best_epoch": 2,
-    "epochs_trained": 12,
+    "best_epoch": 2, "epochs_trained": 12,
     "report_precision": 0.80876068,
-    "report_recall": 0.6913242,
+    "report_recall": 0.69132420,
     "report_f1": 0.74544559,
-    "report_recall_upcoming": 0.0137931,
-    "upcoming_hits": 2,
-    "upcoming_targets": 145,
+    "report_recall_upcoming": 0.01379310,
+    "upcoming_hits": 2, "upcoming_targets": 145,
     "report_recall_ongoing": 0.79473684,
     "report_threshold": 0.6,
     "start_mae_minutes": 0.04095112,
@@ -526,46 +260,20 @@
     "model_runtime_commit": "abc671383c92135483fdd6c5e09971018015364c",
     "flag": "--inspect_temporal_attention",
     "execution": "Pinned diagnostic Git object via stdin; six model/training modules identical to abc6713; HEAD and files unchanged",
-    "local_tests": 19,
-    "local_subtests": 5,
-    "server_in_memory_tests": 3,
+    "local_tests": 19, "local_subtests": 5, "server_in_memory_tests": 3,
     "forward_passes_per_batch": 1,
     "parameters_RNG_predictions_and_canonical_reports_unchanged": true,
-    "statistics": [
-      "query_L2",
-      "mean_weights_oldest_to_newest",
-      "total_variation_from_uniform",
-      "max_weight",
-      "normalized_entropy",
-      "pool_shift_L2",
-      "pool_shift_over_mean_L2"
-    ],
-    "groups": [
-      "ongoing",
-      "upcoming",
-      "negative"
-    ],
+    "statistics": ["query_L2", "mean_weights_oldest_to_newest", "total_variation_from_uniform", "max_weight", "normalized_entropy", "pool_shift_L2", "pool_shift_over_mean_L2"],
+    "groups": ["ongoing", "upcoming", "negative"],
     "weight_inputs": "Historical GRU states and learned query only; future labels only stratify summary statistics",
     "causal_importance_claimed": false,
     "test_evaluated": false,
     "first_four": {
-      "model": "B4",
-      "seed": 42,
-      "weights": [
-        "best.pt",
-        "last.pt"
-      ],
-      "splits": [
-        "train",
-        "validation"
-      ],
-      "tags": [
-        "timeattn20260913",
-        "timeattnlast20260913"
-      ],
+      "model": "B4", "seed": 42,
+      "weights": ["best.pt", "last.pt"], "splits": ["train", "validation"],
+      "tags": ["timeattn20260913", "timeattnlast20260913"],
       "log": "timeattn20260913_b4s42_diagnose.log",
-      "pane_pid": 196237,
-      "actual_python_pid": 196242,
+      "pane_pid": 196237, "actual_python_pid": 196242,
       "complete_verification_pending": false,
       "canonical_CPU_CUDA_difference_documented_and_reconciled": true
     }
@@ -576,74 +284,20 @@
     "server_export": "baseline_onset_report_b5_20260913.json",
     "server_export_bytes": 1171996,
     "server_export_sha256": "d1f2519da3448f19262d9a3caf0199f923671786b86bea47197b933ba4111e50",
-    "seed_order": [
-      42,
-      43
-    ],
-    "saved_thresholds": [
-      0.55,
-      0.7
-    ],
-    "original_P": [
-      0.80982906,
-      0.84044944
-    ],
-    "fused_P": [
-      0.7124424,
-      0.74853229
-    ],
-    "original_R": [
-      0.69223744,
-      0.68310502
-    ],
-    "fused_R": [
-      0.70593607,
-      0.69863014
-    ],
-    "original_F1": [
-      0.74643033,
-      0.75365239
-    ],
-    "fused_F1": [
-      0.70917431,
-      0.72272083
-    ],
-    "original_upcoming_hits": [
-      5,
-      2
-    ],
-    "fused_upcoming_hits": [
-      12,
-      9
-    ],
-    "original_false_alarms": [
-      178,
-      142
-    ],
-    "fused_false_alarms": [
-      312,
-      257
-    ],
-    "original_P80_grid_upcoming_hit_ranges": [
-      [
-        0,
-        5
-      ],
-      [
-        0,
-        2
-      ]
-    ],
-    "fused_P80_grid_upcoming_hit_ranges": [
-      [
-        0,
-        6
-      ],
-      [
-        0,
-        6
-      ]
-    ],
+    "seed_order": [42, 43],
+    "saved_thresholds": [0.55, 0.70],
+    "original_P": [0.80982906, 0.84044944],
+    "fused_P": [0.71244240, 0.74853229],
+    "original_R": [0.69223744, 0.68310502],
+    "fused_R": [0.70593607, 0.69863014],
+    "original_F1": [0.74643033, 0.75365239],
+    "fused_F1": [0.70917431, 0.72272083],
+    "original_upcoming_hits": [5, 2],
+    "fused_upcoming_hits": [12, 9],
+    "original_false_alarms": [178, 142],
+    "fused_false_alarms": [312, 257],
+    "original_P80_grid_upcoming_hit_ranges": [[0, 5], [0, 2]],
+    "fused_P80_grid_upcoming_hit_ranges": [[0, 6], [0, 6]],
     "archive_member_source_manifest_epoch_sample_count_checks_passed": true,
     "original_rankings_groups_auxiliary_diagnostics_unchanged": true,
     "original_saved_threshold_canonical_unchanged": true,
@@ -661,14 +315,8 @@
     "preflight_bytes": 1873,
     "preflight_sha256": "004277d1859ca304064426d6eb1ffa797b006ab4d360b266b711d11fa6701ed9",
     "all_four_server_actual_config_model_preflights_passed": true,
-    "parameter_count_B4_parent_candidate": [
-      273054,
-      273182
-    ],
-    "parameter_count_B5_parent_candidate": [
-      285982,
-      286110
-    ],
+    "parameter_count_B4_parent_candidate": [273054, 273182],
+    "parameter_count_B5_parent_candidate": [285982, 286110],
     "tmux": "baseline_dense_v6",
     "log": "timeattn20260913_train.log",
     "startup_pane_pid": 188079,
@@ -690,47 +338,15 @@
     "server_export": "baseline_dense_far_metrics_20260913.json",
     "server_export_bytes": 345240,
     "server_export_sha256": "d3420cc6c4c23ccd4a3d07b514bdc35443e1f8e39e964c0b444ab7cb1994f020",
-    "run_order": [
-      "B4_seed42",
-      "B4_seed43",
-      "B5_seed42",
-      "B5_seed43"
-    ],
-    "best_epochs": [
-      1,
-      5,
-      3,
-      5
-    ],
-    "total_epochs": [
-      11,
-      15,
-      23,
-      25
-    ],
-    "upcoming_hits": [
-      0,
-      2,
-      2,
-      2
-    ],
+    "run_order": ["B4_seed42", "B4_seed43", "B5_seed42", "B5_seed43"],
+    "best_epochs": [1, 5, 3, 5],
+    "total_epochs": [11, 15, 23, 25],
+    "upcoming_hits": [0, 2, 2, 2],
     "upcoming_targets_each": 145,
-    "B5_best_AP_train": [
-      0.006051,
-      0.009204
-    ],
-    "B5_best_AP_validation": [
-      0.006104,
-      0.007873
-    ],
-    "B5_last_AP_train": [
-      0.184805,
-      0.30802
-    ],
-    "B5_last_AP_validation": [
-      0.008044,
-      0.008621
-    ],
+    "B5_best_AP_train": [0.006051, 0.009204],
+    "B5_best_AP_validation": [0.006104, 0.007873],
+    "B5_last_AP_train": [0.184805, 0.308020],
+    "B5_last_AP_validation": [0.008044, 0.008621],
     "source_checkpoint_manifest_epoch_sample_count_checks_passed": true,
     "best_validation_canonical_tolerance": 1e-10,
     "both_panes_exited_zero_at_completion": true,
@@ -750,14 +366,8 @@
     "actual_python_at_verification": 181276,
     "checkpoint": "Onset_aux original best.pt from verified model_before_farprec20260913.zip",
     "archives_CRC_and_key_member_hashes_match_complete_onset_export": true,
-    "seed_order": [
-      42,
-      43
-    ],
-    "splits": [
-      "train",
-      "validation"
-    ],
+    "seed_order": [42, 43],
+    "splits": ["train", "validation"],
     "files": 4,
     "complete_result_verification_pending": true,
     "new_training": false,
@@ -768,14 +378,8 @@
     "variant": "temporal_attention",
     "archive_tag": "timeattn20260913",
     "parent_variant": "near_precursor",
-    "models": [
-      "B4",
-      "B5"
-    ],
-    "seeds": [
-      42,
-      43
-    ],
+    "models": ["B4", "B5"],
+    "seeds": [42, 43],
     "runs": 4,
     "max_epochs_each": 60,
     "only_model_config_change": "temporal_readout last_mean to last_attention",
@@ -803,18 +407,8 @@
   "terminal_state_verification": {
     "server_branch": "dev_xwt",
     "server_code_at_verification": "abc6713",
-    "baseline_dense_v6": {
-      "pane_dead": true,
-      "exit_code": 0,
-      "purpose": "Four temporal attention training runs completed",
-      "startup_pane_pid": 188079
-    },
-    "baseline_dense_diag": {
-      "pane_dead": true,
-      "exit_code": 0,
-      "purpose": "Eight independent onset threshold frontier diagnostics completed",
-      "startup_pane_pid": 240076
-    },
+    "baseline_dense_v6": {"pane_dead": true, "exit_code": 0, "purpose": "Four temporal attention training runs completed", "startup_pane_pid": 188079},
+    "baseline_dense_diag": {"pane_dead": true, "exit_code": 0, "purpose": "Eight independent onset threshold frontier diagnostics completed", "startup_pane_pid": 240076},
     "matching_training_or_diagnostic_processes": 0,
     "training_python_pid_at_verification": null,
     "diagnostic_python_pid_at_verification": null,
@@ -830,95 +424,38 @@
     "server_complete_export": "baseline_dense_control_metrics_20260911.json",
     "server_complete_export_bytes": 97305,
     "server_source_pattern": "models/tuning/b{4,5}_representation_v1/candidate_history/seed{42,43}/metrics_validation.json",
-    "local_detailed_transcription_pending": [
-      "full per-class confusion matrix",
-      "probability quantiles",
-      "training cost; exact values retained in server export"
-    ],
+    "local_detailed_transcription_pending": ["full per-class confusion matrix", "probability quantiles", "training cost; exact values retained in server export"],
     "policy": "Do not substitute zero, older runs, training-epoch values or main test values for missing validation metrics"
   },
   "next_search_prerequisite": "Near-only, frozen head and onset auxiliary comparisons completed and preserved. Registered far_precursor comparison now active after full configuration/input/archive preflight. Formal 204-cohort artifacts remain required for final main-model comparison, not this authorized 208-episode development experiment.",
   "upcoming_208_resume": {
     "status": "near_precursor_four_runs_completed",
     "code_commit": "e5f6cb4",
-    "local_tests_passed": 79,
-    "local_subtests_passed": 14,
-    "server_prelaunch_tests_passed": 4,
-    "tmux": "baseline_dense_v6",
-    "training_log": "nearprec20260912_train.log",
-    "startup_pane_pid": 45693,
-    "startup_training_pid": 45709,
+    "local_tests_passed": 79, "local_subtests_passed": 14, "server_prelaunch_tests_passed": 4,
+    "tmux": "baseline_dense_v6", "training_log": "nearprec20260912_train.log",
+    "startup_pane_pid": 45693, "startup_training_pid": 45709,
     "latest_verified_progress": "All four near runs completed (best epochs 2/5/6/5; total 12/15/26/25). Frozen best head diagnostics completed 8/8 with checkpoint/source/manifest/epoch/sample checks and unchanged canonical validation metrics. Both tmux panes dead=1 exit=0 and no matching Python tasks at last verification; recheck before launch.",
-    "models": [
-      "B4",
-      "B5"
-    ],
-    "seeds": [
-      42,
-      43
-    ],
-    "runs": 4,
-    "max_epochs_each": 60,
-    "variant": "near_precursor",
-    "archive_tag": "nearprec20260912",
-    "input_feature_contract": "factory_baseline_precursor_v1",
-    "mode": "near",
-    "extra_history_windows": 0,
-    "summary_dimension": 23,
-    "last_five_fields": "strictly_zero",
-    "baseline_manifest_unchanged": true,
-    "episode_split_unchanged": true,
-    "graph_and_gru_backbones_unchanged": true,
-    "binary_event_head": true,
+    "models": ["B4", "B5"], "seeds": [42, 43], "runs": 4, "max_epochs_each": 60,
+    "variant": "near_precursor", "archive_tag": "nearprec20260912",
+    "input_feature_contract": "factory_baseline_precursor_v1", "mode": "near",
+    "extra_history_windows": 0, "summary_dimension": 23, "last_five_fields": "strictly_zero",
+    "baseline_manifest_unchanged": true, "episode_split_unchanged": true,
+    "graph_and_gru_backbones_unchanged": true, "binary_event_head": true,
     "loss_sampling_optimizer_selection_and_scoring_unchanged": true,
-    "new_projection_zero_output_initialized": true,
-    "shared_initialization_rng_preserved": true,
-    "test_for_selection": false,
-    "main_decoder_copied": false,
+    "new_projection_zero_output_initialized": true, "shared_initialization_rng_preserved": true,
+    "test_for_selection": false, "main_decoder_copied": false,
     "purpose": "Test whether explicit onset summaries of already-available history improve rare-event learning; not a proof of architecture limits or a formal main-cohort comparison",
     "formal_main_artifacts_block_this_development_run": false
   },
   "near_precursor_b4_completed": {
     "status": "two_validation_runs_completed_B5_batch_still_active_at_verification",
-    "archive_tag": "nearprec20260912",
-    "code_commit": "e5f6cb4",
-    "seed_order": [
-      42,
-      43
-    ],
-    "best_epoch": [
-      2,
-      5
-    ],
-    "epochs_trained": [
-      12,
-      15
-    ],
-    "report_precision": [
-      0.810956,
-      0.8331504
-    ],
-    "report_recall": [
-      0.6894977,
-      0.6931507
-    ],
-    "report_f1": [
-      0.7453109575518262,
-      0.7567298105682951
-    ],
-    "report_recall_upcoming": [
-      0.013793103448275862,
-      0.013793103448275862
-    ],
-    "upcoming_hits": [
-      2,
-      2
-    ],
-    "upcoming_targets_each_run": 145,
-    "report_threshold": [
-      0.6,
-      0.6
-    ],
+    "archive_tag": "nearprec20260912", "code_commit": "e5f6cb4",
+    "seed_order": [42, 43], "best_epoch": [2, 5], "epochs_trained": [12, 15],
+    "report_precision": [0.8109560, 0.8331504], "report_recall": [0.6894977, 0.6931507],
+    "report_f1": [0.7453109575518262, 0.7567298105682951],
+    "report_recall_upcoming": [0.013793103448275862, 0.013793103448275862],
+    "upcoming_hits": [2, 2], "upcoming_targets_each_run": 145,
+    "report_threshold": [0.6, 0.6],
     "conclusion": "B4 upcoming recall remains low; a one-target improvement for seed43 is not a stable material gain. The completed four-run comparison and frozen head diagnosis are recorded below.",
     "metrics_precision_note": "P/R transcribed to seven decimals; exact full metrics remain in server run directories. F1 and integer upcoming counts verified."
   },
@@ -926,92 +463,41 @@
     "status": "completed_exact_frozen_target_counts_reproduced",
     "server_result": "dense_event_support20260912.json",
     "server_result_sha256": "56d2dc07169d12e420ed1d2877bcf3290d2cd53d0abdd317ea6581845b32cd93",
-    "code_commit": "bdbac4a512d5e0010858f8f6e48943a25239a2a0",
-    "server_worktree_commit": "e5f6cb4",
+    "code_commit": "bdbac4a512d5e0010858f8f6e48943a25239a2a0", "server_worktree_commit": "e5f6cb4",
     "dataset_manifest_sha256": "e3d7b2008ad7c5d0844c10a4c0670ff36c5ba961382706695689daf7a050244f",
     "train": {
-      "episodes": 138,
-      "samples": 23859,
-      "episodes_with_upcoming": 113,
-      "ongoing_targets": 4191,
-      "upcoming_targets": 595,
-      "negative_targets": 297152,
-      "unique_upcoming_onsets": 299,
-      "positive_start_zero_hist_cold": 304,
-      "local_disturbance_observed_at_anchor": 36,
-      "any_node_disturbance_observed_at_anchor": 198,
-      "new_local_disturbance_by_onset": 300,
-      "last_five_local_cue_channels_all_zero": 88
+      "episodes": 138, "samples": 23859, "episodes_with_upcoming": 113,
+      "ongoing_targets": 4191, "upcoming_targets": 595, "negative_targets": 297152,
+      "unique_upcoming_onsets": 299, "positive_start_zero_hist_cold": 304,
+      "local_disturbance_observed_at_anchor": 36, "any_node_disturbance_observed_at_anchor": 198,
+      "new_local_disturbance_by_onset": 300, "last_five_local_cue_channels_all_zero": 88
     },
     "validation": {
-      "episodes": 30,
-      "samples": 5439,
-      "episodes_with_upcoming": 27,
-      "ongoing_targets": 950,
-      "upcoming_targets": 145,
-      "negative_targets": 67331,
-      "unique_upcoming_onsets": 73,
-      "positive_start_zero_hist_cold": 73,
-      "local_disturbance_observed_at_anchor": 8,
-      "any_node_disturbance_observed_at_anchor": 58,
-      "new_local_disturbance_by_onset": 82,
-      "last_five_local_cue_channels_all_zero": 32
+      "episodes": 30, "samples": 5439, "episodes_with_upcoming": 27,
+      "ongoing_targets": 950, "upcoming_targets": 145, "negative_targets": 67331,
+      "unique_upcoming_onsets": 73, "positive_start_zero_hist_cold": 73,
+      "local_disturbance_observed_at_anchor": 8, "any_node_disturbance_observed_at_anchor": 58,
+      "new_local_disturbance_by_onset": 82, "last_five_local_cue_channels_all_zero": 32
     },
     "scope": "Deduplicated onset key is episode/node/absolute onset. Disturbance and cue counts are upcoming window-node targets, not unique onsets; strata overlap. Future disturbance is retrospective diagnosis only.",
-    "test_evaluated": false,
-    "model_training": false,
+    "test_evaluated": false, "model_training": false,
     "conclusion": "Effective event support is substantially smaller than sliding-window support. Many positive targets precede a newly observed local disturbance; neither that condition nor zero selected local channels proves unpredictability or an architecture ceiling."
   },
   "near_precursor_b4_best_diagnostics": {
     "status": "completed_4_of_4_checkpoint_hashes_verified",
     "server_file_pattern": "b4_seed{42,43}_{train,validation}_diagnostics_nearprec20260912.json",
-    "seed_order": [
-      42,
-      43
-    ],
-    "checkpoint_epoch": [
-      2,
-      5
-    ],
-    "train_samples_each": 23859,
-    "validation_samples_each": 5439,
-    "train_upcoming_vs_negative_ap": [
-      0.006839,
-      0.010118
-    ],
-    "validation_upcoming_vs_negative_ap": [
-      0.006336,
-      0.008807
-    ],
-    "train_upcoming_vs_negative_auc": [
-      0.795668,
-      0.859065
-    ],
-    "validation_upcoming_vs_negative_auc": [
-      0.75031,
-      0.805106
-    ],
-    "train_upcoming_probability_misses_at_saved_threshold": [
-      595,
-      590
-    ],
-    "validation_upcoming_probability_misses_at_saved_threshold": [
-      143,
-      143
-    ],
-    "validation_upcoming_timing_misses_at_saved_threshold": [
-      0,
-      0
-    ],
+    "seed_order": [42, 43], "checkpoint_epoch": [2, 5],
+    "train_samples_each": 23859, "validation_samples_each": 5439,
+    "train_upcoming_vs_negative_ap": [0.006839, 0.010118],
+    "validation_upcoming_vs_negative_ap": [0.006336, 0.008807],
+    "train_upcoming_vs_negative_auc": [0.795668, 0.859065],
+    "validation_upcoming_vs_negative_auc": [0.750310, 0.805106],
+    "train_upcoming_probability_misses_at_saved_threshold": [595, 590],
+    "validation_upcoming_probability_misses_at_saved_threshold": [143, 143],
+    "validation_upcoming_timing_misses_at_saved_threshold": [0, 0],
     "validation_positive_rate_upcoming_vs_negative": 0.002148912205821329,
-    "diagnostic_threshold_0_30_precision": [
-      0.701322,
-      0.679012
-    ],
-    "diagnostic_threshold_0_30_upcoming_hits": [
-      2,
-      3
-    ],
+    "diagnostic_threshold_0_30_precision": [0.701322, 0.679012],
+    "diagnostic_threshold_0_30_upcoming_hits": [2, 3],
     "diagnostic_threshold_0_30_upcoming_targets_each": 145,
     "threshold_selected_for_deployment_changed": false,
     "score_definition": "Binary event-existence probability ranked on upcoming versus no-event negatives; not the three-class subtype probability.",
@@ -1021,24 +507,10 @@
   "near_precursor_b4_last_diagnostics": {
     "status": "completed_4_of_4_checkpoint_hashes_verified_pane_exit_0",
     "server_file_pattern": "b4_seed{42,43}_{train,validation}_diagnostics_nearpreclast20260912.json",
-    "seed_order": [
-      42,
-      43
-    ],
-    "checkpoint_epoch": [
-      12,
-      15
-    ],
-    "train_samples_each": 23859,
-    "validation_samples_each": 5439,
-    "train_upcoming_vs_negative_ap": [
-      0.082134,
-      0.179934
-    ],
-    "validation_upcoming_vs_negative_ap": [
-      0.009541,
-      0.009479
-    ],
+    "seed_order": [42, 43], "checkpoint_epoch": [12, 15],
+    "train_samples_each": 23859, "validation_samples_each": 5439,
+    "train_upcoming_vs_negative_ap": [0.082134, 0.179934],
+    "validation_upcoming_vs_negative_ap": [0.009541, 0.009479],
     "metric_precision": "six decimals; exact full diagnostics retained on server",
     "official_best_checkpoint_changed": false,
     "conclusion": "Same near-history GCN-GRU learns training upcoming ranking later; validation remains weak. Supports a generalization limitation, not a proof of architecture incapacity."
@@ -1048,36 +520,16 @@
     "main_reference_config": "FactoryBN_dense_f1_p80.json",
     "main_formal_checkpoint_verified": false,
     "main_stgnpp_enabled_in_reference_config": false,
-    "main_encoder_depth": 5,
-    "baseline_spatial_depth": 2,
+    "main_encoder_depth": 5, "baseline_spatial_depth": 2,
     "baseline_temporal_encoder": "node-wise GRU with last_mean readout",
-    "main_additional_mechanisms": [
-      "independent continue/onset heads",
-      "onset auxiliary BCE",
-      "soft F-beta including upcoming",
-      "forecast hot-run alarm union",
-      "type/onset threshold transforms",
-      "past precursor summaries"
-    ],
+    "main_additional_mechanisms": ["independent continue/onset heads", "onset auxiliary BCE", "soft F-beta including upcoming", "forecast hot-run alarm union", "type/onset threshold transforms", "past precursor summaries"],
     "prefix_lift_requires_history_hot": true,
     "graph_audit_file": "baseline_graph_reach_audit_20260912.json",
     "graph_audit_sha256": "9365d26867b7d3740e8c40d4fd297ce6f5969f37ace2d0371fdb0ab461d532c5",
     "graph_audit_scope": "Frozen exported graph edge table, node catalog, and train/validation split; topology only, no labels or test metrics, not checkpoint gradient attribution",
-    "graph_train": {
-      "episodes": 138,
-      "target_nodes": 1758,
-      "targets_reaching_all_active_nodes": 1167,
-      "missing_target_to_target_pairs": 0
-    },
-    "graph_validation": {
-      "episodes": 30,
-      "target_nodes": 380,
-      "targets_reaching_all_active_nodes": 254,
-      "missing_target_to_target_pairs": 0
-    },
-    "unreachable_source_types": [
-      "buffer"
-    ],
+    "graph_train": {"episodes": 138, "target_nodes": 1758, "targets_reaching_all_active_nodes": 1167, "missing_target_to_target_pairs": 0},
+    "graph_validation": {"episodes": 30, "target_nodes": 380, "targets_reaching_all_active_nodes": 254, "missing_target_to_target_pairs": 0},
+    "unreachable_source_types": ["buffer"],
     "conclusion": "Two spatial layers do not structurally hide other target machines in these graphs. Temporal representation, onset supervision, decoding, input budget, and training are distinct hypotheses; backbone ceiling is not established.",
     "next_diagnostic": "Frozen head comparison completed; no useful mass of missed upcoming in hot outputs. Proceed with the registered independent onset auxiliary supervision experiment, leaving official report decoding unchanged."
   },
@@ -1352,21 +804,9 @@
   "dataset_version": "factory_baseline_dataset_v6",
   "evaluation_reference": "dev_tyx@20c40e2",
   "dataset_manifest_sha256": "e3d7b2008ad7c5d0844c10a4c0670ff36c5ba961382706695689daf7a050244f",
-  "raw_audit": {
-    "attempted": 217,
-    "accepted": 208,
-    "rejected": 9
-  },
-  "episode_counts": {
-    "train": 138,
-    "validation": 30,
-    "test": 40
-  },
-  "sample_counts": {
-    "train": 23859,
-    "validation": 5439,
-    "test": 6886
-  },
+  "raw_audit": {"attempted": 217, "accepted": 208, "rejected": 9},
+  "episode_counts": {"train": 138, "validation": 30, "test": 40},
+  "sample_counts": {"train": 23859, "validation": 5439, "test": 6886},
   "total_samples": 36184,
   "event_positive_samples": 6274,
   "shared_bundle_alignment": "passed_all_36184_samples",
@@ -1467,22 +907,10 @@
     "verified_fetch_date": "2026-09-12",
     "source_kind": "git_documentation_not_recomputed_checkpoint_metrics",
     "sources": [
-      {
-        "path": "modelnote.md",
-        "section": "4; current bestmodel"
-      },
-      {
-        "path": "F1提升实验历程.md",
-        "section": "header; 4"
-      },
-      {
-        "path": "聚类_剩余时间_原因_STGNPP.md",
-        "section": "2.1"
-      },
-      {
-        "path": "无监督vs监督bottleneck_score对照.md",
-        "section": "7"
-      }
+      {"path": "modelnote.md", "section": "4; current bestmodel"},
+      {"path": "F1提升实验历程.md", "section": "header; 4"},
+      {"path": "聚类_剩余时间_原因_STGNPP.md", "section": "2.1"},
+      {"path": "无监督vs监督bottleneck_score对照.md", "section": "7"}
     ],
     "model": "BNPDFormer",
     "experiment": "dense_i1_a1_prefix8",
@@ -1493,23 +921,15 @@
     "initialization": "finetuned_from_dense_i1_a1_f180",
     "aggregation": "single_best_checkpoint_not_multi_seed_mean",
     "full_metrics_available": false,
-    "episode_counts": {
-      "train": 140,
-      "validation": 28,
-      "test": 36
-    },
-    "sample_counts": {
-      "train": 20826,
-      "validation": 4331,
-      "test": 5354
-    },
+    "episode_counts": {"train": 140, "validation": 28, "test": 36},
+    "sample_counts": {"train": 20826, "validation": 4331, "test": 5354},
     "metric_precision": "rounded_documentation_values",
     "selected_report_threshold": null,
     "validation": {
       "report_precision": 0.883,
       "report_recall": 0.881,
       "report_f1": 0.882,
-      "ongoing_recall": 0.92,
+      "ongoing_recall": 0.920,
       "upcoming_recall": 0.633,
       "true_ongoing": 624,
       "true_upcoming": 98,
@@ -1517,10 +937,7 @@
       "duration_mae_minutes": null,
       "time_mae_sample_count": null,
       "remain_len_mae_minutes": null,
-      "remain_len_mae_documented_approximate_range_minutes": [
-        11.6,
-        12.8
-      ],
+      "remain_len_mae_documented_approximate_range_minutes": [11.6, 12.8],
       "remain_len_mae_documented_other_approximation_minutes": 12.0
     },
     "test": {
@@ -1542,10 +959,7 @@
     "role": "same_metric_definition_different_cohorts_descriptive_only",
     "formal_controlled_comparison": false,
     "baseline_split": "validation",
-    "baseline_seeds": [
-      42,
-      43
-    ],
+    "baseline_seeds": [42, 43],
     "baseline_aggregation": "equal_weight_mean_of_per_seed_selected_checkpoint_metrics_not_pooled_predictions",
     "std_definition": "population_std_ddof_0_not_confidence_interval",
     "time_unit": "minute",
@@ -1591,334 +1005,60 @@
     "precision_reconstruction_absolute_tolerance": 1e-12,
     "source_recheck_note": "Reread B4 seed42 original metrics_validation.json on reconnection: P=0.8023379383634431=755/941. Corrected earlier terminal transcription; four-decimal display unchanged.",
     "runs": [
-      {
-        "baseline": "B4",
-        "seed": 42,
-        "predicted": 941,
-        "true": 1095,
-        "report_tp": 755,
-        "who_tp": 755,
-        "report_fp": 186,
-        "report_fn": 340,
-        "upcoming_hits": 2,
-        "upcoming_targets": 145
-      },
-      {
-        "baseline": "B4",
-        "seed": 43,
-        "predicted": 948,
-        "true": 1095,
-        "report_tp": 771,
-        "who_tp": 771,
-        "report_fp": 177,
-        "report_fn": 324,
-        "upcoming_hits": 1,
-        "upcoming_targets": 145
-      },
-      {
-        "baseline": "B5",
-        "seed": 42,
-        "predicted": 888,
-        "true": 1095,
-        "report_tp": 744,
-        "who_tp": 744,
-        "report_fp": 144,
-        "report_fn": 351,
-        "upcoming_hits": 2,
-        "upcoming_targets": 145
-      },
-      {
-        "baseline": "B5",
-        "seed": 43,
-        "predicted": 914,
-        "true": 1095,
-        "report_tp": 751,
-        "who_tp": 751,
-        "report_fp": 163,
-        "report_fn": 344,
-        "upcoming_hits": 2,
-        "upcoming_targets": 145
-      }
+      {"baseline": "B4", "seed": 42, "predicted": 941, "true": 1095, "report_tp": 755, "who_tp": 755, "report_fp": 186, "report_fn": 340, "upcoming_hits": 2, "upcoming_targets": 145},
+      {"baseline": "B4", "seed": 43, "predicted": 948, "true": 1095, "report_tp": 771, "who_tp": 771, "report_fp": 177, "report_fn": 324, "upcoming_hits": 1, "upcoming_targets": 145},
+      {"baseline": "B5", "seed": 42, "predicted": 888, "true": 1095, "report_tp": 744, "who_tp": 744, "report_fp": 144, "report_fn": 351, "upcoming_hits": 2, "upcoming_targets": 145},
+      {"baseline": "B5", "seed": 43, "predicted": 914, "true": 1095, "report_tp": 751, "who_tp": 751, "report_fp": 163, "report_fn": 344, "upcoming_hits": 2, "upcoming_targets": 145}
     ]
   },
   "supplemental_validation_metrics": {
-    "column_order": [
-      "B4_seed42",
-      "B4_seed43",
-      "B5_seed42",
-      "B5_seed43"
-    ],
+    "column_order": ["B4_seed42", "B4_seed43", "B5_seed42", "B5_seed43"],
     "precision": "Six-decimal terminal extraction; full exact JSON preserved in server_complete_export",
-    "hot_precision": [
-      0.585815,
-      0.608869,
-      0.675899,
-      0.608923
-    ],
-    "hot_recall": [
-      0.332259,
-      0.339398,
-      0.307232,
-      0.331107
-    ],
-    "hot_f1": [
-      0.424023,
-      0.435846,
-      0.422442,
-      0.428962
-    ],
-    "hot_ap": [
-      0.364527,
-      0.380703,
-      0.377227,
-      0.372589
-    ],
-    "hot_positive_rate": [
-      0.013204,
-      0.013204,
-      0.013204,
-      0.013204
-    ],
-    "hot_predicted_positive_rate": [
-      0.007489,
-      0.00736,
-      0.006002,
-      0.00718
-    ],
-    "hot_type_hmean": [
-      0.45042,
-      0.461994,
-      0.454434,
-      0.455575
-    ],
-    "score_mae_auxiliary_not_main_comparable": [
-      0.340094,
-      0.27791,
-      0.223223,
-      0.137478
-    ],
-    "event_will_roc_auc": [
-      0.952202,
-      0.959574,
-      0.958183,
-      0.961272
-    ],
-    "event_positive_count": [
-      1095,
-      1095,
-      1095,
-      1095
-    ],
-    "event_negative_count": [
-      67331,
-      67331,
-      67331,
-      67331
-    ],
-    "iou_event_precision": [
-      0.289054,
-      0.291139,
-      0.315412,
-      0.296499
-    ],
-    "iou_event_recall": [
-      0.314088,
-      0.318707,
-      0.30485,
-      0.312933
-    ],
-    "iou_event_f1": [
-      0.301051,
-      0.3043,
-      0.310041,
-      0.304494
-    ],
-    "iou_event_predicted_count": [
-      941,
-      948,
-      837,
-      914
-    ],
-    "iou_event_true_count": [
-      866,
-      866,
-      866,
-      866
-    ],
-    "cause_accuracy": [
-      0.885824,
-      0.914887,
-      0.964413,
-      0.953144
-    ],
-    "cause_macro_f1": [
-      0.337109,
-      0.345726,
-      0.437354,
-      0.373146
-    ],
-    "cause_macro_recall": [
-      0.696863,
-      0.67055,
-      0.863684,
-      0.737643
-    ],
-    "cause_majority_accuracy": [
-      0.309609,
-      0.309609,
-      0.309609,
-      0.309609
-    ],
-    "cause_sample_count": [
-      3372,
-      3372,
-      3372,
-      3372
-    ],
-    "cause_recall_transport_delay": [
-      0.911877,
-      0.899425,
-      0.969349,
-      0.939655
-    ],
-    "cause_recall_material_shortage": [
-      0.811765,
-      0.576471,
-      0.917647,
-      0.811765
-    ],
-    "cause_recall_blocked_downstream": [
-      0.0,
-      0.0,
-      0.5,
-      0.0
-    ],
-    "cause_recall_starved_upstream": [
-      0.776889,
-      0.912889,
-      0.941333,
-      0.944
-    ],
-    "cause_recall_queue_buildup": [
-      0.983784,
-      0.963964,
-      0.99009,
-      0.992793
-    ],
-    "validation_total_loss": [
-      1.011643,
-      0.9938,
-      0.735982,
-      0.754679
-    ],
-    "upcoming_start_mae_minutes": [
-      0.5,
-      1.0,
-      0.5,
-      0.5
-    ],
-    "upcoming_duration_mae_minutes": [
-      5.725456,
-      6.323175,
-      5.551195,
-      5.819412
-    ],
-    "upcoming_mae_support": [
-      2,
-      1,
-      2,
-      2
-    ],
-    "ongoing_start_mae_minutes": [
-      0.038513,
-      0.027273,
-      0.030997,
-      0.022697
-    ],
-    "ongoing_duration_mae_minutes": [
-      2.292936,
-      2.283271,
-      2.190891,
-      2.414231
-    ],
-    "ongoing_mae_support": [
-      753,
-      770,
-      742,
-      749
-    ],
-    "hot_precision_machine": [
-      0.477016,
-      0.494277,
-      0.542411,
-      0.496179
-    ],
-    "hot_recall_machine": [
-      0.334854,
-      0.321,
-      0.28738,
-      0.340091
-    ],
-    "hot_f1_machine": [
-      0.393488,
-      0.389225,
-      0.375704,
-      0.403569
-    ],
-    "hot_precision_workbench": [
-      0.605278,
-      0.672616,
-      0.78658,
-      0.744514
-    ],
-    "hot_recall_workbench": [
-      0.372495,
-      0.416724,
-      0.336213,
-      0.328265
-    ],
-    "hot_f1_workbench": [
-      0.461176,
-      0.514615,
-      0.471072,
-      0.455635
-    ],
-    "hot_precision_gantry": [
-      0.87032,
-      0.799839,
-      0.845228,
-      0.758283
-    ],
-    "hot_recall_gantry": [
-      0.276874,
-      0.287914,
-      0.28559,
-      0.292562
-    ],
-    "hot_f1_gantry": [
-      0.420101,
-      0.423414,
-      0.426927,
-      0.422222
-    ],
-    "hot_precision_agv": [
-      0.882353,
-      0.841558,
-      0.896104,
-      0.812796
-    ],
-    "hot_recall_agv": [
-      0.40856,
-      0.420233,
-      0.447471,
-      0.444877
-    ],
-    "hot_f1_agv": [
-      0.558511,
-      0.560554,
-      0.596886,
-      0.575021
-    ]
+    "hot_precision": [0.585815, 0.608869, 0.675899, 0.608923],
+    "hot_recall": [0.332259, 0.339398, 0.307232, 0.331107],
+    "hot_f1": [0.424023, 0.435846, 0.422442, 0.428962],
+    "hot_ap": [0.364527, 0.380703, 0.377227, 0.372589],
+    "hot_positive_rate": [0.013204, 0.013204, 0.013204, 0.013204],
+    "hot_predicted_positive_rate": [0.007489, 0.00736, 0.006002, 0.00718],
+    "hot_type_hmean": [0.45042, 0.461994, 0.454434, 0.455575],
+    "score_mae_auxiliary_not_main_comparable": [0.340094, 0.27791, 0.223223, 0.137478],
+    "event_will_roc_auc": [0.952202, 0.959574, 0.958183, 0.961272],
+    "event_positive_count": [1095, 1095, 1095, 1095],
+    "event_negative_count": [67331, 67331, 67331, 67331],
+    "iou_event_precision": [0.289054, 0.291139, 0.315412, 0.296499],
+    "iou_event_recall": [0.314088, 0.318707, 0.30485, 0.312933],
+    "iou_event_f1": [0.301051, 0.3043, 0.310041, 0.304494],
+    "iou_event_predicted_count": [941, 948, 837, 914],
+    "iou_event_true_count": [866, 866, 866, 866],
+    "cause_accuracy": [0.885824, 0.914887, 0.964413, 0.953144],
+    "cause_macro_f1": [0.337109, 0.345726, 0.437354, 0.373146],
+    "cause_macro_recall": [0.696863, 0.67055, 0.863684, 0.737643],
+    "cause_majority_accuracy": [0.309609, 0.309609, 0.309609, 0.309609],
+    "cause_sample_count": [3372, 3372, 3372, 3372],
+    "cause_recall_transport_delay": [0.911877, 0.899425, 0.969349, 0.939655],
+    "cause_recall_material_shortage": [0.811765, 0.576471, 0.917647, 0.811765],
+    "cause_recall_blocked_downstream": [0.0, 0.0, 0.5, 0.0],
+    "cause_recall_starved_upstream": [0.776889, 0.912889, 0.941333, 0.944],
+    "cause_recall_queue_buildup": [0.983784, 0.963964, 0.99009, 0.992793],
+    "validation_total_loss": [1.011643, 0.9938, 0.735982, 0.754679],
+    "upcoming_start_mae_minutes": [0.5, 1.0, 0.5, 0.5],
+    "upcoming_duration_mae_minutes": [5.725456, 6.323175, 5.551195, 5.819412],
+    "upcoming_mae_support": [2, 1, 2, 2],
+    "ongoing_start_mae_minutes": [0.038513, 0.027273, 0.030997, 0.022697],
+    "ongoing_duration_mae_minutes": [2.292936, 2.283271, 2.190891, 2.414231],
+    "ongoing_mae_support": [753, 770, 742, 749],
+    "hot_precision_machine": [0.477016, 0.494277, 0.542411, 0.496179],
+    "hot_recall_machine": [0.334854, 0.321, 0.28738, 0.340091],
+    "hot_f1_machine": [0.393488, 0.389225, 0.375704, 0.403569],
+    "hot_precision_workbench": [0.605278, 0.672616, 0.78658, 0.744514],
+    "hot_recall_workbench": [0.372495, 0.416724, 0.336213, 0.328265],
+    "hot_f1_workbench": [0.461176, 0.514615, 0.471072, 0.455635],
+    "hot_precision_gantry": [0.87032, 0.799839, 0.845228, 0.758283],
+    "hot_recall_gantry": [0.276874, 0.287914, 0.28559, 0.292562],
+    "hot_f1_gantry": [0.420101, 0.423414, 0.426927, 0.422222],
+    "hot_precision_agv": [0.882353, 0.841558, 0.896104, 0.812796],
+    "hot_recall_agv": [0.40856, 0.420233, 0.447471, 0.444877],
+    "hot_f1_agv": [0.558511, 0.560554, 0.596886, 0.575021]
   },
   "upcoming_optimization": {
     "status": "all_registered_training_and_diagnostics_completed_upcoming_goal_not_met",
@@ -1935,18 +1075,9 @@
     "active_archived_diagnostic": {
       "tmux": "baseline_dense_diag",
       "status": "eight_files_completed_source_checks_passed_tmux_exit_zero",
-      "models": [
-        "B4",
-        "B5"
-      ],
-      "seeds": [
-        42,
-        43
-      ],
-      "splits": [
-        "train",
-        "validation"
-      ],
+      "models": ["B4", "B5"],
+      "seeds": [42, 43],
+      "splits": ["train", "validation"],
       "source_archive": "model_before_upweight20260912.zip",
       "archive_member": "best.pt",
       "source_variant": "graph_context",
@@ -1967,151 +1098,29 @@
       "three_class": "Deployed controlled candidate: replace binary event classification with none/ongoing/upcoming cross entropy; event probability is the sum of predicted event-class probabilities"
     },
     "profile_version": "dense_<variant>_v2",
-    "confirmation_seeds": [
-      42,
-      43
-    ],
+    "confirmation_seeds": [42, 43],
     "selection": "Canonical validation threshold/checkpoint selection unchanged; compare per-seed upcoming AP/recall and P/R/F1/MAE, not test",
-    "code_tests": {
-      "passed": 152,
-      "subtests_passed": 15,
-      "server_three_class_prelaunch_passed": 5
-    },
-    "prior_control_training_seconds": [
-      433.20121908187866,
-      535.3831107616425,
-      1254.9563789367676,
-      1059.747685432434
-    ],
-    "prior_control_parameter_counts": [
-      253470,
-      253470,
-      266398,
-      266398
-    ],
+    "code_tests": {"passed": 152, "subtests_passed": 15, "server_three_class_prelaunch_passed": 5},
+    "prior_control_training_seconds": [433.20121908187866, 535.3831107616425, 1254.9563789367676, 1059.747685432434],
+    "prior_control_parameter_counts": [253470, 253470, 266398, 266398],
     "diagnostic_summary": {
       "source": "Existing benchmark *_diagnostics_upcoming20260911.json; rounded terminal extraction, original JSON retained on server",
-      "column_order": [
-        "B4_seed42",
-        "B4_seed43",
-        "B5_seed42",
-        "B5_seed43"
-      ],
-      "train_counts_ongoing_upcoming_negative": [
-        4191,
-        595,
-        297152
-      ],
-      "validation_counts_ongoing_upcoming_negative": [
-        950,
-        145,
-        67331
-      ],
+      "column_order": ["B4_seed42", "B4_seed43", "B5_seed42", "B5_seed43"],
+      "train_counts_ongoing_upcoming_negative": [4191, 595, 297152],
+      "validation_counts_ongoing_upcoming_negative": [950, 145, 67331],
       "restarted_upcoming_count_train_and_validation": 0,
-      "train_ongoing_ap": [
-        0.86118,
-        0.88829,
-        0.91098,
-        0.87863
-      ],
-      "train_upcoming_ap": [
-        0.00694,
-        0.01003,
-        0.02442,
-        0.00902
-      ],
-      "validation_upcoming_ap": [
-        0.00641,
-        0.00863,
-        0.00872,
-        0.00769
-      ],
-      "train_upcoming_recall_at_saved_validation_threshold": [
-        0.0,
-        0.01008,
-        0.04202,
-        0.0
-      ],
-      "train_upcoming_probability_misses": [
-        595,
-        589,
-        570,
-        595
-      ],
-      "train_upcoming_timing_misses": [
-        0,
-        0,
-        0,
-        0
-      ],
-      "validation_upcoming_probability_misses": [
-        143,
-        144,
-        143,
-        143
-      ],
-      "validation_upcoming_timing_misses": [
-        0,
-        0,
-        0,
-        0
-      ],
-      "train_upcoming_probability_q10_q50_q90": [
-        [
-          0.00223,
-          0.00832,
-          0.04846
-        ],
-        [
-          0.01001,
-          0.03532,
-          0.15303
-        ],
-        [
-          0.00323,
-          0.01942,
-          0.18045
-        ],
-        [
-          0.00534,
-          0.01521,
-          0.0688
-        ]
-      ],
-      "validation_upcoming_probability_q10_q50_q90": [
-        [
-          0.00143,
-          0.00663,
-          0.04829
-        ],
-        [
-          0.00917,
-          0.03207,
-          0.12325
-        ],
-        [
-          0.00148,
-          0.00881,
-          0.05501
-        ],
-        [
-          0.00266,
-          0.01423,
-          0.059
-        ]
-      ],
-      "maximum_upcoming_recall_in_old_validation_history": [
-        0.034482758620689655,
-        0.027586206896551724,
-        0.034482758620689655,
-        0.034482758620689655
-      ],
-      "maximum_upcoming_recall_epoch": [
-        12,
-        9,
-        20,
-        19
-      ],
+      "train_ongoing_ap": [0.86118, 0.88829, 0.91098, 0.87863],
+      "train_upcoming_ap": [0.00694, 0.01003, 0.02442, 0.00902],
+      "validation_upcoming_ap": [0.00641, 0.00863, 0.00872, 0.00769],
+      "train_upcoming_recall_at_saved_validation_threshold": [0.0, 0.01008, 0.04202, 0.0],
+      "train_upcoming_probability_misses": [595, 589, 570, 595],
+      "train_upcoming_timing_misses": [0, 0, 0, 0],
+      "validation_upcoming_probability_misses": [143, 144, 143, 143],
+      "validation_upcoming_timing_misses": [0, 0, 0, 0],
+      "train_upcoming_probability_q10_q50_q90": [[0.00223, 0.00832, 0.04846], [0.01001, 0.03532, 0.15303], [0.00323, 0.01942, 0.18045], [0.00534, 0.01521, 0.0688]],
+      "validation_upcoming_probability_q10_q50_q90": [[0.00143, 0.00663, 0.04829], [0.00917, 0.03207, 0.12325], [0.00148, 0.00881, 0.05501], [0.00266, 0.01423, 0.059]],
+      "maximum_upcoming_recall_in_old_validation_history": [0.034482758620689655, 0.027586206896551724, 0.034482758620689655, 0.034482758620689655],
+      "maximum_upcoming_recall_epoch": [12, 9, 20, 19],
       "conclusion": "Upcoming is weak on train as well as validation. Observed mask correction exposure is zero. Late control epochs do not recover substantial upcoming recall. Next bounded test is event-head graph/job context with unchanged evaluation."
     }
   },
@@ -2125,133 +1134,28 @@
     "dataset_manifest_matches_control": true,
     "test_evaluated": false,
     "precision": "Eight-decimal terminal extraction; exact metrics/config/summary retained in server complete export",
-    "column_order": [
-      "B4_seed42",
-      "B4_seed43",
-      "B5_seed42",
-      "B5_seed43"
-    ],
-    "best_epoch": [
-      3,
-      6,
-      7,
-      5
-    ],
-    "epochs_trained": [
-      13,
-      16,
-      27,
-      25
-    ],
-    "elapsed_seconds_rounded": [
-      455.7,
-      557.5,
-      1117.1,
-      1035.9
-    ],
-    "trainable_parameter_count": [
-      286878,
-      286878,
-      299806,
-      299806
-    ],
-    "threshold": [
-      0.65,
-      0.55,
-      0.55,
-      0.6
-    ],
-    "constraint_met": [
-      false,
-      false,
-      false,
-      true
-    ],
-    "report_precision": [
-      0.85308057,
-      0.84400466,
-      0.8438914,
-      0.80842105
-    ],
-    "report_recall": [
-      0.65753425,
-      0.66210046,
-      0.68127854,
-      0.70136986
-    ],
-    "report_f1": [
-      0.74265085,
-      0.74206755,
-      0.75391612,
-      0.75110024
-    ],
-    "ongoing_recall": [
-      0.75789474,
-      0.76105263,
-      0.78210526,
-      0.80631579
-    ],
-    "upcoming_recall": [
-      0.0,
-      0.0137931,
-      0.02068966,
-      0.0137931
-    ],
-    "upcoming_hits": [
-      0,
-      2,
-      3,
-      2
-    ],
+    "column_order": ["B4_seed42", "B4_seed43", "B5_seed42", "B5_seed43"],
+    "best_epoch": [3, 6, 7, 5],
+    "epochs_trained": [13, 16, 27, 25],
+    "elapsed_seconds_rounded": [455.7, 557.5, 1117.1, 1035.9],
+    "trainable_parameter_count": [286878, 286878, 299806, 299806],
+    "threshold": [0.65, 0.55, 0.55, 0.6],
+    "constraint_met": [false, false, false, true],
+    "report_precision": [0.85308057, 0.84400466, 0.8438914, 0.80842105],
+    "report_recall": [0.65753425, 0.66210046, 0.68127854, 0.70136986],
+    "report_f1": [0.74265085, 0.74206755, 0.75391612, 0.75110024],
+    "ongoing_recall": [0.75789474, 0.76105263, 0.78210526, 0.80631579],
+    "upcoming_recall": [0.0, 0.0137931, 0.02068966, 0.0137931],
+    "upcoming_hits": [0, 2, 3, 2],
     "upcoming_targets_per_run": 145,
-    "start_mae_minutes": [
-      0.04722222,
-      0.02758621,
-      0.04557641,
-      0.02604167
-    ],
-    "duration_mae_minutes": [
-      2.27387667,
-      2.23380399,
-      2.11154914,
-      2.39443231
-    ],
-    "remain_mae_minutes": [
-      19.96984208,
-      14.61964428,
-      12.78858384,
-      14.5972711
-    ],
-    "will_ap": [
-      0.74324764,
-      0.75503844,
-      0.75085042,
-      0.76090762
-    ],
-    "hot_f1": [
-      0.42923277,
-      0.42739274,
-      0.42526338,
-      0.42904356
-    ],
-    "upcoming_start_mae_minutes": [
-      null,
-      0.5,
-      0.6666666666666666,
-      0.5
-    ],
-    "upcoming_duration_mae_minutes": [
-      null,
-      4.29171895980835,
-      2.9870567321777344,
-      4.951571941375732
-    ],
-    "upcoming_mae_support": [
-      0,
-      2,
-      3,
-      2
-    ],
+    "start_mae_minutes": [0.04722222, 0.02758621, 0.04557641, 0.02604167],
+    "duration_mae_minutes": [2.27387667, 2.23380399, 2.11154914, 2.39443231],
+    "remain_mae_minutes": [19.96984208, 14.61964428, 12.78858384, 14.5972711],
+    "will_ap": [0.74324764, 0.75503844, 0.75085042, 0.76090762],
+    "hot_f1": [0.42923277, 0.42739274, 0.42526338, 0.42904356],
+    "upcoming_start_mae_minutes": [null, 0.5, 0.6666666666666666, 0.5],
+    "upcoming_duration_mae_minutes": [null, 4.29171895980835, 2.9870567321777344, 4.951571941375732],
+    "upcoming_mae_support": [0, 2, 3, 2],
     "decision": "No stable upcoming improvement; do not promote context candidate based on marginal aggregate F1 differences"
   },
   "graph_context_learning_diagnostics": {
@@ -2260,70 +1164,20 @@
     "source_archive": "model_before_upweight20260912.zip/best.pt",
     "source_verification": "All eight dataset hashes, member hashes, graph_context profiles and saved epochs checked against archived metadata",
     "precision": "Six-decimal terminal extraction; full JSON files remain on server",
-    "column_order": [
-      "B4_seed42",
-      "B4_seed43",
-      "B5_seed42",
-      "B5_seed43"
-    ],
+    "column_order": ["B4_seed42", "B4_seed43", "B5_seed42", "B5_seed43"],
     "train_samples_per_run": 23859,
     "validation_samples_per_run": 5439,
     "train_upcoming_targets_per_run": 595,
     "validation_upcoming_targets_per_run": 145,
-    "train_upcoming_ap": [
-      0.007318,
-      0.014483,
-      0.011602,
-      0.009032
-    ],
-    "validation_upcoming_ap": [
-      0.006518,
-      0.009206,
-      0.006183,
-      0.007868
-    ],
-    "train_ongoing_ap": [
-      0.871394,
-      0.906825,
-      0.900788,
-      0.879706
-    ],
-    "validation_ongoing_ap": [
-      0.834853,
-      0.841453,
-      0.844019,
-      0.85207
-    ],
-    "train_upcoming_recall_at_saved_validation_threshold": [
-      0.0,
-      0.015126,
-      0.015126,
-      0.001681
-    ],
-    "train_upcoming_probability_misses": [
-      595,
-      586,
-      586,
-      594
-    ],
-    "validation_upcoming_probability_misses": [
-      145,
-      143,
-      142,
-      143
-    ],
-    "train_upcoming_timing_misses": [
-      0,
-      0,
-      0,
-      0
-    ],
-    "validation_upcoming_timing_misses": [
-      0,
-      0,
-      0,
-      0
-    ],
+    "train_upcoming_ap": [0.007318, 0.014483, 0.011602, 0.009032],
+    "validation_upcoming_ap": [0.006518, 0.009206, 0.006183, 0.007868],
+    "train_ongoing_ap": [0.871394, 0.906825, 0.900788, 0.879706],
+    "validation_ongoing_ap": [0.834853, 0.841453, 0.844019, 0.852070],
+    "train_upcoming_recall_at_saved_validation_threshold": [0.0, 0.015126, 0.015126, 0.001681],
+    "train_upcoming_probability_misses": [595, 586, 586, 594],
+    "validation_upcoming_probability_misses": [145, 143, 142, 143],
+    "train_upcoming_timing_misses": [0, 0, 0, 0],
+    "validation_upcoming_timing_misses": [0, 0, 0, 0],
     "test_evaluated": false,
     "conclusion": "Graph/job context does not materially learn upcoming on train either. This is not explained solely by validation overfitting; finish the registered subtype-head comparison before further training changes"
   },
@@ -2337,133 +1191,28 @@
     "dataset_manifest_matches_control": true,
     "test_evaluated": false,
     "precision": "Eight-decimal terminal extraction; exact metrics/config/summary/record retained in server complete export",
-    "column_order": [
-      "B4_seed42",
-      "B4_seed43",
-      "B5_seed42",
-      "B5_seed43"
-    ],
-    "best_epoch": [
-      1,
-      5,
-      3,
-      5
-    ],
-    "epochs_trained": [
-      11,
-      15,
-      23,
-      25
-    ],
-    "elapsed_seconds_rounded": [
-      386.11,
-      522.96,
-      954.79,
-      1022.94
-    ],
-    "trainable_parameter_count": [
-      253470,
-      253470,
-      266398,
-      266398
-    ],
-    "threshold": [
-      0.75,
-      0.6,
-      0.55,
-      0.55
-    ],
-    "constraint_met": [
-      false,
-      false,
-      false,
-      false
-    ],
-    "report_precision": [
-      0.84660422,
-      0.8372615,
-      0.84633028,
-      0.80835118
-    ],
-    "report_recall": [
-      0.66027397,
-      0.68127854,
-      0.6739726,
-      0.68949772
-    ],
-    "report_f1": [
-      0.74191893,
-      0.75125881,
-      0.75038129,
-      0.74420897
-    ],
-    "ongoing_recall": [
-      0.76105263,
-      0.78315789,
-      0.77473684,
-      0.79263158
-    ],
-    "upcoming_recall": [
-      0.0,
-      0.0137931,
-      0.0137931,
-      0.0137931
-    ],
-    "upcoming_hits": [
-      0,
-      2,
-      2,
-      2
-    ],
+    "column_order": ["B4_seed42", "B4_seed43", "B5_seed42", "B5_seed43"],
+    "best_epoch": [1, 5, 3, 5],
+    "epochs_trained": [11, 15, 23, 25],
+    "elapsed_seconds_rounded": [386.11, 522.96, 954.79, 1022.94],
+    "trainable_parameter_count": [253470, 253470, 266398, 266398],
+    "threshold": [0.75, 0.60, 0.55, 0.55],
+    "constraint_met": [false, false, false, false],
+    "report_precision": [0.84660422, 0.83726150, 0.84633028, 0.80835118],
+    "report_recall": [0.66027397, 0.68127854, 0.67397260, 0.68949772],
+    "report_f1": [0.74191893, 0.75125881, 0.75038129, 0.74420897],
+    "ongoing_recall": [0.76105263, 0.78315789, 0.77473684, 0.79263158],
+    "upcoming_recall": [0.0, 0.01379310, 0.01379310, 0.01379310],
+    "upcoming_hits": [0, 2, 2, 2],
     "upcoming_targets_per_run": 145,
-    "start_mae_minutes": [
-      0.03596127,
-      0.03217158,
-      0.03929539,
-      0.02384106
-    ],
-    "duration_mae_minutes": [
-      2.44235706,
-      2.31496668,
-      2.24670982,
-      2.3973999
-    ],
-    "remain_mae_minutes": [
-      40.40868253,
-      14.798304,
-      21.13990131,
-      14.16867198
-    ],
-    "will_ap": [
-      0.74901609,
-      0.76685938,
-      0.7524122,
-      0.76044274
-    ],
-    "hot_f1": [
-      0.42955057,
-      0.43663011,
-      0.42289584,
-      0.4265975
-    ],
-    "upcoming_start_mae_minutes": [
-      null,
-      0.5,
-      0.5,
-      0.5
-    ],
-    "upcoming_duration_mae_minutes": [
-      null,
-      3.19712019,
-      5.73105383,
-      5.87830925
-    ],
-    "upcoming_mae_support": [
-      0,
-      2,
-      2,
-      2
-    ],
+    "start_mae_minutes": [0.03596127, 0.03217158, 0.03929539, 0.02384106],
+    "duration_mae_minutes": [2.44235706, 2.31496668, 2.24670982, 2.39739990],
+    "remain_mae_minutes": [40.40868253, 14.79830400, 21.13990131, 14.16867198],
+    "will_ap": [0.74901609, 0.76685938, 0.75241220, 0.76044274],
+    "hot_f1": [0.42955057, 0.43663011, 0.42289584, 0.42659750],
+    "upcoming_start_mae_minutes": [null, 0.5, 0.5, 0.5],
+    "upcoming_duration_mae_minutes": [null, 3.19712019, 5.73105383, 5.87830925],
+    "upcoming_mae_support": [0, 2, 2, 2],
     "decision": "No stable upcoming improvement; early selected checkpoints also worsen completion-time MAE in two runs. Preserve but do not promote or expand this weight sweep"
   },
   "three_class_candidate_preparation": {
@@ -2473,24 +1222,13 @@
     "server_prelaunch_tests_passed": 5,
     "variant": "three_class",
     "profile": "dense_three_class_v2",
-    "class_order": [
-      "none",
-      "ongoing",
-      "upcoming"
-    ],
-    "weights_none_ongoing_upcoming": [
-      2.0,
-      3.0,
-      4.0
-    ],
+    "class_order": ["none", "ongoing", "upcoming"],
+    "weights_none_ongoing_upcoming": [2.0, 3.0, 4.0],
     "will_probability": "softmax(logits)[ongoing] + softmax(logits)[upcoming]",
     "uses_true_future_at_inference": false,
     "event_context": false,
     "event_oversample_factor": 1.0,
-    "seeds": [
-      42,
-      43
-    ],
+    "seeds": [42, 43],
     "max_epochs_per_model_seed": 60,
     "evaluation_rules_changed": false,
     "test_evaluated": false,
@@ -2507,17 +1245,8 @@
     "output_tag": "upclass20260912",
     "server_tests_passed": 3,
     "server_subtests_passed": 3,
-    "classification_order": [
-      "none",
-      "ongoing",
-      "upcoming"
-    ],
-    "additional_outputs": [
-      "true_vs_argmax_confusion",
-      "per_true_class_probability_means",
-      "argmax_recall_with_support",
-      "upcoming_class_vs_negative_ap"
-    ],
+    "classification_order": ["none", "ongoing", "upcoming"],
+    "additional_outputs": ["true_vs_argmax_confusion", "per_true_class_probability_means", "argmax_recall_with_support", "upcoming_class_vs_negative_ap"],
     "report_decoding_changed": false,
     "threshold_selection_changed": false,
     "tests_passed": 152,
@@ -2531,54 +1260,14 @@
     "source_archive": "model_before_upclass20260912.zip/best.pt",
     "source_verification": "All eight dataset hashes, member hashes, weighted profiles and saved epochs checked against archived metadata",
     "precision": "Six-decimal terminal extraction; full JSON files remain on server",
-    "column_order": [
-      "B4_seed42",
-      "B4_seed43",
-      "B5_seed42",
-      "B5_seed43"
-    ],
-    "train_upcoming_ap": [
-      0.006877,
-      0.016216,
-      0.008025,
-      0.01232
-    ],
-    "validation_upcoming_ap": [
-      0.006881,
-      0.011589,
-      0.007115,
-      0.009009
-    ],
-    "train_upcoming_recall_at_saved_validation_threshold": [
-      0.0,
-      0.011765,
-      0.0,
-      0.011765
-    ],
-    "train_upcoming_probability_misses": [
-      595,
-      588,
-      595,
-      588
-    ],
-    "validation_upcoming_probability_misses": [
-      145,
-      143,
-      143,
-      143
-    ],
-    "train_upcoming_timing_misses": [
-      0,
-      0,
-      0,
-      0
-    ],
-    "validation_upcoming_timing_misses": [
-      0,
-      0,
-      0,
-      0
-    ],
+    "column_order": ["B4_seed42", "B4_seed43", "B5_seed42", "B5_seed43"],
+    "train_upcoming_ap": [0.006877, 0.016216, 0.008025, 0.012320],
+    "validation_upcoming_ap": [0.006881, 0.011589, 0.007115, 0.009009],
+    "train_upcoming_recall_at_saved_validation_threshold": [0.0, 0.011765, 0.0, 0.011765],
+    "train_upcoming_probability_misses": [595, 588, 595, 588],
+    "validation_upcoming_probability_misses": [145, 143, 143, 143],
+    "train_upcoming_timing_misses": [0, 0, 0, 0],
+    "validation_upcoming_timing_misses": [0, 0, 0, 0],
     "test_evaluated": false,
     "conclusion": "Selected best checkpoints remain weak on train upcoming. This does not imply later checkpoints cannot learn it. Do not extend this weight sweep on the basis of marginal validation differences"
   },
@@ -2592,133 +1281,28 @@
     "dataset_manifest_matches_control": true,
     "test_evaluated": false,
     "precision": "Eight-decimal terminal extraction; exact metrics/config/summary/record retained in server complete export",
-    "column_order": [
-      "B4_seed42",
-      "B4_seed43",
-      "B5_seed42",
-      "B5_seed43"
-    ],
-    "best_epoch": [
-      3,
-      5,
-      7,
-      5
-    ],
-    "epochs_trained": [
-      13,
-      15,
-      27,
-      25
-    ],
-    "elapsed_seconds_rounded": [
-      460.52,
-      534.97,
-      1115.24,
-      1050.46
-    ],
-    "trainable_parameter_count": [
-      253728,
-      253728,
-      266656,
-      266656
-    ],
-    "threshold": [
-      0.6,
-      0.6,
-      0.6,
-      0.65
-    ],
-    "constraint_met": [
-      false,
-      true,
-      false,
-      false
-    ],
-    "report_precision": [
-      0.84077892,
-      0.81847134,
-      0.85283893,
-      0.83892617
-    ],
-    "report_recall": [
-      0.67031963,
-      0.70410959,
-      0.67214612,
-      0.68493151
-    ],
-    "report_f1": [
-      0.74593496,
-      0.75699558,
-      0.75178754,
-      0.75414781
-    ],
-    "ongoing_recall": [
-      0.77263158,
-      0.81052632,
-      0.77263158,
-      0.78736842
-    ],
-    "upcoming_recall": [
-      0.0,
-      0.00689655,
-      0.0137931,
-      0.0137931
-    ],
-    "upcoming_hits": [
-      0,
-      1,
-      2,
-      2
-    ],
+    "column_order": ["B4_seed42", "B4_seed43", "B5_seed42", "B5_seed43"],
+    "best_epoch": [3, 5, 7, 5],
+    "epochs_trained": [13, 15, 27, 25],
+    "elapsed_seconds_rounded": [460.52, 534.97, 1115.24, 1050.46],
+    "trainable_parameter_count": [253728, 253728, 266656, 266656],
+    "threshold": [0.60, 0.60, 0.60, 0.65],
+    "constraint_met": [false, true, false, false],
+    "report_precision": [0.84077892, 0.81847134, 0.85283893, 0.83892617],
+    "report_recall": [0.67031963, 0.70410959, 0.67214612, 0.68493151],
+    "report_f1": [0.74593496, 0.75699558, 0.75178754, 0.75414781],
+    "ongoing_recall": [0.77263158, 0.81052632, 0.77263158, 0.78736842],
+    "upcoming_recall": [0.0, 0.00689655, 0.01379310, 0.01379310],
+    "upcoming_hits": [0, 1, 2, 2],
     "upcoming_targets_per_run": 145,
-    "start_mae_minutes": [
-      0.04087193,
-      0.02723735,
-      0.04347826,
-      0.02666667
-    ],
-    "duration_mae_minutes": [
-      2.31179953,
-      2.31154823,
-      2.16118646,
-      2.41424942
-    ],
-    "remain_mae_minutes": [
-      21.67228458,
-      14.99976144,
-      12.47542555,
-      14.66334382
-    ],
-    "will_ap": [
-      0.75012086,
-      0.76955029,
-      0.74428396,
-      0.76156238
-    ],
-    "hot_f1": [
-      0.42727847,
-      0.43637971,
-      0.42086919,
-      0.43335994
-    ],
-    "upcoming_start_mae_minutes": [
-      null,
-      1.0,
-      0.5,
-      0.5
-    ],
-    "upcoming_duration_mae_minutes": [
-      null,
-      6.25905752,
-      3.87323904,
-      5.81416225
-    ],
-    "upcoming_mae_support": [
-      0,
-      1,
-      2,
-      2
-    ],
+    "start_mae_minutes": [0.04087193, 0.02723735, 0.04347826, 0.02666667],
+    "duration_mae_minutes": [2.31179953, 2.31154823, 2.16118646, 2.41424942],
+    "remain_mae_minutes": [21.67228458, 14.99976144, 12.47542555, 14.66334382],
+    "will_ap": [0.75012086, 0.76955029, 0.74428396, 0.76156238],
+    "hot_f1": [0.42727847, 0.43637971, 0.42086919, 0.43335994],
+    "upcoming_start_mae_minutes": [null, 1.0, 0.5, 0.5],
+    "upcoming_duration_mae_minutes": [null, 6.25905752, 3.87323904, 5.81416225],
+    "upcoming_mae_support": [0, 1, 2, 2],
     "decision": "No material upcoming improvement; do not promote based on small overall F1 changes. Finish subtype diagnostics before attributing failure to training or model representation"
   },
   "three_class_learning_diagnostics": {
@@ -2726,97 +1310,16 @@
     "source_files": "*_diagnostics_upclass20260912.json in existing server benchmark",
     "source_verification": "All eight checkpoint SHA256 hashes, dataset hashes, three_class profiles and best epochs verified; diagnostic tmux exited 0",
     "precision": "Six-decimal terminal extraction; full JSON files remain on server",
-    "column_order": [
-      "B4_seed42",
-      "B4_seed43",
-      "B5_seed42",
-      "B5_seed43"
-    ],
-    "train_upcoming_marginal_ap": [
-      0.007126,
-      0.009866,
-      0.009075,
-      0.009469
-    ],
-    "validation_upcoming_marginal_ap": [
-      0.005921,
-      0.008852,
-      0.006089,
-      0.007939
-    ],
-    "train_upcoming_subtype_ap": [
-      0.019425,
-      0.036356,
-      0.053975,
-      0.033744
-    ],
-    "validation_upcoming_subtype_ap": [
-      0.014145,
-      0.032186,
-      0.015404,
-      0.016979
-    ],
-    "train_upcoming_subtype_argmax_recall": [
-      0.0,
-      0.0,
-      0.0,
-      0.0
-    ],
-    "validation_upcoming_subtype_argmax_recall": [
-      0.0,
-      0.0,
-      0.0,
-      0.0
-    ],
-    "probability_class_order": [
-      "none",
-      "ongoing",
-      "upcoming"
-    ],
-    "train_upcoming_mean_class_probabilities": [
-      [
-        0.986401,
-        0.007136,
-        0.006463
-      ],
-      [
-        0.939807,
-        0.030758,
-        0.029435
-      ],
-      [
-        0.974438,
-        0.015954,
-        0.009608
-      ],
-      [
-        0.967346,
-        0.016776,
-        0.015878
-      ]
-    ],
-    "validation_upcoming_mean_class_probabilities": [
-      [
-        0.987023,
-        0.007589,
-        0.005388
-      ],
-      [
-        0.941347,
-        0.033509,
-        0.025144
-      ],
-      [
-        0.975877,
-        0.018721,
-        0.005403
-      ],
-      [
-        0.965279,
-        0.022153,
-        0.012569
-      ]
-    ],
+    "column_order": ["B4_seed42", "B4_seed43", "B5_seed42", "B5_seed43"],
+    "train_upcoming_marginal_ap": [0.007126, 0.009866, 0.009075, 0.009469],
+    "validation_upcoming_marginal_ap": [0.005921, 0.008852, 0.006089, 0.007939],
+    "train_upcoming_subtype_ap": [0.019425, 0.036356, 0.053975, 0.033744],
+    "validation_upcoming_subtype_ap": [0.014145, 0.032186, 0.015404, 0.016979],
+    "train_upcoming_subtype_argmax_recall": [0.0, 0.0, 0.0, 0.0],
+    "validation_upcoming_subtype_argmax_recall": [0.0, 0.0, 0.0, 0.0],
+    "probability_class_order": ["none", "ongoing", "upcoming"],
+    "train_upcoming_mean_class_probabilities": [[0.986401, 0.007136, 0.006463], [0.939807, 0.030758, 0.029435], [0.974438, 0.015954, 0.009608], [0.967346, 0.016776, 0.015878]],
+    "validation_upcoming_mean_class_probabilities": [[0.987023, 0.007589, 0.005388], [0.941347, 0.033509, 0.025144], [0.975877, 0.018721, 0.005403], [0.965279, 0.022153, 0.012569]],
     "test_evaluated": false,
     "conclusion": "Subtype ranking has some signal, but mean no-event probability on true upcoming is 0.94-0.99 and subtype argmax recall is zero on both splits. Classification mixture alone does not explain the poor report recall; compare existing last checkpoints before considering more training"
   },
@@ -2826,18 +1329,9 @@
     "tmux": "baseline_dense_diag",
     "checkpoint": "last.pt",
     "output_tag": "upclasslast20260912",
-    "models": [
-      "B4",
-      "B5"
-    ],
-    "seeds": [
-      42,
-      43
-    ],
-    "splits": [
-      "train",
-      "validation"
-    ],
+    "models": ["B4", "B5"],
+    "seeds": [42, 43],
+    "splits": ["train", "validation"],
     "device": "cpu",
     "threads": 2,
     "new_training": false,
@@ -2845,42 +1339,12 @@
     "test_evaluated": false,
     "source_verification": "All eight last checkpoint SHA256 hashes, manifest hash, final epochs, splits and sample counts verified; tmux exit 0",
     "precision": "Six-decimal terminal extraction; complete diagnostic files remain on server",
-    "column_order": [
-      "B4_seed42",
-      "B4_seed43",
-      "B5_seed42",
-      "B5_seed43"
-    ],
-    "epoch": [
-      13,
-      15,
-      27,
-      25
-    ],
-    "train_upcoming_marginal_ap": [
-      0.11085,
-      0.142374,
-      0.296762,
-      0.289588
-    ],
-    "validation_upcoming_marginal_ap": [
-      0.010861,
-      0.010878,
-      0.00882,
-      0.007475
-    ],
-    "train_upcoming_subtype_ap": [
-      0.226719,
-      0.275094,
-      0.44646,
-      0.467045
-    ],
-    "validation_upcoming_subtype_ap": [
-      0.035218,
-      0.024133,
-      0.020829,
-      0.011249
-    ],
+    "column_order": ["B4_seed42", "B4_seed43", "B5_seed42", "B5_seed43"],
+    "epoch": [13, 15, 27, 25],
+    "train_upcoming_marginal_ap": [0.110850, 0.142374, 0.296762, 0.289588],
+    "validation_upcoming_marginal_ap": [0.010861, 0.010878, 0.008820, 0.007475],
+    "train_upcoming_subtype_ap": [0.226719, 0.275094, 0.446460, 0.467045],
+    "validation_upcoming_subtype_ap": [0.035218, 0.024133, 0.020829, 0.011249],
     "conclusion": "Later checkpoints learn train subtype ranking substantially better without corresponding validation improvement. Selected-best train weakness is not an architecture incapacity claim. Do not promote last checkpoints or simply extend epochs",
     "purpose": "Compare existing final epochs with selected best epochs to test whether upcoming is simply learned later; no promotion of a different checkpoint based on this diagnostic"
   },
@@ -2923,22 +1387,8 @@
     "server_tests_passed": 3,
     "server_precheck_recovery": "Missing pinned main Git object; fetched origin dev_tyx inside BSTAN, then all three tests and full audit passed",
     "statistics": {
-      "train": {
-        "episodes": 138,
-        "samples": 23859,
-        "far_windows_zero": 138,
-        "far_windows_partial_1_to_29": 4002,
-        "far_windows_full_30": 19719,
-        "samples_with_nonzero_far_summary": 23721
-      },
-      "validation": {
-        "episodes": 30,
-        "samples": 5439,
-        "far_windows_zero": 30,
-        "far_windows_partial_1_to_29": 870,
-        "far_windows_full_30": 4539,
-        "samples_with_nonzero_far_summary": 5409
-      }
+      "train": {"episodes": 138, "samples": 23859, "far_windows_zero": 138, "far_windows_partial_1_to_29": 4002, "far_windows_full_30": 19719, "samples_with_nonzero_far_summary": 23721},
+      "validation": {"episodes": 30, "samples": 5439, "far_windows_zero": 30, "far_windows_partial_1_to_29": 870, "far_windows_full_30": 4539, "samples_with_nonzero_far_summary": 5409}
     },
     "nonzero_statistic_scope": "all 38 nodes, including inapplicable nodes; input availability, not event performance",
     "input_contract": {
@@ -2948,33 +1398,18 @@
       "near_summary_dim": 18,
       "far_summary_dim": 5,
       "main_neighbor_queue_dim": 1,
-      "far_fields": [
-        "queue_mean",
-        "blocked_mean",
-        "inbound_wait_mean",
-        "material_shortage_mean",
-        "queue_max"
-      ],
+      "far_fields": ["queue_mean", "blocked_mean", "inbound_wait_mean", "material_shortage_mean", "queue_max"],
       "future_truncation_invariance_verified": true,
       "main_precursor_projection_last_layer_zero_initialized": true,
       "formal_checkpoint_precursor_use_verified": false
     },
     "bounded_next_comparison_proposal": {
       "status": "not_launched_pending_common_bundle_and_information_budget",
-      "arms": [
-        "near_summary_with_five_zero_far_fields",
-        "same_near_summary_with_five_actual_far_fields"
-      ],
+      "arms": ["near_summary_with_five_zero_far_fields", "same_near_summary_with_five_actual_far_fields"],
       "shared_capacity_and_initialization": true,
       "event_head": "binary_original_control",
-      "backbones": [
-        "B4_GCN_GRU",
-        "B5_GAT_GRU"
-      ],
-      "seeds": [
-        42,
-        43
-      ],
+      "backbones": ["B4_GCN_GRU", "B5_GAT_GRU"],
+      "seeds": [42, 43],
       "max_epochs_each": 60,
       "total_runs_if_adopted": 8,
       "new_feature_contract_required": true,

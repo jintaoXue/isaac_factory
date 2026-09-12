@@ -3085,3 +3085,29 @@ node_mask、可选摘要和解码所用hist_last_hot。分别检查重复，不�
 强制哈希碰撞后的张量复核、样本覆盖，以及在读取样本前拒绝test。不修改任何模型、
 阈值、权重、数据文件或目录；服务器源代码保持abc6713，新审计将由固定Git对象stdin
 执行。此处为执行前注册，尚未取得真实数据结果。
+
+### 35.1 双口径真实数据审计完成
+
+审计源码d85212f经Git对象stdin执行，服务器模型模块及HEAD保持abc6713。本地7项
+测试、4个实际前向子测试通过；服务器在实际模型模块上也通过全部7项测试。执行前
+核验208 manifest、上一项onset frontier完整导出、tracked clean及两项pane退出0；
+复用baseline_dense_diag，外壳PID264887，日志input_identity20260913_audit.log。
+实际审计已完成，pane退出0，日志AUDIT_EXIT_CODE=0；没有启动训练或重跑旧诊断。
+
+| 口径 | Train样本/唯一输入 | Validation样本/唯一输入 | 并集样本/唯一输入 | 冲突输入组 |
+|---|---:|---:|---:|---:|
+| 全部模型适配器字段+hist_last_hot | 23859/23859 | 5439/5439 | 29298/29298 | 0 |
+| event_context=false事件分支字段 | 23859/23859 | 5439/5439 | 29298/29298 | 0 |
+
+两口径跨split共享输入组均为0；train/validation的ongoing、upcoming、negative分别
+严格复现4191/595/297152和950/145/67331。事件口径确认为x、adjacency、node_mask、
+hist_last_hot，未把不进入事件头的全局/订单/target_node_mask字段用于区分样本。
+两口径基础输入都唯一，因此near/near_far追加摘要不可能产生精确重复，按注册逻辑
+跳过摘要重建。该结论仅排除精确完整输入重复，不证明未来可预测，不排除近似模糊、
+隐藏外生信息或模型表征压缩，也不是任何模型的性能上限。
+
+完整产物baseline_input_identity20260913.json，10334 bytes，SHA-256：
+63b2c5e46cdee806030165fa00c54ab0e6d79e0f2689445f365462454f27288b。
+源码SHA为006607ffbf165c89ec7efd6b665a59a32b860283c42bc274b008071f8acb4e2e。
+完成后独立重算五个数据文件的全量SHA并与审计前一致；六个运行模块也与abc6713的
+Git对象及记录哈希一致。共享tensor包被加载，但未遍历/评价test样本。
