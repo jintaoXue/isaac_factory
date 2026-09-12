@@ -2,7 +2,7 @@
 
 > 对照实现：`source/algo/hierarchical/hc_factory/`  
 > 论文叙事：domain-structured HRL（A→B→C→D + information pool），非自动 option discovery。  
-> 参考：Pateria et al., *ACM Comput. Surv.* 2021；**现行**版本命名见 `docs/experiment_protocol.md`（E0–E5）；旧 T*/+RHC 见 `docs/experiment_protocol_old.md`。
+> 参考：Pateria et al., *ACM Comput. Surv.* 2021；**现行**版本命名见 `docs/experiment_protocol.md`（E0–E6）；旧 T*/+RHC 见 `docs/experiment_protocol_old.md`。
 
 ## 0. 版本命名（与 protocol 统一）
 

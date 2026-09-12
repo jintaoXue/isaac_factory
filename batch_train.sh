@@ -19,7 +19,7 @@ HC_T_MAX_N16="${HC_T_MAX_ANCHOR}"
 HC_EXPLORE_EPISODES="${HC_EXPLORE_EPISODES:-20}"
 HC_POLICY_CATALOG_EPISODES="${HC_POLICY_CATALOG_EPISODES:-80}"
 HC_WANDB_CATALOG_PROJECT="${HC_WANDB_CATALOG_PROJECT:-HcFactory_Catalog}"
-# 微调（E1–E5）默认 60；hard train（T0/T1 job 28）默认 100（原低点 ~ep70 @ step129万）
+# 微调（E1–E6）默认 60；hard train（T0/T1 job 28）默认 100（原低点 ~ep70 @ step129万）
 HC_MAX_TRAIN_EPISODES="${HC_MAX_TRAIN_EPISODES:-60}"
 HC_MAX_HARD_EPISODES="${HC_MAX_HARD_EPISODES:-100}"
 # E2 冻结教师采库（job 34 / TEACHER）
@@ -63,7 +63,7 @@ if [ $# -eq 0 ]; then
     echo "  环境变量: HC_CATALOG_TAG HC_ORU HC_PER HC_HIER_CREDIT HC_ALGO_VARIANT"
     echo "            HC_LOAD_DIR HC_LOAD_STEP HC_TEST_SEEDS HC_TEST_TIMES HC_WANDB_MODE"
     echo "            HC_TEACHER_LOAD_DIR HC_TEACHER_LOAD_STEP HC_TEACHER_EPISODES"
-    echo "            HC_MAX_TRAIN_EPISODES（默认 60，E1–E5 微调）"
+    echo "            HC_MAX_TRAIN_EPISODES（默认 60，E1–E6 微调）"
     echo "            HC_MAX_HARD_EPISODES（默认 100，T0/T1 hard / curriculum）"
     exit 1
 fi
@@ -190,7 +190,7 @@ hc_test_args() {
 
 
 hc_max_train_ep_args() {
-    # E1–E5 finetune budget
+    # E1–E6 finetune budget
     if [ -n "${HC_MAX_TRAIN_EPISODES}" ] && [ "${HC_MAX_TRAIN_EPISODES}" != "0" ]; then
         echo "--max_sim_episodes ${HC_MAX_TRAIN_EPISODES}"
     fi
