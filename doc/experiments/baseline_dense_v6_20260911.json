@@ -23,7 +23,7 @@
       "script_sha256": "50b75db4daff3c604b6177a1400ac07bb36ed7d2c0af1f68b8824fc7e10aafc4",
       "log": "jointonset20260913_preflight.log",
       "log_bytes": 619,
-      "log_sha256": "712bd23377d0b2bab9cd71def89cb70da8152b181f46de564b898550250311",
+      "log_sha256": "712bd2383377d0b2bab9cd71def89cb70da8152b181f46de564b898550250311",
       "failure": "Line43 compared saved node-index lists with generated binary type-mask vectors",
       "correction_required": "Compare strictly identical node-index representations without changing type membership",
       "outputs_preserved_in_place": true,

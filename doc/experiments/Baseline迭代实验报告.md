@@ -3725,7 +3725,7 @@ pane326665仍dead=1、exit=0。脚本baseline_joint_onset_preflight20260913.py�
 列表（例如machine=[27,28,29,30,31]），_occupancy_type_masks返回的是38维0/1
 向量。两者须严格统一为索引列表再比较，不改变实际类型分配，不移除这一守卫。
 失败日志jointonset20260913_preflight.log，619 bytes，SHA
-712bd23377d0b2bab9cd71def89cb70da8152b181f46de564b898550250311。
+712bd2383377d0b2bab9cd71def89cb70da8152b181f46de564b898550250311。
 没有完成四组预检、没有优化器更新或联合训练；脚本与日志原地保留，重用名称前须
 通过已有archive_files机制验证归档。不能把61项合成测试写成真实208预检通过。
 
