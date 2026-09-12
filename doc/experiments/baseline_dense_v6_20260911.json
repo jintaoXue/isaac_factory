@@ -1,5 +1,5 @@
 {
-  "status": "onset_aux_four_training_runs_completed_final_diagnostics_active",
+  "status": "far_precursor_four_run_batch_active_onset_results_fully_preserved",
   "last_updated_local_date": "2026-09-13",
   "handoff_date": "2026-09-12",
   "optimization_goal_met": false,
@@ -10,11 +10,11 @@
   "terminal_state_verification": {
     "server_branch": "dev_xwt",
     "server_code_at_verification": "df9ee0e",
-    "baseline_dense_v6": {"pane_dead": true, "exit_code": 0, "startup_pane_pid": 94376},
-    "baseline_dense_diag": {"pane_dead": false, "exit_code": null, "purpose": "B5 seed43 best/last train/validation diagnostics"},
+    "baseline_dense_v6": {"pane_dead": false, "exit_code": null, "startup_pane_pid": 137283},
+    "baseline_dense_diag": {"pane_dead": true, "exit_code": 0, "purpose": "All sixteen onset diagnostics completed"},
     "matching_training_or_diagnostic_processes": 1,
-    "training_python_pid_at_verification": null,
-    "best_and_last_checkpoint_diagnostics_verified": 12,
+    "training_python_pid_at_verification": 137299,
+    "best_and_last_checkpoint_diagnostics_verified": 16,
     "other_users_processes_modified": false
   },
   "experiment_role": "exploratory_dense_migration_control_not_formal_main_comparison",
@@ -29,7 +29,7 @@
     "local_detailed_transcription_pending": ["full per-class confusion matrix", "probability quantiles", "training cost; exact values retained in server export"],
     "policy": "Do not substitute zero, older runs, training-epoch values or main test values for missing validation metrics"
   },
-  "next_search_prerequisite": "User authorized continuing on existing 208 episodes. Near-only comparison and frozen head diagnostics have completed; next is the registered onset auxiliary comparison after deployment preflight. Formal 204-cohort artifacts remain required for final main-model comparison, not this development experiment.",
+  "next_search_prerequisite": "Near-only, frozen head and onset auxiliary comparisons completed and preserved. Registered far_precursor comparison now active after full configuration/input/archive preflight. Formal 204-cohort artifacts remain required for final main-model comparison, not this authorized 208-episode development experiment.",
   "upcoming_208_resume": {
     "status": "near_precursor_four_runs_completed",
     "code_commit": "e5f6cb4",
@@ -246,14 +246,14 @@
     "conclusion": "Do not adopt hot union: negligible extra upcoming with extra negative crossings."
   },
   "onset_auxiliary_experiment": {
-    "status": "four_training_runs_completed_12_of_16_diagnostics_verified",
+    "status": "four_training_runs_and_sixteen_diagnostics_completed_verified",
     "code_commit": "df9ee0e",
     "server_tests_passed": 11,
     "tmux": "baseline_dense_v6",
     "training_log": "onsetaux20260912_train.log",
     "startup_pane_pid": 94376,
     "startup_python_pid": 94392,
-    "latest_verified_progress": "All four training runs completed, pane exit0. B5 seed42 best7/total27, upcoming5/145; seed43 best5/total25, upcoming2/145. B4 eight and B5 seed42 four diagnostics verified. B5 seed43 four diagnostics launched in reused exited pane; server remains df9ee0e. Recheck actual processes.",
+    "latest_verified_progress": "All four training runs and sixteen frozen diagnostics completed with provenance and canonical validation checks. Full export baseline_dense_onset_aux_metrics_20260913.json preserved. Independent far_precursor batch now active; ordinary model paths change sequentially and onset weights are verified in model_before_farprec20260913.zip before reuse.",
     "variant": "onset_aux",
     "archive_tag": "onsetaux20260912",
     "parent_variant": "near_precursor",
@@ -278,7 +278,7 @@
     "local_subtests_passed": 11,
     "server_preflight_before_deployment": "dev_xwt@00d4c6f clean; train/diagnostic tmux dead=1 exit=0; no matching Python tasks",
     "test_evaluated": false,
-    "near_far_launched": false,
+    "near_far_launched": true,
     "purpose": "Test dedicated class-normalized onset supervision, not an exact reproduction of main-model dual-head decoding or a claim of backbone ceiling"
   },
   "onset_batch_exposure_20260912": {
@@ -1029,7 +1029,7 @@
     "next_registered_comparison": "graph_context; event head only; identical inputs, seeds and budgets"
   },
   "onset_auxiliary_B5_progress_20260913": {
-    "status": "both_training_runs_completed_seed42_four_diagnostics_verified_seed43_four_launched",
+    "status": "both_training_runs_and_all_eight_diagnostics_completed_verified",
     "source_commit": "df9ee0e8a91a97f49be46d9d5c15cf0e694d59ab",
     "seed_order": [
       42,
@@ -1153,7 +1153,7 @@
     "performance_experiment": false
   },
   "far_precursor_registered_20260913": {
-    "status": "preregistered_not_launched",
+    "status": "four_run_batch_started_first_python_config_and_archive_verified",
     "variant": "far_precursor",
     "archive_tag": "farprec20260913",
     "parent_variant": "near_precursor",
@@ -1173,5 +1173,146 @@
     "launch_prerequisites": "Complete and verify all sixteen onset diagnostics; preserve full four-run results; confirm exited processes; verify archives in existing directories before reuse",
     "formal_main_204_checkpoint_alignment_claimed": false,
     "test_for_selection": false
+  },
+  "onset_auxiliary_four_runs_completed_20260913": {
+    "status": "four_training_runs_and_sixteen_diagnostics_completed_verified",
+    "code_commit": "df9ee0e8a91a97f49be46d9d5c15cf0e694d59ab",
+    "server_complete_export": "baseline_dense_onset_aux_metrics_20260913.json",
+    "server_export_bytes": 357939,
+    "server_export_sha256": "c6cad9f27a765852a4ccdd772307cf8ec1f5131f4af196f9ecd6fcdaa499e294",
+    "column_order": [
+      "B4_seed42",
+      "B4_seed43",
+      "B5_seed42",
+      "B5_seed43"
+    ],
+    "best_epoch": [
+      1,
+      5,
+      7,
+      5
+    ],
+    "epochs_trained": [
+      11,
+      15,
+      27,
+      25
+    ],
+    "upcoming_hits": [
+      0,
+      3,
+      5,
+      2
+    ],
+    "upcoming_targets_each_run": 145,
+    "mean_metric_order": [
+      "report_precision",
+      "report_recall",
+      "report_f1",
+      "report_recall_upcoming"
+    ],
+    "B4_mean": [
+      0.8330966562,
+      0.6735159817,
+      0.7447745279,
+      0.0103448276
+    ],
+    "B5_mean": [
+      0.825139249,
+      0.6876712329,
+      0.7500413614,
+      0.024137931
+    ],
+    "best_event_ap_train": [
+      0.005973,
+      0.014834,
+      0.013069,
+      0.010637
+    ],
+    "best_event_ap_validation": [
+      0.005918,
+      0.009733,
+      0.007142,
+      0.007708
+    ],
+    "best_auxiliary_ap_train": [
+      0.020208,
+      0.063347,
+      0.088299,
+      0.051083
+    ],
+    "best_auxiliary_ap_validation": [
+      0.010003,
+      0.025995,
+      0.021978,
+      0.0198
+    ],
+    "last_event_ap_train": [
+      0.096618,
+      0.348024,
+      0.468398,
+      0.416553
+    ],
+    "last_event_ap_validation": [
+      0.008469,
+      0.011584,
+      0.009923,
+      0.008778
+    ],
+    "last_auxiliary_ap_train": [
+      0.282862,
+      0.535091,
+      0.668891,
+      0.658729
+    ],
+    "last_auxiliary_ap_validation": [
+      0.031005,
+      0.032333,
+      0.030574,
+      0.018469
+    ],
+    "provenance_verified": "All16 weight/source hashes, commit, manifest, epochs, splits and sample counts; four best validation canonical P/R/F1/upcoming recall match saved metrics within1e-10",
+    "test_evaluated": false,
+    "new_head_used_for_reporting": false,
+    "precision_note": "Means rounded to ten decimals, AP to six; exact metrics retained in server export",
+    "decision": "Do not promote auxiliary-only candidate. B5 gain occurs in one seed; training/validation ranking gap persists. Does not test dedicated onset alarm decoding or prove a backbone ceiling."
+  },
+  "far_precursor_launch_20260913": {
+    "status": "first_training_process_and_epoch_actual_config_archive_verified",
+    "source_commit": "df9ee0e8a91a97f49be46d9d5c15cf0e694d59ab",
+    "tmux": "baseline_dense_v6",
+    "startup_pane_pid": 137283,
+    "first_training_python_pid": 137299,
+    "training_log": "farprec20260913_train.log",
+    "archive_tag": "farprec20260913",
+    "latest_observed_epoch": 1,
+    "models": [
+      "B4",
+      "B5"
+    ],
+    "seeds": [
+      42,
+      43
+    ],
+    "parent_variant": "near_precursor",
+    "variant": "far_precursor",
+    "onset_auxiliary_enabled": false,
+    "all_four_frozen_parent_config_comparisons_passed": true,
+    "config_difference": "model.event_precursor near to near_far; training profile name only; loss identical after normalizing JSON list/Python tuple representation",
+    "prelaunch_four_onset_run_file_hashes_match_complete_export": true,
+    "prelaunch_both_panes_exited_zero_no_training_or_diagnostic_python": true,
+    "server_tracked_worktree_clean": true,
+    "server_code_not_updated": true,
+    "first_run_archive_files_verified": 11,
+    "archive_verification": "All ZIP members match archive manifest; best/last/config/metrics/history/summary match frozen complete onset export",
+    "actual_config_verified": "dense_far_precursor_v2; near_far; extra history30; onset false; lambda onset0; test evaluation false",
+    "thread_environment": {
+      "OMP_NUM_THREADS": 2,
+      "OPENBLAS_NUM_THREADS": 2
+    },
+    "other_users_processes_modified": false,
+    "new_directories_created": false,
+    "test_evaluated": false,
+    "remaining_runs_at_verification": "B4 seed43 and B5 seed42/43 not yet started; ordinary paths remain onset until their own verified archive and training start"
   }
 }

@@ -2429,7 +2429,32 @@ ongoing R 为 0.78526316，阈值 0.70，start/duration/remain MAE 为
 Python 进程。继续以固定 df9ee0e 补齐 seed43 best/last 的 train/validation 四份
 诊断，文件及日志使用已登记的独占标签；当前前 12/16 份诊断已完成核验。
 
-## 31. 远历史摘要对照准备
+### 30.6 整批辅助监督训练与 16 份诊断完成
+
+2026-09-13 核实最后诊断 pane 已退出 0，无相关训练或诊断 Python 进程。重新逐份
+核验四组 best/last 权重 SHA-256、诊断源码哈希和提交 df9ee0e、冻结 manifest、
+对应 best/total epoch 以及 train/validation 样本数 23859/5439。四份 best validation
+canonical P/R/F1/upcoming R 均与保存 metrics 在 1e-10 容差内一致；全部未评 test。
+
+| B5 seed43 upcoming-vs-negative AP | Train | Validation |
+|---|---:|---:|
+| Best 原事件头 | 0.010637 | 0.007708 |
+| Best 辅助 onset 头 | 0.051083 | 0.019800 |
+| Last 原事件头 | 0.416553 | 0.008778 |
+| Last 辅助 onset 头 | 0.658729 | 0.018469 |
+
+四次完整 metrics/config/运行记录、文件哈希及 16 份诊断摘要保存为
+`baseline_dense_onset_aux_metrics_20260913.json`（357939 bytes），SHA-256：
+`c6cad9f27a765852a4ccdd772307cf8ec1f5131f4af196f9ecd6fcdaa499e294`。
+导出过程中系统 Python 缺少 hashlib.file_digest，改用等价 SHA-256 字节哈希后完整
+验证通过；未修改训练模块、原结果或权重。
+
+B4 正式 upcoming 为 0/145、3/145；B5 为 5/145、2/145。B5 的单颗 seed 增益
+没有在另一颗 seed 重现，训练与验证排序仍存在明显差距。本轮不采用辅助监督方案
+替换近窗父对照，也不因此宣布骨干上限。独立 onset 头始终未参与正式报警，本轮不是
+双头报警部署机制的完整消融。
+
+## 31. 远历史摘要对照
 
 这一项独立检验已确认的主分支信息范围差异：原 30 分钟编码历史保持不变，另提供
 编码窗之前最多 30 分钟的 5 项摘要。该对照以已经完成的 near_precursor 为父方案，
@@ -2468,3 +2493,27 @@ material shortage）和 queue 最大值；不提供原始未来数据、事件�
 不能把旧 near 结果文件路径误当成当前 onset 权重，或在运行中的服务器 pull 代码。
 正式比较仍报告每颗 seed、均值、upcoming AP/recall、误报和时间 MAE；未使用 test
 调参。这个注册不是“已开训”或“已改善”，也不改变现有实验的选模与结果。
+
+### 31.3 配置预检与启动
+
+在服务器固定 df9ee0e 上，将 far_precursor 的四组拟用配置与已保存的 near_precursor
+完整配置逐字段核对：model 仅 event_precursor 从 near 改为 near_far；training
+仅 profile 名称改变；loss 完全相同、onset 辅助分支关闭。JSON 的阈值列表与 Python
+默认元组先统一为相同序列表示，阈值数值和顺序均一致。四组均通过，不涉及重新调参。
+
+开训前重新确认服务器 dev_xwt tracked clean、两项 pane 已退出 0、无相应 Python
+任务，四组现有权重/config/history/metrics/summary 的哈希与完整 onset 导出一致，
+manifest 未变，新日志、归档及运行标签均未占用。GPU 上其他 Isaac 进程 PID3347767
+保持原样；可用内存约 39 GB。复用已退出的 baseline_dense_v6 启动四组顺序训练，
+pane PID=137283，日志 `farprec20260913_train.log`，源码不 pull、固定 df9ee0e。
+沿用既有 OMP_NUM_THREADS=2、OPENBLAS_NUM_THREADS=2，其他配置按上述核验结果。
+
+此时仅确认启动命令及 pane 存活；实际 Python、首组归档、新配置和 epoch 进展须继续
+核验，不能将尚未开始的后三组写成已归档或已完成。
+
+随后已确认 B4 seed42 实际 Python PID=137299，并观察到 epoch1 日志。首组
+`model_before_farprec20260913.zip` 的 11 个文件全部匹配归档 manifest，其中
+best/last/config/metrics/history/summary 还与冻结 onset 完整导出的哈希一致。
+实际新记录为 started，config 为 dense_far_precursor_v2、near_far、额外 30 窗，
+event_onset_aux=false、lambda_event_onset_aux=0、evaluate_test=false。manifest
+与父对照不变。后三组当时尚未开始；这不是整批性能结果。

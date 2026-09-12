@@ -33,13 +33,21 @@ STGNPP 在主参考配置中关闭。同一 best 权重的事件头/hot 头诊�
 辅助头 last train AP 为 0.282862/0.535091，validation 为 0.031005/0.032333，仍有明显
 泛化差距，尚无正式提升。B5 seed42 已完成（best7/total27、upcoming 5/145），
 其 best/last 四份诊断已全部完成核验；B5 seed43 也已完成（best5/total25、upcoming
-2/145），训练 pane 已退出 0。最后一组 seed43 的四份诊断正在补齐；前 12 份已核验。
-当前四个普通模型目录均已转为 onset_aux。服务器固定
+2/145）。四次训练及 16 份 best/last train/validation 诊断均正常结束并核验通过，
+整批完整导出为 `baseline_dense_onset_aux_metrics_20260913.json`。B5 seed43 的 last
+辅助头 AP train/validation 为 0.658729/0.018469；当前证据仍支持明显泛化差距。
+服务器固定
 训练源码 df9ee0e，不在训练中 pull 后续文档提交；实际状态必须重新查询，不能重复启动。
 
 远历史真实构建及模型容量核验已通过：近窗/远历史的前 18 维逐元素相同，4 组初始
 权重与 RNG 相同，仅后 5 维追加更早历史摘要。`far_precursor` / `farprec20260913`
-已登记为下一项独立输入对照，尚未开训。须先完成当前整批训练/诊断并归档，详见第 31 节。
+已在核验完整 onset 导出、四组现有文件哈希及退出状态后启动，复用 baseline_dense_v6，
+启动 pane PID=137283，日志 `farprec20260913_train.log`。这次以近窗为父对照，
+onset 辅助头关闭。普通模型路径随批次转为 far_precursor；未开始的组仍为 onset_aux，
+不能据路径名误认权重来源。每组开始前用 `model_before_farprec20260913.zip` 归档；
+首组 B4 seed42 实际 Python PID=137299，已观察到 epoch1；11 个归档文件全部通过
+哈希验证，新配置确认为 near_far、额外 30 窗、aux 关闭、test 关闭。后三组尚未开始，
+继续时须重新核验实时状态，详见第 31 节。
 
 ### 2026-09-12 新对话续接：输入审计已完成
 
@@ -252,7 +260,8 @@ benchmark 根目录有四份完整 metrics 汇总：
 `baseline_dense_weighted_metrics_20260912.json`、`baseline_dense_three_class_metrics_20260912.json`，
 另有 `baseline_dense_near_metrics_20260912.json`（四次近窗完整结果及文件哈希）。
 `baseline_dense_onset_aux_b4_20260912.json` 保存已完成的 B4 两次完整结果、配置、文件
-哈希及八份诊断摘要；整批 onset 四次尚未完成，不能把该 B4 导出当作四次汇总。
+哈希及八份诊断摘要；整批四次与 16 份诊断已另存
+`baseline_dense_onset_aux_metrics_20260913.json`，不能把较早 B4 导出当作四次汇总。
 诊断文件模式 `b[45]_seed4[23]_{train|validation}_diagnostics_<tag>.json`，标签有
 `upcoming20260911`、`upcontext20260912`、`upweight20260912`、`upclass20260912`、
 `upclasslast20260912`。精确完整指标保存在服务器，Git 中为审计与摘要记录。
