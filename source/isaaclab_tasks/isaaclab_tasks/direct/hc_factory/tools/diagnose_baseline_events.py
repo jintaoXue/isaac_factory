@@ -9,6 +9,7 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import subprocess
 import zipfile
 
 import numpy as np
@@ -253,6 +254,60 @@ def summarize_events(arrays: dict[str, np.ndarray], thresholds: list[float]) -> 
     return output
 
 
+def predicted_hot_run_score(probability: np.ndarray) -> np.ndarray:
+    """Score an eight-minute predicted run starting at 0, 1 or 2; no target inputs."""
+    probability = np.asarray(probability)
+    if probability.ndim != 3 or probability.shape[1] < 10:
+        raise ValueError("Expected (samples, at least ten forecast windows, nodes)")
+    if not np.isfinite(probability).all() or (probability < 0).any() or (probability > 1).any():
+        raise ValueError("Expected finite predicted probabilities in [0, 1]")
+    return np.stack([probability[:, start:start+8].min(axis=1)
+                     for start in (0, 1, 2)]).max(axis=0)
+
+
+def summarize_prediction_heads(arrays: dict[str, np.ndarray], event_threshold: float) -> dict:
+    """Retrospective score comparison, leaving event reports and selection untouched."""
+    event = arrays["will_probability"]
+    hot = predicted_hot_run_score(arrays["predicted_hot_probability"])
+    if hot.shape != event.shape:
+        raise ValueError("Event and predicted-hot scores refer to different sample/node grids")
+    valid = arrays["occ_node_mask"] > .5
+    positive = (arrays["event_will"] > .5) & valid
+    upcoming = positive & (arrays["event_start"] > 0)
+    negative = valid & ~positive
+    ranked = upcoming | negative
+    heads = {}
+    for name, score in (("event_head", event), ("predicted_hot_run", hot)):
+        metrics = _binary_metrics(upcoming[ranked].astype(np.int64), score[ranked])
+        heads[name] = {
+            "upcoming_count": int(upcoming.sum()), "negative_count": int(negative.sum()),
+            "upcoming_vs_negative_ap": metrics["pr_auc"],
+            "upcoming_vs_negative_auc": metrics["roc_auc"],
+            "upcoming_score_q10_q50_q90": np.quantile(score[upcoming], [.1, .5, .9]).tolist() if upcoming.any() else None,
+            "negative_score_q10_q50_q90": np.quantile(score[negative], [.1, .5, .9]).tolist() if negative.any() else None,
+        }
+    hot_threshold = .45  # Pinned main configuration; a diagnostic point, not selected here.
+    event_alarm, hot_alarm = event >= event_threshold, hot >= hot_threshold
+    overlap = {}
+    for name, group in (("upcoming", upcoming), ("negative", negative)):
+        overlap[name] = {
+            "both": int((group & event_alarm & hot_alarm).sum()),
+            "event_only": int((group & event_alarm & ~hot_alarm).sum()),
+            "hot_only": int((group & ~event_alarm & hot_alarm).sum()),
+            "neither": int((group & ~event_alarm & ~hot_alarm).sum()),
+        }
+        if sum(overlap[name].values()) != int(group.sum()):
+            raise AssertionError("Prediction-head overlap must partition each diagnostic group")
+    return {
+        "version": "factory_frozen_head_comparison_v1",
+        "hot_score_definition": "max over starts 0,1,2 of the minimum predicted hot probability in eight consecutive forecast windows",
+        "hot_score_inputs": "predicted hot probabilities only; no ground-truth masks, history-hot state, event times, or predicted completion-time filtering",
+        "heads": heads, "overlap": overlap,
+        "event_threshold": event_threshold, "hot_threshold": hot_threshold,
+        "scope": "Same frozen model and samples. AP excludes ongoing targets. Threshold counts measure score crossings, not canonical report hits. No threshold, checkpoint or alarm policy is selected or changed.",
+    }
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset_dir", type=Path, required=True)
@@ -263,6 +318,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--threads", type=int, default=4)
+    parser.add_argument("--compare_hot_head", action="store_true", help="Compare existing event and hot forecast outputs without changing reports")
+    parser.add_argument("--source_commit", help="Pinned diagnostic Git source when executing this file via stdin")
     parser.add_argument("--thresholds", type=float, nargs="+", default=[
         0.20, 0.30, 0.40, 0.50, 0.55, 0.60, 0.68, 0.75, 0.80, 0.85, 0.90, 0.95,
     ])
@@ -273,6 +330,11 @@ def main() -> None:
     args = parse_args()
     if args.output.exists():
         raise FileExistsError(args.output)
+    if not args.output.parent.is_dir():
+        raise FileNotFoundError("Reuse an existing output directory")
+    source_path = "source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools/diagnose_baseline_events.py"
+    source = (subprocess.check_output(["git", "show", f"{args.source_commit}:{source_path}"])
+              if args.source_commit else Path(__file__).read_bytes())
     torch.set_num_threads(args.threads)
     device = _resolve_device(args.device)
     payload, manifest = load_shared_dataset(args.dataset_dir)
@@ -311,12 +373,16 @@ def main() -> None:
             )
             if "event_kind_logits" in result:
                 values["event_kind_probability"] = result["event_kind_logits"].softmax(-1)
+            if args.compare_hot_head:
+                values["predicted_hot_probability"] = result["remain_hot_logit"].sigmoid()
             for key, value in values.items():
                 collected.setdefault(key, []).append(value.cpu().numpy())
     arrays = {key: np.concatenate(values) for key, values in collected.items()}
     chosen_threshold = float(checkpoint["metadata"]["event_report_threshold"])
     thresholds = sorted(set([*args.thresholds, chosen_threshold]))
     report = summarize_events(arrays, thresholds)
+    if args.compare_hot_head:
+        report["prediction_head_comparison"] = summarize_prediction_heads(arrays, chosen_threshold)
     attach_node_catalog(report, args.dataset_dir / "node_catalog.csv", manifest)
     report.update(
         **provenance,
@@ -325,17 +391,22 @@ def main() -> None:
         dataset_manifest_sha256=checkpoint["metadata"]["dataset_manifest_sha256"],
         sample_count=len(arrays["sample_index"]),
         saved_report_threshold=chosen_threshold,
+        diagnostic_source_commit=args.source_commit,
+        diagnostic_source_sha256=hashlib.sha256(source).hexdigest(),
         diagnostic_scope="Future labels and horizon length are retrospective diagnostic strata, "
                          "not deployable features or proposed alarm filters. No threshold is selected here.",
         ranking_scope="The common event-existence score is ranked in each retrospective subgroup. "
                       "Optional event_kind_diagnostics separately inspect subtype probabilities. "
                       "Neither diagnostic replaces the canonical checkpoint-selection metric.",
     )
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    with args.output.open("x", encoding="utf-8") as stream:
+        json.dump(report, stream, indent=2)
+        stream.write("\n")
     print(json.dumps(report["groups"], indent=2), flush=True)
     print(json.dumps(report["ranking"], indent=2), flush=True)
     print(json.dumps(report["training_partition_audit"], indent=2), flush=True)
+    if args.compare_hot_head:
+        print(json.dumps(report["prediction_head_comparison"], indent=2), flush=True)
     print("threshold P R F1 upcoming_R upcoming_probability_misses upcoming_timing_misses")
     for row in report["thresholds"]:
         print(row["threshold"], *[round(row[k], 4) for k in (

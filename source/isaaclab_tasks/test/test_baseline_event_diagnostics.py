@@ -13,12 +13,54 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isaaclab_tasks/direct/hc_factory/tools"))
-from diagnose_baseline_events import attach_node_catalog, load_diagnostic_checkpoint, parse_args, summarize_events
+from diagnose_baseline_events import (
+    attach_node_catalog, load_diagnostic_checkpoint, parse_args, summarize_events,
+    predicted_hot_run_score, summarize_prediction_heads,
+)
 from factory_baselines.artifacts import archive_files
 from factory_baselines.b4_gcn_gru import B4GcnGru, B4ModelConfig
 
 
 class TestEventDiagnostics(unittest.TestCase):
+    def test_predicted_hot_score_requires_an_early_continuous_run(self):
+        p = np.full((2, 15, 3), .1)
+        p[0, 2:10, 0] = .8  # latest eligible onset
+        p[0, 3:11, 1] = .9  # eight hot minutes, but onset too late
+        p[0, :4, 2] = .9
+        p[0, 5:9, 2] = .9  # eight hot minutes with a gap
+        p[1, :8, :] = .7
+        np.testing.assert_allclose(predicted_hot_run_score(p), [[.8, .1, .1], [.7, .7, .7]])
+        p[:, 10:] = 1.0
+        np.testing.assert_allclose(predicted_hot_run_score(p), [[.8, .1, .1], [.7, .7, .7]])
+        for bad in (p[:, :9], p[:, 0], p * 2, p * np.nan):
+            with self.assertRaises(ValueError):
+                predicted_hot_run_score(bad)
+
+    def test_head_comparison_preserves_reports_and_excludes_ongoing_and_masked_nodes(self):
+        arrays = self._three_class_arrays()
+        arrays["will_probability"][0, 1] = .1
+        arrays.pop("event_kind_probability")
+        p = np.full((1, 15, 4), .1)
+        p[0, 1:9, 1] = .8
+        p[0, :8, 2] = .6
+        p[0, :8, 3] = .99
+        arrays["predicted_hot_probability"] = p
+        saved = {k: v.copy() for k, v in arrays.items()}
+        canonical = summarize_events(arrays, [.55])
+        result = summarize_prediction_heads(arrays, .55)
+        self.assertEqual(result["heads"]["event_head"]["upcoming_vs_negative_ap"], .5)
+        self.assertEqual(result["heads"]["predicted_hot_run"]["upcoming_vs_negative_ap"], 1.)
+        self.assertEqual(result["heads"]["event_head"]["negative_count"], 1)
+        self.assertEqual(result["overlap"]["upcoming"], dict(both=0, event_only=0, hot_only=1, neither=0))
+        self.assertEqual(result["overlap"]["negative"]["hot_only"], 1)
+        self.assertEqual(canonical, summarize_events(arrays, [.55]))
+        for k, v in saved.items():
+            np.testing.assert_array_equal(arrays[k], v)
+        arrays["occ_node_mask"][:] = 0
+        empty = summarize_prediction_heads(arrays, .55)
+        self.assertIsNone(empty["heads"]["predicted_hot_run"]["upcoming_vs_negative_ap"])
+        self.assertEqual(sum(empty["overlap"]["upcoming"].values()), 0)
+
     def _three_class_arrays(self):
         hot = np.zeros((1, 15, 4), dtype=np.float32)
         hot[0, :8, 0] = 1
