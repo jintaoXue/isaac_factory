@@ -45,9 +45,10 @@ STGNPP 在主参考配置中关闭。同一 best 权重的事件头/hot 头诊�
 启动 pane PID=137283，日志 `farprec20260913_train.log`。这次以近窗为父对照，
 onset 辅助头关闭。普通模型路径随批次转为 far_precursor；未开始的组仍为 onset_aux，
 不能据路径名误认权重来源。每组开始前用 `model_before_farprec20260913.zip` 归档；
-首组 B4 seed42 实际 Python PID=137299，已观察到 epoch1；11 个归档文件全部通过
-哈希验证，新配置确认为 near_far、额外 30 窗、aux 关闭、test 关闭。后三组尚未开始，
-继续时须重新核验实时状态，详见第 31 节。
+首组 B4 seed42 已完成（best1/total11、upcoming 0/145），四份 best/last 诊断运行中，
+诊断 Python PID=142100。B4 seed43 已开始（训练 Python PID=141321），两组旧 onset
+归档各 11 个文件均已核验；新配置确认为 near_far、额外 30 窗、aux 关闭、test 关闭。
+B5 两组尚未开始，普通路径仍为 onset_aux。继续时须重新核验实时状态，详见第 31 节。
 
 ### 2026-09-12 新对话续接：输入审计已完成
 
@@ -331,7 +332,8 @@ pgrep -af '[t]rain_dense_baseline_control.py|[d]iagnose_baseline_events.py|[t]ra
 nvidia-smi
 ```
 
-本次收尾两个会话均正常退出。新对话仍需重新检查，不能依赖旧 PID 或锁文件。
+较早交接时两个会话均正常退出；最新运行状态见第 1 节。新对话仍需重新检查，不能依赖
+旧 PID 或锁文件。
 其他人的仿真可能占 GPU，不得终止。没有匹配进程时 `pgrep` 返回码 1 是正常情况。
 
 ### 8.4 Python 环境
@@ -377,4 +379,5 @@ export TOOLS="$PWD/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools"
 > 先核验服务器现状和共同历史输入范围，不立即重复已完成搜索。
 > 只在 dev_xwt、服务器 BSTAN_isaac_factory 内修改；通过 UU 的 Leo 终端 SSH 操作，
 > 不新建目录、不删旧目录、不动主实验仓库、不用 test 调参。
-> 上次全部训练和诊断已经正常结束，最新发现是训练/验证泛化差距及远历史摘要输入不一致。
+> 近窗及 onset 辅助监督已完成，仍有训练/验证泛化差距；远历史输入对照正在推进。
+> 先查第 1 节和服务器实时进程，避免重复启动已完成或正在运行的任务。

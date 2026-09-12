@@ -2517,3 +2517,18 @@ best/last/config/metrics/history/summary 还与冻结 onset 完整导出的哈�
 实际新记录为 started，config 为 dense_far_precursor_v2、near_far、额外 30 窗，
 event_onset_aux=false、lambda_event_onset_aux=0、evaluate_test=false。manifest
 与父对照不变。后三组当时尚未开始；这不是整批性能结果。
+
+### 31.4 首组训练完成、第二组继续
+
+B4 seed42 已正常完成，best1/total11；validation P/R/F1 为
+0.82812500/0.67762557/0.74535409，upcoming 0/145，ongoing recall 0.78105263，
+阈值 0.65。Start/duration/remain MAE 分别为 0.03908356/2.42473698/40.51504550
+分钟。近窗父对照 upcoming 为 2/145；单组远历史结果暂未改善，不能据此提前判定
+整批结果，也未改选模或以中途 epoch 替换 best。
+
+B4 seed43 已接着训练，实际 Python PID=141321、记录 started；其 onset 归档
+11 个文件逐一验证通过，关键文件哈希与冻结整批 onset 导出一致。B5 两组尚未开始。
+在已退出的 baseline_dense_diag 中启动 B4 seed42 best/last × train/validation 四份
+诊断，pane PID=142098、实际 Python PID=142100，标签 farprec20260913 与
+farpreclast20260913，日志 farprec20260913_b4s42_diagnose.log。诊断仍在运行，尚无
+四份完整验证结论；不重复启动已有标签或更新服务器训练源码。

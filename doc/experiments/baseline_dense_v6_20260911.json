@@ -11,9 +11,10 @@
     "server_branch": "dev_xwt",
     "server_code_at_verification": "df9ee0e",
     "baseline_dense_v6": {"pane_dead": false, "exit_code": null, "startup_pane_pid": 137283},
-    "baseline_dense_diag": {"pane_dead": true, "exit_code": 0, "purpose": "All sixteen onset diagnostics completed"},
-    "matching_training_or_diagnostic_processes": 1,
-    "training_python_pid_at_verification": 137299,
+    "baseline_dense_diag": {"pane_dead": false, "exit_code": null, "purpose": "B4 seed42 far best/last diagnostics", "startup_pane_pid": 142098},
+    "matching_training_or_diagnostic_processes": 2,
+    "training_python_pid_at_verification": 141321,
+    "diagnostic_python_pid_at_verification": 142100,
     "best_and_last_checkpoint_diagnostics_verified": 16,
     "other_users_processes_modified": false
   },
@@ -1314,5 +1315,41 @@
     "new_directories_created": false,
     "test_evaluated": false,
     "remaining_runs_at_verification": "B4 seed43 and B5 seed42/43 not yet started; ordinary paths remain onset until their own verified archive and training start"
+  },
+  "far_precursor_B4_seed42_completed_20260913": {
+    "status": "first_of_four_training_completed_four_frozen_diagnostics_running",
+    "best_epoch": 1,
+    "epochs_trained": 11,
+    "report_precision": 0.828125,
+    "report_recall": 0.67762557,
+    "report_f1": 0.74535409,
+    "upcoming_hits": 0,
+    "upcoming_targets": 145,
+    "report_recall_ongoing": 0.78105263,
+    "report_threshold": 0.65,
+    "start_mae_minutes": 0.03908356,
+    "duration_mae_minutes": 2.42473698,
+    "remain_mae_minutes": 40.5150455,
+    "next_training": "B4 seed43 started, actual Python141321; B5 seeds not yet started",
+    "onset_archives_verified_B4_seed42_and43": "All11 members each match archive manifests; key file hashes match frozen complete onset export",
+    "diagnostics": {
+      "status": "four_launched_first_python_confirmed_live",
+      "tmux": "baseline_dense_diag",
+      "pane_pid": 142098,
+      "first_python_pid": 142100,
+      "checkpoint_tags": [
+        "farprec20260913",
+        "farpreclast20260913"
+      ],
+      "splits": [
+        "train",
+        "validation"
+      ],
+      "log": "farprec20260913_b4s42_diagnose.log",
+      "source_commit": "df9ee0e8a91a97f49be46d9d5c15cf0e694d59ab"
+    },
+    "precision_note": "Metrics rounded to eight decimals; exact values retained in server run directory",
+    "test_evaluated": false,
+    "conclusion": "No gain for the first run; do not infer whole-batch failure or change selection from one seed."
   }
 }
