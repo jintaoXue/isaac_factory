@@ -4,13 +4,21 @@
 
 ## 1. 交接状态
 
-**当前最新状态：**history_graph_refine四次训练及16份诊断已全部正常结束并核验，
+**当前最新状态：**event_fbeta四组串行训练已在1728ca6启动，pane326665、driver
+Python326668，首组B4 seed42实际Python326721。首组实际配置和旧图交互归档11成员
+已核验，首次观察epoch2；其余三组尚未开始。保持1728ca6，不在训练中pull文档更新。
+真实预检已完成：全部29298个train/validation近窗摘要契约相同，四组初始参数/RNG/
+输出相同，只新增F-beta损失；预检文件baseline_fbeta_preflight20260913.json，
+16640 bytes，SHA eea6a7bd545063b22d7d34daa6e60e06985c72ea4e40cb83ca558d3c5c272235。
+日志fbeta20260913_train.log，精确配置、一次list/tuple比较修正及来源见37.2–37.4。
+
+history_graph_refine四次训练及16份诊断已全部正常结束并核验，
 upcoming命中1/1/0/2（各145），未优于near的2/2/1/2，不采用这次新增图层。
 完整汇总baseline_dense_postgru_metrics_20260913.json，2654014 bytes，SHA
 db6a3e6a004426404820a774c428da3f862805bd94d4312c1db457f2a6271312。
-两项pane退出0，无该批次训练/诊断Python，运行HEAD仍371afb6。见36.6–36.7。
-下一项event_fbeta实现07398bb已通过本地62项和服务器独立进程6项检查，尚未部署
-训练；先核验实时状态及整批导出，再部署并做真实数据预检。不要重跑本轮已完成搜索。
+该批次两项pane均曾退出0，完整收尾见36.6–36.7；其后运行版本及新会话以上段为准。
+event_fbeta实现07398bb已通过本地62项及服务器独立进程6项检查，现已部署1728ca6并
+完成真实预检后开训。不要重跑已完成搜索，不把中间upcoming日志当作最终改进证据。
 
 ### 最新用户决策：先固定 208 episode 优化 B4/B5
 

@@ -3411,3 +3411,66 @@ padding/无正例/无有效节点及极端logit；B4/B5真实forward中的梯度
 其中保留三个新Git源码文件及六个未改运行文件的哈希、测试结果和执行方式。当前B5
 seed43实际Python294501继续训练，最近观察epoch21；仍按37节的完整批次收尾门槛
 决定何时部署，不重复已通过的测试。
+
+### 37.2 完整前序结果核验后部署固定版本
+
+通过UU的Leo独立终端SSH，再次确认BSTAN/dev_xwt、旧运行HEAD371afb6、两项pane
+退出0且无该benchmark Python。逐组复核四份完整图交互导出、16份原诊断、当前七个
+文件、旧timeattention归档，并重新计算五个冻结数据文件SHA；全部通过。
+新版本1728ca69bd85e695f6004522ff774a20eaaab8e4中的三个F-beta源码/测试文件与
+服务器独立进程测试的07398bb对象逐项相同，之后才fast-forward至1728ca6。
+部署后六个骨干/训练器/数据/摘要模块与图交互批次相同，tracked clean。
+
+部署核验产物baseline_fbeta_deployment20260913.json，1283 bytes，SHA-256：
+25af6c82eb3f61cf16b67d365c78e99464ea5f88b957c18a72d7ef108e0f95ac。
+新训练的运行源码固定1728ca6，不能将之后仅更新文档的commit混作训练源码。
+
+### 37.3 真实数据预检与序列化比较修正
+
+在现有benchmark保存可复现预检脚本baseline_fbeta_preflight20260913.py，复用
+baseline_dense_diag。首次完整near构建已通过，但在比较旧JSON训练配置与新dataclass
+时停止：report_threshold_sweep的数值完全相同，旧JSON是list，内存默认是tuple。
+这不是阈值、训练配方或模型差异。只修正预检：先逐项确认阈值序列相同，再把容器
+规范为list，同时仅归一化实验profile名称；实际训练配置仍完整原样保存在预检输出。
+
+首次pane320936退出1，脚本与日志经既有archive_files逐成员哈希验证后归档为
+baseline_fbeta_preflight_serialization_guard20260913.zip，两个原文件，4166 bytes，
+SHA-256：57854d70425d71010105421d46f0bb7f8b5614e681209a6fe32d20792e024c96。
+没有覆盖失败记录或模型权重。修正后的同名脚本SHA-256为
+e0ec3c399beeede5a47e6e4b205b6dd62d45e296f25c996890cb414c1bc20189；
+复用已退出pane，PID324031，正常退出0，日志以PREFLIGHT_EXIT_CODE=0结束。
+
+完整调用实际attach_precursor，为train/validation全部29298个样本构建near摘要，
+与四组near父对照的输入契约逐项相同，远历史5维为零。随后从train和validation各取
+首个含upcoming与首个不含upcoming的样本：train全局索引18/0、validation索引
+2012/1979；两个upcoming样本各有一个目标。样本按边界类别确定，不按预测结果挑选。
+
+四组实际配置B4/B5×42/43全部通过：模型参数量273054/285982，参数及初始化RNG
+相同；train/eval模式全部输出逐元素相同；原损失分项相同，仅新增登记的F-beta项。
+新增项的梯度到达GRU、事件头和摘要投影，未直接给起点/hot头梯度，backward后模型
+参数未改变。CPU用于预检，登记训练设备仍为cuda:0；没有optimizer step或test样本
+评价。原始共享张量包被加载，但只构建和选取train/validation样本。运行HEAD及五个
+数据文件的size/mtime在预检期间保持不变；全量SHA已在部署前重新核验。
+
+完整预检baseline_fbeta_preflight20260913.json，16640 bytes，SHA-256：
+eea6a7bd545063b22d7d34daa6e60e06985c72ea4e40cb83ca558d3c5c272235。
+保留四组完整model/training/loss配置、输入契约、样本身份、梯度及失败归档引用。
+
+### 37.4 四组串行训练已启动
+
+确认预检及其脚本哈希、两项pane退出0、无相应Python和新tag文件后，复用
+baseline_dense_v6启动B4 s42/s43、B5 s42/s43四组串行训练。启动前GPU0总32607 MiB，
+空闲28696 MiB；没有停止其他任务。运行固定1728ca6，driver每组开始前核验branch、
+HEAD和旧图交互结果文件，完成后核验实际配置/分母及归档成员。
+
+串行脚本baseline_fbeta_driver20260913.py，SHA-256：
+ef9ac53dced60f4beebcf4b21a0f8f0dcef2b126a010d2f5127cafe7be929068。
+日志fbeta20260913_train.log，pane PID326665，实际driver Python326668，首组模型
+Python326721（B4 seed42）。首组旧model_before_fbeta20260913.zip的11个成员已
+核验并与图交互完整导出匹配；实际config与预检逐项相同，F-beta0.8/beta1.5、near、
+last_mean、refine关闭、aux关闭、test关闭。
+
+首次配置核验观察到epoch2，validation日志P/F1为0.817391/0.746402，upcoming为0；
+这只是中间进度，不是最终成绩。其余三组尚未开始，普通权重路径会依次转为F-beta，
+不能据目录名误认来源。训练中不pull后续文档提交；保持原阈值/选模，待每组终态后
+做best/last × train/validation冻结诊断，不重复已完成的图交互或其他搜索。
