@@ -1,4 +1,166 @@
 {
+  "event_fbeta_all_completed_20260913": {
+    "status": "four_training_runs_and_16_diagnostics_and_full_export_completed_verified",
+    "training_source_commit": "1728ca69bd85e695f6004522ff774a20eaaab8e4",
+    "training_pane_pid": 326665,
+    "training_exit_code": 0,
+    "diagnostic_pane_pid": 365017,
+    "diagnostic_exit_code": 0,
+    "matching_training_diagnostic_driver_python_absent": true,
+    "run_order": [
+      "B4_seed42",
+      "B4_seed43",
+      "B5_seed42",
+      "B5_seed43"
+    ],
+    "upcoming_hits": [
+      0,
+      2,
+      0,
+      0
+    ],
+    "near_parent_upcoming_hits": [
+      2,
+      2,
+      1,
+      2
+    ],
+    "upcoming_targets_each": 145,
+    "mean_metric_order": [
+      "P",
+      "R",
+      "F1",
+      "upcoming_recall"
+    ],
+    "B4_current_means_rounded": [
+      0.8320264531,
+      0.698630137,
+      0.7594687038,
+      0.0068965517
+    ],
+    "B4_near_means_rounded": [
+      0.8220531728,
+      0.6913242009,
+      0.7510203841,
+      0.0137931034
+    ],
+    "B5_current_means_rounded": [
+      0.8432600784,
+      0.6949771689,
+      0.7619506275,
+      0.0
+    ],
+    "B5_near_means_rounded": [
+      0.8381670772,
+      0.6757990868,
+      0.7482362744,
+      0.0103448276
+    ],
+    "B5_seed43": {
+      "diagnostic_order": [
+        "best_train",
+        "best_validation",
+        "last_train",
+        "last_validation"
+      ],
+      "upcoming_ap_rounded": [
+        0.016703,
+        0.00883,
+        0.354932,
+        0.009689
+      ],
+      "upcoming_probability_misses": [
+        574,
+        145,
+        392,
+        142
+      ],
+      "upcoming_timing_misses": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "false_alarms": [
+        464,
+        147,
+        234,
+        130
+      ],
+      "existing_finite_grid_P80_max_observed_upcoming_hits": [
+        42,
+        0,
+        245,
+        3
+      ],
+      "grid_scope": "Descriptive finite grid, not exact frontier, upper bound, deployment policy or formal score",
+      "export": "baseline_dense_fbeta_b5s43_metrics_20260913.json",
+      "export_bytes": 561403,
+      "export_sha256": "a04cb6069018855621d955c6a1c5cca61f799eb6eb89a8419cf6973fe5ce9bc4"
+    },
+    "server_complete_export": "baseline_dense_fbeta_metrics_20260913.json",
+    "server_complete_export_bytes": 2642311,
+    "server_complete_export_sha256": "3d375d44317934c1e6e0f3670bc435299e6216699ec419989d39a834d10abf28",
+    "all_16_original_diagnostics_and_28_current_training_files_reverified": true,
+    "all_eight_runtime_sources_match_training_commit": true,
+    "four_prior_graph_archives_verified_members_each": 11,
+    "six_data_files_full_sha_reverified": [
+      "dataset_manifest.json",
+      "dataset.pt",
+      "model_sample_index.csv",
+      "split_manifest.json",
+      "normalization.json",
+      "episodes.npz"
+    ],
+    "test_evaluated": false,
+    "decision": "Overall mean F1 improves, but upcoming falls. Do not promote as upcoming solution or use last weights; no universal backbone ceiling claim.",
+    "joint_candidate_deployed": false
+  },
+  "joint_onset_registered_20260913": {
+    "status": "registered_locally_not_deployed_or_trained",
+    "variant": "joint_onset",
+    "tag": "jointonset20260913",
+    "parent_control": "onset_aux",
+    "secondary_reference": "near_precursor",
+    "models": [
+      "B4",
+      "B5"
+    ],
+    "seeds": [
+      42,
+      43
+    ],
+    "max_epochs": 60,
+    "only_model_config_change_from_onset_aux": "event_onset_joint=true",
+    "extra_trainable_parameters": 0,
+    "expected_full_parameter_counts": {
+      "B4": 289695,
+      "B5": 302623
+    },
+    "parameter_counts_real_preflight_verified": false,
+    "model_history_gate": "event_history_hot from the existing thirty observed X windows",
+    "legacy_hist_last_hot_added_to_model_input": false,
+    "score": "if observed gate hot use continue else maximum of continue and onset logits",
+    "same_score_used_in_training_and_reporting": true,
+    "lambda_event_onset_aux": 1.0,
+    "event_fbeta_weight": 0.0,
+    "loss_sampling_optimizer_budget_and_selection_same_as_onset_aux": true,
+    "original_labels_and_decoder_unchanged": true,
+    "main_reference_exact_gate_reproduced": false,
+    "training_splits": [
+      "train",
+      "validation"
+    ],
+    "test_evaluated": false,
+    "local_targeted_tests_passed": 16,
+    "local_targeted_subtests_passed": 6,
+    "additional_dense_configuration_tests_passed": 2,
+    "causal_input_build_occurs_before_archive": true,
+    "new_directories_created": false,
+    "server_deployed": false,
+    "new_training_started": false,
+    "next_action": "Finish and verify full F-beta export; deploy only with old jobs terminal; real 208 input and all four configuration preflight before serial training"
+  },
   "event_fbeta_all_training_completed_20260913": {
     "status": "all_four_training_runs_completed_12_diagnostics_verified_last_four_running",
     "training_source_commit": "1728ca69bd85e695f6004522ff774a20eaaab8e4",
@@ -723,7 +885,7 @@
     "next_action": "Follow running event_fbeta_launch_20260913; preserve fixed runtime and validation-only protocol",
     "deployed_checkout": "1728ca69bd85e695f6004522ff774a20eaaab8e4"
   },
-  "status": "event_fbeta_all_training_complete_last_four_diagnostics_live_goal_not_met",
+  "status": "event_fbeta_complete_joint_onset_registered_not_deployed_goal_not_met",
   "history_graph_B4_both_completed_20260913": {
     "status": "two_training_runs_and_eight_diagnostics_completed_verified",
     "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",

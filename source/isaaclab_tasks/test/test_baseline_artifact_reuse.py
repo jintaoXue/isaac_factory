@@ -125,6 +125,7 @@ def test_control_archives_stale_test_and_starts_fresh_validation_only(tmp_path, 
     # Feature construction is separately exercised against real tensors. This test
     # mocks the dataset and checks archival and launch boundaries for every arm.
     monkeypatch.setattr("factory_baselines.precursor.attach_precursor", lambda payload, *args: (payload, None))
+    monkeypatch.setattr("factory_baselines.onset_history.attach_onset_history", lambda payload, *args: (payload, None))
     calls = []
     def train(**kwargs):
         calls.append(kwargs)
@@ -182,5 +183,8 @@ def test_dense_candidates_are_single_variable_and_leave_scoring_unchanged(model)
     assert {k for k in near[1] if near[1][k] != far[1][k]} == {"event_precursor"}
     assert {**near[1], "event_onset_aux": True} == onset[1]
     assert {**near[2], "lambda_event_onset_aux": 1.0} == onset[2]
+    joint = configurations["joint_onset"]
+    assert joint[0] == onset[0] and joint[2] == onset[2]
+    assert joint[1] == {**onset[1], "event_onset_joint": True}
     with pytest.raises(ValueError, match="registered dense variant"):
         control.dense_configuration(model, "unknown", 42, "cpu")

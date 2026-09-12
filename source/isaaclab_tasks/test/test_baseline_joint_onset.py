@@ -1,6 +1,7 @@
 """Joint onset reporting: reference gradients, real heads, trainer and old weights."""
 
 import ast
+from dataclasses import replace
 import io
 import json
 from pathlib import Path
@@ -27,6 +28,7 @@ from factory_baselines.torch_trainer import (
     _evaluate_loader, _model_inputs, _run_train_epoch, load_checkpoint,
 )
 import test_b5_gat_gru as fixture_module
+from train_dense_baseline_control import dense_configuration
 
 
 def test_joint_scores_and_bce_gradients_match_pinned_main_method_including_ties():
@@ -245,3 +247,62 @@ def test_attachment_uses_only_selected_existing_x_and_preserves_legacy_labels_an
     # Legacy paths do not inspect files, input values, or add any field.
     old, contract = attach_onset_history(payload, {}, Path("unused"), False, ())
     assert old is payload and contract is None
+
+
+def test_registered_four_configurations_change_only_joint_reporting_from_onset_parent():
+    for model in ("B4", "B5"):
+        for seed in (42, 43):
+            train, arch, loss = dense_configuration(model, "onset_aux", seed, "cpu")
+            new_train, new_arch, new_loss = dense_configuration(model, "joint_onset", seed, "cpu")
+            assert replace(new_train, training_profile=train.training_profile) == train
+            assert new_arch == {**arch, "event_onset_joint": True}
+            assert new_loss == loss and new_loss.event_fbeta_weight == 0
+            assert new_loss.lambda_event_onset_aux == 1
+            assert new_arch["event_precursor"] == "near"
+            assert new_arch["temporal_readout"] == "last_mean"
+            assert not new_train.evaluate_test and new_train.event_oversample_factor == 1
+            assert new_train.max_epochs == 60
+
+
+def test_control_builds_causal_history_before_archiving_and_records_actual_contract():
+    import train_dense_baseline_control as control
+    repo = Path("/home/sci/work/BSTAN_isaac_factory")
+    dataset, output = repo / "existing_dataset", repo / "existing_model"
+    norm_contract = {"mode": "near"}
+    history_contract = {"field": "event_history_hot", "extra_history_windows": 0}
+    order, records = [], []
+    def git(args, **kwargs):
+        if "--show-toplevel" in args: return str(repo)
+        if "--show-current" in args: return "dev_xwt"
+        if "HEAD" in args: return "pinned-test-commit"
+        raise AssertionError(args)
+    def history(payload, manifest, directory, enabled, splits):
+        assert enabled and splits == ("train", "validation")
+        order.append("history"); return payload, history_contract
+    def archive(*args): order.append("archive"); return output / "verified.zip"
+    with patch.object(control.subprocess, "check_output", side_effect=git), \
+         patch.object(Path, "resolve", lambda self: self), \
+         patch.object(Path, "is_dir", return_value=True), \
+         patch.object(Path, "exists", lambda self: self.name == "best.pt"), \
+         patch.object(Path, "write_text", lambda self, text: records.append(json.loads(text))), \
+         patch.object(control, "load_shared_dataset", return_value=({}, {"shared_bundle_alignment": {"status": "passed"}})), \
+         patch("factory_baselines.precursor.attach_precursor", return_value=({}, norm_contract)), \
+         patch("factory_baselines.onset_history.attach_onset_history", side_effect=history) as builder, \
+         patch.object(control, "archive_files", side_effect=archive) as archiver, \
+         patch.object(control, "file_hash", return_value="manifest-test-hash"), \
+         patch.object(control, "train_torch_baseline", return_value={"status": "validation_completed"}):
+        control.run_control("B4", dataset, output, "joint_test", 42, "cpu", "joint_onset")
+        assert order == ["history", "archive"]
+        record = records[-1]
+        assert record["parent_control"] == "onset_aux"
+        assert record["onset_history_contract"] == history_contract
+        assert record["input_feature_contract"] == norm_contract
+        assert record["onset_auxiliary"]["used_for_report_decision"]
+        assert not record["joint_onset_reporting"]["legacy_hist_last_hot_added_to_model_input"]
+        assert not record["test_evaluated"]
+        # A failed causal-input build cannot archive or replace old weights.
+        builder.side_effect = ValueError("invalid observed history")
+        archiver.reset_mock(); records.clear()
+        with pytest.raises(ValueError, match="invalid observed history"):
+            control.run_control("B5", dataset, output, "joint_test", 43, "cpu", "joint_onset")
+        archiver.assert_not_called(); assert not records

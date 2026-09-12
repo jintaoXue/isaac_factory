@@ -14,7 +14,7 @@ from factory_baselines.dataset import load_shared_dataset
 from factory_bn_shared.bundle import file_hash
 
 
-DENSE_VARIANTS = ("history_control", "graph_context", "upcoming_weighted", "three_class", "near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta")
+DENSE_VARIANTS = ("history_control", "graph_context", "upcoming_weighted", "three_class", "near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta", "joint_onset")
 
 
 def dense_configuration(model: str, variant: str, seed: int, device: str) -> tuple:
@@ -34,18 +34,20 @@ def dense_configuration(model: str, variant: str, seed: int, device: str) -> tup
                      temporal_readout="last_mean", node_embedding=0,
                      event_context=variant == "graph_context",
                      event_head="three_class" if variant == "three_class" else "binary")
-    if variant in {"near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta"}:
+    if variant in {"near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta", "joint_onset"}:
         overrides["event_precursor"] = "near_far" if variant == "far_precursor" else "near"
     if variant == "temporal_attention":
         overrides["temporal_readout"] = "last_attention"
-    if variant == "onset_aux":
+    if variant in {"onset_aux", "joint_onset"}:
         overrides["event_onset_aux"] = True
+    if variant == "joint_onset":
+        overrides["event_onset_joint"] = True
     if variant == "history_graph_refine":
         overrides["history_graph_refine"] = True
     overrides.update({"gcn_hidden": 64} if b4 else {"gat_hidden": 64, "gat_heads": 4})
     loss = MultiTaskLossConfig(
         event_will_upcoming_pos_weight=12.0 if variant == "upcoming_weighted" else 4.0,
-        lambda_event_onset_aux=1.0 if variant == "onset_aux" else 0.0,
+        lambda_event_onset_aux=1.0 if variant in {"onset_aux", "joint_onset"} else 0.0,
         event_fbeta_weight=.8 if variant == "event_fbeta" else 0.0,
     )
     return training, overrides, loss
@@ -89,6 +91,10 @@ def run_control(model: str, dataset_dir: Path, output_dir: Path, archive_tag: st
     payload, feature_contract = attach_precursor(
         payload, manifest, dataset_dir, overrides.get("event_precursor", "none"), ("train", "validation"),
     )
+    from factory_baselines.onset_history import attach_onset_history
+    payload, onset_history_contract = attach_onset_history(
+        payload, manifest, dataset_dir, overrides.get("event_onset_joint", False), ("train", "validation"),
+    )
     del payload
     saved = None
     if any((output_dir / name).exists() for name in TRAINING_FILES):
@@ -102,7 +108,8 @@ def run_control(model: str, dataset_dir: Path, output_dir: Path, archive_tag: st
         "event_supervision_partition": "positive_start_zero_ongoing_positive_start_greater_zero_upcoming",
         "event_head": overrides["event_head"],
         "temporal_readout": overrides["temporal_readout"],
-        "parent_control": "near_precursor" if variant in {"far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta"} else None,
+        "parent_control": ("onset_aux" if variant == "joint_onset" else "near_precursor"
+                           if variant in {"far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta"} else None),
         "event_soft_fbeta": {
             "enabled": variant == "event_fbeta",
             "inside_event_loss_weight": loss_config.event_fbeta_weight,
@@ -116,15 +123,24 @@ def run_control(model: str, dataset_dir: Path, output_dir: Path, archive_tag: st
             "additional_attention_dropout": 0.0,
         },
         "onset_auxiliary": {
-            "enabled": variant == "onset_aux", "coefficient": loss_config.lambda_event_onset_aux,
+            "enabled": variant in {"onset_aux", "joint_onset"}, "coefficient": loss_config.lambda_event_onset_aux,
             "loss": "half_mean_upcoming_BCE_plus_half_mean_negative_BCE_per_batch_absent_class_zero",
-            "ongoing_targets_excluded": True, "used_for_report_decision": False,
-            "parent_control": "near_precursor" if variant == "onset_aux" else None,
+            "ongoing_targets_excluded": True, "used_for_report_decision": variant == "joint_onset",
+            "parent_control": ("onset_aux" if variant == "joint_onset" else
+                               "near_precursor" if variant == "onset_aux" else None),
         },
         "input_feature_contract": feature_contract,
         "event_classification_loss": "three_class_cross_entropy" if variant == "three_class" else "binary_cross_entropy",
         "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(),
     }
+    if onset_history_contract is not None:
+        record["onset_history_contract"] = onset_history_contract
+        record["joint_onset_reporting"] = {
+            "score": "observed_history_hot_then_continue_else_max_continue_onset_logits",
+            "score_used_in_main_event_loss": True,
+            "legacy_hist_last_hot_added_to_model_input": False,
+            "original_labels_decoder_threshold_selection_unchanged": True,
+        }
     record_path.write_text(json.dumps(record, indent=2) + "\n")
     try:
         summary = train_torch_baseline(

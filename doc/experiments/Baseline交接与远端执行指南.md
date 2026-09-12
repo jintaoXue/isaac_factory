@@ -4,22 +4,22 @@
 
 ## 1. 交接状态
 
-**当前最新状态：**event_fbeta四次训练全部正常结束，训练pane326665退出0，无
-原driver/训练Python；四组upcoming命中0/2/0/0（各145），近窗对照2/2/1/2。
-B4两颗seed及B5 seed42共12份冻结诊断已完整核验。B5 seed43 best7/total27，
-P/R/F1=0.8388157895/0.6986301370/0.7623318386、upcoming0/145；最后四份标准
-诊断已启动，pane365017、快照31008 bytes，日志fbeta20260913_b5s43_diagnose.log。
-配置/旧归档11成员/八个运行文件均通过核验，服务器保持1728ca6，不pull本地草稿。
-详见37.7–37.8，最后四份完成后才生成整批完整导出并考虑部署下一项。
-B4完整汇总1343096 bytes，SHA 5b3fbc9ce9df2a0fbc08e9c9eab3cd6fc955734c2bc4ba734ceda89d86495f1f。
-B5 seed42完整导出542226 bytes，SHA ca85e5b0014532648b5ee4a7b2777f71014fc89c36c02f1fd3a3d47b0e192676。
+**当前最新状态：**event_fbeta四次训练、16份冻结诊断及整批完整核验均已结束，
+两项pane均退出0，无对应Python，服务器HEAD1728ca6、tracked clean。四组upcoming
+命中0/2/0/0（各145），近窗对照2/2/1/2；平均F1虽升至B4 0.75947、B5 0.76195，
+提前召回未改善。五个冻结数据文件及episodes.npz全量SHA已重验，四份旧图归档
+各11成员与原导出一致。完整汇总baseline_dense_fbeta_metrics_20260913.json，
+2642311 bytes，SHA 3d375d44317934c1e6e0f3670bc435299e6216699ec419989d39a834d10abf28。
+详见37.9；不重复任何已完成训练/诊断。后续joint_onset仅本地注册，尚未部署或训练。
 
 新增第38节只读源码核查：主参考在训练时已组合continue/onset分数，并对组合值施加
 主事件损失；baseline旧onset_aux及事后raw-max/独立阈值诊断不等同于这条联合训练
-路径。38.1已在本地准备联合路径并通过57 tests/17 subtests，未注册dense候选或部署。
+路径。38.1联合路径已通过57 tests/17 subtests；38.2现已登记joint_onset（父对照
+onset_aux、两模型两seed、最多60epoch），新增配置/归档边界定向检查16+2 tests通过。
+F-beta整批汇总现已完成；joint_onset尚未部署或训练，下一步为部署与真实208预检。
 注意legacy hist_last_hot有整局平滑前视问题，禁止新增为网络输入；草稿已改为从原30窗
-X独立计算event_history_hot，有独立checkpoint契约。真实208预检尚未执行，先收尾
-当前F-beta四组及16份诊断，不根据本地测试宣称指标收益。
+X独立计算event_history_hot，有独立checkpoint契约。真实208预检尚未执行，不根据
+本地测试宣称指标收益，也不将现有协议当作严格在线因果性已经验证。
 
 history_graph_refine四次训练及16份诊断已全部正常结束并核验，
 upcoming命中1/1/0/2（各145），未优于near的2/2/1/2，不采用这次新增图层。
