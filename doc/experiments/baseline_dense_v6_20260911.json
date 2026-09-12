@@ -11,10 +11,10 @@
     "server_branch": "dev_xwt",
     "server_code_at_verification": "df9ee0e",
     "baseline_dense_v6": {"pane_dead": false, "exit_code": null, "startup_pane_pid": 137283},
-    "baseline_dense_diag": {"pane_dead": false, "exit_code": null, "purpose": "B4 seed42 far best/last diagnostics", "startup_pane_pid": 142098},
+    "baseline_dense_diag": {"pane_dead": false, "exit_code": null, "purpose": "B4 seed43 far best/last diagnostics", "startup_pane_pid": 148755},
     "matching_training_or_diagnostic_processes": 2,
-    "training_python_pid_at_verification": 141321,
-    "diagnostic_python_pid_at_verification": 142100,
+    "training_python_pid_at_verification": 146730,
+    "diagnostic_python_pid_at_verification": 149858,
     "best_and_last_checkpoint_diagnostics_verified": 16,
     "other_users_processes_modified": false
   },
@@ -1351,5 +1351,121 @@
     "precision_note": "Metrics rounded to eight decimals; exact values retained in server run directory",
     "test_evaluated": false,
     "conclusion": "No gain for the first run; do not infer whole-batch failure or change selection from one seed."
+  },
+  "far_precursor_B4_progress_20260913": {
+    "status": "two_B4_training_runs_completed_seed42_four_diagnostics_verified_seed43_four_active",
+    "seed_order": [
+      42,
+      43
+    ],
+    "best_epoch": [
+      1,
+      5
+    ],
+    "epochs_trained": [
+      11,
+      15
+    ],
+    "upcoming_hits": [
+      0,
+      2
+    ],
+    "report_precision": [
+      0.828125,
+      0.81164021
+    ],
+    "report_recall": [
+      0.67762557,
+      0.70045662
+    ],
+    "report_f1": [
+      0.74535409,
+      0.75196078
+    ],
+    "report_recall_ongoing": [
+      0.78105263,
+      0.80526316
+    ],
+    "report_threshold": [
+      0.65,
+      0.55
+    ],
+    "start_mae_minutes": [
+      0.03908356,
+      0.02868318
+    ],
+    "duration_mae_minutes": [
+      2.42473698,
+      2.27562284
+    ],
+    "remain_mae_minutes": [
+      40.5150455,
+      14.8269958
+    ],
+    "seed42_diagnostics": {
+      "status": "all_four_source_weight_manifest_epoch_sample_count_and_canonical_checks_passed",
+      "source_commit": "df9ee0e8a91a97f49be46d9d5c15cf0e694d59ab",
+      "best_ap_train_validation": [
+        0.005372,
+        0.005739
+      ],
+      "last_ap_train_validation": [
+        0.088649,
+        0.010517
+      ],
+      "best_upcoming_probability_misses_train_validation": [
+        595,
+        145
+      ],
+      "last_upcoming_probability_misses_train_validation": [
+        532,
+        144
+      ],
+      "all_upcoming_timing_misses": 0,
+      "canonical_validation_tolerance": 1e-10
+    },
+    "seed43_diagnostics": "Started farprec20260913_b4s43_diagnose.log in reused pane148755; active Python149858 at verification",
+    "B5_progress": "seed42 Python146730 observed at epoch7; seed43 not started",
+    "B5_seed42_actual_far_config_and_all11_onset_archive_files_verified": true,
+    "test_evaluated": false,
+    "precision_note": "Formal metrics eight decimals, AP six; full JSON remains on server",
+    "conclusion": "B4 upcoming does not improve over near parents; first run shows probability misses and training-validation ranking gap. B5 remains active."
+  },
+  "frozen_onset_report_probe_preparation_20260913": {
+    "status": "implemented_and_locally_tested_not_deployed_or_run_on_server",
+    "source_file": "source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools/diagnose_baseline_events.py",
+    "diagnostic_source_sha256": "2b66392909d141995a4d603950f9bacc978b8680c2b5d65fe07e8cb3db58d045",
+    "flag": "--compare_onset_report",
+    "output_tag": "onsetreport20260913",
+    "models": [
+      "B4",
+      "B5"
+    ],
+    "seeds": [
+      42,
+      43
+    ],
+    "splits": [
+      "train",
+      "validation"
+    ],
+    "planned_files": 8,
+    "checkpoint": "Original onset_aux best.pt from verified model_before_farprec20260913.zip; not last weights",
+    "score_rule": "If history_hot>0.5 keep original event probability, else max(original event probability,onset probability)",
+    "score_inputs": [
+      "event_probability",
+      "onset_probability",
+      "hist_last_hot"
+    ],
+    "thresholds": "Stored checkpoint training threshold sweep plus saved report threshold, identical for both policies",
+    "original_canonical_report_changed": false,
+    "new_threshold_or_checkpoint_selected": false,
+    "start_duration_predictions_and_matching_rules_shared": true,
+    "local_tests_passed": 26,
+    "local_subtests_passed": 3,
+    "server_deployed": false,
+    "test_evaluated": false,
+    "deployment_gate": "Finish current far training and diagnostics, preserve complete results, verify exits and archives, then deploy; server training remains df9ee0e",
+    "interpretation_limit": "Frozen raw-probability max routing only. No separate onset calibration or retraining with dual-head checkpoint selection. Does not reproduce full main decoder or prove a backbone ceiling."
   }
 }

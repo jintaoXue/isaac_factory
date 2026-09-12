@@ -45,10 +45,15 @@ STGNPP 在主参考配置中关闭。同一 best 权重的事件头/hot 头诊�
 启动 pane PID=137283，日志 `farprec20260913_train.log`。这次以近窗为父对照，
 onset 辅助头关闭。普通模型路径随批次转为 far_precursor；未开始的组仍为 onset_aux，
 不能据路径名误认权重来源。每组开始前用 `model_before_farprec20260913.zip` 归档；
-首组 B4 seed42 已完成（best1/total11、upcoming 0/145），四份 best/last 诊断运行中，
-诊断 Python PID=142100。B4 seed43 已开始（训练 Python PID=141321），两组旧 onset
+两组 B4 均已完成（best1/5、total11/15、upcoming 0/145、2/145），首组四份诊断
+已核验，last AP train/validation 为 0.088649/0.010517；第二组四份诊断已启动。
+B5 seed42 正在训练（Python PID=146730），seed43 尚未开始。两组 B4 旧 onset
 归档各 11 个文件均已核验；新配置确认为 near_far、额外 30 窗、aux 关闭、test 关闭。
-B5 两组尚未开始，普通路径仍为 onset_aux。继续时须重新核验实时状态，详见第 31 节。
+继续时须重新核验实时状态，详见第 31 节。
+
+本地已准备可选 `--compare_onset_report`，固定同一 onset_aux best 权重，检查历史
+cold 时取两头概率最大值的报告曲线；原正式输出和选模不变。相关 26 tests / 3 subtests
+通过，服务器尚未部署。须先完成当前远历史整批及诊断后再执行，详见第 32 节。
 
 ### 2026-09-12 新对话续接：输入审计已完成
 

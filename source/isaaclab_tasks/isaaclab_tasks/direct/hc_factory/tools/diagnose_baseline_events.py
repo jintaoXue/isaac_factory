@@ -282,6 +282,46 @@ def predicted_hot_run_score(probability: np.ndarray) -> np.ndarray:
                      for start in (0, 1, 2)]).max(axis=0)
 
 
+def cold_onset_report_probability(event: np.ndarray, onset: np.ndarray,
+                                  history_hot: np.ndarray) -> np.ndarray:
+    """A frozen diagnostic policy using predictions and observed history only."""
+    event, onset, history_hot = (np.asarray(x) for x in (event, onset, history_hot))
+    if event.ndim != 2 or onset.shape != event.shape or history_hot.shape != event.shape:
+        raise ValueError("Expected matching (samples, nodes) event/onset/history grids")
+    for value in (event, onset, history_hot):
+        if not np.isfinite(value).all() or (value < 0).any() or (value > 1).any():
+            raise ValueError("Expected finite probabilities and history-hot values in [0, 1]")
+    return np.where(history_hot > .5, event, np.maximum(event, onset))
+
+
+def summarize_onset_reports(arrays: dict[str, np.ndarray], thresholds: list[float],
+                            saved_threshold: float) -> dict:
+    """Paired canonical scoring of fixed policies; no selection or deployment."""
+    if "event_onset_probability" not in arrays:
+        raise ValueError("Onset report comparison requires an independent onset head")
+    if "event_kind_probability" in arrays:
+        raise ValueError("Onset report comparison requires the binary event head")
+    grid = sorted(set([*thresholds, saved_threshold]))
+    if not grid or any(not np.isfinite(t) or not 0 <= t <= 1 for t in grid):
+        raise ValueError("Expected finite report thresholds in [0, 1]")
+    fused = cold_onset_report_probability(
+        arrays["will_probability"], arrays["event_onset_probability"], arrays["hist_last_hot"],
+    )
+    policies = {}
+    for name, score in (("event_only", arrays["will_probability"]), ("cold_onset_max", fused)):
+        report = summarize_events({**arrays, "will_probability": score}, grid)
+        policies[name] = {k: report[k] for k in ("ranking", "thresholds")}
+    return {
+        "version": "factory_frozen_onset_report_comparison_v1",
+        "score_definition": "event probability when history_hot>0.5; otherwise max(event, onset)",
+        "score_inputs": "Two predicted probabilities and observed last-history hot only; no future labels, horizon mask, true start, or predicted completion-time filtering",
+        "threshold_source": "Frozen checkpoint training threshold sweep plus its saved report threshold; same grid for both policies",
+        "thresholds": grid, "saved_report_threshold": saved_threshold,
+        "policies": policies,
+        "scope": "Fixed weights, shared predicted start/duration and canonical matching. Curves are diagnostics; no threshold or checkpoint is selected, no original report is replaced. No separate onset calibration or training with dual-head checkpoint selection is performed.",
+    }
+
+
 def summarize_prediction_heads(arrays: dict[str, np.ndarray], event_threshold: float) -> dict:
     """Retrospective score comparison, leaving event reports and selection untouched."""
     event = arrays["will_probability"]
@@ -336,6 +376,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--compare_hot_head", action="store_true", help="Compare existing event and hot forecast outputs without changing reports")
+    parser.add_argument("--compare_onset_report", action="store_true", help="Score frozen event-only and history-cold onset-max policies without selecting or changing official reports")
     parser.add_argument("--source_commit", help="Pinned diagnostic Git source when executing this file via stdin")
     parser.add_argument("--thresholds", type=float, nargs="+", default=[
         0.20, 0.30, 0.40, 0.50, 0.55, 0.60, 0.68, 0.75, 0.80, 0.85, 0.90, 0.95,
@@ -358,6 +399,8 @@ def main() -> None:
     model, checkpoint, provenance = load_diagnostic_checkpoint(
         args.checkpoint, device, args.archive_member,
     )
+    if args.compare_onset_report and not checkpoint["model_config"].get("event_onset_aux", False):
+        raise ValueError("Onset report comparison requires a checkpoint with an independent onset head")
     if checkpoint["metadata"]["dataset_manifest_sha256"] != _manifest_hash(
         args.dataset_dir / "dataset_manifest.json"
     ):
@@ -402,7 +445,14 @@ def main() -> None:
     report = summarize_events(arrays, thresholds)
     if args.compare_hot_head:
         report["prediction_head_comparison"] = summarize_prediction_heads(arrays, chosen_threshold)
+    if args.compare_onset_report:
+        report["onset_report_comparison"] = summarize_onset_reports(
+            arrays, checkpoint["train_config"]["report_threshold_sweep"], chosen_threshold,
+        )
     attach_node_catalog(report, args.dataset_dir / "node_catalog.csv", manifest)
+    if args.compare_onset_report:
+        for policy in report["onset_report_comparison"]["policies"].values():
+            attach_node_catalog(policy, args.dataset_dir / "node_catalog.csv", manifest)
     report.update(
         **provenance,
         split=args.split, test_evaluated=False,
@@ -428,6 +478,14 @@ def main() -> None:
         print(json.dumps(report["prediction_head_comparison"], indent=2), flush=True)
     if "onset_auxiliary_diagnostics" in report:
         print(json.dumps(report["onset_auxiliary_diagnostics"], indent=2), flush=True)
+    if "onset_report_comparison" in report:
+        comparison = report["onset_report_comparison"]
+        for name, policy in comparison["policies"].items():
+            row = next(r for r in policy["thresholds"] if r["threshold"] == chosen_threshold)
+            print("Onset report probe at saved threshold:", name, json.dumps({
+                key: row[key] for key in ("report_precision", "report_recall", "report_f1",
+                                         "report_recall_upcoming", "report_false_alarm_count")
+            }), flush=True)
     print("threshold P R F1 upcoming_R upcoming_probability_misses upcoming_timing_misses")
     for row in report["thresholds"]:
         print(row["threshold"], *[round(row[k], 4) for k in (

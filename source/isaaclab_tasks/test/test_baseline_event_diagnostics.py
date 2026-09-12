@@ -16,12 +16,71 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isaaclab_tasks/dir
 from diagnose_baseline_events import (
     attach_node_catalog, load_diagnostic_checkpoint, parse_args, summarize_events,
     predicted_hot_run_score, summarize_prediction_heads,
+    cold_onset_report_probability, summarize_onset_reports,
 )
 from factory_baselines.artifacts import archive_files
 from factory_baselines.b4_gcn_gru import B4GcnGru, B4ModelConfig
 
 
 class TestEventDiagnostics(unittest.TestCase):
+    def test_onset_report_policy_uses_only_predictions_and_history_without_mutation(self):
+        event = np.array([[.1, .2, .8, .3]])
+        onset = np.array([[.9, .7, .2, .9]])
+        history = np.array([[1., 0., .5, .51]])
+        originals = [x.copy() for x in (event, onset, history)]
+        actual = cold_onset_report_probability(event, onset, history)
+        np.testing.assert_allclose(actual, [[.1, .7, .8, .3]])
+        for actual_input, saved in zip((event, onset, history), originals):
+            np.testing.assert_array_equal(actual_input, saved)
+        for bad in (onset[:, :1], onset[0], np.full_like(onset, np.nan), onset * 2):
+            with self.assertRaises(ValueError):
+                cold_onset_report_probability(event, bad, history)
+
+    def test_onset_report_probe_counts_recovered_events_false_alarms_and_timing_errors(self):
+        arrays = self._three_class_arrays()
+        arrays.pop("event_kind_probability")
+        arrays["will_probability"][0, 1] = .1
+        arrays["event_onset_probability"] = np.array([[.99, .8, .7, .99]])
+        saved = {k: v.copy() for k, v in arrays.items()}
+        original = summarize_events(arrays, [.55])
+        comparison = summarize_onset_reports(arrays, [.8, .55, .8], .55)
+        self.assertEqual(comparison["thresholds"], [.55, .8])
+        baseline = comparison["policies"]["event_only"]["thresholds"][0]
+        candidate = comparison["policies"]["cold_onset_max"]["thresholds"][0]
+        self.assertEqual(baseline, original["thresholds"][0])
+        self.assertEqual(baseline["report_recall_upcoming"], 0)
+        self.assertEqual(candidate["report_recall_upcoming"], 1)
+        self.assertEqual(candidate["false_positive_stations"], 1)
+        self.assertEqual(candidate["n_pred_who"], 3)  # invalid fourth node is excluded
+        self.assertAlmostEqual(candidate["report_precision"], 2 / 3)
+        self.assertEqual(original, summarize_events(arrays, [.55]))
+        for key, value in saved.items():
+            np.testing.assert_array_equal(arrays[key], value)
+        arrays["predicted_start"][0, 1] = 12
+        mistimed = summarize_onset_reports(arrays, [.55], .55)["policies"]["cold_onset_max"]["thresholds"][0]
+        self.assertEqual(mistimed["report_recall_upcoming"], 0)
+        self.assertEqual(mistimed["upcoming_timing_misses"], 1)
+        self.assertEqual(mistimed["report_false_alarm_count"], 2)
+        arrays["occ_node_mask"][:] = 0
+        empty = summarize_onset_reports(arrays, [.55], .55)["policies"]["cold_onset_max"]
+        self.assertEqual(empty["thresholds"][0]["n_pred_who"], 0)
+        self.assertIsNone(empty["ranking"]["upcoming_vs_negative"]["tie_aware_average_precision"])
+
+    def test_onset_probe_requires_the_registered_head_and_valid_thresholds(self):
+        arrays = self._three_class_arrays()
+        with self.assertRaisesRegex(ValueError, "independent onset"):
+            summarize_onset_reports(arrays, [.55], .55)
+        arrays["event_onset_probability"] = np.ones((1, 4))
+        with self.assertRaisesRegex(ValueError, "binary"):
+            summarize_onset_reports(arrays, [.55], .55)
+        arrays.pop("event_kind_probability")
+        for thresholds in ([np.nan], [2.]):
+            with self.assertRaisesRegex(ValueError, "threshold"):
+                summarize_onset_reports(arrays, thresholds, .55)
+        common = ["--dataset_dir", "data", "--checkpoint", "best.pt", "--output", "result.json"]
+        self.assertFalse(parse_args(common).compare_onset_report)
+        self.assertTrue(parse_args([*common, "--compare_onset_report"]).compare_onset_report)
+
     def test_onset_auxiliary_ranking_cannot_change_reports(self):
         arrays = self._three_class_arrays()
         arrays.pop("event_kind_probability")
