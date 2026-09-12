@@ -1,5 +1,5 @@
 {
-  "status": "user_authorized_208_episode_b4_b5_optimization_near_precursor_registered",
+  "status": "208_episode_near_precursor_four_run_batch_active",
   "handoff_date": "2026-09-12",
   "optimization_goal_met": false,
   "continue_automatically": false,
@@ -28,7 +28,12 @@
   },
   "next_search_prerequisite": "User authorized continuing on existing 208 episodes. Run the bounded near-only precursor comparison after tests and clean server preflight. Formal 204-cohort artifacts remain required for final main-model comparison, not this development experiment.",
   "upcoming_208_resume": {
-    "status": "near_precursor_registered_not_yet_launched",
+    "status": "near_precursor_four_run_batch_active",
+    "code_commit": "e5f6cb4",
+    "local_tests_passed": 79, "local_subtests_passed": 14, "server_prelaunch_tests_passed": 4,
+    "tmux": "baseline_dense_v6", "training_log": "nearprec20260912_train.log",
+    "startup_pane_pid": 45693, "startup_training_pid": 45709,
+    "latest_verified_progress": "B4 seed42 epoch11; pane alive; recheck actual processes, never rely on saved PIDs",
     "models": ["B4", "B5"], "seeds": [42, 43], "runs": 4, "max_epochs_each": 60,
     "variant": "near_precursor", "archive_tag": "nearprec20260912",
     "input_feature_contract": "factory_baseline_precursor_v1", "mode": "near",
