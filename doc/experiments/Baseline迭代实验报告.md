@@ -2552,6 +2552,28 @@ best validation 原指标在 1e-10 容差内一致。Best AP train/validation �
 诊断，日志 farprec20260913_b4s43_diagnose.log，源码仍固定 df9ee0e。一次 UU
 读取连接中断经重新获取窗口恢复，实查进程后继续；没有因 UI 错误重启训练。
 
+### 31.6 B4 八份诊断全部完成并导出
+
+B4 seed43 四份诊断正常结束；与 seed42 合计八份，重新全部核验当前权重 SHA-256、
+诊断源码哈希与 df9ee0e 提交、冻结 manifest、对应 epoch、split 和样本数。两份
+best validation canonical 指标在 1e-10 容差内相同，均未评 test。
+
+| B4 seed43 upcoming-vs-negative AP | Train | Validation |
+|---|---:|---:|
+| Best epoch5 | 0.010004 | 0.008706 |
+| Last epoch15 | 0.202656 | 0.010266 |
+
+两颗 seed 的 P/R/F1/upcoming R 均值为
+0.8198826058/0.6890410959/0.7486574389/0.0068965517。当前 B4 结果不支持这五项
+远历史摘要带来改善，且两颗 seed 均有后期训练排序提升、验证排序仍弱的现象；不能
+据此断言所有长历史表示无用，也不能代替 B5 的结果。
+
+两次完整 metrics/config/运行记录、文件哈希及八份诊断摘要已保存为
+`baseline_dense_far_b4_20260913.json`（172561 bytes），SHA-256：
+`f24e51738a2bd51bd708350fbb1a17a5882ef1db3e40d3e446ab33021b073388`。
+B5 seed42 的实际 far 配置和旧 onset 归档 11 个文件亦核验通过，最近观察到 epoch14、
+Python PID146730；seed43 尚未开始。诊断 pane 已退出 0，服务器代码仍 df9ee0e。
+
 ## 32. 冻结 onset 报警路径检查准备（尚未在服务器运行）
 
 用户指出 baseline 可能缺少提前识别组件。第 30 节只检验辅助监督，不能代替 onset
@@ -2570,7 +2592,7 @@ onset_aux best.pt，比对原事件概率与一个固定决策：历史末窗 ho
 实现只修改诊断文件及其测试，B4/B5 训练模块和默认诊断行为保持原样。新增测试覆盖
 history 门控与边界、无输入改动、原 canonical 不变、补回 upcoming 同时增加误报、
 起点错误不能算命中、无效节点/空支持、缺分支/无效阈值及 CLI 开关。相关 26 项测试、
-3 个子测试通过；服务器尚未部署，远历史训练/诊断继续使用 df9ee0e。
+3 个子测试通过，实现提交 3b0e784；服务器尚未部署，远历史训练/诊断继续使用 df9ee0e。
 
 预登记后续标签 onsetreport20260913，B4/B5 seed42/43 × train/validation 共 8 份，
 仅使用第 30 节原规则选出的 best。输入保持对应近窗契约；从已验证的
