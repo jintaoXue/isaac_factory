@@ -1,5 +1,5 @@
 {
-  "status": "far_precursor_four_run_batch_active_onset_results_fully_preserved",
+  "status": "far_four_training_runs_completed_B5_diagnostics_active_B4_onset_probe_completed",
   "last_updated_local_date": "2026-09-13",
   "handoff_date": "2026-09-12",
   "optimization_goal_met": false,
@@ -10,11 +10,11 @@
   "terminal_state_verification": {
     "server_branch": "dev_xwt",
     "server_code_at_verification": "df9ee0e",
-    "baseline_dense_v6": {"pane_dead": false, "exit_code": null, "startup_pane_pid": 137283},
-    "baseline_dense_diag": {"pane_dead": true, "exit_code": 0, "purpose": "All eight B4 far diagnostics completed", "startup_pane_pid": 148755},
+    "baseline_dense_v6": {"pane_dead": true, "exit_code": 0, "startup_pane_pid": 137283},
+    "baseline_dense_diag": {"pane_dead": false, "exit_code": null, "purpose": "Eight B5 far best/last diagnostics", "startup_pane_pid": 169477},
     "matching_training_or_diagnostic_processes": 1,
-    "training_python_pid_at_verification": 146730,
-    "diagnostic_python_pid_at_verification": null,
+    "training_python_pid_at_verification": null,
+    "diagnostic_python_pid_at_verification": 171249,
     "best_and_last_checkpoint_diagnostics_verified": 16,
     "other_users_processes_modified": false
   },
@@ -1525,5 +1525,163 @@
     "test_evaluated": false,
     "precision_note": "Means ten decimals; AP six; exact values retained in server export",
     "conclusion": "No B4 gain from this far-summary representation; training/validation ranking gap remains. Does not prove all long-history modeling ineffective or establish B5 results."
+  },
+  "far_precursor_B5_training_completed_20260913": {
+    "status": "both_B5_training_runs_completed_eight_diagnostics_launched",
+    "seed_order": [
+      42,
+      43
+    ],
+    "best_epoch": [
+      3,
+      5
+    ],
+    "epochs_trained": [
+      23,
+      25
+    ],
+    "upcoming_hits": [
+      2,
+      2
+    ],
+    "upcoming_targets_each_run": 145,
+    "report_precision": [
+      0.83747178,
+      0.83054627
+    ],
+    "report_recall": [
+      0.67762557,
+      0.6803653
+    ],
+    "report_f1": [
+      0.74911661,
+      0.74799197
+    ],
+    "ongoing_recall": [
+      0.77894737,
+      0.78210526
+    ],
+    "report_threshold": [
+      0.55,
+      0.65
+    ],
+    "start_mae_minutes": [
+      0.04851752,
+      0.02281879
+    ],
+    "duration_mae_minutes": [
+      2.28503227,
+      2.41161227
+    ],
+    "remain_mae_minutes": [
+      20.52421788,
+      13.8553777
+    ],
+    "both_actual_far_configs_and_all11_onset_archive_members_verified": true,
+    "training_pane_exited_zero_no_training_python": true,
+    "diagnostic_log": "farprec20260913_b5_diagnose.log",
+    "diagnostic_pane_pid": 169477,
+    "diagnostic_python_at_verification": 171249,
+    "diagnostic_source_commit": "df9ee0e8a91a97f49be46d9d5c15cf0e694d59ab",
+    "batch_exit_marker": "DIAG_BATCH_EXIT_CODE",
+    "test_evaluated": false,
+    "precision_note": "Metrics rounded to eight decimals; exact records retained in server run directories"
+  },
+  "frozen_onset_report_B4_completed_20260913": {
+    "status": "all_four_outputs_completed_and_verified_terminal_zombie_exit_code_unavailable",
+    "source_commit": "3b0e78452eca79191839c6d199ef7fd5a00968c4",
+    "source_sha256": "2b66392909d141995a4d603950f9bacc978b8680c2b5d65fe07e8cb3db58d045",
+    "model_runtime_commit": "df9ee0e8a91a97f49be46d9d5c15cf0e694d59ab",
+    "server_worktree_or_HEAD_updated": false,
+    "execution": "Pinned Git object via stdin; existing archived onset best weights; CPU2 threads",
+    "execution_order_change": "B4 probes advanced into idle CPU diagnostic pane while far B5 trained; no change to weights, inputs, rule, threshold grid or selection",
+    "server_in_memory_tests_passed": 3,
+    "launch_pane_pid": 156899,
+    "first_python_pid": 156903,
+    "log": "onsetreport20260913_b4_diagnose.log",
+    "old_wrapper_terminal_state": "Z",
+    "tmux_exit_code": null,
+    "normal_zero_exit_claimed": false,
+    "all_four_complete_JSONs_and_output_log_markers_verified": true,
+    "all_zip_member_source_manifest_epoch_sample_count_checks_passed": true,
+    "original_rankings_groups_auxiliary_diagnostics_identical": true,
+    "event_only_saved_threshold_rows_identical_to_canonical": true,
+    "canonical_validation_tolerance": 1e-10,
+    "seed_order": [
+      42,
+      43
+    ],
+    "saved_thresholds": [
+      0.7,
+      0.55
+    ],
+    "validation_original_P": [
+      0.84429066,
+      0.82190265
+    ],
+    "validation_fused_P": [
+      0.82525366,
+      0.23752553
+    ],
+    "validation_original_R": [
+      0.66849315,
+      0.67853881
+    ],
+    "validation_fused_R": [
+      0.66849315,
+      0.743379
+    ],
+    "validation_original_F1": [
+      0.74617737,
+      0.74337169
+    ],
+    "validation_fused_F1": [
+      0.73864783,
+      0.36001769
+    ],
+    "validation_original_upcoming_hits": [
+      0,
+      3
+    ],
+    "validation_fused_upcoming_hits": [
+      0,
+      52
+    ],
+    "validation_original_false_alarms": [
+      135,
+      161
+    ],
+    "validation_fused_false_alarms": [
+      155,
+      2613
+    ],
+    "validation_P80_original_grid_upcoming_hit_ranges": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        3
+      ]
+    ],
+    "validation_P80_fused_grid_upcoming_hit_ranges": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        6
+      ]
+    ],
+    "threshold_or_checkpoint_selected": false,
+    "calibration_search_performed": false,
+    "test_evaluated": false,
+    "server_export": "baseline_onset_report_b4_20260913.json",
+    "server_export_bytes": 1170612,
+    "server_export_sha256": "1900fb4d778c142f4cdf001da0b428600cc56a46c50c4550a3d824fac3387cd7",
+    "decision": "Do not adopt fixed raw-max routing: no validation recovery for seed42, major precision collapse for seed43 at saved threshold. Does not rule out independent calibration or establish backbone ceiling.",
+    "pending": "B5 four frozen onset probes after current far diagnostics; do not rerun completed B4 probes"
   }
 }

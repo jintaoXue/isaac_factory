@@ -48,15 +48,19 @@ onset 辅助头关闭。普通模型路径随批次转为 far_precursor；未开
 两组 B4 均已完成（best1/5、total11/15、upcoming 0/145、2/145），八份诊断已全部
 核验并导出为 baseline_dense_far_b4_20260913.json。两颗 seed 的 last AP train 为
 0.088649/0.202656，validation 为 0.010517/0.010266，仍有泛化差距。
-B5 seed42 正在训练（Python PID=146730，最近 epoch14），seed43 尚未开始；诊断
-pane 已退出 0。两组 B4 旧 onset
+B5 两组也已完成（best3/5、total23/25、upcoming 均为2/145），训练 pane 已退出0。
+当前正在执行 B5 best/last 的八份 far 诊断，日志 farprec20260913_b5_diagnose.log，
+pane PID169477、最近实际 Python PID171249。两组 B4 旧 onset
 归档各 11 个文件均已核验；新配置确认为 near_far、额外 30 窗、aux 关闭、test 关闭。
 继续时须重新核验实时状态，详见第 31 节。
 
-本地已准备可选 `--compare_onset_report`，固定同一 onset_aux best 权重，检查历史
-cold 时取两头概率最大值的报告曲线；原正式输出和选模不变。相关 26 tests / 3 subtests
-通过，实现提交 3b0e784，服务器尚未部署。须先完成当前远历史整批及诊断后再执行，
-详见第 32 节。
+`--compare_onset_report` 已完成 B4 两颗 seed 的四份冻结检查：通过 git show 将
+3b0e784 源码送入 stdin，服务器 HEAD/训练文件保持 df9ee0e；本地26项及服务器
+内存3项测试通过。Seed42 原阈值下 upcoming 仍0/145、误报135→155；seed43
+upcoming 3→52/145，但 precision 0.822→0.238、误报161→2613，不采用该组合。
+完整核验与曲线存 baseline_onset_report_b4_20260913.json。该诊断外壳处于Z终态，
+tmux未回收退出码；结果完整性已独立核验，不能写成正常退出0。B5 冻结报告检查尚未
+执行，等当前八份 far 诊断完成后再复用会话。详见第32节；不要在这些诊断期间 pull。
 
 ### 2026-09-12 新对话续接：输入审计已完成
 
@@ -341,7 +345,9 @@ nvidia-smi
 ```
 
 较早交接时两个会话均正常退出；最新运行状态见第 1 节。新对话仍需重新检查，不能依赖
-旧 PID 或锁文件。
+旧 PID 或锁文件。若 pane_dead=1 但退出码为空，要结合 ps 状态、实际 Python 进程
+与日志核实；本轮曾出现已结束的 Z 状态外壳尚未被 tmux 回收。不得仅凭空退出码认定
+仍在运行或正常退出。新 B5 诊断另写 DIAG_BATCH_EXIT_CODE 到日志。
 其他人的仿真可能占 GPU，不得终止。没有匹配进程时 `pgrep` 返回码 1 是正常情况。
 
 ### 8.4 Python 环境
