@@ -365,6 +365,87 @@ def summarize_prediction_heads(arrays: dict[str, np.ndarray], event_threshold: f
     }
 
 
+@torch.no_grad()
+def predict_with_temporal_observation(model: torch.nn.Module, inputs: dict) -> tuple[dict, dict]:
+    """Observe a single frozen forward; historical tensors alone determine weights."""
+    pool = getattr(model, "history_attention", None)
+    if pool is None or model.training:
+        raise ValueError("Temporal observation requires a frozen attention-readout model in eval mode")
+    observed = {}
+
+    def capture(module, args, pooled):
+        history = args[0]
+        scores = torch.einsum("bth,h->bt", history, module.query) / (module.query.numel() ** .5)
+        mean = history.mean(dim=1)
+        observed.update(
+            temporal_attention_weights=scores.softmax(dim=1),
+            temporal_pool_shift_l2=(pooled - mean).norm(dim=-1),
+            temporal_pool_mean_l2=mean.norm(dim=-1),
+        )
+
+    handle = pool.register_forward_hook(capture)
+    try:
+        result = model(**inputs)
+    finally:
+        handle.remove()
+    if not observed:
+        raise ValueError("The registered temporal attention module was not used")
+    batch, nodes = inputs["node_mask"].shape
+    return result, {
+        key: value.reshape(batch, nodes, *value.shape[1:])
+        for key, value in observed.items()
+    }
+
+
+def summarize_temporal_attention(arrays: dict[str, np.ndarray], query_l2: float) -> dict:
+    """Describe attention by retrospective event groups, without changing reports."""
+    valid = arrays["occ_node_mask"] > .5
+    weights = arrays["temporal_attention_weights"]
+    shift, mean = arrays["temporal_pool_shift_l2"], arrays["temporal_pool_mean_l2"]
+    if weights.ndim != 3 or weights.shape[:2] != valid.shape or weights.shape[-1] < 1:
+        raise ValueError("Attention weights must share the sample/node grid and contain history steps")
+    if shift.shape != valid.shape or mean.shape != valid.shape:
+        raise ValueError("Temporal pool norms must share the sample/node grid")
+    if not np.isfinite(query_l2) or query_l2 < 0:
+        raise ValueError("Invalid query norm")
+    w = weights[valid]
+    if (not np.isfinite(w).all() or (w < 0).any() or (w > 1).any()
+            or not np.allclose(w.sum(-1), 1., atol=1e-6)):
+        raise ValueError("Invalid attention probability distribution")
+    for value in (shift, mean):
+        if not np.isfinite(value[valid]).all() or (value[valid] < 0).any():
+            raise ValueError("Invalid temporal pool norm")
+    positive = (arrays["event_will"] > .5) & valid
+    masks = {"ongoing": positive & (arrays["event_start"] == 0),
+             "upcoming": positive & (arrays["event_start"] > 0),
+             "negative": valid & ~positive}
+    steps = weights.shape[-1]
+    groups = {}
+    for name, mask in masks.items():
+        selected = weights[mask].astype(np.float64)
+        row = {"count": int(mask.sum()), "mean_weights_oldest_to_newest": None}
+        if mask.any():
+            entropy = -(selected * np.log(np.maximum(selected, 1e-300))).sum(-1)
+            statistics = {
+                "max_weight": selected.max(-1),
+                "total_variation_from_uniform": .5 * np.abs(selected - 1. / steps).sum(-1),
+                "normalized_entropy": entropy / np.log(steps) if steps > 1 else np.zeros_like(entropy),
+                "pool_shift_l2": shift[mask],
+                "pool_shift_over_mean_l2": shift[mask] / np.maximum(mean[mask], 1e-8),
+            }
+            row["mean_weights_oldest_to_newest"] = selected.mean(0).tolist()
+            row.update({key + "_q10_q50_q90": np.quantile(value, [.1, .5, .9]).tolist()
+                        for key, value in statistics.items()})
+        groups[name] = row
+    return {
+        "history_steps": steps, "query_l2": float(query_l2), "groups": groups,
+        "relative_shift_denominator_floor": 1e-8,
+        "scope": "One original forward. Weights use historical GRU states and the learned query only; "
+                 "future labels only stratify statistics. No predictions, thresholds or checkpoint selection "
+                 "change. Attention weights are not causal feature importance. Single-step normalized entropy is zero.",
+    }
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset_dir", type=Path, required=True)
@@ -377,6 +458,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--compare_hot_head", action="store_true", help="Compare existing event and hot forecast outputs without changing reports")
     parser.add_argument("--compare_onset_report", action="store_true", help="Score frozen event-only and history-cold onset-max policies without selecting or changing official reports")
+    parser.add_argument("--inspect_temporal_attention", action="store_true", help="Observe frozen temporal pooling weights and representation changes without changing predictions")
     parser.add_argument("--source_commit", help="Pinned diagnostic Git source when executing this file via stdin")
     parser.add_argument("--thresholds", type=float, nargs="+", default=[
         0.20, 0.30, 0.40, 0.50, 0.55, 0.60, 0.68, 0.75, 0.80, 0.85, 0.90, 0.95,
@@ -401,6 +483,8 @@ def main() -> None:
     )
     if args.compare_onset_report and not checkpoint["model_config"].get("event_onset_aux", False):
         raise ValueError("Onset report comparison requires a checkpoint with an independent onset head")
+    if args.inspect_temporal_attention and getattr(model, "history_attention", None) is None:
+        raise ValueError("Temporal observation requires an attention-readout checkpoint")
     if checkpoint["metadata"]["dataset_manifest_sha256"] != _manifest_hash(
         args.dataset_dir / "dataset_manifest.json"
     ):
@@ -421,7 +505,11 @@ def main() -> None:
     with torch.no_grad():
         for batch in loader:
             batch = {key: value.to(device) for key, value in batch.items()}
-            result = model(**_model_inputs(batch))
+            observed = {}
+            if args.inspect_temporal_attention:
+                result, observed = predict_with_temporal_observation(model, _model_inputs(batch))
+            else:
+                result = model(**_model_inputs(batch))
             values = {key: batch[key] for key in (
                 "sample_index", "y_hot", "remain_mask", "occ_node_mask",
                 "hist_last_hot", "event_will", "event_start",
@@ -437,12 +525,17 @@ def main() -> None:
                 values["event_onset_probability"] = result["event_onset_logit"].sigmoid()
             if args.compare_hot_head:
                 values["predicted_hot_probability"] = result["remain_hot_logit"].sigmoid()
+            values.update(observed)
             for key, value in values.items():
                 collected.setdefault(key, []).append(value.cpu().numpy())
     arrays = {key: np.concatenate(values) for key, values in collected.items()}
     chosen_threshold = float(checkpoint["metadata"]["event_report_threshold"])
     thresholds = sorted(set([*args.thresholds, chosen_threshold]))
     report = summarize_events(arrays, thresholds)
+    if args.inspect_temporal_attention:
+        report["temporal_attention_observation"] = summarize_temporal_attention(
+            arrays, float(model.history_attention.query.norm().item()),
+        )
     if args.compare_hot_head:
         report["prediction_head_comparison"] = summarize_prediction_heads(arrays, chosen_threshold)
     if args.compare_onset_report:

@@ -17,12 +17,100 @@ from diagnose_baseline_events import (
     attach_node_catalog, load_diagnostic_checkpoint, parse_args, summarize_events,
     predicted_hot_run_score, summarize_prediction_heads,
     cold_onset_report_probability, summarize_onset_reports,
+    predict_with_temporal_observation, summarize_temporal_attention,
 )
 from factory_baselines.artifacts import archive_files
 from factory_baselines.b4_gcn_gru import B4GcnGru, B4ModelConfig
+from factory_baselines.b5_gat_gru import B5GatGru, B5ModelConfig
 
 
 class TestEventDiagnostics(unittest.TestCase):
+    def test_temporal_observer_preserves_single_forward_outputs_state_and_rng(self):
+        import test_b5_gat_gru as fixture_module
+        fixture = fixture_module.TestB5GatGru()
+        fixture.setUp()
+        inputs = fixture._inputs(fixture._batch())
+        for cls, cfg, spatial in ((B4GcnGru, B4ModelConfig, "gcn_hidden"),
+                                  (B5GatGru, B5ModelConfig, "gat_hidden")):
+            with self.subTest(model=cls.__name__):
+                model = cls(cfg(6, 2, 5, **{spatial: 8}, gru_hidden=8,
+                                temporal_readout="last_attention")).eval()
+                _, observed = predict_with_temporal_observation(model, inputs)
+                self.assertTrue((observed["temporal_pool_shift_l2"] == 0).all())
+                torch.testing.assert_close(observed["temporal_attention_weights"],
+                                           torch.full_like(observed["temporal_attention_weights"], 1 / inputs["x"].shape[1]))
+                with torch.no_grad():
+                    model.history_attention.query.copy_(torch.linspace(-3, 3, 8))
+                expected = model(**inputs)
+                state = {key: value.clone() for key, value in model.state_dict().items()}
+                rng = torch.get_rng_state().clone()
+                calls = []
+                handle = model.gru.register_forward_hook(lambda *args: calls.append(1))
+                actual, observed = predict_with_temporal_observation(model, inputs)
+                handle.remove()
+                self.assertEqual(len(calls), 1)
+                self.assertTrue(torch.equal(rng, torch.get_rng_state()))
+                for key, value in expected.items():
+                    torch.testing.assert_close(actual[key], value, rtol=0, atol=0)
+                for key, value in state.items():
+                    self.assertTrue(torch.equal(model.state_dict()[key], value))
+                weights = observed["temporal_attention_weights"]
+                self.assertEqual(tuple(weights.shape), (*inputs["node_mask"].shape, inputs["x"].shape[1]))
+                torch.testing.assert_close(weights.sum(-1), torch.ones_like(weights[:, :, 0]))
+                self.assertGreater(float(observed["temporal_pool_shift_l2"].max()), 0)
+                self.assertEqual(len(model.history_attention._forward_hooks), 0)
+                with patch.object(model, "forward", side_effect=RuntimeError("forward failed")):
+                    with self.assertRaisesRegex(RuntimeError, "forward failed"):
+                        predict_with_temporal_observation(model, inputs)
+                self.assertEqual(len(model.history_attention._forward_hooks), 0)
+                with self.assertRaisesRegex(ValueError, "eval"):
+                    predict_with_temporal_observation(model.train(), inputs)
+
+    def test_temporal_summary_strata_masking_and_report_isolation(self):
+        arrays = self._three_class_arrays()
+        original = summarize_events(arrays, [.55])
+        arrays.update(temporal_attention_weights=np.array([[
+            [.25, .25, .25, .25], [0., 0., 0., 1.], [1., 0., 0., 0.], [np.nan] * 4]]),
+            temporal_pool_shift_l2=np.array([[0., 1., .5, np.nan]]),
+            temporal_pool_mean_l2=np.array([[1., 2., 1., np.nan]]))
+        saved = {key: value.copy() for key, value in arrays.items()}
+        report = summarize_temporal_attention(arrays, 1.)
+        upcoming = report["groups"]["upcoming"]
+        self.assertEqual(upcoming["count"], 1)
+        self.assertEqual(upcoming["mean_weights_oldest_to_newest"], [0., 0., 0., 1.])
+        self.assertEqual(upcoming["total_variation_from_uniform_q10_q50_q90"], [.75] * 3)
+        self.assertEqual(upcoming["pool_shift_over_mean_l2_q10_q50_q90"], [.5] * 3)
+        self.assertEqual(report["groups"]["ongoing"]["normalized_entropy_q10_q50_q90"], [1.] * 3)
+        self.assertEqual(original, summarize_events(arrays, [.55]))
+        for key, value in saved.items():
+            np.testing.assert_array_equal(arrays[key], value)
+        arrays["occ_node_mask"][:] = 0
+        empty = summarize_temporal_attention(arrays, 1.)
+        for row in empty["groups"].values():
+            self.assertEqual(row["count"], 0)
+            self.assertIsNone(row["mean_weights_oldest_to_newest"])
+
+    def test_temporal_summary_rejects_invalid_observations_and_defines_one_step(self):
+        arrays = self._three_class_arrays()
+        arrays.update(temporal_attention_weights=np.ones((1, 4, 1)),
+                      temporal_pool_shift_l2=np.zeros((1, 4)),
+                      temporal_pool_mean_l2=np.zeros((1, 4)))
+        report = summarize_temporal_attention(arrays, 0.)
+        self.assertEqual(report["groups"]["upcoming"]["normalized_entropy_q10_q50_q90"], [0.] * 3)
+        self.assertEqual(report["groups"]["upcoming"]["pool_shift_over_mean_l2_q10_q50_q90"], [0.] * 3)
+        for bad in (np.zeros((1, 4, 1)), np.full((1, 4, 1), np.nan),
+                    np.ones((1, 4)), np.ones((2, 4, 1))):
+            with self.assertRaises(ValueError):
+                summarize_temporal_attention({**arrays, "temporal_attention_weights": bad}, 0.)
+        for bad in (np.full((1, 4), -1.), np.full((1, 4), np.nan), np.ones((1, 3))):
+            with self.assertRaises(ValueError):
+                summarize_temporal_attention({**arrays, "temporal_pool_shift_l2": bad}, 0.)
+        with self.assertRaises(ValueError):
+            summarize_temporal_attention(arrays, float("nan"))
+        common = ["--dataset_dir", "data", "--checkpoint", "best.pt", "--output", "result.json"]
+        self.assertFalse(parse_args(common).inspect_temporal_attention)
+        self.assertTrue(parse_args([*common, "--inspect_temporal_attention"]).inspect_temporal_attention)
+
     def test_onset_report_policy_uses_only_predictions_and_history_without_mutation(self):
         event = np.array([[.1, .2, .8, .3]])
         onset = np.array([[.9, .7, .2, .9]])
