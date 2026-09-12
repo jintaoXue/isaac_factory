@@ -107,6 +107,29 @@ E3 = E2 全套 + `--teacher_explore`：ε 探索分支上，以衰减的教师�
 
 E4 = E3 全套 + `--hierarchical_credit` + `--b_score_rl`：A/B 决策奖励缩放（默认 A×2.0、B×1.5），B 排序探索率减半。关闭 H 时缩放强制为 1.0（不再被 YAML 误开）。wandb：`Hier4TPA-E4-N10-S42`。预算同 E1–E3。
 
+## 开关契约（防静默泄漏）
+
+| 开关 | 默认（`hier.yaml`） | 生效规则 |
+|---|---|---|
+| `hierarchical_credit` | `False` | **关** → 有效 `credit_scale_A/B` **强制 1.0**（忽略 YAML/CLI 里的 2.0/1.5） |
+| `credit_scale_A/B` | `1.0` | **仅当** `hierarchical_credit=true` 时生效；E4 / E*.5 显式设 `2.0/1.5` |
+| `b_score_rl` | `False` | 与 H **正交**；`--hierarchical_credit` **不会**自动打开它 |
+| `teacher_explore` | `False` | E3+ 由 journal / `--teacher_explore` 打开 |
+| `oru` | — | E2+ 由 `--oru` + 教师库路径打开 |
+
+**启动日志**必含：`hier_credit=… (A=… B=…) b_score_rl=… teacher_explore=… oru=…`。  
+对 `algo_variant∈{E1,E1.5,…,E4}`，`HierarchicalTPA` 会按上表 **断言** 有效开关；不一致直接 `RuntimeError`，避免再静默跑偏。
+
+| 编号 | H | b_score | A/B | teacher_explore | oru |
+|---|---|---|---|---|---|
+| E1 | 关 | 关 | 1/1 | 关 | 关 |
+| E1.5 | 开 | 关 | 2/1.5 | 关 | 关 |
+| E2 | 关 | 关 | 1/1 | 关 | 开 |
+| E2.5 | 开 | 关 | 2/1.5 | 关 | 开 |
+| E3 | 关 | 关 | 1/1 | 开 | 开 |
+| E3.5 | 开 | 关 | 2/1.5 | 开 | 开 |
+| E4 | 开 | 开 | 2/1.5 | 开 | 开 |
+
 ## E5 / E6（规划；代码入口未接）
 
 | 编号 | 设置 | wandb 名（规划） |
@@ -160,7 +183,7 @@ E0 只评测；E1–E6 分别从同一个 T0 checkpoint 初始化，教师固定
 - **热启动（旧 W）**：先接通训练加载，严格校验 encoder 和各 Q head；更新前与教师输出一致。当前 checkpoint 是权重热启动，不是完整续训。
 - **教师数据（旧 T2 / ORU）**：教师仅在训练订单采库。建议先取 25% 教师＋75% 在线样本，不做大量离线 warmup；当前 `oru_warmup_updates=0` 是自动设置，不是关闭。
 - **教师探索（旧 +E）**：只在 epsilon 探索分支选择教师/随机动作，教师比例逐步下降；动作必须满足当前 mask。初始师生相同时可能无收益，需看实际偏离和失败率。
-- **层级学习（旧 H）**：`hierarchical_credit=false` 时 A/B 缩放**强制为 1.0**（已修：不再被 YAML 误开）。`true` 时默认 A×2.0、B×1.5，并通常开 `b_score_rl`（B 排序 ε×0.5）。首轮固定缩放，不额外搜索。
+- **层级学习（旧 H）**：`hierarchical_credit` 与 `b_score_rl` **正交**（E*.5 只开缩放；E4 两者都开）。`hierarchical_credit=false` 时 A/B 缩放**强制为 1.0**（已修：不再被 YAML 误开）。`true` 且未显式给 scale 时默认 A×2.0、B×1.5；`b_score_rl` 默认 False，开则 B 排序 ε×0.5。首轮固定缩放，不额外搜索。启动时对已知 `algo_variant` 做开关断言。
 - **历史污染（已改名）**：2026-09-11 修复前，YAML 写死 `credit_scale_A/B=2.0/1.5` 且关 H 仍生效。原 E1/E2/E3 污染跑已改名为 **E1.5 / E2.5 / E3.5**（`m3nz6opg` / `2mq6zow7`+`zvjalw62` / `31rt1h7i`）。完整 E4 = E3.5 + `b_score_rl`。修复后脚本重跑的 E1–E3 才是纯净版（关 H → A=B=1.0）。
 - **自回归增强（旧 A）**：先实现分层 epsilon 和少量合法候选采样，固定候选评分规则。不能替换 replay 的上游动作后沿用原奖励/下一状态；不同动作的真实转移需重新采集。Scheduled sampling / TF 留待单独设计，不直接搬入 DQN 的 TD 更新。当前 **E5 / E6 入口尚未实现**。
 

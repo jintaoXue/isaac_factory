@@ -131,13 +131,13 @@ parser.add_argument(
     "--hierarchical_credit",
     action="store_true",
     default=False,
-    help="T1RH: scale A/B vs C/D decision rewards (layered credit assignment).",
+    help="Enable A/B credit scales (does NOT enable b_score_rl; pass --b_score_rl for E4).",
 )
 parser.add_argument(
     "--b_score_rl",
     action="store_true",
     default=False,
-    help="T1RH: emphasize B-score RL ranking (lower ε on B).",
+    help="Enable B-score RL ranking (lower ε on B). Orthogonal to --hierarchical_credit.",
 )
 parser.add_argument(
     "--algo_variant",
@@ -367,9 +367,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         algo_cfg["params"]["config"]["dueling_dqn"] = True
     if getattr(args_cli, "noisy_net", False):
         algo_cfg["params"]["config"]["noisy_net"] = True
+    # hierarchical_credit and b_score_rl are orthogonal (E*.5: credit only; E4: both).
     if getattr(args_cli, "hierarchical_credit", False):
         algo_cfg["params"]["config"]["hierarchical_credit"] = True
-        algo_cfg["params"]["config"]["b_score_rl"] = True
     if getattr(args_cli, "b_score_rl", False):
         algo_cfg["params"]["config"]["b_score_rl"] = True
     if getattr(args_cli, "algo_variant", None):

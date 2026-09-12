@@ -541,6 +541,8 @@ run_test_28() {
         _dueling_flag="--dueling_dqn"
     fi
     if [ "${HC_HIER_CREDIT:-0}" = "1" ]; then
+        # Legacy T1RH bundle: credit scales + b_score together.
+        # Journal E*.5 must NOT use this path (orthogonal flags via hydra).
         _credit_flag="--hierarchical_credit"
         _bscore_flag="--b_score_rl"
     fi

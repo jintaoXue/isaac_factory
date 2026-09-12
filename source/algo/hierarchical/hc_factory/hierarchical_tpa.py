@@ -140,6 +140,47 @@ class HierarchicalTPA:
         A product sequencing → B product selection → C task planning → D allocation
     """
 
+    # Journal E* expected effective knobs: (H, b_score, A, B, teacher_explore, oru).
+    _VARIANT_KNOB_EXPECT = {
+        "E1": (False, False, 1.0, 1.0, False, False),
+        "E1.5": (True, False, 2.0, 1.5, False, False),
+        "E2": (False, False, 1.0, 1.0, False, True),
+        "E2.5": (True, False, 2.0, 1.5, False, True),
+        "E3": (False, False, 1.0, 1.0, True, True),
+        "E3.5": (True, False, 2.0, 1.5, True, True),
+        "E4": (True, True, 2.0, 1.5, True, True),
+        "E5": (False, False, 1.0, 1.0, True, True),
+        "E6": (True, True, 2.0, 1.5, True, True),
+    }
+
+    def _assert_experiment_knobs(self, config: dict) -> None:
+        """Fail fast on silent YAML/CLI drift for known journal variants."""
+        raw_A = float(config.get("credit_scale_A", 1.0))
+        raw_B = float(config.get("credit_scale_B", 1.0))
+        if not self.hierarchical_credit and (abs(raw_A - 1.0) > 1e-9 or abs(raw_B - 1.0) > 1e-9):
+            print(
+                f"[Hier] WARN: hierarchical_credit=false → effective A=B=1.0 "
+                f"(ignored config credit_scale_A={raw_A} B={raw_B})"
+            )
+        v = str(self.algo_variant or "").replace("_", ".")
+        expect = self._VARIANT_KNOB_EXPECT.get(v)
+        if expect is None:
+            return
+        got = (
+            self.hierarchical_credit,
+            self.b_score_rl,
+            float(self.credit_scale_A),
+            float(self.credit_scale_B),
+            self.teacher_explore,
+            self._oru_enabled,
+        )
+        if got != expect:
+            raise RuntimeError(
+                f"[Hier] knob mismatch for algo_variant={v}: "
+                f"got H/bscore/A/B/te/oru={got} expected {expect}. "
+                f"Check journal script, YAML, and train.py flags."
+            )
+
     def __init__(self, base_name, params):
         config = params["config"]
         self.config = config
@@ -207,8 +248,8 @@ class HierarchicalTPA:
         }
         self.algo_variant = str(config.get("algo_variant") or "T0")
         self.hierarchical_credit = bool(config.get("hierarchical_credit", False))
-        # Gate A/B credit scales on the flag. YAML used to hard-code 2.0/1.5, which
-        # made hierarchical_credit=false still apply H scales (protocol E4 delta broken).
+        # Gate A/B credit scales on the flag only. Ignoring YAML scales when H is off
+        # prevents the historical E1/E2/E3 pollution (YAML 2.0/1.5 with H=false).
         if self.hierarchical_credit:
             self.credit_scale_A = float(config.get("credit_scale_A", 2.0))
             self.credit_scale_B = float(config.get("credit_scale_B", 1.5))
@@ -216,7 +257,8 @@ class HierarchicalTPA:
             self.credit_scale_A = 1.0
             self.credit_scale_B = 1.0
         self.credit_scale_CD = float(config.get("credit_scale_CD", 1.0))
-        self.b_score_rl = bool(config.get("b_score_rl", self.hierarchical_credit))
+        # b_score is independent of hierarchical_credit (default False).
+        self.b_score_rl = bool(config.get("b_score_rl", False))
         # Explore / teacher dumps the whole online buffer as offline replay — keep enough capacity.
         if bool(config.get("explore") or config.get("explore_catalog") or config.get("teacher_collect")) and bool(
             config.get("explore_save_offline_replay", True)
@@ -286,8 +328,10 @@ class HierarchicalTPA:
             f"dueling={dqn_kwargs['dueling']} noisy={dqn_kwargs['noisy']} "
             f"hier_credit={self.hierarchical_credit} "
             f"(A={self.credit_scale_A} B={self.credit_scale_B} CD={self.credit_scale_CD}) "
-            f"b_score_rl={self.b_score_rl} teacher_explore={self.teacher_explore}"
+            f"b_score_rl={self.b_score_rl} teacher_explore={self.teacher_explore} "
+            f"oru={self._oru_enabled}"
         )
+        self._assert_experiment_knobs(config)
 
         self.train_dir = config.get("train_dir", "runs")
         self.experiment_dir = os.path.join(self.train_dir, config["full_experiment_name"])

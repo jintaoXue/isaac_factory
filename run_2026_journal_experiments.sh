@@ -280,7 +280,8 @@ run_e1_5_train() {
         echo "错误: 缺少教师权重目录: ${load_dir}" >&2
         return 1
     fi
-    # Do NOT pass --hierarchical_credit (that auto-enables b_score_rl in train.py).
+    # Prefer hydra overrides so credit_scale_* and b_score_rl stay explicit.
+    # --hierarchical_credit alone no longer forces b_score_rl (orthogonal flags).
     local -a cmd=(
         python train.py --task HRTPaHC-v1 --algo hier
         --device "${DEVICE}" --num_envs 1 --headless --seed 42
