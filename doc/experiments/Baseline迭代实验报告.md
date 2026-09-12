@@ -2399,3 +2399,72 @@ config、运行记录、文件哈希及八份诊断摘要，SHA-256：
 `8f4df2ad370dd9dd9870d2cae862caec8c88a4cd4f3bded3199878864f9d4a86`。
 此时 B5 seed42 实际进程 PID=104896，观察到 epoch10；seed43 尚未开始。
 训练 pane 存活，B4 诊断 pane 已退出 0。整批代码继续固定 df9ee0e，未新增搜索或评 test。
+
+### 30.5 B5 seed42 训练完成，seed43 继续
+
+B5 seed42 的 `dense_control_onsetaux20260912.json` 已为 validation_completed，best7、
+total27；正式 validation P/R/F1/upcoming R 为
+0.80982906/0.69223744/0.74643033/0.03448276，即 upcoming 5/145。相较近窗父对照
+1/145 多 4 个命中，但 precision 从约 0.846 降至约 0.810，不能据单颗 seed 宣称稳定
+判别或泛化提升。仍按原 report F1 选模；B5 seed43 已开始，最近观察到 epoch7。
+
+在确认该组完成、诊断 pane 已退出 0、新文件标签未占用后，复用 baseline_dense_diag
+启动 seed42 best/last × train/validation 四份诊断（启动 pane PID=117275）。最近已
+四份均已完成：best 原事件头 AP train/validation 为 0.013069/0.007142，辅助头为
+0.088299/0.021978；last 原事件头为 0.468398/0.009923，辅助头为
+0.668891/0.030574。权重、诊断源码与提交 df9ee0e、manifest、epoch7/27 和样本数
+23859/5439 均核验通过；best validation canonical 指标与保存 metrics 在 1e-10
+容差内一致。诊断 pane 正常退出 0。不得重复启动已有输出。
+
+B5 seed42 的 start/duration/remain MAE 分别为 0.03957784/2.18840814/13.41996141
+分钟。B5 两颗 seed 的实际 config 与各自近窗父对照相比，仅新增 onset 辅助头、其
+损失系数和 profile 名称，完整输入契约相同。分组审计还确认：当前 208 包所有 train/
+validation upcoming 的历史末窗均为 cold；这限制了历史 hot 门控抬升的直接作用范围，
+不能外推到主模型 204 包。
+
+2026-09-13 后续核验 B5 seed43 已正常完成，best5/total25；validation
+P/R/F1/upcoming R 为 0.84044944/0.68310502/0.75365239/0.01379310（2/145），
+ongoing R 为 0.78526316，阈值 0.70，start/duration/remain MAE 为
+0.02406417/2.34715843/15.00381604 分钟。训练 pane dead=1、exit=0，未发现训练
+Python 进程。继续以固定 df9ee0e 补齐 seed43 best/last 的 train/validation 四份
+诊断，文件及日志使用已登记的独占标签；当前前 12/16 份诊断已完成核验。
+
+## 31. 远历史摘要对照准备
+
+这一项独立检验已确认的主分支信息范围差异：原 30 分钟编码历史保持不变，另提供
+编码窗之前最多 30 分钟的 5 项摘要。该对照以已经完成的 near_precursor 为父方案，
+不在 onset_aux 上叠加新机制。当前主模型正式 204-episode checkpoint 尚未重评，
+因此它只检验当前 208-episode baseline 的信息预算，不冒称主模型正式输入已全部对齐。
+
+### 31.1 真实 baseline 构建路径核验完成
+
+服务器以固定 df9ee0e 的既有 attach_precursor，分别构建 near 与 near_far 的
+train/validation 输入；未改训练源码或当前训练。结果为
+`baseline_far_precursor_contract20260912.json`（3984 bytes），SHA-256：
+`1d6ae2b96d60d621027481582778fd15dc4861f22283a12b3abb908b94d41808`。
+
+核验覆盖实际共享张量的 train 23859、validation 5439 个样本：
+
+- 前 18 个摘要通道逐元素完全一致，near 模式的后 5 维严格为零；未请求的行没有构建摘要。
+- near 的完整输入契约与冻结近窗父结果一致；两模式契约仅 mode、额外历史窗数和远历史
+  字段策略不同。时间边界及前缀不变性的证据另见 27.11 的全量历史审计与已有边界测试。
+- 有非零远历史摘要的 train/validation 样本为 23721/5409，全部构建值有限。
+- B4/B5 各两颗 seed 的近窗/远历史模型初始权重和 RNG 状态完全一致；参数量分别为
+  B4 273054、B5 285982。使用相同 23 维投影，不通过增加模型容量混入额外收益。
+- manifest、split、normalization、sample index 和 episodes.npz 的前后哈希一致。
+  使用现有共享张量缓存，只处理 train/validation 历史输入；不使用标签做该审计，未训练
+  或评估 test。此结果证明输入构建与容量控制可用，不是模型性能结果。
+
+### 31.2 后续受控训练注册（尚未启动）
+
+预登记 `far_precursor` / `farprec20260913`，B4/B5 各 seed42/43，共 4 次，从头训练、
+最多 60 epoch。其参数、损失、均匀抽样、优化器、学习率、早停、阈值列表和 canonical
+report F1 选模沿用 near_precursor；event_onset_aux=false、lambda_event_onset_aux=0。
+唯一信息变化为后 5 维从零改为更早历史的 4 个均值（queue、blocked、inbound wait、
+material shortage）和 queue 最大值；不提供原始未来数据、事件标签或 run/scenario ID。
+
+必须先等当前 onset_aux 四次训练及对应冻结诊断全部结束，保存完整结果并核验已退出
+进程；随后复用原目录、用唯一标签逐文件验证归档当前 onset 权重，再运行远历史对照。
+不能把旧 near 结果文件路径误当成当前 onset 权重，或在运行中的服务器 pull 代码。
+正式比较仍报告每颗 seed、均值、upcoming AP/recall、误报和时间 MAE；未使用 test
+调参。这个注册不是“已开训”或“已改善”，也不改变现有实验的选模与结果。

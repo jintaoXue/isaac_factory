@@ -1,5 +1,6 @@
 {
-  "status": "onset_aux_four_run_batch_active",
+  "status": "onset_aux_four_training_runs_completed_final_diagnostics_active",
+  "last_updated_local_date": "2026-09-13",
   "handoff_date": "2026-09-12",
   "optimization_goal_met": false,
   "continue_automatically": true,
@@ -9,11 +10,11 @@
   "terminal_state_verification": {
     "server_branch": "dev_xwt",
     "server_code_at_verification": "df9ee0e",
-    "baseline_dense_v6": {"pane_dead": false, "exit_code": null, "startup_pane_pid": 94376},
-    "baseline_dense_diag": {"pane_dead": true, "exit_code": 0},
+    "baseline_dense_v6": {"pane_dead": true, "exit_code": 0, "startup_pane_pid": 94376},
+    "baseline_dense_diag": {"pane_dead": false, "exit_code": null, "purpose": "B5 seed43 best/last train/validation diagnostics"},
     "matching_training_or_diagnostic_processes": 1,
-    "training_python_pid_at_verification": 104896,
-    "last_checkpoint_diagnostics_verified": 8,
+    "training_python_pid_at_verification": null,
+    "best_and_last_checkpoint_diagnostics_verified": 12,
     "other_users_processes_modified": false
   },
   "experiment_role": "exploratory_dense_migration_control_not_formal_main_comparison",
@@ -245,14 +246,14 @@
     "conclusion": "Do not adopt hot union: negligible extra upcoming with extra negative crossings."
   },
   "onset_auxiliary_experiment": {
-    "status": "four_run_batch_started_first_python_and_archive_verified",
+    "status": "four_training_runs_completed_12_of_16_diagnostics_verified",
     "code_commit": "df9ee0e",
     "server_tests_passed": 11,
     "tmux": "baseline_dense_v6",
     "training_log": "onsetaux20260912_train.log",
     "startup_pane_pid": 94376,
     "startup_python_pid": 94392,
-    "latest_verified_progress": "B4 both runs completed: best1/5, total11/15, upcoming hits0/3 of145. B4 eight best/last train/validation diagnostics verified and exported. B5 seed42 Python104896 observed at epoch10, seed43 not started; training pane alive, diagnostics pane exited0. Server remains df9ee0e; recheck actual processes.",
+    "latest_verified_progress": "All four training runs completed, pane exit0. B5 seed42 best7/total27, upcoming5/145; seed43 best5/total25, upcoming2/145. B4 eight and B5 seed42 four diagnostics verified. B5 seed43 four diagnostics launched in reused exited pane; server remains df9ee0e. Recheck actual processes.",
     "variant": "onset_aux",
     "archive_tag": "onsetaux20260912",
     "parent_variant": "near_precursor",
@@ -1026,5 +1027,151 @@
     "upcoming_probability_misses_at_0_30_and_0_65": 143,
     "upcoming_timing_misses_at_0_30_and_0_65": 0,
     "next_registered_comparison": "graph_context; event head only; identical inputs, seeds and budgets"
+  },
+  "onset_auxiliary_B5_progress_20260913": {
+    "status": "both_training_runs_completed_seed42_four_diagnostics_verified_seed43_four_launched",
+    "source_commit": "df9ee0e8a91a97f49be46d9d5c15cf0e694d59ab",
+    "seed_order": [
+      42,
+      43
+    ],
+    "best_epoch": [
+      7,
+      5
+    ],
+    "epochs_trained": [
+      27,
+      25
+    ],
+    "report_precision": [
+      0.80982906,
+      0.84044944
+    ],
+    "report_recall": [
+      0.69223744,
+      0.68310502
+    ],
+    "report_f1": [
+      0.74643033,
+      0.75365239
+    ],
+    "report_recall_upcoming": [
+      0.03448276,
+      0.0137931
+    ],
+    "upcoming_hits": [
+      5,
+      2
+    ],
+    "upcoming_targets_each_run": 145,
+    "report_threshold": [
+      0.55,
+      0.7
+    ],
+    "ongoing_recall": [
+      0.79263158,
+      0.78526316
+    ],
+    "start_mae_minutes": [
+      0.03957784,
+      0.02406417
+    ],
+    "duration_mae_minutes": [
+      2.18840814,
+      2.34715843
+    ],
+    "remain_mae_minutes": [
+      13.41996141,
+      15.00381604
+    ],
+    "seed42_ap_train_validation": {
+      "best_event": [
+        0.013069,
+        0.007142
+      ],
+      "best_onset": [
+        0.088299,
+        0.021978
+      ],
+      "last_event": [
+        0.468398,
+        0.009923
+      ],
+      "last_onset": [
+        0.668891,
+        0.030574
+      ]
+    },
+    "seed42_diagnostic_provenance_verified": "All four checkpoint/source/manifest hashes, commit, epochs7/27, sample counts23859/5439 and canonical best validation metrics checked; tolerance1e-10",
+    "both_seed_config_parity_verified": "Only onset head, auxiliary loss coefficient and profile differ from near parents; input contracts identical",
+    "upcoming_with_hot_history_train_validation": [
+      0,
+      0
+    ],
+    "new_onset_head_used_for_reports": false,
+    "test_evaluated": false,
+    "precision_note": "Metrics rounded to eight decimals; AP to six; complete records retained on server",
+    "conclusion": "No basis yet for stable improvement or backbone incapacity; independent onset alarm decoding has not been evaluated."
+  },
+  "far_precursor_actual_attachment_audit_20260912": {
+    "status": "passed_actual_baseline_near_far_attachment_and_model_parity",
+    "source_commit": "df9ee0e",
+    "server_result": "baseline_far_precursor_contract20260912.json",
+    "server_result_bytes": 3984,
+    "server_result_sha256": "1d6ae2b96d60d621027481582778fd15dc4861f22283a12b3abb908b94d41808",
+    "train_validation_samples": [
+      23859,
+      5439
+    ],
+    "near_first18_exact_equal": true,
+    "near_mode_last5_strict_zero": true,
+    "nonzero_far_summary_samples": [
+      23721,
+      5409
+    ],
+    "all_constructed_values_finite": true,
+    "all_four_model_seed_pairs_initial_state_and_rng_equal": true,
+    "parameter_count_B4_B5": [
+      273054,
+      285982
+    ],
+    "near_contract_matches_frozen_parent_configs": true,
+    "contract_changed_fields": [
+      "mode",
+      "extra_history_windows_max",
+      "far_field_policy"
+    ],
+    "source_files_before_after_hash_equal": [
+      "dataset_manifest",
+      "split_manifest",
+      "normalization",
+      "model_sample_index",
+      "episodes.npz"
+    ],
+    "labels_used": false,
+    "test_evaluated": false,
+    "performance_experiment": false
+  },
+  "far_precursor_registered_20260913": {
+    "status": "preregistered_not_launched",
+    "variant": "far_precursor",
+    "archive_tag": "farprec20260913",
+    "parent_variant": "near_precursor",
+    "models": [
+      "B4",
+      "B5"
+    ],
+    "seeds": [
+      42,
+      43
+    ],
+    "max_epochs_each": 60,
+    "event_onset_aux": false,
+    "lambda_event_onset_aux": 0,
+    "only_input_change": "Five formerly zero summary channels carry history[max(0,t-60):t-30]; original 30-window encoder and near summary unchanged",
+    "training_selection_scoring_and_parameter_count_unchanged": true,
+    "launch_prerequisites": "Complete and verify all sixteen onset diagnostics; preserve full four-run results; confirm exited processes; verify archives in existing directories before reuse",
+    "formal_main_204_checkpoint_alignment_claimed": false,
+    "test_for_selection": false
   }
 }
