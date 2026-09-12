@@ -3187,3 +3187,41 @@ train/validation，继续核验归档、模型实际配置、来源及最终指�
 训练中pull源码；底层模型模块保持371afb6。输出登记为
 b4_seed42_train_diagnostics_postgru20260913.json等，last权重在diagnostics前加last_。
 本节为准备状态，真实权重诊断尚未运行。
+
+### 36.3 B4 seed42训练与四份冻结诊断完成
+
+首组正常完成，best epoch1、total11，正式validation P/R/F1为
+0.8208791208791208/0.6821917808219178/0.7451371571072319，阈值0.55，
+upcoming为1/145（0.006896551724137931）。相同seed的near父对照为2/145，
+F1=0.74531095755，本seed没有upcoming改善；不将单seed结果外推整批。
+
+验证record/config/summary、7项现有文件SHA和旧timeattention归档11成员后，
+冻结输入快照baseline_postgru_b4s42_diagnostic_inputs20260913.json（29175 bytes）。
+新增观察源码5cfce2d65074860d17e454dc7c32f7375d294312，SHA为
+704a4fc94bf6951bb12e39148cd3a9b9f3dd51126d6f259f6bdfe4e1c41f4bf1；服务器3项
+定向检查通过。源码经Git对象stdin执行，底层模型模块及HEAD始终为371afb6。
+复用baseline_dense_diag，pane PID278553，首个诊断Python278558，日志
+postgru20260913_b4s42_diagnose.log。四份best/last × train/validation均正常完成，
+pane退出0，日志DIAG_BATCH_EXIT_CODE=0。
+
+| 观察项 | Best train | Best validation | Last train | Last validation |
+|---|---:|---:|---:|---:|
+| upcoming-vs-negative AP | 0.005445 | 0.005887 | 0.054607 | 0.010036 |
+| upcoming图残差/原历史表示L2，中位数 | 1.026171 | 1.071347 | 0.475858 | 0.488301 |
+| 输出投影权重L2 | 2.849632 | 2.849632 | 3.598016 | 3.598016 |
+
+表中诊断值保留六位小数，精确值在完整导出。权重/诊断源码/manifest/epoch和样本数
+均核验；train/validation目标分母严格复现，图观察分组与原事件分组一致。Best
+validation的P/R/F1、ongoing/upcoming recall、who指标及事件计数与原保存正式
+结果在1e-10内相同。该核验没有声称CPU/GPU的连续时长误差逐位相同。六个实际
+运行模块逐文件与371afb6 Git对象相同，近窗父对照导出哈希也再次通过。
+
+新路径不是零初始化后未参与计算，但非零或较大更新不等于有效提前信号。后期训练
+排序有所改善，validation改善有限，所选best仍只命中1/145；不采用首seed为替代
+方案，也不据此宣称骨干上限。B4 seed43已接续且实际Python276207仍活跃，B5两组
+尚未开始；不得重复启动批次或把普通目录中的不同阶段权重混淆。
+
+完整首组导出baseline_dense_postgru_b4s42_metrics_20260913.json，548096 bytes，
+SHA-256：034447da244ab18f376471a3c2dd18960dd284a8db76cdf640d91f14607e68b9。
+含完整训练快照、四份诊断及保存阈值报告、原文件与运行模块哈希、近窗父对照来源。
+本轮无test，未更改阈值或checkpoint选择规则。

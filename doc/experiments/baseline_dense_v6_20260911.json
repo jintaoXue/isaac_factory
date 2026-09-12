@@ -1,7 +1,63 @@
 {
-  "status": "input_identity_completed_history_graph_refine_training_started_goal_not_met",
+  "status": "history_graph_B4_seed42_completed_verified_remaining_training_live_goal_not_met",
+  "history_graph_B4_seed42_completed_20260913": {
+    "status": "training_and_four_diagnostics_completed_verified",
+    "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",
+    "best_epoch": 1,
+    "epochs_trained": 11,
+    "validation_metrics": {
+      "report_precision": 0.8208791208791208,
+      "report_recall": 0.6821917808219178,
+      "report_f1": 0.7451371571072319,
+      "report_recall_upcoming": 0.006896551724137931,
+      "upcoming_hits": 1,
+      "upcoming_targets": 145,
+      "report_threshold": 0.55
+    },
+    "diagnostic_column_order": [
+      "best_train",
+      "best_validation",
+      "last_train",
+      "last_validation"
+    ],
+    "upcoming_ap": [
+      0.005445,
+      0.005887,
+      0.054607,
+      0.010036
+    ],
+    "upcoming_relative_graph_update_median": [
+      1.026171,
+      1.071347,
+      0.475858,
+      0.488301
+    ],
+    "output_projection_weight_l2": [
+      2.849632,
+      2.849632,
+      3.598016,
+      3.598016
+    ],
+    "diagnostic_precision_note": "Six decimal transcription; exact values in server export",
+    "server_export": "baseline_dense_postgru_b4s42_metrics_20260913.json",
+    "server_export_bytes": 548096,
+    "server_export_sha256": "034447da244ab18f376471a3c2dd18960dd284a8db76cdf640d91f14607e68b9",
+    "all_weight_source_manifest_epoch_sample_and_group_count_checks_passed": true,
+    "canonical_best_validation_counts_and_P_R_F1_match_saved_within_1e_10": true,
+    "six_runtime_modules_match_371afb6": true,
+    "diagnostic_exit_code": 0,
+    "other_training_live": {
+      "model": "B4",
+      "seed": 43,
+      "python_pid": 276207,
+      "pane_pid": 272151
+    },
+    "B5_started": false,
+    "test_evaluated": false,
+    "decision": "No gain in this seed; learned graph path is active but last train/validation ranking gap persists. Await registered remaining runs; no adoption or backbone ceiling claim."
+  },
   "history_graph_observation_preparation_20260913": {
-    "status": "implemented_locally_tested_not_run",
+    "status": "B4_seed42_four_diagnostics_completed_verified_other_runs_pending",
     "flag": "--inspect_history_graph",
     "training_runtime_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",
     "local_tests": 33,
@@ -18,7 +74,13 @@
       "last.pt"
     ],
     "new_training": false,
-    "test_evaluated": false
+    "test_evaluated": false,
+    "diagnostic_source_commit": "5cfce2d65074860d17e454dc7c32f7375d294312",
+    "diagnostic_source_sha256": "704a4fc94bf6951bb12e39148cd3a9b9f3dd51126d6f259f6bdfe4e1c41f4bf1",
+    "server_tests": 3,
+    "first_diagnostic_pane_pid": 278553,
+    "first_diagnostic_python_pid": 278558,
+    "first_batch_exit_code": 0
   },
   "history_graph_refine_registered_20260913": {
     "status": "server_preflight_passed_four_run_batch_started_first_B4_seed42_live",

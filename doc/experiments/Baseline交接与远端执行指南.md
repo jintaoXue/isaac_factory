@@ -146,6 +146,16 @@ B4/B5总参数289630/302686。服务器保持训练提交371afb6，训练中不p
 终态后按best/last × train/validation诊断。源码将经Git对象stdin执行，不pull
 运行中的模型模块，不因观察到非零更新就宣称召回改善，详见36.2。
 
+postgru首组B4 seed42已正常完成：best1/total11，P/R/F1为
+0.82087912/0.68219178/0.74513716，阈值0.55，upcoming=1/145。四份best/last
+train/validation诊断也已完成并核验，源码5cfce2d经stdin执行，诊断pane278553
+退出0。Last AP train/validation为0.054607/0.010036；upcoming图残差相对原表示
+范数中位数约0.476/0.488，说明路径活跃但尚无收益。完整导出
+baseline_dense_postgru_b4s42_metrics_20260913.json，548096 bytes，SHA
+034447da244ab18f376471a3c2dd18960dd284a8db76cdf640d91f14607e68b9。
+B4 seed43实际Python276207仍在训练，B5两组尚未开始；训练pane272151仍live，
+底层模型/HEAD保持371afb6。不要重复首组诊断，不在训练中pull，详见36.3。
+
 ### 2026-09-12 新对话续接：输入审计已完成
 
 用户已授权继续优化；下方旧对话停止记录仅用于追溯，不是本轮停止指令。
