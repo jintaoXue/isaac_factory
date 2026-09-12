@@ -54,8 +54,9 @@ params:
     noisy_std: 0.5
     # T1RH: layered credit + B-score RL emphasis
     hierarchical_credit: False
-    credit_scale_A: 2.0
-    credit_scale_B: 1.5
+    # Scales only apply when hierarchical_credit=true (see HierarchicalTPA); E4 sets 2.0/1.5.
+    credit_scale_A: 1.0
+    credit_scale_B: 1.0
     credit_scale_CD: 1.0
     b_score_rl: False
     algo_variant: T0

@@ -1,7 +1,7 @@
 # T0 热启动：递进实验命名与方案（E0–E5）
 
 > **现行实验协议**（原 `t0_finetuning_research_plan.md`）。旧版 T0–T4 / +RHC 看板见 `docs/experiment_protocol_old.md`。  
-> E0 / E1 / E2 / E3 / TEACHER 入口：`./run_2026_journal_experiments.sh E0|E1|E2|E3|TEACHER [cuda:0]`。
+> E0 / E1 / E1.5 / E2 / E3 / E3.5 / E4 / TEACHER 入口：`./run_2026_journal_experiments.sh E0|E1|E1.5|E2|E3|E3.5|E4|TEACHER [cuda:0]`。
 
 **目标：固定 N=10，从同一个 T0 checkpoint 出发，在有限新增预算下改善 makespan 与成功率。**
 
@@ -75,7 +75,29 @@ E2 = E1 热启设定 + `--oru` 读教师库
 ./run_2026_journal_experiments.sh E3 cuda:0
 ```
 
-E3 = E2 全套 + `--teacher_explore`：ε 探索分支上，以衰减的教师比例选冻结 T0 贪心动作，其余为 mask 合法随机；利用分支仍用学生 ε=0。默认 `teacher_explore_ratio` 1→0 / 300k env steps。wandb：`Hier4TPA-E3-N10-S42`。预算同 E1/E2（`HC_MAX_TRAIN_EPISODES`，默认 60）。
+E3 = E2 全套 + `--teacher_explore`：ε 探索分支上，以衰减的教师比例选冻结 T0 贪心动作，其余为 mask 合法随机；利用分支仍用学生 ε=0。默认 `teacher_explore_ratio` 1→0 / 300k env steps。wandb：`Hier4TPA-E3-N10-S42`。预算同 E1/E2（`HC_MAX_TRAIN_EPISODES`，默认 60）。**协议纯净 E3 不含信用缩放**（关 H → A=B=1.0）。
+
+## E1.5 / E3.5（信用缩放消融支线）
+
+```bash
+./run_2026_journal_experiments.sh E1.5 cuda:0
+./run_2026_journal_experiments.sh E3.5 cuda:0
+```
+
+| 编号 | 设置 | 说明 |
+|---|---|---|
+| **E1.5** | E1 + A×2.0 / B×1.5，**无** `b_score_rl` | 只开信用缩放 |
+| **E3.5** | E3 + A×2.0 / B×1.5，**无** `b_score_rl` | E3 + 只开信用缩放；相对 E4 少 B-score |
+
+历史污染跑已改名归档：W&B `m3nz6opg` → `Hier4TPA-E1.5-N10-S42`，`31rt1h7i` → `Hier4TPA-E3.5-N10-S42`（本地 `params`/`metrics`/`RELABEL.md` 同步）。
+
+## E4 运行入口
+
+```bash
+./run_2026_journal_experiments.sh E4 cuda:0
+```
+
+E4 = E3 全套 + `--hierarchical_credit` + `--b_score_rl`：A/B 决策奖励缩放（默认 A×2.0、B×1.5），B 排序探索率减半。关闭 H 时缩放强制为 1.0（不再被 YAML 误开）。wandb：`Hier4TPA-E4-N10-S42`。预算同 E1–E3。
 
 ## 1. 命名规则与主实验表
 
@@ -87,9 +109,11 @@ E0 只评测；E1–E5 分别从同一个 T0 checkpoint 初始化，教师固定
 |---|---|---|---|---|
 | **E0** | 原始版 | — | 已有 T0，仅评测 | T0 |
 | **E1** | 微调版 | 权重热启动后继续训练 | T0 权重＋低学习率在线微调 | T0+W |
+| **E1.5** | 微调+信用 | 仅 A/B 信用缩放 | E1＋A×2.0/B×1.5（无 b_score） | 消融支线 |
 | **E2** | 数据复用版 | 教师数据＋ORU | E1＋冻结 T0 采库、混合回放 | T2+W |
 | **E3** | 教师探索版 | 教师引导在线探索 | E2＋探索分支中教师/随机动作混合，教师比例衰减 | T2+E+W |
-| **E4** | 层级学习版 | B-score RL＋A/B 信用缩放 | E3＋层级学习机制 | T2+H+E+W |
+| **E3.5** | 探索+信用 | 仅 A/B 信用缩放 | E3＋A×2.0/B×1.5（无 b_score） | 消融支线 |
+| **E4** | 层级学习版 | B-score RL＋A/B 信用缩放 | E3＋完整层级学习机制 | T2+H+E+W |
 | **E5** | 自回归增强版 | 分层 epsilon＋步内候选采样 | E4＋依上游动作重建下游条件与 mask | T2+H+A+E+W |
 
 **先跑 E0–E3，再推进 E4–E5。** E1 是公平微调基线，E5 是候选完整方法。相邻组比较新增机制收益；E4 的 B 探索率与 E5 的分层探索率统一配置，避免重复缩放。
@@ -117,8 +141,9 @@ E0 只评测；E1–E5 分别从同一个 T0 checkpoint 初始化，教师固定
 - **热启动（旧 W）**：先接通训练加载，严格校验 encoder 和各 Q head；更新前与教师输出一致。当前 checkpoint 是权重热启动，不是完整续训。
 - **教师数据（旧 T2 / ORU）**：教师仅在训练订单采库。建议先取 25% 教师＋75% 在线样本，不做大量离线 warmup；当前 `oru_warmup_updates=0` 是自动设置，不是关闭。
 - **教师探索（旧 +E）**：只在 epsilon 探索分支选择教师/随机动作，教师比例逐步下降；动作必须满足当前 mask。初始师生相同时可能无收益，需看实际偏离和失败率。
-- **层级学习（旧 H）**：核对关闭 H 时的实际缩放值；当前 YAML 显式 A/B 缩放可能让开关失效。首轮固定缩放参数，不额外搜索。
-- **自回归增强（旧 A）**：先实现分层 epsilon 和少量合法候选采样，固定候选评分规则。不能替换 replay 的上游动作后沿用原奖励/下一状态；不同动作的真实转移需重新采集。Scheduled sampling / TF 留待单独设计，不直接搬入 DQN 的 TD 更新。
+- **层级学习（旧 H）**：`hierarchical_credit=false` 时 A/B 缩放**强制为 1.0**（已修：不再被 YAML 误开）。`true` 时默认 A×2.0、B×1.5，并通常开 `b_score_rl`（B 排序 ε×0.5）。首轮固定缩放，不额外搜索。
+- **历史污染（已改名）**：2026-09-11 修复前，YAML 写死 `credit_scale_A/B=2.0/1.5` 且关 H 仍生效。原 W&B `m3nz6opg`（E1）/`31rt1h7i`（E3）已改名为 **`Hier4TPA-E1.5-N10-S42` / `Hier4TPA-E3.5-N10-S42`**，本地 metrics/params 同步。完整 E4 = E3.5 + `b_score_rl`。修复后脚本重跑的 E1/E3 才是纯净版（关 H → A=B=1.0）。
+- **自回归增强（旧 A）**：先实现分层 epsilon 和少量合法候选采样，固定候选评分规则。不能替换 replay 的上游动作后沿用原奖励/下一状态；不同动作的真实转移需重新采集。Scheduled sampling / TF 留待单独设计，不直接搬入 DQN 的 TD 更新。当前 **E5 入口尚未实现**。
 
 ## 4. 统一预算与论文指标
 

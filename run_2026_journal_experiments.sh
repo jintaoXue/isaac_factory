@@ -7,8 +7,11 @@ set -euo pipefail
 # Usage:
 #   ./run_2026_journal_experiments.sh E0 [cuda:0] [--dry-run]
 #   ./run_2026_journal_experiments.sh E1 [cuda:0] [--dry-run]
+#   ./run_2026_journal_experiments.sh E1.5 [cuda:0] [--dry-run]
 #   ./run_2026_journal_experiments.sh E2 [cuda:0] [--dry-run]
 #   ./run_2026_journal_experiments.sh E3 [cuda:0] [--dry-run]
+#   ./run_2026_journal_experiments.sh E3.5 [cuda:0] [--dry-run]
+#   ./run_2026_journal_experiments.sh E4 [cuda:0] [--dry-run]
 #   ./run_2026_journal_experiments.sh T0|T1|T1R|T1RH [cuda:0]
 #   ./run_2026_journal_experiments.sh TEACHER [cuda:0]
 #   HC_LOAD_DIR=... ./run_2026_journal_experiments.sh eval-T1 [cuda:0]
@@ -40,8 +43,11 @@ usage() {
   T1R     ORU + PER + Dueling（复用 catalog）
   T1RH    T1R + hierarchical credit + B-score
   E1      T0 权重热启动微调（step1290000，低 lr / ε≈0.05，S42，默认 ${HC_MAX_TRAIN_EPISODES:-60} ep）
+  E1.5    E1＋仅信用缩放（A×2.0 B×1.5，无 b_score；历史污染跑已改名为此）
   E2      E1＋教师 offline_replay ORU（25% 教师混合；需先 TEACHER 采库）
   E3      E2＋教师引导在线探索（ε 分支教师/随机混合，教师比例衰减）
+  E3.5    E3＋仅信用缩放（无 b_score；历史污染跑已改名为此）
+  E4      E3＋层级学习（B-score RL＋A/B 信用缩放）
   TEACHER 冻结 T0 教师采库（ε=0，默认 50 ep，seed 42）
 
 评测:
@@ -233,6 +239,86 @@ run_e1_train() {
     )
     echo "[E1] warmstart step=1290000; N=10 K=10 T=40000; lr_q=2e-5 lr_enc=1e-5 eps=0.05; seed=42"
     echo "[E1] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; project=HcFactory_TPA; wandb=Hier4TPA-E1-N10-S42"
+    if [[ "${dry_run}" == --dry-run ]]; then
+        printf '%q ' "${cmd[@]}"
+        printf '\n'
+        return 0
+    fi
+    "${cmd[@]}"
+}
+
+run_e1_5_train() {
+    # E1.5: E1 + credit scales only (no b_score_rl). Matches historical YAML-leak E1.
+    local repo_root load_dir dry_run="${3:-}"
+    repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
+    cd "${repo_root}"
+    load_dir="${repo_root}/logs/rl_games/HcFactory/hier_2026-08-27_23-17-41"
+    if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
+        echo "错误: 设备需为 cuda:N 或 cpu" >&2
+        return 1
+    fi
+    if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
+        echo "用法: $0 E1.5 [cuda:N] [--dry-run]" >&2
+        return 1
+    fi
+    if [[ "${dry_run}" != --dry-run ]]; then
+        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
+        if [[ -f "${local_env}" ]]; then
+            set -a
+            source "${local_env}"
+            set +a
+        fi
+        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
+            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
+        fi
+    fi
+    export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
+    export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
+    if [[ ! -d "${load_dir}" ]]; then
+        echo "错误: 缺少教师权重目录: ${load_dir}" >&2
+        return 1
+    fi
+    # Do NOT pass --hierarchical_credit (that auto-enables b_score_rl in train.py).
+    local -a cmd=(
+        python train.py --task HRTPaHC-v1 --algo hier
+        --device "${DEVICE}" --num_envs 1 --headless --seed 42
+        --train_n_products 10 --max_parallel_cd_dispatch 10
+        --max_sim_episodes "${HC_MAX_TRAIN_EPISODES}"
+        --load_dir "${load_dir}" --load_step 1290000
+        --wandb_activate --wandb_project HcFactory_TPA
+        --wandb_name Hier4TPA-E1.5-N10-S42
+        --algo_variant E1.5
+        --ftg_thresh_phy 0.95
+        agent.params.config.t_max_anchor=64000
+        agent.params.config.max_episodic_steps=40000
+        agent.params.config.parallel_producing_limit=10
+        agent.params.config.c_forbid_none_mode=always
+        agent.params.config.curriculum=false
+        agent.params.config.explore=false
+        agent.params.config.explore_catalog=false
+        agent.params.config.catalog_collect=false
+        agent.params.config.oru=false
+        agent.params.config.prioritized_replay=false
+        agent.params.config.dueling_dqn=false
+        agent.params.config.noisy_net=false
+        agent.params.config.hierarchical_credit=true
+        agent.params.config.b_score_rl=false
+        agent.params.config.credit_scale_A=2.0
+        agent.params.config.credit_scale_B=1.5
+        agent.params.config.credit_scale_CD=1.0
+        agent.params.config.env_rule_based_exploration=false
+        agent.params.config.learning_rate=2.0e-5
+        agent.params.config.encoder_learning_rate=1.0e-5
+        agent.params.config.late_learning_rate=2.0e-5
+        agent.params.config.late_encoder_learning_rate=1.0e-5
+        agent.params.config.epsilon_start=0.05
+        agent.params.config.epsilon_end=0.05
+        agent.params.config.epsilon_decay_steps=1
+        'agent.params.config.warmstart=""'
+        'agent.params.config.load_name=""'
+    )
+    echo "[E1.5] E1 + credit A×2.0 B×1.5 (no b_score); seed=42"
+    echo "[E1.5] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=Hier4TPA-E1.5-N10-S42"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
@@ -446,11 +532,230 @@ run_e3_train() {
     "${cmd[@]}"
 }
 
+run_e3_5_train() {
+    # E3.5: E3 + credit scales only (no b_score_rl). Matches historical YAML-leak E3.
+    local repo_root load_dir catalog_root dry_run="${3:-}"
+    local teacher_eps="${HC_TEACHER_EPISODES:-50}"
+    repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
+    cd "${repo_root}"
+    load_dir="${repo_root}/logs/rl_games/HcFactory/hier_2026-08-27_23-17-41"
+    if [[ -n "${HC_EXPLORE_CATALOG_DIR:-}" ]]; then
+        catalog_root="${HC_EXPLORE_CATALOG_DIR}"
+    else
+        catalog_root="${repo_root}/env_checkpoints/policy_explore/N10_T40000__E2_teacher_ep${teacher_eps}"
+        if [[ ! -d "${catalog_root}/offline_replay" ]]; then
+            local alt="${repo_root}/env_checkpoints/random_explore/N10_T40000__T1_random_ep20"
+            if [[ -d "${alt}/offline_replay" ]]; then
+                echo "[E3.5] WARN: canonical teacher catalog missing; using ${alt}" >&2
+                catalog_root="${alt}"
+            fi
+        fi
+    fi
+    if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
+        echo "错误: 设备需为 cuda:N 或 cpu" >&2
+        return 1
+    fi
+    if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
+        echo "用法: $0 E3.5 [cuda:N] [--dry-run]" >&2
+        return 1
+    fi
+    if [[ "${dry_run}" != --dry-run ]]; then
+        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
+        if [[ -f "${local_env}" ]]; then
+            set -a
+            source "${local_env}"
+            set +a
+        fi
+        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
+            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
+        fi
+    fi
+    export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
+    export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
+    if [[ ! -d "${load_dir}" ]]; then
+        echo "错误: 缺少教师权重目录: ${load_dir}" >&2
+        return 1
+    fi
+    if [[ ! -d "${catalog_root}/offline_replay" ]]; then
+        echo "错误: 缺少教师 offline_replay: ${catalog_root}/offline_replay" >&2
+        echo "请先跑: ./run_2026_journal_experiments.sh TEACHER ${DEVICE}" >&2
+        echo "或设置 HC_EXPLORE_CATALOG_DIR=... 指向采库根目录" >&2
+        return 1
+    fi
+    local -a cmd=(
+        python train.py --task HRTPaHC-v1 --algo hier
+        --device "${DEVICE}" --num_envs 1 --headless --seed 42
+        --train_n_products 10 --max_parallel_cd_dispatch 10
+        --max_sim_episodes "${HC_MAX_TRAIN_EPISODES}"
+        --load_dir "${load_dir}" --load_step 1290000
+        --oru
+        --teacher_explore
+        --wandb_activate --wandb_project HcFactory_TPA
+        --wandb_name Hier4TPA-E3.5-N10-S42
+        --algo_variant E3.5
+        --ftg_thresh_phy 0.95
+        agent.params.config.t_max_anchor=64000
+        agent.params.config.max_episodic_steps=40000
+        agent.params.config.parallel_producing_limit=10
+        agent.params.config.c_forbid_none_mode=always
+        agent.params.config.curriculum=false
+        agent.params.config.explore=false
+        agent.params.config.explore_catalog=false
+        agent.params.config.catalog_collect=false
+        agent.params.config.oru=true
+        agent.params.config.teacher_explore=true
+        agent.params.config.hierarchical_credit=true
+        agent.params.config.b_score_rl=false
+        agent.params.config.credit_scale_A=2.0
+        agent.params.config.credit_scale_B=1.5
+        agent.params.config.credit_scale_CD=1.0
+        "agent.params.config.explore_catalog_dir=${catalog_root}"
+        agent.params.config.oru_mix_start=0.25
+        agent.params.config.oru_warmup_updates=0
+        agent.params.config.teacher_explore_ratio_start=1.0
+        agent.params.config.teacher_explore_ratio_end=0.0
+        agent.params.config.teacher_explore_decay_env_steps=300000
+        agent.params.config.prioritized_replay=false
+        agent.params.config.dueling_dqn=false
+        agent.params.config.noisy_net=false
+        agent.params.config.env_rule_based_exploration=false
+        agent.params.config.learning_rate=2.0e-5
+        agent.params.config.encoder_learning_rate=1.0e-5
+        agent.params.config.late_learning_rate=2.0e-5
+        agent.params.config.late_encoder_learning_rate=1.0e-5
+        agent.params.config.epsilon_start=0.05
+        agent.params.config.epsilon_end=0.05
+        agent.params.config.epsilon_decay_steps=1
+        'agent.params.config.warmstart=""'
+        'agent.params.config.load_name=""'
+    )
+    echo "[E3.5] E3 + credit A×2.0 B×1.5 (no b_score); catalog=${catalog_root}; seed=42"
+    echo "[E3.5] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=Hier4TPA-E3.5-N10-S42"
+    if [[ "${dry_run}" == --dry-run ]]; then
+        printf '%q ' "${cmd[@]}"
+        printf '\n'
+        return 0
+    fi
+    "${cmd[@]}"
+}
+
+run_e4_train() {
+    # E4: E3 + hierarchical credit (A/B scales) + B-score RL.
+    local repo_root load_dir catalog_root dry_run="${3:-}"
+    local teacher_eps="${HC_TEACHER_EPISODES:-50}"
+    repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
+    cd "${repo_root}"
+    load_dir="${repo_root}/logs/rl_games/HcFactory/hier_2026-08-27_23-17-41"
+    if [[ -n "${HC_EXPLORE_CATALOG_DIR:-}" ]]; then
+        catalog_root="${HC_EXPLORE_CATALOG_DIR}"
+    else
+        catalog_root="${repo_root}/env_checkpoints/policy_explore/N10_T40000__E2_teacher_ep${teacher_eps}"
+        if [[ ! -d "${catalog_root}/offline_replay" ]]; then
+            local alt="${repo_root}/env_checkpoints/random_explore/N10_T40000__T1_random_ep20"
+            if [[ -d "${alt}/offline_replay" ]]; then
+                echo "[E4] WARN: canonical teacher catalog missing; using ${alt}" >&2
+                catalog_root="${alt}"
+            fi
+        fi
+    fi
+    if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
+        echo "错误: 设备需为 cuda:N 或 cpu" >&2
+        return 1
+    fi
+    if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
+        echo "用法: $0 E4 [cuda:N] [--dry-run]" >&2
+        return 1
+    fi
+    if [[ "${dry_run}" != --dry-run ]]; then
+        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
+        if [[ -f "${local_env}" ]]; then
+            set -a
+            source "${local_env}"
+            set +a
+        fi
+        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
+            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
+        fi
+    fi
+    export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
+    export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
+    if [[ ! -d "${load_dir}" ]]; then
+        echo "错误: 缺少教师权重目录: ${load_dir}" >&2
+        return 1
+    fi
+    if [[ ! -d "${catalog_root}/offline_replay" ]]; then
+        echo "错误: 缺少教师 offline_replay: ${catalog_root}/offline_replay" >&2
+        echo "请先跑: ./run_2026_journal_experiments.sh TEACHER ${DEVICE}" >&2
+        echo "或设置 HC_EXPLORE_CATALOG_DIR=... 指向采库根目录" >&2
+        return 1
+    fi
+    local -a cmd=(
+        python train.py --task HRTPaHC-v1 --algo hier
+        --device "${DEVICE}" --num_envs 1 --headless --seed 42
+        --train_n_products 10 --max_parallel_cd_dispatch 10
+        --max_sim_episodes "${HC_MAX_TRAIN_EPISODES}"
+        --load_dir "${load_dir}" --load_step 1290000
+        --oru
+        --teacher_explore
+        --hierarchical_credit
+        --b_score_rl
+        --wandb_activate --wandb_project HcFactory_TPA
+        --wandb_name Hier4TPA-E4-N10-S42
+        --algo_variant E4
+        --ftg_thresh_phy 0.95
+        agent.params.config.t_max_anchor=64000
+        agent.params.config.max_episodic_steps=40000
+        agent.params.config.parallel_producing_limit=10
+        agent.params.config.c_forbid_none_mode=always
+        agent.params.config.curriculum=false
+        agent.params.config.explore=false
+        agent.params.config.explore_catalog=false
+        agent.params.config.catalog_collect=false
+        agent.params.config.oru=true
+        agent.params.config.teacher_explore=true
+        agent.params.config.hierarchical_credit=true
+        agent.params.config.b_score_rl=true
+        agent.params.config.credit_scale_A=2.0
+        agent.params.config.credit_scale_B=1.5
+        agent.params.config.credit_scale_CD=1.0
+        "agent.params.config.explore_catalog_dir=${catalog_root}"
+        agent.params.config.oru_mix_start=0.25
+        agent.params.config.oru_warmup_updates=0
+        agent.params.config.teacher_explore_ratio_start=1.0
+        agent.params.config.teacher_explore_ratio_end=0.0
+        agent.params.config.teacher_explore_decay_env_steps=300000
+        agent.params.config.prioritized_replay=false
+        agent.params.config.dueling_dqn=false
+        agent.params.config.noisy_net=false
+        agent.params.config.env_rule_based_exploration=false
+        agent.params.config.learning_rate=2.0e-5
+        agent.params.config.encoder_learning_rate=1.0e-5
+        agent.params.config.late_learning_rate=2.0e-5
+        agent.params.config.late_encoder_learning_rate=1.0e-5
+        agent.params.config.epsilon_start=0.05
+        agent.params.config.epsilon_end=0.05
+        agent.params.config.epsilon_decay_steps=1
+        'agent.params.config.warmstart=""'
+        'agent.params.config.load_name=""'
+    )
+    echo "[E4] E3 + hier_credit + b_score_rl; A×2.0 B×1.5; catalog=${catalog_root}; seed=42"
+    echo "[E4] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; project=HcFactory_TPA; wandb=Hier4TPA-E4-N10-S42"
+    if [[ "${dry_run}" == --dry-run ]]; then
+        printf '%q ' "${cmd[@]}"
+        printf '\n'
+        return 0
+    fi
+    "${cmd[@]}"
+}
+
 case "${MODE}" in
     E0) run_e0_eval "$@" ;;
     E1) run_e1_train "$@" ;;
+    E1.5|E1_5) run_e1_5_train "$@" ;;
     E2) run_e2_train "$@" ;;
     E3) run_e3_train "$@" ;;
+    E3.5|E3_5) run_e3_5_train "$@" ;;
+    E4) run_e4_train "$@" ;;
     ""|-h|--help|help) usage; exit 0 ;;
     T0) ./batch_train.sh T0 "${DEVICE}" ;;
     T1|train) ./batch_train.sh T1 "${DEVICE}" ;;

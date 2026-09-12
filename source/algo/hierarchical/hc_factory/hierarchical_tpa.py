@@ -207,8 +207,14 @@ class HierarchicalTPA:
         }
         self.algo_variant = str(config.get("algo_variant") or "T0")
         self.hierarchical_credit = bool(config.get("hierarchical_credit", False))
-        self.credit_scale_A = float(config.get("credit_scale_A", 2.0 if self.hierarchical_credit else 1.0))
-        self.credit_scale_B = float(config.get("credit_scale_B", 1.5 if self.hierarchical_credit else 1.0))
+        # Gate A/B credit scales on the flag. YAML used to hard-code 2.0/1.5, which
+        # made hierarchical_credit=false still apply H scales (protocol E4 delta broken).
+        if self.hierarchical_credit:
+            self.credit_scale_A = float(config.get("credit_scale_A", 2.0))
+            self.credit_scale_B = float(config.get("credit_scale_B", 1.5))
+        else:
+            self.credit_scale_A = 1.0
+            self.credit_scale_B = 1.0
         self.credit_scale_CD = float(config.get("credit_scale_CD", 1.0))
         self.b_score_rl = bool(config.get("b_score_rl", self.hierarchical_credit))
         # Explore / teacher dumps the whole online buffer as offline replay — keep enough capacity.
