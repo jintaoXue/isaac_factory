@@ -61,7 +61,7 @@
     "decision": "No upcoming gain in this seed; train/validation ranking gap persists despite active graph path. Await seed43 and complete batch; no universal architecture ceiling claim."
   },
   "event_fbeta_preparation_20260913": {
-    "status": "local_implementation_tested_and_registered_not_deployed_not_trained",
+    "status": "implementation_and_local_server_tests_passed_registered_not_deployed_not_trained",
     "variant": "event_fbeta",
     "archive_tag": "fbeta20260913",
     "parent_control": "near_precursor",
@@ -112,7 +112,20 @@
     "server_runtime_until_gate": "371afb69d29118a3c42b3274a65e5b07509c1032",
     "reuse_existing_model_directories": true,
     "prior_result_archive": "model_before_fbeta20260913.zip",
-    "interpretation_limit": "Single loss-form ablation, not full main recipe alignment or hard precision guarantee; negative result does not prove backbone ceiling."
+    "interpretation_limit": "Single loss-form ablation, not full main recipe alignment or hard precision guarantee; negative result does not prove backbone ceiling.",
+    "implementation_source_commit": "07398bb308b2ef9df8d15b0afca8bf7fd146c7e9",
+    "server_verification": {
+      "tests_run": 6,
+      "passed": true,
+      "execution": "Git source executed only in independent CPU process; process-local package and trainer references synchronized",
+      "runtime_checkout": "371afb69d29118a3c42b3274a65e5b07509c1032",
+      "six_runtime_files_unchanged_and_tracked_clean": true,
+      "real_dataset_loaded": false,
+      "new_training_started": false,
+      "export": "baseline_fbeta_server_tests20260913.json",
+      "export_bytes": 2056,
+      "export_sha256": "8bf745a586d5495429b94a16e20e19f90a41b3d573aa2f27cad908cfcca5b88c"
+    }
   },
   "status": "history_graph_B5_seed42_completed_verified_seed43_training_live_event_fbeta_local_prepared_goal_not_met",
   "history_graph_B4_both_completed_20260913": {

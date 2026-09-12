@@ -3337,3 +3337,18 @@ padding/无正例/无有效节点及极端logit；B4/B5真实forward中的梯度
 路径。不得覆盖未核验的当前结果，不重新执行已完成的near/onset/far/timeattention
 或阈值搜索。评判同时看两颗seed正式P/R/F1/upcoming、误报及best/last训练与验证
 排序；失败只否定这个固定单项配方，不宣称GCN/GAT-GRU普遍无法提前预测。
+
+### 37.1 固定源码的服务器独立进程测试
+
+实现和登记已提交07398bb308b2ef9df8d15b0afca8bf7fd146c7e9，并push至dev_xwt。
+服务器只fetch对象，在独立CPU进程中通过Git对象执行新loss/control/test源码，
+将该进程的package与trainer函数引用同步至新损失；未改训练进程或工作区文件。
+新增六项unittest全部通过，包含实际主参考公式与梯度核对。执行前后服务器HEAD
+保持371afb6，六个loss/head/model/trainer/control文件逐一与371afb6对象及原哈希
+一致，tracked clean。未加载真实数据或启动新的训练；这不是部署后的真实数据预检。
+
+完整核验产物baseline_fbeta_server_tests20260913.json，2056 bytes，SHA-256：
+8bf745a586d5495429b94a16e20e19f90a41b3d573aa2f27cad908cfcca5b88c。
+其中保留三个新Git源码文件及六个未改运行文件的哈希、测试结果和执行方式。当前B5
+seed43实际Python294501继续训练，最近观察epoch21；仍按37节的完整批次收尾门槛
+决定何时部署，不重复已通过的测试。
