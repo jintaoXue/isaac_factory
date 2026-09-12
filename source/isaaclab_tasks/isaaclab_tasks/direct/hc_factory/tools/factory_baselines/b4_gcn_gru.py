@@ -23,6 +23,7 @@ class B4ModelConfig:
     dropout: float = 0.2
     event_context: bool = False
     event_head: str = "binary"
+    event_precursor: str = "none"
     node_embedding: int = 0
     temporal_readout: str = "last"
     prediction_horizon: float = 180.0
@@ -50,6 +51,8 @@ class B4ModelConfig:
             raise ValueError("temporal_readout must be last or last_mean")
         if self.event_head not in {"binary", "three_class"}:
             raise ValueError("event_head must be binary or three_class")
+        if self.event_precursor not in {"none", "near", "near_far"}:
+            raise ValueError("Unknown event_precursor mode")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -127,6 +130,7 @@ class B4GcnGru(nn.Module):
             num_causes=config.num_causes,
             event_context=config.event_context,
             event_head=config.event_head,
+            event_precursor_dim=0 if config.event_precursor == "none" else 23,
         )
 
     def forward(
@@ -138,6 +142,7 @@ class B4GcnGru(nn.Module):
         global_features: torch.Tensor,
         jobs_remaining: torch.Tensor,
         jobs_total: torch.Tensor,
+        event_precursor: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
         batch_size, time_steps, node_count, _ = x.shape
         spatial_x = x.reshape(batch_size * time_steps, node_count, -1)
@@ -181,4 +186,5 @@ class B4GcnGru(nn.Module):
             global_features,
             jobs_remaining,
             jobs_total,
+            event_precursor,
         )

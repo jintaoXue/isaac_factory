@@ -19,11 +19,15 @@ class FactoryPredictionHeads(nn.Module):
         num_causes: int,
         event_context: bool = False,
         event_head: str = "binary",
+        event_precursor_dim: int = 0,
     ) -> None:
         super().__init__()
         if event_head not in {"binary", "three_class"}:
             raise ValueError("event_head must be binary or three_class")
         self.event_head = event_head
+        if event_precursor_dim not in {0, 23}:
+            raise ValueError("event_precursor_dim must be zero or 23")
+        self.event_precursor_dim = event_precursor_dim
         self.node_hidden_dim = node_hidden_dim
         self.global_dim = global_dim
         self.num_nodes = num_nodes
@@ -80,6 +84,16 @@ class FactoryPredictionHeads(nn.Module):
             with torch.no_grad():
                 self.event_will_head[-1].bias[0] = 0.0
                 self.event_will_head[-1].bias[1:] = -1.5 - math.log(2.0)
+        self.precursor_projection = None
+        if event_precursor_dim:
+            # Preserve every existing parameter and the training RNG stream at initialization.
+            with torch.random.fork_rng(devices=[]):
+                self.precursor_projection = nn.Sequential(
+                    nn.Linear(event_precursor_dim, node_hidden_dim), nn.GELU(),
+                    nn.Linear(node_hidden_dim, node_hidden_dim),
+                )
+                nn.init.zeros_(self.precursor_projection[-1].weight)
+                nn.init.zeros_(self.precursor_projection[-1].bias)
 
     def forward(
         self,
@@ -89,6 +103,7 @@ class FactoryPredictionHeads(nn.Module):
         global_features: torch.Tensor,
         jobs_remaining: torch.Tensor,
         jobs_total: torch.Tensor,
+        event_precursor: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
         batch_size, node_count, hidden_dim = node_hidden.shape
         if node_count != self.num_nodes or hidden_dim != self.node_hidden_dim:
@@ -122,6 +137,12 @@ class FactoryPredictionHeads(nn.Module):
                 torch.cat((node_hidden, context), dim=-1)
             )
             event_hidden = event_hidden * mask_float
+        if self.precursor_projection is not None:
+            if event_precursor is None or event_precursor.shape != (batch_size, node_count, self.event_precursor_dim):
+                raise ValueError("Expected explicit (batch,node,23) precursor features")
+            event_hidden = (event_hidden + self.precursor_projection(event_precursor)) * mask_float
+        elif event_precursor is not None:
+            raise ValueError("Precursor supplied to a model without its registered projection")
         remain_score = self.remain_score_head(future_context)
         remain_hot = self.remain_hot_head(future_context).squeeze(-1)
         event_logits = self.event_will_head(event_hidden)

@@ -2068,3 +2068,37 @@ GCN/GAT-GRU、相同 23 维摘要投影和初始化，控制分支最后 5 维�
 核验摘要实际使用及共同 cohort/历史范围。若共同范围确定为纯 30 分钟，则只讨论该范围
 内的表示对照，并要求主模型也遵守此范围；不会单方面改动主仓库。当前没有共同数据的
 正式新成绩，不能把输入可用性结论解释为已解决泛化差距。
+
+## 28. 固定 208 episode 的 B4/B5 upcoming 优化续接
+
+用户已明确：先沿用 baseline 的 208 个 episode，优先查清低 upcoming recall 的原因并
+改善 B4/B5，保留与主实验对比的价值。因此正式 204-episode 主包暂不再作为本轮开发
+实验的开训前置；它仍是最终主模型公平重评所需材料，不能将本轮成绩冒称该对照。
+本轮初始 BSTAN 为干净 `dev_xwt@7c0c0ca`，dense 训练及诊断会话均 dead=1、exit=0，
+没有匹配训练/诊断进程。继续复用原目录和 v6 manifest，不重建数据，不用 test 调参。
+
+### 28.1 第一项受控假设：近窗起始征兆是否在表示中丢失
+
+新 `near_precursor` 只把原编码范围内最近 5 个窗口的 18 项末值/均值/队列变化摘要，
+通过零输出初始化的两层投影加到事件表示。它们均来自已经审核的原 bundle 历史特征，
+不提供额外历史、未来、scenario/run ID、历史 hot 或标签。为保留后续等容量远历史
+对照的条件，输入固定为 23 维，后 5 维本轮严格为零。未来是否试 far arm 另据结果决定。
+
+保留两层 GCN/GAT 和 GRU、二分类事件头、原损失权重、均匀抽样、AdamW、学习率、
+dropout、早停、阈值列表和 report 选模规则。新增参数全部明确记录；与原 history 的
+差异检验“显式近窗摘要路径”整体效应，不声称单独证明更远历史的收益，也不复制主模型
+专用解码。零输出初始化并保留 RNG 流使首次 forward 与原控制组严格相同。
+
+预注册首轮 B4/B5 各 seed42/43，共 4 次、每次最多 60 epoch；仍使用 B4 的
+min_epochs=10/patience=10，B5 的 min_epochs=15/patience=20。输出复用原
+`candidate_history/seed42,43`，唯一归档标签 `nearprec20260912`，原三分类权重先逐文件
+哈希核验归档，历史 ZIP 和完整 metrics 导出保留。
+
+输入契约单独命名 `factory_baseline_precursor_v1` / mode=near，并在 checkpoint 保存
+原 v6 manifest、bundle、split、样本索引和特征构建源码哈希。只在内存给 train/validation
+样本附加摘要，未构建 split 的访问会报错。原 v6 数据文件与标签契约保持原样。
+
+本轮判读必须同时查看每 seed 的总 P/R/F1、upcoming recall、train/validation upcoming AP、
+误报组成和时间 MAE；不得仅靠挑某 epoch 的 upcoming 单项、降阈值或拼接多个 checkpoint
+宣布成功。若出现稳定提升，继续确认跨 seed/episode 支持；若没有，转向事件可预测性、
+独立事件支持数和泛化分布诊断，不能以单个近窗试验失败宣称 GCN/GAT-GRU 已到理论上限。

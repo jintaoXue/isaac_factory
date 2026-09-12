@@ -344,6 +344,10 @@ class FactoryBaselineTensorDataset(Dataset):
     def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
         sample_index = self.indices[index]
         sample = {key: self.payload[key][sample_index] for key in self.TENSOR_KEYS}
+        if "event_precursor" in self.payload:
+            if not bool(self.payload["event_precursor_valid"][sample_index]):
+                raise ValueError("Precursor features were not built for this sample/split")
+            sample["event_precursor"] = self.payload["event_precursor"][sample_index]
         group_number = str(int(sample["sample_group_id"]))
         series = self.payload["remain_series"][group_number]
         y_score, y_hot, remain_mask, _ = pack_remain_target(

@@ -41,6 +41,7 @@ from .b3_lstm import B3Lstm, B3ModelConfig
 from .b4_gcn_gru import B4GcnGru, B4ModelConfig
 from .b5_gat_gru import B5GatGru, B5ModelConfig
 from .warm_start import load_warm_start_parent
+from .precursor import attach_precursor
 
 
 @dataclass
@@ -223,6 +224,7 @@ def _model_inputs(batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         "global_features": batch["global_features"],
         "jobs_remaining": batch["jobs_remaining"],
         "jobs_total": batch["jobs_total"],
+        **({"event_precursor": batch["event_precursor"]} if "event_precursor" in batch else {}),
     }
 
 
@@ -798,6 +800,10 @@ def train_torch_baseline(
     }
     model_class, config_class, baseline_id, model_name = _model_spec(model_kind)
     model_config = config_class(**model_values)
+    payload, input_feature_contract = attach_precursor(
+        payload, manifest, dataset_dir, getattr(model_config, "event_precursor", "none"),
+        ("train", "validation", "test") if train_config.evaluate_test else ("train", "validation"),
+    )
     model = model_class(model_config).to(device)
     parent = None
     manifest_path = dataset_dir / "dataset_manifest.json"
@@ -869,6 +875,8 @@ def train_torch_baseline(
     }
     if parent is not None:
         metadata["warm_start_parent"] = parent
+    if input_feature_contract is not None:
+        metadata["input_feature_contract"] = input_feature_contract
     parent_epochs = parent["epochs_trained"] if parent is not None else 0
     parent_steps = parent["optimizer_steps"] if parent is not None else 0
     parent_elapsed = parent["elapsed_seconds"] if parent is not None else 0.0
@@ -1272,6 +1280,10 @@ def evaluate_torch_checkpoint(
     actual_hash = _manifest_hash(dataset_dir / "dataset_manifest.json")
     if expected_hash != actual_hash:
         raise ValueError("Checkpoint and dataset manifest hashes do not match")
+    payload, _ = attach_precursor(
+        payload, manifest, dataset_dir, checkpoint["model_config"].get("event_precursor", "none"),
+        (split_name,), checkpoint["metadata"].get("input_feature_contract"),
+    )
     train_config = TorchTrainConfig(
         batch_size=batch_size,
         num_workers=num_workers,

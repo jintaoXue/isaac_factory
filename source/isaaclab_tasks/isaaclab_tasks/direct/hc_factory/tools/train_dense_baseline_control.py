@@ -14,7 +14,7 @@ from factory_baselines.dataset import load_shared_dataset
 from factory_bn_shared.bundle import file_hash
 
 
-DENSE_VARIANTS = ("history_control", "graph_context", "upcoming_weighted", "three_class")
+DENSE_VARIANTS = ("history_control", "graph_context", "upcoming_weighted", "three_class", "near_precursor", "far_precursor")
 
 
 def dense_configuration(model: str, variant: str, seed: int, device: str) -> tuple:
@@ -34,6 +34,8 @@ def dense_configuration(model: str, variant: str, seed: int, device: str) -> tup
                      temporal_readout="last_mean", node_embedding=0,
                      event_context=variant == "graph_context",
                      event_head="three_class" if variant == "three_class" else "binary")
+    if variant in {"near_precursor", "far_precursor"}:
+        overrides["event_precursor"] = "near" if variant == "near_precursor" else "near_far"
     overrides.update({"gcn_hidden": 64} if b4 else {"gat_hidden": 64, "gat_heads": 4})
     loss = MultiTaskLossConfig(
         event_will_upcoming_pos_weight=12.0 if variant == "upcoming_weighted" else 4.0,
@@ -75,6 +77,10 @@ def run_control(model: str, dataset_dir: Path, output_dir: Path, archive_tag: st
     payload, manifest = load_shared_dataset(dataset_dir)
     if manifest.get("shared_bundle_alignment", {}).get("status") != "passed":
         raise ValueError("Complete the canonical export alignment audit before training")
+    from factory_baselines.precursor import attach_precursor
+    payload, feature_contract = attach_precursor(
+        payload, manifest, dataset_dir, overrides.get("event_precursor", "none"), ("train", "validation"),
+    )
     del payload
     saved = None
     if any((output_dir / name).exists() for name in TRAINING_FILES):
@@ -87,6 +93,7 @@ def run_control(model: str, dataset_dir: Path, output_dir: Path, archive_tag: st
         "comparison_role": "exploratory_upcoming_optimization_not_verified_main_cohort",
         "event_supervision_partition": "positive_start_zero_ongoing_positive_start_greater_zero_upcoming",
         "event_head": overrides["event_head"],
+        "input_feature_contract": feature_contract,
         "event_classification_loss": "three_class_cross_entropy" if variant == "three_class" else "binary_cross_entropy",
         "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(),
     }

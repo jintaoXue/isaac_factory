@@ -285,6 +285,11 @@ def main() -> None:
         raise ValueError("Checkpoint and dataset manifest hashes do not match")
     if int(manifest["event_min_windows"]) != 8:
         raise ValueError("This diagnostic requires the canonical 8-window event contract")
+    from factory_baselines.precursor import attach_precursor
+    payload, _ = attach_precursor(
+        payload, manifest, args.dataset_dir, checkpoint["model_config"].get("event_precursor", "none"),
+        (args.split,), checkpoint["metadata"].get("input_feature_contract"),
+    )
     loader = DataLoader(
         FactoryBaselineTensorDataset(payload, payload["split_indices"][args.split].tolist()),
         batch_size=args.batch_size, shuffle=False,

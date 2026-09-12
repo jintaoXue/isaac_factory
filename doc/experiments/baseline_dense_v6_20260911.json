@@ -1,5 +1,5 @@
 {
-  "status": "resumed_input_budget_audit_completed_pending_formal_main_artifact_paths",
+  "status": "user_authorized_208_episode_b4_b5_optimization_near_precursor_registered",
   "handoff_date": "2026-09-12",
   "optimization_goal_met": false,
   "continue_automatically": false,
@@ -26,7 +26,21 @@
     "local_detailed_transcription_pending": ["full per-class confusion matrix", "probability quantiles", "training cost; exact values retained in server export"],
     "policy": "Do not substitute zero, older runs, training-epoch values or main test values for missing validation metrics"
   },
-  "next_search_prerequisite": "User continuation received. Input availability audit completed without training; obtain actual main dense bundle/split/checkpoint/config paths and fix the shared observation budget before the next controlled comparison.",
+  "next_search_prerequisite": "User authorized continuing on existing 208 episodes. Run the bounded near-only precursor comparison after tests and clean server preflight. Formal 204-cohort artifacts remain required for final main-model comparison, not this development experiment.",
+  "upcoming_208_resume": {
+    "status": "near_precursor_registered_not_yet_launched",
+    "models": ["B4", "B5"], "seeds": [42, 43], "runs": 4, "max_epochs_each": 60,
+    "variant": "near_precursor", "archive_tag": "nearprec20260912",
+    "input_feature_contract": "factory_baseline_precursor_v1", "mode": "near",
+    "extra_history_windows": 0, "summary_dimension": 23, "last_five_fields": "strictly_zero",
+    "baseline_manifest_unchanged": true, "episode_split_unchanged": true,
+    "graph_and_gru_backbones_unchanged": true, "binary_event_head": true,
+    "loss_sampling_optimizer_selection_and_scoring_unchanged": true,
+    "new_projection_zero_output_initialized": true, "shared_initialization_rng_preserved": true,
+    "test_for_selection": false, "main_decoder_copied": false,
+    "purpose": "Test whether explicit onset summaries of already-available history improve rare-event learning; not a proof of architecture limits or a formal main-cohort comparison",
+    "formal_main_artifacts_block_this_development_run": false
+  },
   "code_commit": "5394034",
   "branch": "dev_xwt",
   "server_repo": "/home/sci/work/BSTAN_isaac_factory",
