@@ -1,5 +1,97 @@
 {
-  "status": "history_graph_B4_seed42_completed_verified_remaining_training_live_goal_not_met",
+  "status": "history_graph_B4_both_completed_verified_B5_training_live_goal_not_met",
+  "history_graph_B4_both_completed_20260913": {
+    "status": "two_training_runs_and_eight_diagnostics_completed_verified",
+    "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",
+    "diagnostic_source_commit": "5cfce2d65074860d17e454dc7c32f7375d294312",
+    "seeds": [
+      42,
+      43
+    ],
+    "best_epochs": [
+      1,
+      7
+    ],
+    "epochs_trained": [
+      11,
+      17
+    ],
+    "upcoming_hits": [
+      1,
+      1
+    ],
+    "upcoming_targets_each": 145,
+    "mean_metric_order": [
+      "report_precision",
+      "report_recall",
+      "report_f1",
+      "report_recall_upcoming"
+    ],
+    "current_means": [
+      0.8236263736,
+      0.6844748858,
+      0.7476309227,
+      0.0068965517
+    ],
+    "near_parent_means": [
+      0.8220531728,
+      0.6913242009,
+      0.7510203841,
+      0.0137931034
+    ],
+    "seed43_validation": {
+      "report_precision": 0.8263736263736263,
+      "report_recall": 0.6867579908675799,
+      "report_f1": 0.7501246882793018,
+      "report_threshold": 0.7
+    },
+    "seed43_diagnostic_column_order": [
+      "best_train",
+      "best_validation",
+      "last_train",
+      "last_validation"
+    ],
+    "seed43_upcoming_ap": [
+      0.018874,
+      0.009939,
+      0.198485,
+      0.008768
+    ],
+    "seed43_upcoming_relative_graph_update_median": [
+      0.560887,
+      0.568791,
+      0.465529,
+      0.466489
+    ],
+    "seed43_output_projection_weight_l2": [
+      3.549455,
+      3.549455,
+      4.36558,
+      4.36558
+    ],
+    "rounded_transcription_note": "Means ten decimals, observation statistics six; exact values retained in server exports",
+    "seed43_export": "baseline_dense_postgru_b4s43_metrics_20260913.json",
+    "seed43_export_bytes": 587794,
+    "seed43_export_sha256": "37e95077af853d69d223a20a7768522ca142aad02da99f97e49bd73157ca7bc7",
+    "B4_complete_export": "baseline_dense_postgru_b4_metrics_20260913.json",
+    "B4_complete_export_bytes": 1334176,
+    "B4_complete_export_sha256": "e8c5f415bc16b823275077166cc6f933b3bd1997b20e354dd7369b145817118b",
+    "all_eight_original_diagnostic_hashes_reverified": true,
+    "same_seed_near_parent_comparison": true,
+    "all_weight_source_manifest_epoch_sample_and_group_count_checks_passed": true,
+    "canonical_best_validation_counts_and_P_R_F1_match_saved_within_1e_10": true,
+    "diagnostic_pane_pid": 283768,
+    "diagnostic_exit_code": 0,
+    "B5_seed42_live": {
+      "python_pid": 282818,
+      "pane_pid": 272151,
+      "actual_configuration_and_11_archive_members_verified": true,
+      "first_verified_epoch": 5
+    },
+    "B5_seed43_started": false,
+    "test_evaluated": false,
+    "decision": "Do not promote B4 history_graph_refine: both seeds lose upcoming hits and mean F1 is lower; active graph updates do not resolve validation generalization. B5 remains in progress; no universal backbone ceiling claim."
+  },
   "history_graph_B4_seed42_completed_20260913": {
     "status": "training_and_four_diagnostics_completed_verified",
     "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",
@@ -57,7 +149,7 @@
     "decision": "No gain in this seed; learned graph path is active but last train/validation ranking gap persists. Await registered remaining runs; no adoption or backbone ceiling claim."
   },
   "history_graph_observation_preparation_20260913": {
-    "status": "B4_seed42_four_diagnostics_completed_verified_other_runs_pending",
+    "status": "B4_eight_diagnostics_completed_verified_B5_pending",
     "flag": "--inspect_history_graph",
     "training_runtime_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",
     "local_tests": 33,
@@ -80,10 +172,13 @@
     "server_tests": 3,
     "first_diagnostic_pane_pid": 278553,
     "first_diagnostic_python_pid": 278558,
-    "first_batch_exit_code": 0
+    "first_batch_exit_code": 0,
+    "B4_diagnostics_completed": 8,
+    "last_B4_diagnostic_pane_pid": 283768,
+    "last_B4_diagnostic_exit_code": 0
   },
   "history_graph_refine_registered_20260913": {
-    "status": "server_preflight_passed_four_run_batch_started_first_B4_seed42_live",
+    "status": "B4_two_runs_completed_verified_B5_seed42_training_live",
     "variant": "history_graph_refine",
     "tag": "postgru20260913",
     "models": [
@@ -143,7 +238,10 @@
       "upcoming_hits": 1,
       "upcoming_targets": 145
     },
-    "progress_note": "First epoch only, no candidate outcome or checkpoint selection yet; later runs queued sequentially and archive independently."
+    "progress_note": "First epoch only, no candidate outcome or checkpoint selection yet; later runs queued sequentially and archive independently.",
+    "current_training_model": "B5",
+    "current_training_seed": 42,
+    "current_training_python_pid": 282818
   },
   "input_identity_audit_registered_20260913": {
     "status": "completed_verified_on_real_train_validation_data",

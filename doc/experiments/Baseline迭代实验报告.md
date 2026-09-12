@@ -3225,3 +3225,47 @@ validation的P/R/F1、ongoing/upcoming recall、who指标及事件计数与原�
 SHA-256：034447da244ab18f376471a3c2dd18960dd284a8db76cdf640d91f14607e68b9。
 含完整训练快照、四份诊断及保存阈值报告、原文件与运行模块哈希、近窗父对照来源。
 本轮无test，未更改阈值或checkpoint选择规则。
+
+### 36.4 B4两颗seed与八份诊断全部完成
+
+B4 seed43正常结束，best7/total17，正式validation P/R/F1为
+0.8263736263736263/0.6867579908675799/0.7501246882793018，阈值0.70，
+upcoming=1/145。旧timeattention归档11成员及其关键文件与旧完整导出逐项相符；
+实际配置仍near/last_mean/refine开启/aux关闭/test关闭。冻结训练输入快照
+baseline_postgru_b4s43_diagnostic_inputs20260913.json，29166 bytes。
+
+复用已退出诊断pane，PID283768，用相同5cfce2d源码及371afb6模型模块完成四份
+best/last train/validation诊断，pane退出0，日志postgru20260913_b4s43_diagnose.log
+以DIAG_BATCH_EXIT_CODE=0结束。首次核验时只完成3/4，等待同一会话终态后再核验，
+没有重复运行诊断。四份权重/源码/manifest/epoch/样本数/分组分母均通过，best
+validation的离散计数及P/R/F1与原保存指标在1e-10内相同；六个运行模块与371afb6
+Git对象一致，近窗父对照完整导出哈希也通过。
+
+| Seed43观察项 | Best train | Best validation | Last train | Last validation |
+|---|---:|---:|---:|---:|
+| upcoming-vs-negative AP | 0.018874 | 0.009939 | 0.198485 | 0.008768 |
+| upcoming图残差/原历史表示L2，中位数 | 0.560887 | 0.568791 | 0.465529 | 0.466489 |
+| 输出投影权重L2 | 3.549455 | 3.549455 | 4.365580 | 4.365580 |
+
+诊断数值保留六位小数。完整第二颗seed导出
+baseline_dense_postgru_b4s43_metrics_20260913.json，587794 bytes，SHA-256：
+37e95077af853d69d223a20a7768522ca142aad02da99f97e49bd73157ca7bc7。
+
+核验两颗seed完整导出及其8份原诊断文件哈希后，按同seed匹配near父对照，汇总为
+baseline_dense_postgru_b4_metrics_20260913.json，1334176 bytes，SHA-256：
+e8c5f415bc16b823275077166cc6f933b3bd1997b20e354dd7369b145817118b。
+保存完整两颗seed结果、父对照来源、逐seed差值及均值，不混入其他权重或epoch。
+
+| B4两seed均值 | Near父对照 | GRU后图交互 |
+|---|---:|---:|
+| Precision | 0.8220531728 | 0.8236263736 |
+| Recall | 0.6913242009 | 0.6844748858 |
+| F1 | 0.7510203841 | 0.7476309227 |
+| Upcoming recall | 0.0137931034 | 0.0068965517 |
+
+两颗seed的upcoming都从2/145降至1/145，F1均值下降0.00338946，因此不采用B4
+本次新增图层候选。图残差实际非零，不能将负结果归于路径没有启动；两颗seed仍有
+训练/验证排序差距。它只说明这一受控路径在当前配方下没有帮助，不证明全部时空
+交互或GCN-GRU无效。B5 seed42实际Python282818在运行，配置和旧归档11成员已
+核验，首次复核观察epoch5；seed43尚未启动。训练pane272151保持live，模型HEAD
+371afb6不变，未使用test，待B5完成后才能判断整批。

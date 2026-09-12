@@ -156,6 +156,16 @@ baseline_dense_postgru_b4s42_metrics_20260913.json，548096 bytes，SHA
 B4 seed43实际Python276207仍在训练，B5两组尚未开始；训练pane272151仍live，
 底层模型/HEAD保持371afb6。不要重复首组诊断，不在训练中pull，详见36.3。
 
+postgru的B4两颗seed及八份诊断现已全部完成核验。Seed43 best7/total17、
+P/R/F1=0.82637363/0.68675799/0.75012469，upcoming也是1/145，阈值0.70。
+Last AP train/validation=0.198485/0.008768。两seed F1均值0.7476309227，
+near父对照0.7510203841；upcoming均值0.0068965517，对照0.0137931034，不采用
+B4该候选。完整B4导出baseline_dense_postgru_b4_metrics_20260913.json，1334176 bytes，
+SHA e8c5f415bc16b823275077166cc6f933b3bd1997b20e354dd7369b145817118b。
+诊断pane283768退出0，训练pane272151仍live；B5 seed42 Python282818在运行，
+其配置和旧归档11成员已核验，seed43尚未开始。服务器模型仍371afb6，详见36.4。
+不要重跑B4已完成训练/诊断，不在训练中pull。
+
 ### 2026-09-12 新对话续接：输入审计已完成
 
 用户已授权继续优化；下方旧对话停止记录仅用于追溯，不是本轮停止指令。
