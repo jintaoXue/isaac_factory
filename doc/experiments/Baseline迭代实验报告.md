@@ -2322,3 +2322,17 @@ upcoming AP、误报与时间 MAE。若辅助头有信号而事件头没有，�
 无效配置、共享骨干梯度、初始权重/RNG/正式输出一致、辅助头参数不改变报警、内存
 checkpoint 回读与配置差异。服务器开训前已确认干净 `dev_xwt@00d4c6f`、两项旧会话
 退出 0、无相关 Python 进程；GPU 上其他 Isaac 进程保持原样。此处尚未记录开训成功。
+
+### 30.2 部署与开训确认
+
+实现提交 `df9ee0e` 已部署到服务器干净 `dev_xwt`，服务器 11 项预检通过（两骨干的
+初始化、梯度、序列化、配置差异及辅助诊断隔离等）。开训前逐份验证四组近窗完整导出
+中的文件哈希仍匹配当前 best/last/config/history/metrics/summary，manifest 未变，
+新归档和运行记录标签均未占用。确认旧训练、诊断 pane 均已退出 0，无对应 Python
+进程后，复用 `baseline_dense_v6` 启动四组顺序训练；日志为
+`onsetaux20260912_train.log`，启动 pane PID=94376、首个 B4 seed42 Python PID=94392。
+
+首组近窗 ZIP 已逐文件与冻结导出再次核对通过；运行记录为 started，新 config 为
+`dense_onset_aux_v2`、`event_onset_aux=true`、`lambda_event_onset_aux=1.0`。
+后续每组训练仍在开始前归档，不将尚未开始的组误写为已归档/完成。不在整批训练中
+更新服务器源码，不根据中间 upcoming 单项改选模或临时改配方。当前尚无本轮最终成绩。

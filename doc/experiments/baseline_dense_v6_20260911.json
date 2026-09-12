@@ -1,5 +1,5 @@
 {
-  "status": "near_and_head_diagnostics_completed_onset_aux_prepared",
+  "status": "onset_aux_four_run_batch_active",
   "handoff_date": "2026-09-12",
   "optimization_goal_met": false,
   "continue_automatically": true,
@@ -16,7 +16,7 @@
     "other_users_processes_modified": false
   },
   "experiment_role": "exploratory_dense_migration_control_not_formal_main_comparison",
-  "next_search_started": false,
+  "next_search_started": true,
   "full_metric_collection": {
     "status": "remote_restored_full_metrics_preserved_summary_extended",
     "last_attempt_date": "2026-09-11",
@@ -244,7 +244,14 @@
     "conclusion": "Do not adopt hot union: negligible extra upcoming with extra negative crossings."
   },
   "onset_auxiliary_experiment": {
-    "status": "implemented_local_tests_passed_not_launched",
+    "status": "four_run_batch_started_first_python_and_archive_verified",
+    "code_commit": "df9ee0e",
+    "server_tests_passed": 11,
+    "tmux": "baseline_dense_v6",
+    "training_log": "onsetaux20260912_train.log",
+    "startup_pane_pid": 94376,
+    "startup_python_pid": 94392,
+    "latest_verified_progress": "B4 seed42 started; near archive verified against frozen export; config has auxiliary head and coefficient 1.0. Remaining runs sequential, verify actual processes before any action.",
     "variant": "onset_aux",
     "archive_tag": "onsetaux20260912",
     "parent_variant": "near_precursor",
