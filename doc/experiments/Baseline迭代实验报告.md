@@ -3298,6 +3298,65 @@ bddea7fa14a9e665fa96529155c89addf158a1c3cc9d19116ea897c996479334。
 B5 seed43已接续，实际Python294501和训练pane272151仍live；四组训练和16份诊断
 尚未全部结束。不要重复seed42已完成的四份检查，不在训练中更新371afb6模型模块。
 
+### 36.6 B5 seed43完成，四次训练及16份诊断全部核验
+
+最后一组B5 seed43正常完成，best10/total30，总参数302686；正式validation
+P/R/F1为0.8372615039281706/0.6812785388127854/0.7512588116817726，阈值0.55，
+upcoming为2/145。训练pane272151退出0，日志末行为TRAIN_BATCH_EXIT_CODE=0；
+实际Python294501已结束。四次训练均正常结束，没有重启、换epoch或使用test。
+
+原timeattention归档11成员逐一核验并与旧完整导出匹配，配置near/last_mean/refine
+开启/aux关闭/test关闭。冻结快照baseline_postgru_b5s43_diagnostic_inputs20260913.json
+为29275 bytes。诊断pane308378（首个Python308383）串行完成best/last的train与
+validation四份诊断；观察到last train/validation进程310127/311542，等待同一会话
+正常退出0后核验，未重复执行。日志postgru20260913_b5s43_diagnose.log以
+DIAG_BATCH_EXIT_CODE=0结束。
+
+| B5 seed43观察项 | Best train | Best validation | Last train | Last validation |
+|---|---:|---:|---:|---:|
+| upcoming-vs-negative AP | 0.031092 | 0.010234 | 0.458472 | 0.008134 |
+| upcoming图残差/原历史表示L2，中位数 | 0.538978 | 0.554987 | 0.433804 | 0.489656 |
+| 输出投影权重L2 | 4.012980 | 4.012980 | 5.271747 | 5.271747 |
+
+观察值保留六位小数，精确值在完整导出。四份来源/权重/manifest/epoch/样本数和
+分组分母核验通过，best validation离散计数及P/R/F1与原正式指标在1e-10内一致。
+六个运行模块仍为371afb6，诊断源码仍5cfce2d；未将连续时长误差的设备差异纳入
+逐位相同的声明。完整最后一组导出baseline_dense_postgru_b5s43_metrics_20260913.json，
+568743 bytes，SHA-256：
+47f465d9ed12656853320fd6142ca134a6b0b4b0e8d7ea093f60c8de128e1507。
+
+### 36.7 整批汇总与不采用决定
+
+训练全部结束后重算dataset_manifest.json、dataset.pt、model_sample_index.csv、
+split_manifest.json及normalization.json的全量SHA，五项均与已固定的208包输入审计
+一致，哈希期间文件size/mtime未变化；该操作只读文件字节做校验，没有评价test样本。
+核验产物baseline_postgru_data_integrity20260913.json，1423 bytes，SHA-256：
+d697c36016147a70b874a1cd56e3aa38ecfe5346d25ff081e5c6df746ed33a78。
+
+逐组重验四个完整导出及其16份原诊断、冻结训练快照、当前七个权重/配置/结果文件，
+四份旧timeattention归档各11成员、近窗父对照、运行源码，以及上项数据完整性记录。
+两项pane均dead=1/exit=0，未发现该benchmark的训练或图观察诊断Python。最终汇总
+baseline_dense_postgru_metrics_20260913.json为2654014 bytes，SHA-256：
+db6a3e6a004426404820a774c428da3f862805bd94d4312c1db457f2a6271312。
+其中保留四组完整训练/诊断、逐seed配对差值、模型内两seed均值及全部核验来源。
+
+| 模型／两seed均值 | Near父对照 | GRU后图交互 | 差值 |
+|---|---:|---:|---:|
+| B4 Precision | 0.8220531728 | 0.8236263736 | +0.0015732009 |
+| B4 Recall | 0.6913242009 | 0.6844748858 | -0.0068493151 |
+| B4 F1 | 0.7510203841 | 0.7476309227 | -0.0033894614 |
+| B4 Upcoming recall | 0.0137931034 | 0.0068965517 | -0.0068965517 |
+| B5 Precision | 0.8381670772 | 0.8365995020 | -0.0015675752 |
+| B5 Recall | 0.6757990868 | 0.6826484018 | +0.0068493151 |
+| B5 F1 | 0.7482362744 | 0.7518222737 | +0.0035859993 |
+| B5 Upcoming recall | 0.0103448276 | 0.0068965517 | -0.0034482759 |
+
+四组upcoming命中由near的2/2/1/2变为1/1/0/2（各145个目标）。B5平均F1虽略升，
+但当前目标的提前召回没有改善；B4平均F1也下降，因此不采用本次新增图层。最后权重
+train/validation AP差距在两模型两seed均保留，图残差活跃不等于可靠提前征兆。这只
+否定当前固定的图交互配方，不证明所有时空交互或GCN/GAT-GRU都无法预测upcoming。
+整批已结束并保留完整结果，下一项event_fbeta仍以near为父对照，不能叠加本轮图层。
+
 ## 37. Upcoming soft F-beta损失单项对照准备
 
 登记event_fbeta / fbeta20260913，父对照near_precursor，B4/B5各seed42/43，最多

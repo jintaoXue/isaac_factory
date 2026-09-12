@@ -1,4 +1,124 @@
 {
+  "history_graph_all_completed_20260913": {
+    "status": "four_training_runs_and_16_diagnostics_completed_verified_do_not_promote",
+    "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",
+    "diagnostic_source_commit": "5cfce2d65074860d17e454dc7c32f7375d294312",
+    "run_order": [
+      "B4_seed42",
+      "B4_seed43",
+      "B5_seed42",
+      "B5_seed43"
+    ],
+    "best_epochs": [
+      1,
+      7,
+      7,
+      10
+    ],
+    "epochs_trained": [
+      11,
+      17,
+      27,
+      30
+    ],
+    "upcoming_hits": [
+      1,
+      1,
+      0,
+      2
+    ],
+    "near_parent_upcoming_hits": [
+      2,
+      2,
+      1,
+      2
+    ],
+    "upcoming_targets_each": 145,
+    "B5_seed43": {
+      "report_precision": 0.8372615039281706,
+      "report_recall": 0.6812785388127854,
+      "report_f1": 0.7512588116817726,
+      "report_threshold": 0.55,
+      "diagnostic_order": [
+        "best_train",
+        "best_validation",
+        "last_train",
+        "last_validation"
+      ],
+      "upcoming_ap": [
+        0.031092,
+        0.010234,
+        0.458472,
+        0.008134
+      ],
+      "upcoming_relative_graph_update_median": [
+        0.538978,
+        0.554987,
+        0.433804,
+        0.489656
+      ],
+      "output_projection_weight_l2": [
+        4.01298,
+        4.01298,
+        5.271747,
+        5.271747
+      ],
+      "snapshot_bytes": 29275,
+      "diagnostic_pane_pid": 308378,
+      "first_diagnostic_python_pid": 308383,
+      "diagnostic_exit_code": 0,
+      "export": "baseline_dense_postgru_b5s43_metrics_20260913.json",
+      "export_bytes": 568743,
+      "export_sha256": "47f465d9ed12656853320fd6142ca134a6b0b4b0e8d7ea093f60c8de128e1507"
+    },
+    "mean_metric_order": [
+      "report_precision",
+      "report_recall",
+      "report_f1",
+      "report_recall_upcoming"
+    ],
+    "B4_current_means": [
+      0.8236263736,
+      0.6844748858,
+      0.7476309227,
+      0.0068965517
+    ],
+    "B4_near_means": [
+      0.8220531728,
+      0.6913242009,
+      0.7510203841,
+      0.0137931034
+    ],
+    "B5_current_means": [
+      0.836599502,
+      0.6826484018,
+      0.7518222737,
+      0.0068965517
+    ],
+    "B5_near_means": [
+      0.8381670772,
+      0.6757990868,
+      0.7482362744,
+      0.0103448276
+    ],
+    "rounded_transcription_note": "Means ten decimals; observations six; exact values in complete server export",
+    "all_four_exports_16_diagnostics_snapshots_current_files_runtime_and_parent_hashes_reverified": true,
+    "old_timeattention_archive_members_verified_each": 11,
+    "data_integrity_export": "baseline_postgru_data_integrity20260913.json",
+    "data_integrity_export_bytes": 1423,
+    "data_integrity_export_sha256": "d697c36016147a70b874a1cd56e3aa38ecfe5346d25ff081e5c6df746ed33a78",
+    "all_five_frozen_dataset_sha256_recomputed_and_matched": true,
+    "complete_export": "baseline_dense_postgru_metrics_20260913.json",
+    "complete_export_bytes": 2654014,
+    "complete_export_sha256": "db6a3e6a004426404820a774c428da3f862805bd94d4312c1db457f2a6271312",
+    "training_pane_pid": 272151,
+    "training_exit_code": 0,
+    "last_diagnostic_exit_code": 0,
+    "matching_training_or_history_graph_diagnostic_python_live": false,
+    "runtime_checkout_still_371afb6": true,
+    "test_evaluated": false,
+    "decision": "Do not promote for upcoming optimization: B4 both and B5 seed42 lose hits; B5 seed43 unchanged. B5 mean F1 slightly improves but upcoming does not. Does not prove universal backbone ceiling. Next registered event_fbeta remains a near-parent loss-only ablation."
+  },
   "history_graph_B5_seed42_completed_20260913": {
     "status": "training_and_four_diagnostics_completed_verified",
     "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",
@@ -125,9 +245,13 @@
       "export": "baseline_fbeta_server_tests20260913.json",
       "export_bytes": 2056,
       "export_sha256": "8bf745a586d5495429b94a16e20e19f90a41b3d573aa2f27cad908cfcca5b88c"
-    }
+    },
+    "preceding_graph_batch_gate_satisfied": true,
+    "preceding_graph_batch_export": "baseline_dense_postgru_metrics_20260913.json",
+    "preceding_graph_batch_export_sha256": "db6a3e6a004426404820a774c428da3f862805bd94d4312c1db457f2a6271312",
+    "next_action": "fresh server state and complete-export guard, then deploy pinned implementation and run four-real-configuration preflight before training"
   },
-  "status": "history_graph_B5_seed42_completed_verified_seed43_training_live_event_fbeta_local_prepared_goal_not_met",
+  "status": "history_graph_all_completed_verified_not_promoted_event_fbeta_prepared_goal_not_met",
   "history_graph_B4_both_completed_20260913": {
     "status": "two_training_runs_and_eight_diagnostics_completed_verified",
     "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",

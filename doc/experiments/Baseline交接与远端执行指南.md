@@ -4,6 +4,14 @@
 
 ## 1. 交接状态
 
+**当前最新状态：**history_graph_refine四次训练及16份诊断已全部正常结束并核验，
+upcoming命中1/1/0/2（各145），未优于near的2/2/1/2，不采用这次新增图层。
+完整汇总baseline_dense_postgru_metrics_20260913.json，2654014 bytes，SHA
+db6a3e6a004426404820a774c428da3f862805bd94d4312c1db457f2a6271312。
+两项pane退出0，无该批次训练/诊断Python，运行HEAD仍371afb6。见36.6–36.7。
+下一项event_fbeta实现07398bb已通过本地62项和服务器独立进程6项检查，尚未部署
+训练；先核验实时状态及整批导出，再部署并做真实数据预检。不要重跑本轮已完成搜索。
+
 ### 最新用户决策：先固定 208 episode 优化 B4/B5
 
 用户已授权沿用现有 baseline 208 episode，先查明并改善 upcoming 低召回。
