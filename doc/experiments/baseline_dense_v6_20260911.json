@@ -1,7 +1,7 @@
 {
-  "status": "input_identity_audit_completed_verified_upcoming_goal_not_met",
+  "status": "input_identity_completed_history_graph_refine_training_started_goal_not_met",
   "history_graph_refine_registered_20260913": {
-    "status": "implemented_registered_locally_tested_not_started",
+    "status": "server_preflight_passed_four_run_batch_started_first_B4_seed42_live",
     "variant": "history_graph_refine",
     "tag": "postgru20260913",
     "models": [
@@ -31,7 +31,37 @@
     "local_subtests": 32,
     "archive_tag": "model_before_postgru20260913.zip",
     "log": "postgru20260913_train.log",
-    "interpretation_limit": "Explicit added-capacity graph-GRU variant, reported separately from original baseline. Does not isolate or exhaust the complete main-model architecture."
+    "interpretation_limit": "Explicit added-capacity graph-GRU variant, reported separately from original baseline. Does not isolate or exhaust the complete main-model architecture.",
+    "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",
+    "server_tests": 5,
+    "real_configuration_checks": 4,
+    "parent_parameters": {
+      "B4": 273054,
+      "B5": 285982
+    },
+    "candidate_parameters": {
+      "B4": 289630,
+      "B5": 302686
+    },
+    "server_preflight_file": "baseline_postgru_preflight20260913.json",
+    "server_preflight_bytes": 12455,
+    "server_preflight_sha256": "609484c93f0809efc7e6a8c73cfcbd5603f50391752c2eb26ece3d78fb84cb53",
+    "preflight_training_profile_note": "CPU preflight stores parent-normalized training_profile only for equality comparison; actual training uses dense_history_graph_refine_v2 and cuda:0.",
+    "pane_pid": 272151,
+    "first_python_pid": 272155,
+    "first_run": "B4_seed42",
+    "first_run_archive_members_verified": 11,
+    "all_four_old_run_key_files_hashes_verified": true,
+    "first_run_actual_configuration_verified": true,
+    "training_started": true,
+    "first_observed_epoch": 1,
+    "first_epoch_validation": {
+      "report_f1": 0.745137,
+      "report_precision": 0.820879,
+      "upcoming_hits": 1,
+      "upcoming_targets": 145
+    },
+    "progress_note": "First epoch only, no candidate outcome or checkpoint selection yet; later runs queued sequentially and archive independently."
   },
   "input_identity_audit_registered_20260913": {
     "status": "completed_verified_on_real_train_validation_data",

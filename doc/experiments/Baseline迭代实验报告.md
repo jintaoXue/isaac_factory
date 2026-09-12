@@ -3131,7 +3131,7 @@ dropout，B5新增图层attention dropout为0。初始全部任务输出与父�
 这是增加一个图层的明确架构变体，应与原两层baseline分开报告；不能将容量变化
 隐去或把该候选称为已验证标准baseline。正式比较仍保留共同204包缺口。
 
-本地验证包括新增5项测试（18子测试），与输入审计/precursor/B5模型共30项（28
+本地验证包括新增5项测试（16子测试），与输入审计/precursor/B5模型共30项（28
 子测试）通过；B3/B4、图表示、归档和dense评分相关58项（4子测试）通过。归档测试
 中旧temporal_attention的两个断言仍固定last_mean，与原注册不符，修正为其注册
 last_attention后26项归档检查通过；未改变该旧候选模型。检查覆盖控制配置/损失、
@@ -3143,3 +3143,27 @@ manifest和现有目录。用已有逐成员验证ZIP逻辑归档model_before_po
 复用candidate_history/seed42或43目录；无新目录、无test。日志postgru20260913_train.log。
 判读两颗seed正式P/R/F1/upcoming、best/last的train/validation排序与误报；不按
 upcoming单项挑epoch或拼接预测头。此处仅为注册，尚未启动。
+
+### 36.1 服务器预检与启动
+
+执行前两项pane均dead=1/exit=0，无baseline Python；208 manifest、完整timeattention
+导出、input identity产物及四组现有模型的6项关键文件SHA均通过。随后只在BSTAN的
+dev_xwt快进到371afb69d29118a3c42b3274a65e5b07509c1032。服务器新增5项测试全部
+通过，并在实际train/validation各2个样本上检查四组配置、所有原参数、eval/train
+首次输出及RNG一致。只构建near，参数总数B4为273054→289630，B5为285982→302686。
+
+预检产物baseline_postgru_preflight20260913.json，12455 bytes，SHA-256：
+609484c93f0809efc7e6a8c73cfcbd5603f50391752c2eb26ece3d78fb84cb53。其中training配置
+为CPU预检、profile字段归一到near父对照以比较；说明字段明确实际训练profile为
+dense_history_graph_refine_v2、device为cuda:0，不误认为运行配置采用near profile。
+
+复用baseline_dense_v6启动四组串行训练，pane PID272151，首个实际Python272155
+（B4 seed42）。日志postgru20260913_train.log；没有重复启动旧任务。首组旧timeattention
+ZIP的11个成员逐项核验，6项关键成员与完整旧导出一致。实际config已确认
+history_graph_refine=true、near、last_mean、onset_aux=false、evaluate_test=false。
+首次观察epoch1：validation F1=0.745137、P=0.820879、upcoming=1/145；只是训练进度，
+不是最终或选定结果，也不据此判断新路径有效。当前仅首组已开始，其他组按顺序执行，
+各组开始前独立归档；普通模型路径内容会随组次切换，读权重时必须核验来源。
+
+训练期间不得pull后续诊断或文档提交。待每组权重终态后按原口径检查best/last的
+train/validation，继续核验归档、模型实际配置、来源及最终指标。
