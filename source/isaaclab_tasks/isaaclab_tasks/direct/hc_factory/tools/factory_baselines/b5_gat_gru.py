@@ -26,6 +26,7 @@ class B5ModelConfig:
     event_head: str = "binary"
     event_precursor: str = "none"
     event_onset_aux: bool = False
+    event_onset_joint: bool = False
     node_embedding: int = 0
     temporal_readout: str = "last"
     history_graph_refine: bool = False
@@ -59,6 +60,8 @@ class B5ModelConfig:
             raise ValueError("event_head must be binary or three_class")
         if self.event_precursor not in {"none", "near", "near_far"}:
             raise ValueError("Unknown event_precursor mode")
+        if self.event_onset_joint and (not self.event_onset_aux or self.event_head != "binary"):
+            raise ValueError("Joint onset reporting requires the binary, supervised onset control")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -196,6 +199,7 @@ class B5GatGru(nn.Module):
             event_head=config.event_head,
             event_precursor_dim=0 if config.event_precursor == "none" else 23,
             event_onset_aux=config.event_onset_aux,
+            event_onset_joint=config.event_onset_joint,
         )
         self.history_graph = None
         if config.history_graph_refine:
@@ -216,6 +220,7 @@ class B5GatGru(nn.Module):
         jobs_remaining: torch.Tensor,
         jobs_total: torch.Tensor,
         event_precursor: torch.Tensor | None = None,
+        event_history_hot: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
         batch_size, time_steps, node_count, _ = x.shape
         if node_count != self.config.num_nodes:
@@ -272,4 +277,5 @@ class B5GatGru(nn.Module):
             jobs_remaining,
             jobs_total,
             event_precursor,
+            event_history_hot,
         )

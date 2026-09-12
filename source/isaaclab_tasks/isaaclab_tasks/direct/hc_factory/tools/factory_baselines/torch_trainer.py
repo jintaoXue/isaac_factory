@@ -215,7 +215,9 @@ def _move_batch(
     return {key: value.to(device) for key, value in batch.items()}
 
 
-def _model_inputs(batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+def _model_inputs(
+    batch: dict[str, torch.Tensor], model: nn.Module | None = None,
+) -> dict[str, torch.Tensor]:
     return {
         "x": batch["x"],
         "adjacency": batch["adjacency"],
@@ -225,6 +227,8 @@ def _model_inputs(batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         "jobs_remaining": batch["jobs_remaining"],
         "jobs_total": batch["jobs_total"],
         **({"event_precursor": batch["event_precursor"]} if "event_precursor" in batch else {}),
+        **({"event_history_hot": batch["event_history_hot"]}
+           if getattr(getattr(model, "config", None), "event_onset_joint", False) else {}),
     }
 
 
@@ -344,7 +348,7 @@ def _run_train_epoch(
     for cpu_batch in loader:
         batch = _move_batch(cpu_batch, device)
         optimizer.zero_grad(set_to_none=True)
-        outputs = model(**_model_inputs(batch))
+        outputs = model(**_model_inputs(batch, model))
         loss, components = compute_multitask_loss(
             outputs,
             batch,
@@ -416,7 +420,7 @@ def _evaluate_loader(
     with torch.no_grad():
         for cpu_batch in loader:
             batch = _move_batch(cpu_batch, device)
-            outputs = model(**_model_inputs(batch))
+            outputs = model(**_model_inputs(batch, model))
             loss, components = compute_multitask_loss(
                 outputs,
                 batch,
@@ -806,6 +810,11 @@ def train_torch_baseline(
         payload, manifest, dataset_dir, getattr(model_config, "event_precursor", "none"),
         ("train", "validation", "test") if train_config.evaluate_test else ("train", "validation"),
     )
+    from .onset_history import attach_onset_history
+    payload, onset_history_contract = attach_onset_history(
+        payload, manifest, dataset_dir, getattr(model_config, "event_onset_joint", False),
+        ("train", "validation", "test") if train_config.evaluate_test else ("train", "validation"),
+    )
     model = model_class(model_config).to(device)
     parent = None
     manifest_path = dataset_dir / "dataset_manifest.json"
@@ -879,6 +888,8 @@ def train_torch_baseline(
         metadata["warm_start_parent"] = parent
     if input_feature_contract is not None:
         metadata["input_feature_contract"] = input_feature_contract
+    if onset_history_contract is not None:
+        metadata["onset_history_contract"] = onset_history_contract
     parent_epochs = parent["epochs_trained"] if parent is not None else 0
     parent_steps = parent["optimizer_steps"] if parent is not None else 0
     parent_elapsed = parent["elapsed_seconds"] if parent is not None else 0.0
@@ -1286,6 +1297,13 @@ def evaluate_torch_checkpoint(
         payload, manifest, dataset_dir, checkpoint["model_config"].get("event_precursor", "none"),
         (split_name,), checkpoint["metadata"].get("input_feature_contract"),
     )
+    from .onset_history import attach_onset_history
+    joint = checkpoint["model_config"].get("event_onset_joint", False)
+    expected_onset = checkpoint["metadata"].get("onset_history_contract")
+    if joint and expected_onset is None:
+        raise ValueError("Joint checkpoint is missing its observed-onset-history contract")
+    payload, _ = attach_onset_history(payload, manifest, dataset_dir, joint,
+                                      (split_name,), expected_onset)
     train_config = TorchTrainConfig(
         batch_size=batch_size,
         num_workers=num_workers,

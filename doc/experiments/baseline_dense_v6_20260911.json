@@ -1,4 +1,145 @@
 {
+  "event_fbeta_all_training_completed_20260913": {
+    "status": "all_four_training_runs_completed_12_diagnostics_verified_last_four_running",
+    "training_source_commit": "1728ca69bd85e695f6004522ff774a20eaaab8e4",
+    "training_pane_pid": 326665,
+    "training_exit_code": 0,
+    "training_and_driver_python_processes_absent": true,
+    "run_order": [
+      "B4_seed42",
+      "B4_seed43",
+      "B5_seed42",
+      "B5_seed43"
+    ],
+    "best_epochs": [
+      3,
+      6,
+      7,
+      7
+    ],
+    "epochs_trained": [
+      13,
+      16,
+      27,
+      27
+    ],
+    "upcoming_hits": [
+      0,
+      2,
+      0,
+      0
+    ],
+    "near_parent_upcoming_hits": [
+      2,
+      2,
+      1,
+      2
+    ],
+    "upcoming_targets_each": 145,
+    "B5_seed43": {
+      "report_precision": 0.8388157894736842,
+      "report_recall": 0.6986301369863014,
+      "report_f1": 0.7623318385650224,
+      "report_threshold": 0.8,
+      "parameter_count": 285982,
+      "actual_config_matches_real_preflight": true,
+      "prior_graph_archive_members_verified": 11,
+      "eight_runtime_source_files_verified": true,
+      "snapshot": "baseline_fbeta_b5s43_diagnostic_inputs20260913.json",
+      "snapshot_bytes": 31008,
+      "diagnostic_pane_pid": 365017,
+      "diagnostic_dead_at_launch": 0,
+      "diagnostic_log": "fbeta20260913_b5s43_diagnose.log"
+    },
+    "full_batch_export_completed": false,
+    "new_joint_candidate_deployed": false,
+    "test_evaluated": false
+  },
+  "joint_onset_local_preparation_20260913": {
+    "status": "local_optional_path_tested_no_dense_variant_registered_or_server_deployment",
+    "model_flag": "event_onset_joint",
+    "parent_mechanism": "onset_aux",
+    "extra_parameters_relative_to_auxiliary_control": 0,
+    "initial_weights_rng_outputs_equal": true,
+    "legacy_hist_last_hot_added_to_model_input": false,
+    "initial_local_only_draft_corrected_before_deployment": true,
+    "history_field": "event_history_hot",
+    "history_source": "existing_x_thirty_windows_inverted_with_frozen_training_normalization_only",
+    "extra_history_windows": 0,
+    "history_rule": "ops_hot_mask_on_observed_thirty_window_slice_60s_min8_gap1_take_last",
+    "frozen_labels_and_decoder_unchanged": true,
+    "formal_main_history_gate_exactly_reproduced": false,
+    "strict_online_validity_established": false,
+    "checkpoint_contract": "onset_history_contract",
+    "local_tests_passed": 57,
+    "local_subtests_passed": 17,
+    "directory_creating_existing_tests_not_run": 3,
+    "real_208_construction_verified": false,
+    "new_training_started": false,
+    "server_runtime_modified": false,
+    "test_evaluated": false
+  },
+  "event_fbeta_B5_seed42_diagnostics_completed_20260913": {
+    "status": "four_frozen_diagnostics_completed_verified",
+    "source_commit": "1728ca69bd85e695f6004522ff774a20eaaab8e4",
+    "best_epoch": 7,
+    "epochs_trained": 27,
+    "diagnostic_order": [
+      "best_train",
+      "best_validation",
+      "last_train",
+      "last_validation"
+    ],
+    "upcoming_ap_rounded": [
+      0.013628,
+      0.008034,
+      0.359266,
+      0.009133
+    ],
+    "upcoming_probability_misses": [
+      586,
+      145,
+      373,
+      139
+    ],
+    "upcoming_timing_misses": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "false_alarms": [
+      438,
+      136,
+      250,
+      154
+    ],
+    "existing_finite_grid_P80_max_observed_upcoming_hits": [
+      30,
+      2,
+      258,
+      6
+    ],
+    "grid_scope": "Descriptive finite diagnostic grid, not exact frontier, formal score, upper bound or selected policy",
+    "diagnostic_pane_pid": 351899,
+    "diagnostic_exit_code": 0,
+    "canonical_best_validation_14_keys_match_saved_at_abs_tol_1e_10": true,
+    "server_export": "baseline_dense_fbeta_b5s42_metrics_20260913.json",
+    "server_export_bytes": 542226,
+    "server_export_sha256": "ca85e5b0014532648b5ee4a7b2777f71014fc89c36c02f1fd3a3d47b0e192676",
+    "near_parent_P_R_F1": [
+      0.8459770114942529,
+      0.6721461187214612,
+      0.7491094147582696
+    ],
+    "near_parent_upcoming_hits": 1,
+    "current_upcoming_hits": 0,
+    "upcoming_targets": 145,
+    "test_evaluated": false,
+    "B5_seed43_live_python_pid": 350531,
+    "B5_seed43_last_observed_epoch": 26,
+    "decision": "Overall F1 improves in this seed but upcoming remains unresolved; last diagnostics not substituted for formal best"
+  },
   "event_fbeta_B5_seed42_training_completed_20260913": {
     "status": "training_completed_four_frozen_diagnostics_started_not_yet_verified",
     "training_source_commit": "1728ca69bd85e695f6004522ff774a20eaaab8e4",
@@ -582,7 +723,7 @@
     "next_action": "Follow running event_fbeta_launch_20260913; preserve fixed runtime and validation-only protocol",
     "deployed_checkout": "1728ca69bd85e695f6004522ff774a20eaaab8e4"
   },
-  "status": "event_fbeta_B4_complete_B5_seed42_diagnostics_live_seed43_training_goal_not_met",
+  "status": "event_fbeta_all_training_complete_last_four_diagnostics_live_goal_not_met",
   "history_graph_B4_both_completed_20260913": {
     "status": "two_training_runs_and_eight_diagnostics_completed_verified",
     "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",

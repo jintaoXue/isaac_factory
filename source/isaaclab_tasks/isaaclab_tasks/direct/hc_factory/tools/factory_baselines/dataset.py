@@ -348,6 +348,10 @@ class FactoryBaselineTensorDataset(Dataset):
             if not bool(self.payload["event_precursor_valid"][sample_index]):
                 raise ValueError("Precursor features were not built for this sample/split")
             sample["event_precursor"] = self.payload["event_precursor"][sample_index]
+        if "event_history_hot" in self.payload:
+            if not bool(self.payload["event_history_hot_valid"][sample_index]):
+                raise ValueError("Observed onset history was not built for this sample/split")
+            sample["event_history_hot"] = self.payload["event_history_hot"][sample_index]
         group_number = str(int(sample["sample_group_id"]))
         series = self.payload["remain_series"][group_number]
         y_score, y_hot, remain_mask, _ = pack_remain_target(

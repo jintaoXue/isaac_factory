@@ -4,19 +4,22 @@
 
 ## 1. 交接状态
 
-**当前最新状态：**event_fbeta的B4两次训练及八份best/last × train/validation诊断
-全部完成并核验，best3/6、total13/16，upcoming命中0/2（各145）。平均F1
-0.7594687038，近窗父对照0.7510203841，但upcoming由2/2降为0/2，尚非解决方案。
-完整B4汇总baseline_dense_fbeta_b4_metrics_20260913.json，1343096 bytes，SHA
-5b3fbc9ce9df2a0fbc08e9c9eab3cd6fc955734c2bc4ba734ceda89d86495f1f。详见37.5。
-最新实时核验：B5 seed42已完成（best7/total27、F1=0.7615694165、upcoming0/145），
-其配置/源码/旧归档核验后冻结快照30956 bytes，四份标准诊断已在pane351899启动。
-训练pane326665、driver326668仍live，B5 seed43实际Python350531运行；详见37.6。
-服务器保持1728ca6，训练中不pull文档更新；勿重跑已完成训练/诊断。
+**当前最新状态：**event_fbeta四次训练全部正常结束，训练pane326665退出0，无
+原driver/训练Python；四组upcoming命中0/2/0/0（各145），近窗对照2/2/1/2。
+B4两颗seed及B5 seed42共12份冻结诊断已完整核验。B5 seed43 best7/total27，
+P/R/F1=0.8388157895/0.6986301370/0.7623318386、upcoming0/145；最后四份标准
+诊断已启动，pane365017、快照31008 bytes，日志fbeta20260913_b5s43_diagnose.log。
+配置/旧归档11成员/八个运行文件均通过核验，服务器保持1728ca6，不pull本地草稿。
+详见37.7–37.8，最后四份完成后才生成整批完整导出并考虑部署下一项。
+B4完整汇总1343096 bytes，SHA 5b3fbc9ce9df2a0fbc08e9c9eab3cd6fc955734c2bc4ba734ceda89d86495f1f。
+B5 seed42完整导出542226 bytes，SHA ca85e5b0014532648b5ee4a7b2777f71014fc89c36c02f1fd3a3d47b0e192676。
 
 新增第38节只读源码核查：主参考在训练时已组合continue/onset分数，并对组合值施加
 主事件损失；baseline旧onset_aux及事后raw-max/独立阈值诊断不等同于这条联合训练
-路径。此差异尚无因果收益证据，也未登记新训练；先收尾当前F-beta四组及16份诊断。
+路径。38.1已在本地准备联合路径并通过57 tests/17 subtests，未注册dense候选或部署。
+注意legacy hist_last_hot有整局平滑前视问题，禁止新增为网络输入；草稿已改为从原30窗
+X独立计算event_history_hot，有独立checkpoint契约。真实208预检尚未执行，先收尾
+当前F-beta四组及16份诊断，不根据本地测试宣称指标收益。
 
 history_graph_refine四次训练及16份诊断已全部正常结束并核验，
 upcoming命中1/1/0/2（各145），未优于near的2/2/1/2，不采用这次新增图层。

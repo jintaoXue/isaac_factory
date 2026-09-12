@@ -46,6 +46,22 @@ class HistoryGraphRefinement(nn.Module):
         return (history + correction) * node_mask[:, :, None].to(history.dtype)
 
 
+def combine_onset_event_logits(
+    continue_logit: torch.Tensor,
+    onset_logit: torch.Tensor,
+    event_history_hot: torch.Tensor | None,
+) -> torch.Tensor:
+    """Use the observed last state to combine heads during training and inference."""
+    if event_history_hot is None or event_history_hot.shape != continue_logit.shape:
+        raise ValueError("Joint onset reporting requires explicit (batch,node) event_history_hot")
+    if onset_logit.shape != continue_logit.shape:
+        raise ValueError("Continue and onset logits must have the same shape")
+    last = event_history_hot.detach().to(device=continue_logit.device)
+    if not bool(torch.isfinite(last).all()) or bool(((last < 0) | (last > 1)).any()):
+        raise ValueError("event_history_hot must be finite and between zero and one")
+    return torch.where(last > .5, continue_logit, torch.maximum(continue_logit, onset_logit))
+
+
 class FactoryPredictionHeads(nn.Module):
     def __init__(
         self,
@@ -59,6 +75,7 @@ class FactoryPredictionHeads(nn.Module):
         event_head: str = "binary",
         event_precursor_dim: int = 0,
         event_onset_aux: bool = False,
+        event_onset_joint: bool = False,
     ) -> None:
         super().__init__()
         if event_head not in {"binary", "three_class"}:
@@ -66,6 +83,9 @@ class FactoryPredictionHeads(nn.Module):
         self.event_head = event_head
         if event_onset_aux and event_head != "binary":
             raise ValueError("Onset auxiliary supervision requires the binary event control")
+        if event_onset_joint and not event_onset_aux:
+            raise ValueError("Joint onset reporting requires its independently supervised onset head")
+        self.event_onset_joint = event_onset_joint
         if event_precursor_dim not in {0, 23}:
             raise ValueError("event_precursor_dim must be zero or 23")
         self.event_precursor_dim = event_precursor_dim
@@ -136,7 +156,8 @@ class FactoryPredictionHeads(nn.Module):
                 nn.init.zeros_(self.precursor_projection[-1].weight)
                 nn.init.zeros_(self.precursor_projection[-1].bias)
         # Independent parameters, identical initialization, no RNG consumption.
-        # This head supplies training gradients only; it never changes event decoding.
+        # The auxiliary control keeps this head out of the official event score.
+        # Joint reporting is a separate opt-in, with exactly the same parameters.
         self.event_onset_head = deepcopy(self.event_will_head) if event_onset_aux else None
 
     def forward(
@@ -148,6 +169,7 @@ class FactoryPredictionHeads(nn.Module):
         jobs_remaining: torch.Tensor,
         jobs_total: torch.Tensor,
         event_precursor: torch.Tensor | None = None,
+        event_history_hot: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
         batch_size, node_count, hidden_dim = node_hidden.shape
         if node_count != self.num_nodes or hidden_dim != self.node_hidden_dim:
@@ -209,4 +231,9 @@ class FactoryPredictionHeads(nn.Module):
             result["event_kind_logits"] = event_logits
         if self.event_onset_head is not None:
             result["event_onset_logit"] = self.event_onset_head(event_hidden).squeeze(-1)
+        if self.event_onset_joint:
+            result["event_will_continue_logit"] = result["event_will_logit"]
+            result["event_will_logit"] = combine_onset_event_logits(
+                result["event_will_continue_logit"], result["event_onset_logit"], event_history_hot,
+            )
         return result

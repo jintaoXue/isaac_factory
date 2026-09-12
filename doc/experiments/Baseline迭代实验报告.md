@@ -3544,6 +3544,46 @@ best/last × train/validation四份诊断已启动，CPU2线程、batch32，不�
 观察器。日志fbeta20260913_b5s42_diagnose.log。当前尚未核验四份终态输出，不能
 把诊断启动当作完成；服务器继续保持1728ca6，训练中不pull。
 
+### 37.7 B5 seed42四份诊断完整核验
+
+B5 seed42诊断pane351899已dead1/exit0，无对应诊断Python。四份best/last ×
+train/validation已逐份核验权重、训练快照、1728ca6源码、manifest、样本数和分组；
+best validation的14项canonical计数及P/R/F1/who指标与原保存正式值在1e-10内一致。
+没有启用图/时间观察器或读取test。旧图归档和真实预检匹配记录均保留在完整快照。
+
+| B5 seed42 upcoming诊断 | Best train | Best validation | Last train | Last validation |
+|---|---:|---:|---:|---:|
+| 排序AP | 0.013628 | 0.008034 | 0.359266 | 0.009133 |
+| 保存阈值下概率漏报 | 586 | 145 | 373 | 139 |
+| 时间漏报 | 0 | 0 | 0 | 0 |
+| 误报 | 438 | 136 | 250 | 154 |
+| 既有有限网格P>=0.8最大观察upcoming命中 | 30 | 2 | 258 | 6 |
+
+最后一行只是现有离散诊断网格统计，不是精确上界、部署策略或正式成绩。AP转录至
+六位小数，训练/验证目标595/145。训练后期排序改善而验证仍弱，不能用last替代
+原选定best。相同seed近窗P/R/F1为0.8459770114942529/0.6721461187214612/
+0.7491094147582696、upcoming1/145；F-beta正式F1增0.0124600017，但upcoming降至0。
+
+完整导出baseline_dense_fbeta_b5s42_metrics_20260913.json，542226 bytes，SHA-256：
+ca85e5b0014532648b5ee4a7b2777f71014fc89c36c02f1fd3a3d47b0e192676。
+最新实际检查B5 seed43原Python350531、训练pane326665及driver326668仍live，日志
+epoch26；服务器保持1728ca6，不能重复已完成诊断或在训练中pull。
+
+### 37.8 四次F-beta训练全部完成，最后四份诊断启动
+
+原训练pane326665现已dead1/exit0，日志末行TRAIN_BATCH_EXIT_CODE=0；driver和
+模型Python均已退出。B5 seed43正式记录validation_completed，best7/total27，
+P/R/F1为0.8388157894736842/0.6986301369863014/0.7623318385650224，upcoming
+0/145，阈值0.80，参数285982。整批正式upcoming为0/2/0/0，近窗对照2/2/1/2；
+四组均未获得upcoming提升，不以总体F1增加宣称任务解决。
+
+在服务器仍为1728ca6且tracked clean时，核验最后一组实际配置与预检、near契约、
+八个运行源码、manifest、旧图归档11成员，再冻结七个当前文件。快照
+baseline_fbeta_b5s43_diagnostic_inputs20260913.json，31008 bytes。复用已确认
+退出0的诊断pane，最后best/last × train/validation四份标准诊断启动成功，新pane
+365017、dead0；日志fbeta20260913_b5s43_diagnose.log。此前12份已完成核验，最后
+四份尚未终态，整批完整导出仍待完成。服务器不pull本地联合路径草稿。
+
 ## 38. 主模型联合onset报警训练路径的源码差异
 
 再次只读检查固定主参考20c40e230aedee6aef2429d352413fbcf0fa571a的model.py和
@@ -3564,3 +3604,35 @@ Baseline的onset_aux实现则将event_onset_logit作为独立辅助输出，even
 当前F-beta四组及16份诊断，再依B5结果决定是否登记保持GCN/GAT-GRU、共同208数据/
 输入/阈值/选模的联合onset单项对照。原骨干已有事件发生、未来起点、时长和hot预测
 头，不能解释成没有未来输出；训练排序改善而验证弱也不能证明骨干已经达到上限。
+
+
+### 38.1 本地联合路径准备及历史状态输入边界修正
+
+在B5 seed43继续原F-beta训练期间，本地准备可选event_onset_joint路径和定向检查，
+尚未注册新的dense训练variant、未部署服务器。原有onset_aux权重/参数数量及初始化
+RNG完全保留；新开关要求binary和独立onset辅助监督，训练与评估都对冷状态组合值
+使用原主事件损失。辅助监督、起点/时长/hot损失、原阈值/选模未改变。
+
+实现审阅重新查到第16/17节已有边界：legacy hist_last_hot由整局ops_hot_mask平滑
+生成，可能依赖未来短段是否持续满门槛。因此不能因字段名为“历史”或原解码已经使用它，
+就把它新增为网络输入。最初仅本地测试的草稿接了该字段，现已移除；没有部署或训练。
+对话中“可直接复用过去信息”的表述在核查后已明确纠正。
+
+新的event_history_hot与旧字段分开：onset_history.py仅将已有30×N×27编码X的
+前21个连续通道按冻结训练归一化反变换，在这30个已观测窗口内调用共同ops_hot_mask
+（60秒、min8、gap1）并取末帧，最后按node_mask屏蔽。保留编码后的缺失观测值，
+不另读raw补全；不读取更早历史、future、y_hot或旧hist_last_hot，也不修改冻结包、
+目标、原解码或评分。因此它不是主参考整局历史标志的完全复刻，正式在线因果性仍
+受共同旧解码协议限制，不能宣称已修复整个benchmark。
+
+派生字段只在需要的split内存构建，配套valid掩码阻止使用未构建样本；checkpoint
+保存单独onset_history_contract，包括输入范围、归一化、manifest、构建器和operational
+规则源码哈希，重评/诊断缺失契约或不匹配即拒绝。原near摘要构建源码未变，旧权重
+默认joint=false，不添加新输入或改变原输出。
+
+本地57 tests、17 subtests通过；3个需要临时目录的既有归档/目录测试未运行，本次
+没有改动其逻辑。新测试覆盖固定主_combine_will_logit源码的12组数值/BCE梯度与同分
+边界、两种骨干参数/RNG/初始输出一致、cold负例的主事件损失确实更新onset、hot/
+无效节点门控、实际一轮训练与评估共同使用组合分数、checkpoint/旧权重往返、未来
+标签及旧hist_last_hot改变不能影响输入、30窗截断的前视反例、只构建train/validation
+和缺失观测保持。真实208数据构建与四组配置预检尚待批次收尾后完成，未声称提升。

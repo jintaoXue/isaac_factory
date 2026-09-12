@@ -781,6 +781,13 @@ def main() -> None:
         payload, manifest, args.dataset_dir, checkpoint["model_config"].get("event_precursor", "none"),
         (args.split,), checkpoint["metadata"].get("input_feature_contract"),
     )
+    from factory_baselines.onset_history import attach_onset_history
+    joint = checkpoint["model_config"].get("event_onset_joint", False)
+    expected_onset = checkpoint["metadata"].get("onset_history_contract")
+    if joint and expected_onset is None:
+        raise ValueError("Joint checkpoint is missing its observed-onset-history contract")
+    payload, _ = attach_onset_history(payload, manifest, args.dataset_dir, joint,
+                                      (args.split,), expected_onset)
     loader = DataLoader(
         FactoryBaselineTensorDataset(payload, payload["split_indices"][args.split].tolist()),
         batch_size=args.batch_size, shuffle=False,
@@ -791,12 +798,13 @@ def main() -> None:
         for batch in loader:
             batch = {key: value.to(device) for key, value in batch.items()}
             observed = {}
+            inputs = _model_inputs(batch, model)
             if args.inspect_temporal_attention:
-                result, observed = predict_with_temporal_observation(model, _model_inputs(batch))
+                result, observed = predict_with_temporal_observation(model, inputs)
             elif args.inspect_history_graph:
-                result, observed = predict_with_history_graph_observation(model, _model_inputs(batch))
+                result, observed = predict_with_history_graph_observation(model, inputs)
             else:
-                result = model(**_model_inputs(batch))
+                result = model(**inputs)
             values = {key: batch[key] for key in (
                 "sample_index", "y_hot", "remain_mask", "occ_node_mask",
                 "hist_last_hot", "event_will", "event_start",
