@@ -2160,3 +2160,29 @@ F1 均值为 0.7510204，原 history 为 0.7482113；upcoming 均值从 0.010344
 epoch3、训练会话仍存活。B4 训练集/验证集诊断复用 `baseline_dense_diag`，CPU 2 线程，
 标签 `nearprec20260912`，启动后已核实实际 Python 进程；B5 尚未诊断。后续须重新查询
 真实状态，不能把本段部分完成记录当作整批结束，也不能重复启动已完成训练。
+
+### 28.4 B4 近窗最佳权重诊断完成
+
+四份 `b4_seed{42,43}_{train,validation}_diagnostics_nearprec20260912.json` 已完成，
+诊断会话退出 0；逐份核验当前 best.pt 的 SHA-256、epoch 和样本数。以下 AP 使用
+二分类事件概率、只比较 upcoming 与无事件负例，不与三分类 subtype AP 混用。
+
+| B4 近窗 best 诊断 | seed42 | seed43 |
+|---|---:|---:|
+| Train upcoming AP | 0.006839 | 0.010118 |
+| Validation upcoming AP | 0.006336 | 0.008807 |
+| Train upcoming AUC | 0.795668 | 0.859065 |
+| Validation upcoming AUC | 0.750310 | 0.805106 |
+| 保存阈值下 train upcoming 概率漏报 | 595 / 595 | 590 / 595 |
+| 保存阈值下 validation upcoming 概率漏报 | 143 / 145 | 143 / 145 |
+| 保存阈值下 validation upcoming 时间错位漏报 | 0 | 0 |
+| 诊断阈值降至 0.30 时 report P | 0.701322 | 0.679012 |
+| 诊断阈值降至 0.30 时 upcoming 命中 | 2 / 145 | 3 / 145 |
+
+Validation 的 upcoming-vs-negative 正例率为 0.002149。AUC 有排序信号，但在这种
+稀有度下 AP 和高精度区域的召回仍低；降低阈值到 0.30 并不能充分恢复漏报。正式阈值
+仍为各自 validation 选定的 0.60。当前 near 最佳权重在 train 也没有学好 upcoming，
+因此不能仅将其描述为验证集掉分。下一项检查直接使用同次训练已有的 last.pt，保持
+原训练模块和评价规则，区分训练后期是否获得了排序能力；标签 `nearpreclast20260912`，
+四份 CPU 诊断复用已结束的 `baseline_dense_diag`，已核实启动进程。此时 B5 seed42
+训练观察到 epoch21，仍未将整批训练标为完成。
