@@ -36,8 +36,8 @@ STGNPP 在主参考配置中关闭。同一 best 权重的事件头/hot 头诊�
 2/145）。四次训练及 16 份 best/last train/validation 诊断均正常结束并核验通过，
 整批完整导出为 `baseline_dense_onset_aux_metrics_20260913.json`。B5 seed43 的 last
 辅助头 AP train/validation 为 0.658729/0.018469；当前证据仍支持明显泛化差距。
-服务器固定
-训练源码 df9ee0e，不在训练中 pull 后续文档提交；实际状态必须重新查询，不能重复启动。
+本轮onset训练源码为df9ee0e；当前新训练版本见下方最新状态。
+不在训练中 pull 后续文档提交；实际状态必须重新查询，不能重复启动。
 
 远历史真实构建及模型容量核验已通过：近窗/远历史的前 18 维逐元素相同，4 组初始
 权重与 RNG 相同，仅后 5 维追加更早历史摘要。`far_precursor` / `farprec20260913`
@@ -62,15 +62,20 @@ B5 last AP train为0.184805/0.308020，validation为0.008044/0.008621，仍有�
 内存3项测试通过。Seed42 原阈值下 upcoming 仍0/145、误报135→155；seed43
 upcoming 3→52/145，但 precision 0.822→0.238、误报161→2613，不采用该组合。
 完整核验与曲线存 baseline_onset_report_b4_20260913.json。该诊断外壳处于Z终态，
-tmux未回收退出码；结果完整性已独立核验，不能写成正常退出0。B5四份冻结报告检查
-现已启动，日志 onsetreport20260913_b5_diagnose.log，pane PID179389、最近实际Python
-PID181276；使用3b0e784 Git对象经stdin执行，HEAD/模型模块仍df9ee0e。详见第32节；
-不要在这些诊断期间 pull，不要重复启动。
+tmux未回收退出码；结果完整性已独立核验，不能写成正常退出0。B5四份检查也已正常
+退出0并完整核验，整批8/8完成。原阈值下upcoming为5→12/145、2→9/145，但P降至
+0.7124/0.7485，均低于0.8；不采用固定raw-max组合。B5完整导出
+baseline_onset_report_b5_20260913.json，1171996 bytes，SHA
+d1f2519da3448f19262d9a3caf0199f923671786b86bea47197b933ba4111e50。详见第32.5节，
+不重复执行这些检查；独立onset校准尚未测试。
 
-本地已准备时间汇聚单项对照 temporal_attention / timeattn20260913，父对照near，
+时间汇聚单项对照 temporal_attention / timeattn20260913已启动，父对照near，
 只将GRU历史均值改为内容注意力加权均值，保留末状态及融合层，新增128参数。原参数、
-RNG与首次输出一致；13项定向测试及28项相关检查（11子测试）通过。尚未部署或开训，
-须先完成当前B5冻结检查、保存结果，再预检并归档当前far权重。详见第33节。
+RNG与首次输出一致；13项定向测试及28项相关检查（11子测试）通过，服务器四组实际
+配置预检也通过。源码固定abc6713，日志timeattn20260913_train.log，pane PID188079、
+首组B4 seed42实际Python PID188096。首组far归档11文件核验通过，新配置last_attention、
+near、aux关闭、test关闭；其余组尚未开始。诊断pane已退出0。详见第33.1节，运行中
+不pull文档提交，不重复训练；当前尚无时间汇聚对照的最终成绩。
 
 ### 2026-09-12 新对话续接：输入审计已完成
 
@@ -213,8 +218,9 @@ B4/B5 onset 候选均已完成，表内为原正式事件头结果。独立分�
 
 已完成控制组、图上下文、upcoming 正例权重 4->12、三分类事件头四组对照，
 每组两模型各 seed42/43。没有稳定的 upcoming 提升，三分类不提升为正式最优方案。
-当前普通路径中的 best.pt/last.pt 均为已完成的far候选，旧近窗和onset分别保留在
-model_before_onsetaux20260912.zip 和 model_before_farprec20260913.zip。
+普通路径正按组从far转为时间汇聚候选，首组B4 seed42已启动，其余三组仍为far。
+旧近窗和onset分别保留在model_before_onsetaux20260912.zip和model_before_farprec20260913.zip，
+far在每组时间汇聚训练前保存到model_before_timeattn20260913.zip。
 必须核验 config 与归档来源，不能按路径猜候选。
 
 新诊断最重要的证据：
