@@ -1,4 +1,133 @@
 {
+  "joint_onset_real_preflight_passed_and_training_launched_20260913": {
+    "status": "four_configurations_real_preflight_passed_serial_training_live_first_config_and_archive_verified",
+    "server_training_commit": "7ff759dd722c8b12b730be5a3714672796655ddf",
+    "implementation_commit": "cbec4a9b1992e37bd3c382f6e5ed1dded537c9ee",
+    "deployment": {
+      "file": "baseline_joint_onset_mask_deployment20260913.json",
+      "bytes": 1221,
+      "sha256": "febe6fd63fa358449afde4da16210d162857622d46040ea5ba39a073debef5c3"
+    },
+    "server_tests": {
+      "passed": 62,
+      "subtests_passed": 17,
+      "deselected_directory_tests": 3,
+      "artifact_reuse_explicit_configuration_node_only": true,
+      "file": "baseline_joint_onset_mask_server_tests20260913.json",
+      "bytes": 1481,
+      "sha256": "079b2b5213af0dcc83458896e05bd7fd635153ca84e14e677751fed1de57eafe"
+    },
+    "prior_failure_archive": {
+      "file": "baseline_joint_onset_preflight_guard20260913.zip",
+      "bytes": 5389,
+      "sha256": "a1e2601764c422b7ec91e1769b62383a0a031f6234baca0e2ff8e35130aafa99",
+      "original_members": 2,
+      "members_and_originals_verified_before_reuse": true
+    },
+    "preflight": {
+      "script": "baseline_joint_onset_preflight20260913.py",
+      "script_bytes": 15108,
+      "script_sha256": "ab7bbd0b29ed0848f1a266c113e73a9084b1a6d2cbbec9b2cbfe0386924234cc",
+      "file": "baseline_joint_onset_preflight20260913.json",
+      "bytes": 27178,
+      "sha256": "8ba2f21b149e66962bf2421d54faad3d4af7135096ed4875fca678ae8b7562f0",
+      "pane_pid": 396832,
+      "python_pid": 396835,
+      "exit_code": 0,
+      "all_four_configurations_passed": true,
+      "parameter_counts": {
+        "B4": 289695,
+        "B5": 302623
+      },
+      "near_contract_matches_four_onset_parents": true,
+      "original_parameters_rng_initial_outputs_losses_equal": true,
+      "main_event_loss_reaches_gru_continue_onset_precursor": true,
+      "future_and_legacy_history_labels_do_not_change_model_outputs": true,
+      "onset_parent_archive_members_verified_each": 11,
+      "optimizer_step_taken": false,
+      "test_evaluated": false
+    },
+    "gate_audit": {
+      "train": {
+        "samples": 23859,
+        "target_counts": {
+          "ongoing": 4191,
+          "upcoming": 595,
+          "negative": 297152
+        },
+        "v1_v2_changed_samples": 0,
+        "v1_v2_changed_active_nodes": 0,
+        "observed_hot_by_group": {
+          "ongoing": 1635,
+          "upcoming": 0,
+          "negative": 395
+        },
+        "legacy_hot_observed_cold": 2260,
+        "legacy_cold_observed_hot": 0
+      },
+      "validation": {
+        "samples": 5439,
+        "target_counts": {
+          "ongoing": 950,
+          "upcoming": 145,
+          "negative": 67331
+        },
+        "v1_v2_changed_samples": 0,
+        "v1_v2_changed_active_nodes": 0,
+        "observed_hot_by_group": {
+          "ongoing": 334,
+          "upcoming": 0,
+          "negative": 97
+        },
+        "legacy_hot_observed_cold": 543,
+        "legacy_cold_observed_hot": 0
+      },
+      "conclusion": "Mask fix changes no actual active gates in this208 pack and cannot explain prior low recall; all upcoming enter the cold joint branch; do not attribute every legacy/observed difference to one cause"
+    },
+    "training": {
+      "variant": "joint_onset",
+      "tag": "jointonset20260913",
+      "run_order": [
+        "B4_seed42",
+        "B4_seed43",
+        "B5_seed42",
+        "B5_seed43"
+      ],
+      "max_epochs": 60,
+      "parent_control": "onset_aux",
+      "secondary_reference": "near_precursor",
+      "pane_pid": 400178,
+      "driver_python_pid": 400181,
+      "first_actual_python_pid": 400222,
+      "first_model": "B4",
+      "first_seed": 42,
+      "first_observed_stage": "epoch6_actual_config_and_prior_archive_verified",
+      "driver": "baseline_joint_onset_driver20260913.py",
+      "driver_bytes": 6380,
+      "driver_sha256": "306bbebc45db7edf65e99acdfd776b086bf7b4e29e3f43e0aabbde84fea32955",
+      "log": "jointonset20260913_train.log",
+      "archive": "model_before_jointonset20260913.zip",
+      "all_four_prior_fbeta_files_verified_before_first_run": true,
+      "checks_actual_configuration_contracts_archive_and_files_after_each_run": true,
+      "first_new_configuration_and_archive_checked": true,
+      "diagnostics_completed": false,
+      "test_evaluated": false,
+      "observed_epoch": 6,
+      "launch_verification": {
+        "file": "baseline_joint_onset_launch20260913.json",
+        "bytes": 1024,
+        "sha256": "b5322d4d9b6836033203813cc97f8d2e11cbdf80651b8e34875d51af73e9c9b9",
+        "other_three_original_fbeta_groups_unchanged": true,
+        "first_prior_archive_members_verified": 11
+      }
+    },
+    "six_data_stats_match_recent_full_sha_audit": true,
+    "original_28_training_files_unchanged_through_preflight": true,
+    "main_repository_modified": false,
+    "new_experiment_directories_created": false,
+    "goal_met": false,
+    "next_action": "Keep server HEAD7ff759d while running; await terminal checkpoints, then complete best/last train/validation diagnostics without restarting completed searches"
+  },
   "joint_onset_preflight_failure_and_mask_fix_20260913": {
     "status": "deployed_v1_real_preflight_failed_v2_mask_fix_local_only",
     "server_commit": "9c741c5fa4c1135925b9c3df58671d8626681a4d",
@@ -942,7 +1071,7 @@
     "next_action": "Follow running event_fbeta_launch_20260913; preserve fixed runtime and validation-only protocol",
     "deployed_checkout": "1728ca69bd85e695f6004522ff774a20eaaab8e4"
   },
-  "status": "event_fbeta_complete_joint_onset_preflight_failed_mask_fix_local_goal_not_met",
+  "status": "joint_onset_real_preflight_passed_training_started_goal_not_met",
   "history_graph_B4_both_completed_20260913": {
     "status": "two_training_runs_and_eight_diagnostics_completed_verified",
     "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",

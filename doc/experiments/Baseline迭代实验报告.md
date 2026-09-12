@@ -3754,3 +3754,89 @@ pytest-49及27个fixture目录，与用户不新建目录/仅指定仓库写入�
 validation的差异；全部四组配置、输入契约和损失路径通过之后才允许joint_onset开训。
 这项修正不解释既有低召回：新门控尚未用于任何已完成训练。架构结论仍是联合报警
 训练路径值得单独检验，已有训练/验证差距不足以宣称GCN/GAT-GRU无法预测upcoming。
+
+### 38.4 门控修正部署与完整真实208预检通过
+
+本地门控修正cbec4a9已推送。首次修正部署守卫发现上一节日志SHA从终端转录时少了
+两个字符，停止于fetch/merge之前；重新分四段读取原619-byte日志，确认实际SHA为
+712bd2383377d0b2bab9cd71def89cb70da8152b181f46de564b898550250311，日志原字节未变。
+本地文档/JSON修正提交7ff759d后，服务器在两项pane终态、无本仓库活动Python、
+完整F-beta结果及28个当前训练文件哈希通过后，从9c741c5快进至
+7ff759dd722c8b12b730be5a3714672796655ddf。部署后上述28文件及六份数据size/mtime
+与最近全量SHA核验记录一致，运行Python源码逐份与Git对象核验。
+
+部署记录baseline_joint_onset_mask_deployment20260913.json，1221 bytes，SHA
+febe6fd63fa358449afde4da16210d162857622d46040ea5ba39a073debef5c3。
+服务器定向检查62 tests、17 subtests通过，3项会创建目录的诊断测试排除，
+artifact_reuse只运行明确的配置检查node id，未整文件执行。测试记录
+baseline_joint_onset_mask_server_tests20260913.json，1481 bytes，SHA
+079b2b5213af0dcc83458896e05bd7fd635153ca84e14e677751fed1de57eafe。
+
+旧预检脚本/日志通过既有archive_files逐字节验证后归档并释放原文件名，归档
+baseline_joint_onset_preflight_guard20260913.zip含两个原文件及manifest，5389 bytes，
+SHA a1e2601764c422b7ec91e1769b62383a0a031f6234baca0e2ff8e35130aafa99。
+归档首次调用因未拼接tmux既有PYTHONPATH，导入时缺torch，尚未写归档；补齐原有
+依赖路径后完成，不重装依赖、不新建目录。旧9c741c5部署/测试报告仍原地保留。
+
+修正版预检复用baseline_joint_onset_preflight20260913.py，15108 bytes，SHA
+ab7bbd0b29ed0848f1a266c113e73a9084b1a6d2cbbec9b2cbfe0386924234cc。
+只把实际类型掩码严格转换为节点索引列表，与四份onset_aux父metadata完全比较；
+不改变类型分配。增加v2契约断言，并从固定9c741c5 Git对象提取旧gate函数，对全部
+train/validation样本逐一比较旧、新构建结果。未选择test样本，也没有优化器更新。
+
+| 全量预检 | Train | Validation |
+|---|---:|---:|
+| 样本数 | 23859 | 5439 |
+| ongoing / upcoming / negative目标 | 4191 / 595 / 297152 | 950 / 145 / 67331 |
+| v1→v2发生gate变化的样本/活跃节点 | 0 / 0 | 0 / 0 |
+| observed hot：ongoing / upcoming / negative | 1635 / 0 / 395 | 334 / 0 / 97 |
+| 旧hist hot、observed cold的有效目标 | 2260 | 543 |
+| 旧hist cold、observed hot的有效目标 | 0 | 0 |
+
+掩码修复在当前包没有改变有效gate，不能用它解释既有低召回；它修复的是输入边界。
+新门控与legacy hist_last_hot并不完全相同，不能将2260/543个差异全部归于同一个原因，
+也不能声称完全复刻主模型的旧门控。所有595/145 upcoming均进入cold组合分支。
+near输入契约在29298样本与四个父对照一致，后五维远历史保持零，原payload字段对象
+保留，near/gate valid掩码一致。近窗/新门控只用注册的原历史范围。
+
+四组真实配置全部通过：B4参数289695、B5参数302623；原参数、RNG、初始train/eval
+输出和全部损失与onset_aux父对照相同，新增开关没有额外可训练参数。实际类型权重下
+主事件损失对GRU、原事件头、onset头、precursor投影均有非零梯度，起点/hot头不受
+该项直接梯度；改变未来标签及legacy hist不能改变模型输出。各父归档11成员及关键
+权重/config/results与旧完整导出逐项匹配。此预检在CPU执行，注册训练设备cuda:0。
+
+预检pane396832、实际Python396835均结束，pane dead=1/exit=0，日志
+PREFLIGHT_EXIT_CODE=0。完整报告baseline_joint_onset_preflight20260913.json，
+27178 bytes，SHA 8ba2f21b149e66962bf2421d54faad3d4af7135096ed4875fca678ae8b7562f0。
+以上是执行正确性和输入/参数控制证据，不是召回收益证据。
+
+### 38.5 联合onset四组串行训练启动
+
+核验完整预检SHA、源码、旧F-beta文件、两项pane退出0、无相关活动Python后，在原
+baseline_dense_v6复用会话启动；GPU为RTX5090，启动前空余28696 MiB。驱动
+baseline_joint_onset_driver20260913.py，6380 bytes，SHA
+306bbebc45db7edf65e99acdfd776b086bf7b4e29e3f43e0aabbde84fea32955。
+日志jointonset20260913_train.log，训练pane400178、driver Python400181，首个实际
+训练命令Python400222为B4 seed42。首次观察到ALL_FOUR_OLD_F_BETA_RESULTS_VERIFIED_BEFORE_TRAINING
+及START_JOINT_ONSET B4 42，仍在输入准备，尚无epoch/config完成核验或新指标。
+
+顺序B4 seed42/43、B5 seed42/43，复用四个candidate_history/seed目录，标签
+jointonset20260913；每组原F-beta文件先逐成员验证归档model_before_jointonset20260913.zip。
+每组最多60epoch，参数、损失、抽样及选模按38.2；F-beta不叠加、远历史/attention/
+graph refine关闭。驱动逐组运行前后核验固定源码和冻结数据状态；完成后核对实际
+模型/损失/训练配置、近窗和历史门控契约、旧归档全部11成员及新文件SHA，再允许下一组。
+逐组training快照与整批训练记录写入原benchmark；不把训练快照当作16份冻结诊断完成。
+
+运行中服务器保持7ff759d，不pull后续文档。恢复时检查具体进程和checkpoint来源，
+不能因观察超时重启。下一步确认首组新config/旧归档并等待权重终态，再做best/last
+的train/validation诊断；未开test，尚未宣称upcoming提升或架构上限。
+
+随后首组进至epoch6，400222仍为实际B4 seed42进程、400178 pane仍live。实际config
+的model/training/loss与预检逐项一致，metadata的near/observed_history/类型掩码契约
+均一致；joint=true、aux=true、near、F-beta=0、evaluate_test=false。旧F-beta归档
+11成员CRC及SHA通过，六个关键权重/config/result与F-beta完整导出一致；其余三组
+原文件哈希不变，六份数据stat不变、运行源码仍7ff759d。运行核验记录
+baseline_joint_onset_launch20260913.json，1024 bytes，SHA
+b5322d4d9b6836033203813cc97f8d2e11cbdf80651b8e34875d51af73e9c9b9。
+早期epoch1–3的upcoming均为0，不能据此提前停止或判断最终结果。继续原训练预算和
+选模规则；下一步等待首组权重终态并收集冻结诊断，不重复当前训练。

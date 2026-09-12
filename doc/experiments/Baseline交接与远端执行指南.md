@@ -4,7 +4,17 @@
 
 ## 1. 交接状态
 
-**当前最新状态：**joint_onset已部署服务器dev_xwt@9c741c5，服务器61 tests/17 subtests
+**当前最新状态：**joint_onset已在服务器dev_xwt@7ff759d启动四组串行运行，训练pane
+400178 live、driver Python400181、首组B4 seed42 Python400222；已核验至epoch6，
+实际config与预检完全匹配，旧F-beta归档11成员通过，其余三组仍是原F-beta。当前是
+训练中间状态，尚无新候选最终指标。日志jointonset20260913_train.log。真实208修正版预检已经完整
+通过，诊断pane396832退出0；62 tests/17 subtests通过。29,298样本中新旧mask gate
+变化为零，所有595/145 upcoming均为observed cold；四组参数/RNG/初始化/主损失路径
+与onset_aux对照通过。完整预检27178 bytes，SHA
+8ba2f21b149e66962bf2421d54faad3d4af7135096ed4875fca678ae8b7562f0。
+详见38.4–38.5；不得在运行中pull、不得重启已有进程或重复旧搜索，未评test。
+
+此前joint_onset已部署服务器dev_xwt@9c741c5，服务器61 tests/17 subtests
 通过；首次真实208预检pane382787已退出1，尚未开训。失败在类型掩码对比：旧metadata
 保存节点索引列表，预检直接与0/1向量比较。须严格转换成相同索引表示，不能跳过检查。
 另发现新历史门控仅在ops之后mask会让无效human影响有效machine；本地已改为反归一化
@@ -25,9 +35,9 @@ event_fbeta四次训练、16份冻结诊断及整批完整核验均已结束，
 主事件损失；baseline旧onset_aux及事后raw-max/独立阈值诊断不等同于这条联合训练
 路径。38.1联合路径已通过57 tests/17 subtests；38.2现已登记joint_onset（父对照
 onset_aux、两模型两seed、最多60epoch），新增配置/归档边界定向检查16+2 tests通过。
-F-beta整批汇总现已完成；joint_onset首次预检失败，下一步为修正与完整预检。
+F-beta整批汇总现已完成；joint_onset首次预检失败后已修正、完整预检通过并启动。
 注意legacy hist_last_hot有整局平滑前视问题，禁止新增为网络输入；草稿已改为从原30窗
-X独立计算event_history_hot，有独立checkpoint契约。真实208预检尚未通过，不根据
+X独立计算event_history_hot，有独立checkpoint契约。真实208预检通过不代表召回改善，不根据
 本地测试宣称指标收益，也不将现有协议当作严格在线因果性已经验证。
 
 history_graph_refine四次训练及16份诊断已全部正常结束并核验，
