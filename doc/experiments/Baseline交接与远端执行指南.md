@@ -28,9 +28,12 @@ STGNPP 在主参考配置中关闭。同一 best 权重的事件头/hot 头诊�
 辅助头和按正负类分别取均值的 BCE（系数 1.0，ongoing 排除，缺类贡献零）。辅助头
 不参与正式报警；骨干、历史信息、抽样、其他损失、阈值与选模不变。B4/B5 各 seed42/43，
 最多 60 epoch，复用原目录。实现 `df9ee0e` 本地 29 tests / 11 subtests、服务器
-11 tests 通过。批次已启动，首个 B4 seed42 Python PID=94392（启动时），已核验
-近窗归档与新配置。当前最新普通路径随批次转为 onset_aux，其余未开始目录仍为近窗；
-实际运行及完成状态以 tmux/进程/运行记录为准，不能重复启动。
+11 tests 通过。B4 两颗 seed 已完成（best1/5、total11/15），正式 upcoming 为 0/145、
+3/145，F1 均值 0.7447745；B4 best/last 的 train/validation 共 8 份诊断已全部核验。
+辅助头 last train AP 为 0.282862/0.535091，validation 为 0.031005/0.032333，仍有明显
+泛化差距，尚无正式提升。B5 seed42 实际 Python PID=104896，最近观察到 epoch10；
+seed43 尚未开始。新普通路径随批次转为 onset_aux，未开始目录仍为近窗。服务器固定
+训练源码 df9ee0e，不在训练中 pull 后续文档提交；实际状态必须重新查询，不能重复启动。
 
 ### 2026-09-12 新对话续接：输入审计已完成
 
@@ -165,6 +168,10 @@ e3d7b2008ad7c5d0844c10a4c0670ff36c5ba961382706695689daf7a050244f
 | B5 三分类候选 | 0.8459 | 0.6785 | 0.7530 | 0.0138 |
 | B4 近窗摘要候选 | 0.8221 | 0.6913 | 0.7510 | 0.0138 |
 | B5 近窗摘要候选 | 0.8382 | 0.6758 | 0.7482 | 0.0103 |
+| B4 onset 辅助监督候选 | 0.8331 | 0.6735 | 0.7448 | 0.0103 |
+
+B5 onset 候选尚在训练，不填入未完成均值。当前 B4 onset 的独立分支只用于训练，
+其诊断 AP 不能替代正式事件头的 report 指标。
 
 已完成控制组、图上下文、upcoming 正例权重 4->12、三分类事件头四组对照，
 每组两模型各 seed42/43。没有稳定的 upcoming 提升，三分类不提升为正式最优方案。
@@ -238,6 +245,8 @@ benchmark 根目录有四份完整 metrics 汇总：
 `baseline_dense_control_metrics_20260911.json`、`baseline_dense_context_metrics_20260912.json`、
 `baseline_dense_weighted_metrics_20260912.json`、`baseline_dense_three_class_metrics_20260912.json`，
 另有 `baseline_dense_near_metrics_20260912.json`（四次近窗完整结果及文件哈希）。
+`baseline_dense_onset_aux_b4_20260912.json` 保存已完成的 B4 两次完整结果、配置、文件
+哈希及八份诊断摘要；整批 onset 四次尚未完成，不能把该 B4 导出当作四次汇总。
 诊断文件模式 `b[45]_seed4[23]_{train|validation}_diagnostics_<tag>.json`，标签有
 `upcoming20260911`、`upcontext20260912`、`upweight20260912`、`upclass20260912`、
 `upclasslast20260912`。精确完整指标保存在服务器，Git 中为审计与摘要记录。

@@ -12,7 +12,7 @@
     "baseline_dense_v6": {"pane_dead": false, "exit_code": null, "startup_pane_pid": 94376},
     "baseline_dense_diag": {"pane_dead": true, "exit_code": 0},
     "matching_training_or_diagnostic_processes": 1,
-    "training_python_pid_at_verification": 94392,
+    "training_python_pid_at_verification": 104896,
     "last_checkpoint_diagnostics_verified": 8,
     "other_users_processes_modified": false
   },
@@ -252,7 +252,7 @@
     "training_log": "onsetaux20260912_train.log",
     "startup_pane_pid": 94376,
     "startup_python_pid": 94392,
-    "latest_verified_progress": "B4 seed42 last checkpoint epoch4 verified; 16641 auxiliary parameters have diverged from the initially copied event head, all model parameters finite, source df9ee0e, manifest unchanged, test false. Near archive verified against frozen export. Remaining runs sequential; query actual processes before acting.",
+    "latest_verified_progress": "B4 both runs completed: best1/5, total11/15, upcoming hits0/3 of145. B4 eight best/last train/validation diagnostics verified and exported. B5 seed42 Python104896 observed at epoch10, seed43 not started; training pane alive, diagnostics pane exited0. Server remains df9ee0e; recheck actual processes.",
     "variant": "onset_aux",
     "archive_tag": "onsetaux20260912",
     "parent_variant": "near_precursor",
@@ -279,6 +279,124 @@
     "test_evaluated": false,
     "near_far_launched": false,
     "purpose": "Test dedicated class-normalized onset supervision, not an exact reproduction of main-model dual-head decoding or a claim of backbone ceiling"
+  },
+  "onset_batch_exposure_20260912": {
+    "source": "dense_event_support20260912.json",
+    "source_sha256": "56d2dc07169d12e420ed1d2877bcf3290d2cd53d0abdd317ea6581845b32cd93",
+    "method": "Union of first_future_position across upcoming node events within each episode",
+    "train_samples_with_upcoming": 583,
+    "train_samples": 23859,
+    "validation_samples_with_upcoming": 141,
+    "validation_samples": 5439,
+    "uniform_batch24_expected_no_upcoming_fraction": 0.552104,
+    "uniform_batch16_expected_no_upcoming_fraction": 0.673043,
+    "probability_method": "Hypergeometric zero-positive probability for a uniformly sampled batch without replacement; expectation, not observed batch logs",
+    "validation_source_prefixes_absent_from_train": [],
+    "limitation": "No missing coarse source prefix does not establish identical episode distributions. Batch class normalization does not imply dataset-balanced 50/50 sampling."
+  },
+  "onset_auxiliary_B4_completed": {
+    "status": "two_training_runs_and_eight_frozen_diagnostics_completed_verified",
+    "training_and_diagnostic_source_commit": "df9ee0e",
+    "seed_order": [
+      42,
+      43
+    ],
+    "best_epoch": [
+      1,
+      5
+    ],
+    "epochs_trained": [
+      11,
+      15
+    ],
+    "report_precision": [
+      0.84429066,
+      0.82190265
+    ],
+    "report_recall": [
+      0.66849315,
+      0.67853881
+    ],
+    "report_f1": [
+      0.74617737,
+      0.74337169
+    ],
+    "upcoming_hits": [
+      0,
+      3
+    ],
+    "upcoming_targets_each": 145,
+    "report_threshold": [
+      0.7,
+      0.55
+    ],
+    "report_recall_ongoing": [
+      0.77052632,
+      0.77894737
+    ],
+    "start_mae_minutes": [
+      0.03825137,
+      0.03230148
+    ],
+    "duration_mae_minutes": [
+      2.38544846,
+      2.34631681
+    ],
+    "remain_mae_minutes": [
+      42.15194399,
+      15.75402098
+    ],
+    "mean_metrics_order": [
+      "P",
+      "R",
+      "F1",
+      "upcoming_R"
+    ],
+    "mean_metrics": [
+      0.8330966562,
+      0.6735159817,
+      0.7447745279,
+      0.0103448276
+    ],
+    "best_main_head_train_ap": [
+      0.005973,
+      0.014834
+    ],
+    "best_main_head_validation_ap": [
+      0.005918,
+      0.009733
+    ],
+    "best_auxiliary_head_train_ap": [
+      0.020208,
+      0.063347
+    ],
+    "best_auxiliary_head_validation_ap": [
+      0.010003,
+      0.025995
+    ],
+    "last_main_head_train_ap": [
+      0.096618,
+      0.348024
+    ],
+    "last_main_head_validation_ap": [
+      0.008469,
+      0.011584
+    ],
+    "last_auxiliary_head_train_ap": [
+      0.282862,
+      0.535091
+    ],
+    "last_auxiliary_head_validation_ap": [
+      0.031005,
+      0.032333
+    ],
+    "metric_precision": "AP six decimals, per-seed report/time metrics eight decimals, means ten decimals; exact values in server export",
+    "actual_parent_configuration_comparison": "Only event_onset_aux, lambda_event_onset_aux and training_profile differ from matched near run; full input_feature_contract identical",
+    "verified_diagnostic_scope": "All8 checkpoint/source/manifest/epoch/sample checks; best validation canonical P/R/F1/upcoming R unchanged within1e-10; no test",
+    "server_export": "baseline_dense_onset_aux_b4_20260912.json",
+    "server_export_bytes": 71326,
+    "server_export_sha256": "8f4df2ad370dd9dd9870d2cae862caec8c88a4cd4f3bded3199878864f9d4a86",
+    "conclusion": "No formal B4 upcoming gain. Auxiliary scores have some validation signal but a large train/validation gap; not a proof of backbone ceiling. B5 batch still running; do not promote or claim full four-run completion."
   },
   "code_commit": "5394034",
   "branch": "dev_xwt",

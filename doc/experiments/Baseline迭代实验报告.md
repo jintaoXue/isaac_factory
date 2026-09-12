@@ -2340,3 +2340,62 @@ checkpoint 回读与配置差异。服务器开训前已确认干净 `dev_xwt@00
 开训后又只读核验 B4 seed42 的 epoch4 last.pt：16641 个辅助头参数已与初始化时
 相同的事件头发生分化，全部模型参数有限；源码为 df9ee0e，manifest 未变，
 evaluate_test=false。这证明辅助分支实际参与更新，不代表已改善 validation upcoming。
+
+### 30.3 Upcoming 的 batch 暴露率
+
+从已冻结、已校验哈希的 `dense_event_support20260912.json`，按每个 episode 的
+first_future_position 对所有 upcoming 工位目标取并集，得到含 upcoming 的样本数：
+train 583/23859（2.4435%），validation 141/5439（2.5924%）。这与窗口-工位目标
+595/145 不同；同一样本可包含多个正例，不能把目标数直接当作正例样本数。
+
+对均匀无放回 batch，按超几何概率 `prod((N-K-i)/(N-i), i=0..batch_size-1)` 计算，
+B4 batch24 没有 upcoming 的期望比例为 0.552104，B5 batch16 为 0.673043。
+这是随机抽样下的期望，不是本次实际 batch 日志，也不代表永久看不到这些样本。
+它说明辅助损失缺类分支会经常发生，按 batch 分别取均值也不等同于全数据集 50/50
+均衡抽样。进一步核查 validation 没有完全缺席于 train 的 source_prefix；这只排除
+整个粗粒度来源类别缺失，不能证明 episode 内分布一致或排除分布偏移。
+
+### 30.4 B4 两次训练及八份冻结权重诊断完成
+
+B4 两颗 seed 正常结束，未达到整体 P>=0.80 且 R>=0.70 的可行门，仍按原 fallback
+report F1 规则选 best；没有为了 upcoming 替换为最后权重。实际新旧 config 对照通过：
+model 只新增 event_onset_aux，loss 只新增 lambda_event_onset_aux=1，training 仅
+training_profile 名称变化；完整 input_feature_contract 与各自近窗父对照一致。
+
+| B4 onset 辅助监督 validation | seed42 | seed43 |
+|---|---:|---:|
+| Best / total epoch | 1 / 11 | 5 / 15 |
+| Report P | 0.84429066 | 0.82190265 |
+| Report R | 0.66849315 | 0.67853881 |
+| Report F1 | 0.74617737 | 0.74337169 |
+| Upcoming 命中 / 目标 | 0 / 145 | 3 / 145 |
+| Ongoing recall | 0.77052632 | 0.77894737 |
+| 保存阈值 | 0.70 | 0.55 |
+| Start MAE（分钟，who TP） | 0.03825137 | 0.03230148 |
+| Duration MAE（分钟，who TP） | 2.38544846 | 2.34631681 |
+| Remain MAE（分钟，全样本） | 42.15194399 | 15.75402098 |
+
+P/R/F1/upcoming R 均值为 0.8330966562/0.6735159817/0.7447745279/0.0103448276；
+近窗父对照 F1/upcoming R 为 0.75102038/0.01379310，未改善。
+
+`onsetaux20260912`（best）与 `onsetauxlast20260912`（last）两组标签各有
+B4 seed42/43 × train/validation 共 8 份诊断，全部正常结束。逐份验证权重 SHA-256、
+诊断源码及提交 df9ee0e、冻结 manifest、epoch 和 23859/5439 样本数；两份 best
+validation 的 canonical P/R/F1/upcoming R 与保存 metrics 在 1e-10 容差内一致。
+
+| Upcoming-vs-negative AP | B4 s42 train | B4 s42 validation | B4 s43 train | B4 s43 validation |
+|---|---:|---:|---:|---:|
+| Best 原事件头 | 0.005973 | 0.005918 | 0.014834 | 0.009733 |
+| Best 辅助 onset 头 | 0.020208 | 0.010003 | 0.063347 | 0.025995 |
+| Last 原事件头 | 0.096618 | 0.008469 | 0.348024 | 0.011584 |
+| Last 辅助 onset 头 | 0.282862 | 0.031005 | 0.535091 | 0.032333 |
+
+AP 转录到六位小数，两个头均排除 ongoing、只与无事件负例比较。辅助头在 validation
+中保留部分排序信号，但与训练仍有显著差距；它不参与正式报警，不能把它的 AP 或
+最后权重的单项结果当作正式提升。这也不是 GCN/GAT-GRU 理论上限的证明。
+
+服务器 `baseline_dense_onset_aux_b4_20260912.json`（71326 bytes）保存两次完整 metrics、
+config、运行记录、文件哈希及八份诊断摘要，SHA-256：
+`8f4df2ad370dd9dd9870d2cae862caec8c88a4cd4f3bded3199878864f9d4a86`。
+此时 B5 seed42 实际进程 PID=104896，观察到 epoch10；seed43 尚未开始。
+训练 pane 存活，B4 诊断 pane 已退出 0。整批代码继续固定 df9ee0e，未新增搜索或评 test。
