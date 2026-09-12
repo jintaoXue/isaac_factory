@@ -20,6 +20,7 @@ from diagnose_baseline_events import (
     independent_onset_report_mask, summarize_onset_frontier, _OnsetPrefixTree,
     predict_with_temporal_observation, summarize_temporal_attention,
     predict_with_history_graph_observation, summarize_history_graph,
+    observe_joint_onset, summarize_joint_onset,
 )
 from factory_baselines.artifacts import archive_files
 from factory_baselines.b4_gcn_gru import B4GcnGru, B4ModelConfig
@@ -27,6 +28,84 @@ from factory_baselines.b5_gat_gru import B5GatGru, B5ModelConfig
 
 
 class TestEventDiagnostics(unittest.TestCase):
+    def test_joint_observation_uses_existing_real_outputs_without_mutation_or_forward(self):
+        from test_baseline_joint_onset import _fixture
+        from factory_baselines.torch_trainer import _model_inputs
+        for kind in ("b4_gcn_gru", "b5_gat_gru"):
+            with self.subTest(kind=kind):
+                _, model, batch = _fixture(kind); model.eval()
+                with torch.no_grad():
+                    model.heads.event_onset_head[-1].bias.add_(2.)
+                    result = model(**_model_inputs(batch, model))
+                saved = {k: v.clone() for k, v in result.items()}
+                state = {k: v.clone() for k, v in model.state_dict().items()}
+                rng = torch.get_rng_state().clone()
+                with patch.object(model, "forward", side_effect=AssertionError("No extra forward")):
+                    observed = observe_joint_onset(result, batch["event_history_hot"])
+                self.assertTrue(torch.equal(rng, torch.get_rng_state()))
+                self.assertTrue(all(torch.equal(state[k], v) for k, v in model.state_dict().items()))
+                self.assertTrue(all(torch.equal(saved[k], v) for k, v in result.items()))
+                self.assertTrue(torch.equal(observed["joint_onset_selected"], batch["event_history_hot"] <= .5))
+                self.assertFalse(observed["joint_cold_logit_tie"].any())
+                with self.assertRaisesRegex(ValueError, "registered joint rule"):
+                    observe_joint_onset({**result, "event_will_logit": result["event_will_logit"] + 1}, batch["event_history_hot"])
+        # Distinct saturated logits must not be misclassified as an exact tie.
+        cont = torch.tensor([[100., 0., -1.]]); onset = torch.tensor([[101., 0., 0.]])
+        gate = torch.tensor([[0., 0., 1.]])
+        combined = torch.where(gate > .5, cont, torch.maximum(cont, onset))
+        result = dict(event_will_continue_logit=cont, event_onset_logit=onset, event_will_logit=combined)
+        observed = observe_joint_onset(result, gate)
+        self.assertEqual(observed["joint_onset_selected"].tolist(), [[True, False, False]])
+        self.assertEqual(observed["joint_cold_logit_tie"].tolist(), [[False, True, False]])
+        for invalid in (gate[:, :2], torch.full_like(gate, .5), torch.full_like(gate, float("nan"))):
+            with self.assertRaises(ValueError): observe_joint_onset(result, invalid)
+
+    def _joint_arrays(self):
+        arrays = self._three_class_arrays(); arrays.pop("event_kind_probability")
+        arrays.update(will_probability=np.array([[.9, .8, .7, np.nan]]),
+                      event_continue_probability=np.array([[.9, .1, .1, np.nan]]),
+                      event_onset_probability=np.array([[.99, .8, .7, np.nan]]),
+                      event_history_hot=np.array([[1., 0., 0., np.nan]]),
+                      joint_onset_selected=np.array([[0., 1., 1., np.nan]]),
+                      joint_cold_logit_tie=np.array([[0., 0., 0., np.nan]]))
+        return arrays
+
+    def test_joint_summary_separates_added_hits_false_alarms_and_preserves_canonical_report(self):
+        arrays = self._joint_arrays(); saved = {k: v.copy() for k, v in arrays.items()}
+        canonical = summarize_events(arrays, [.55]); report = summarize_joint_onset(arrays, .55)
+        self.assertEqual(report["groups"]["upcoming"]["extra_hits"], 1)
+        self.assertEqual(report["groups"]["negative"]["extra_false_alarms"], 1)
+        self.assertEqual(report["groups"]["ongoing"]["onset_selected"], 0)
+        self.assertEqual(report["groups"]["ongoing"]["extra_reports"], 0)
+        joint, cont = (report["reports_at_saved_threshold"][k] for k in ("joint", "continue_only"))
+        self.assertEqual(joint, canonical["thresholds"][0])
+        self.assertEqual(joint["report_recall_upcoming"], 1)
+        self.assertEqual(cont["report_recall_upcoming"], 0)
+        self.assertAlmostEqual(joint["report_precision"], 2 / 3)
+        self.assertEqual(cont["report_precision"], 1)
+        self.assertIn("participates", canonical["onset_auxiliary_diagnostics"]["scope"])
+        old = {k: v for k, v in arrays.items() if k != "event_continue_probability"}
+        self.assertIn("excluded", summarize_events(old, [.55])["onset_auxiliary_diagnostics"]["scope"])
+        self.assertEqual(canonical, summarize_events(arrays, [.55]))
+        for k, v in saved.items(): np.testing.assert_array_equal(arrays[k], v)
+        arrays["predicted_start"][0, 1] = 8
+        missed = summarize_joint_onset(arrays, .55)["groups"]["upcoming"]
+        self.assertEqual((missed["extra_hits"], missed["extra_false_alarms"]), (0, 1))
+
+    def test_joint_summary_rejects_invalid_inputs_and_defines_empty_support(self):
+        arrays = self._joint_arrays()
+        for key in ("event_continue_probability", "event_history_hot", "joint_onset_selected"):
+            bad = {k: v.copy() for k, v in arrays.items()}; bad[key][0, 1] = np.nan
+            with self.assertRaises(ValueError): summarize_joint_onset(bad, .55)
+        bad = {**arrays, "will_probability": arrays["event_continue_probability"]}
+        with self.assertRaisesRegex(ValueError, "registered rule"): summarize_joint_onset(bad, .55)
+        for threshold in (-.1, 1.1, np.nan):
+            with self.assertRaises(ValueError): summarize_joint_onset(arrays, threshold)
+        arrays["occ_node_mask"][:] = 0
+        empty = summarize_joint_onset(arrays, .55)
+        self.assertTrue(all(row["count"] == 0 for row in empty["groups"].values()))
+        self.assertIsNone(empty["ranking"]["joint"]["upcoming_vs_negative_ap"])
+
     def test_history_graph_observer_preserves_outputs_state_rng_and_one_forward(self):
         import test_b5_gat_gru as fixture_module
         fixture = fixture_module.TestB5GatGru(); fixture.setUp()

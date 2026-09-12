@@ -266,9 +266,97 @@ def summarize_events(arrays: dict[str, np.ndarray], thresholds: list[float]) -> 
                 name: np.quantile(score[mask], [.1, .5, .9]).tolist() if mask.any() else None
                 for name, mask in groups.items() if name in {"upcoming", "negative"}
             },
-            "scope": "Training-only auxiliary head; independent ranking diagnosis, excluded from canonical report decisions and checkpoint selection.",
+            "scope": (
+                "Onset participates in the jointly trained canonical event score; this separate ranking is diagnostic only."
+                if "event_continue_probability" in arrays else
+                "Training-only auxiliary head; independent ranking diagnosis, excluded from canonical report decisions and checkpoint selection."
+            ),
         }
     return output
+
+
+def observe_joint_onset(result: dict[str, torch.Tensor], history: torch.Tensor) -> dict:
+    """Read both existing heads from one forward; verify the actual joint score."""
+    names = ("event_will_continue_logit", "event_onset_logit", "event_will_logit")
+    if any(name not in result for name in names):
+        raise ValueError("Joint observation requires continue, onset and combined logits")
+    cont, onset, combined = (result[name] for name in names)
+    if history.shape != cont.shape or onset.shape != cont.shape or combined.shape != cont.shape:
+        raise ValueError("Joint observation requires matching sample/node grids")
+    if any(not bool(torch.isfinite(x).all()) for x in (history, cont, onset, combined)):
+        raise ValueError("Non-finite joint observation")
+    if bool(((history != 0) & (history != 1)).any()):
+        raise ValueError("Joint observation requires binary observed history")
+    cold = history <= .5
+    expected = torch.where(cold, torch.maximum(cont, onset), cont)
+    if not torch.equal(combined, expected):
+        raise ValueError("Observed score differs from the registered joint rule")
+    return {
+        "event_continue_probability": cont.sigmoid(),
+        "event_history_hot": history,
+        "joint_onset_selected": cold & (onset > cont),
+        "joint_cold_logit_tie": cold & (onset == cont),
+    }
+
+
+def summarize_joint_onset(arrays: dict[str, np.ndarray], threshold: float) -> dict:
+    """Describe onset's extra reports at the saved threshold without selecting a policy."""
+    if not np.isfinite(threshold) or not 0 <= threshold <= 1:
+        raise ValueError("Invalid saved joint threshold")
+    valid = arrays["occ_node_mask"] > .5
+    keys = ("will_probability", "event_continue_probability", "event_onset_probability",
+            "event_history_hot", "joint_onset_selected", "joint_cold_logit_tie")
+    for key in keys:
+        if key not in arrays or arrays[key].shape != valid.shape:
+            raise ValueError("Missing or mismatched joint observation grid")
+        values = arrays[key][valid]
+        if not np.isfinite(values).all() or (values < 0).any() or (values > 1).any():
+            raise ValueError("Invalid joint observation values")
+        if key in keys[3:] and not np.isin(values, [0, 1]).all():
+            raise ValueError("Joint gate and branch flags must be binary")
+    combined, cont, onset, history, selected, tie = (arrays[key] for key in keys)
+    cold = history <= .5
+    expected = np.where(cold, np.maximum(cont, onset), cont)
+    if not np.allclose(combined[valid], expected[valid], rtol=0, atol=1e-7):
+        raise ValueError("Joint probabilities differ from the registered rule")
+    selected, tie = selected > .5, tie > .5
+    if ((selected | tie) & ~cold & valid).any() or (selected & tie & valid).any():
+        raise ValueError("Invalid joint branch selection")
+    positive = (arrays["event_will"] > .5) & valid
+    groups = dict(ongoing=positive & (arrays["event_start"] == 0),
+                  upcoming=positive & (arrays["event_start"] > 0), negative=valid & ~positive)
+    decoded_start = np.where(arrays["hist_last_hot"] > .5, 0, arrays["predicted_start"])
+    timely = np.abs(decoded_start - arrays["event_start"]) <= 3
+    extra = valid & (combined >= threshold) & (cont < threshold)
+    if (valid & (combined < threshold) & (cont >= threshold)).any():
+        raise ValueError("Joint max must not remove continue reports")
+    group_stats = {}
+    for name, mask in groups.items():
+        lift = (combined - cont)[mask]
+        group_stats[name] = dict(
+            count=int(mask.sum()), observed_hot=int((mask & ~cold).sum()),
+            onset_selected=int((mask & selected).sum()), cold_logit_ties=int((mask & tie).sum()),
+            probability_lift_q10_q50_q90=np.quantile(lift, [.1, .5, .9]).tolist() if lift.size else None,
+            extra_reports=int((mask & extra).sum()),
+            extra_hits=int((mask & extra & positive & timely).sum()),
+            extra_false_alarms=int((mask & extra & (~positive | ~timely)).sum()),
+        )
+    ranked = groups["upcoming"] | groups["negative"]
+    ranking = {}
+    for name, score in (("continue", cont), ("onset", onset), ("joint", combined)):
+        metrics = _binary_metrics(groups["upcoming"][ranked].astype(np.int64), score[ranked])
+        ranking[name] = dict(upcoming_vs_negative_ap=metrics["pr_auc"],
+                             upcoming_vs_negative_auc=metrics["roc_auc"])
+    # Each policy uses the same checkpoint, threshold, start/duration and legacy decoder.
+    baseline = {k: v for k, v in arrays.items() if k not in keys[1:]}
+    joint_report = summarize_events(baseline, [threshold])["thresholds"][0]
+    continue_report = summarize_events({**baseline, "will_probability": cont}, [threshold])["thresholds"][0]
+    return dict(
+        version="factory_frozen_joint_onset_observation_v1", saved_threshold=threshold,
+        groups=group_stats, ranking=ranking,
+        reports_at_saved_threshold=dict(joint=joint_report, continue_only=continue_report),
+        scope="Read-only output ablation within the jointly trained checkpoint. Extra reports are compared at its saved threshold. The continue-only result is not an independently trained baseline, and no threshold, checkpoint or reporting policy is selected or changed.",
+    )
 
 
 def predicted_hot_run_score(probability: np.ndarray) -> np.ndarray:
@@ -818,6 +906,8 @@ def main() -> None:
                 values["event_kind_probability"] = result["event_kind_logits"].softmax(-1)
             if "event_onset_logit" in result:
                 values["event_onset_probability"] = result["event_onset_logit"].sigmoid()
+            if joint:
+                values.update(observe_joint_onset(result, batch["event_history_hot"]))
             if args.compare_hot_head:
                 values["predicted_hot_probability"] = result["remain_hot_logit"].sigmoid()
             values.update(observed)
@@ -827,6 +917,8 @@ def main() -> None:
     chosen_threshold = float(checkpoint["metadata"]["event_report_threshold"])
     thresholds = sorted(set([*args.thresholds, chosen_threshold]))
     report = summarize_events(arrays, thresholds)
+    if joint:
+        report["joint_onset_diagnostics"] = summarize_joint_onset(arrays, chosen_threshold)
     if args.inspect_temporal_attention:
         report["temporal_attention_observation"] = summarize_temporal_attention(
             arrays, float(model.history_attention.query.norm().item()),
@@ -872,6 +964,11 @@ def main() -> None:
         print(json.dumps(report["prediction_head_comparison"], indent=2), flush=True)
     if "onset_auxiliary_diagnostics" in report:
         print(json.dumps(report["onset_auxiliary_diagnostics"], indent=2), flush=True)
+    if "joint_onset_diagnostics" in report:
+        observed = report["joint_onset_diagnostics"]
+        print("Joint onset observation:", json.dumps({
+            "groups": observed["groups"], "ranking": observed["ranking"],
+        }), flush=True)
     if "onset_report_comparison" in report:
         comparison = report["onset_report_comparison"]
         for name, policy in comparison["policies"].items():

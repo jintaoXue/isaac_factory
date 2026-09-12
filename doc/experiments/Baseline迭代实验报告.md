@@ -3840,3 +3840,36 @@ baseline_joint_onset_launch20260913.json，1024 bytes，SHA
 b5322d4d9b6836033203813cc97f8d2e11cbdf80651b8e34875d51af73e9c9b9。
 早期epoch1–3的upcoming均为0，不能据此提前停止或判断最终结果。继续原训练预算和
 选模规则；下一步等待首组权重终态并收集冻结诊断，不重复当前训练。
+
+### 38.6 首组训练完成与联合报警分支只读观察准备
+
+B4 seed42实际Python400222已消失，驱动记录该组正常结束并接续B4 seed43，
+后者实际Python405436已观察至epoch6，训练pane400178和driver400181仍live。
+首组best1/total11、参数289695，正式P/R/F1为
+0.8512880562060889/0.6639269406392694/0.7460236018471011，upcoming=0/145，
+保存阈值0.65。后期epoch6–10出现少量upcoming，但整体F1下降；仍按原规则保存
+best，不能挑选后期epoch代替。该结果与父onset_aux同seed同为0/145，尚无提升。
+
+独立核验首组训练快照status、训练提交7ff759d、当前七文件SHA、旧F-beta归档CRC及
+11成员SHA均通过；实际joint=true、F-beta=0、evaluate_test=false。快照
+baseline_dense_joint_onset_b4s42_training20260913.json，32785 bytes，SHA
+b37da8eab23d468685f16c554020eaae5e0a6bb5b0173a963cfa8e697b8a7187。
+四份best/last × train/validation冻结诊断尚未开始，不将训练快照作为诊断完成。
+
+本地diagnose_baseline_events.py新增仅对joint checkpoint生效的只读观察。
+从同一次forward的原continue/onset/combined logits核验注册组合规则，再收集原头
+概率、已有observed gate、onset实际胜出和cold同分标志。分支选择从logit比较获得，
+避免sigmoid饱和把不同logit误判为同分；不再调用forward、不改参数、RNG或原输出。
+
+保存阈值下，统计各组的gate状态、onset胜出、概率抬升、新增报警/命中/误报，同时
+保留原头/onset/组合的upcoming-vs-negative AP。对同一联合训练权重临时只用原头
+重新计算一份canonical报告，起点/时长/阈值及legacy解码不变。它只是冻结输出消融，
+不能当作独立训练baseline、不选新阈值/epoch、不替换正式分数，也不等于联合训练的
+因果贡献。旧独立辅助头路径和旧诊断不变；joint报告中的辅助头scope改为明确参与
+组合报警，修正原通用文案把它写成“排除在正式报警外”的不准确描述。
+
+本地39 tests、9 subtests通过，3项临时目录测试显式排除；新增检查覆盖两种真实骨干
+观察前后参数/RNG/输出不变、不发生第二次forward、冷/热/同分/饱和边界、额外命中与
+误报及起点错误分离、canonical原报告/输入保持不变、无效节点和空支持定义。只改
+诊断脚本/测试及文档，服务器训练模块保持7ff759d；新诊断通过Git对象stdin执行，
+先做服务器独立内存测试，再启动首组四份冻结诊断，不在运行期间pull源码。

@@ -4,7 +4,15 @@
 
 ## 1. 交接状态
 
-**当前最新状态：**joint_onset已在服务器dev_xwt@7ff759d启动四组串行运行，训练pane
+**当前最新状态：**joint_onset首组B4 seed42已正常结束，best1/total11，P/R/F1为
+0.85128806/0.66392694/0.74602360，upcoming=0/145，阈值0.65。完整训练快照及
+当前七文件/旧F-beta归档11成员独立核验通过；B4 seed43 Python405436正在运行，
+训练pane400178/driver400181仍live，服务器保持7ff759d。详见38.6。
+新增联合分支只读观察：同一次forward比较原头、onset和组合分数，按保存阈值拆分
+新增命中/误报；本地39 tests/9 subtests通过，尚待服务器内存测试与首组四份诊断。
+不要在训练中pull；诊断新源码通过固定Git对象stdin执行，模型模块保持7ff759d。
+
+此前joint_onset已在服务器dev_xwt@7ff759d启动四组串行运行，训练pane
 400178 live、driver Python400181、首组B4 seed42 Python400222；已核验至epoch6，
 实际config与预检完全匹配，旧F-beta归档11成员通过，其余三组仍是原F-beta。当前是
 训练中间状态，尚无新候选最终指标。日志jointonset20260913_train.log。真实208修正版预检已经完整

@@ -1,4 +1,55 @@
 {
+  "joint_onset_B4_seed42_training_and_observation_prepared_20260913": {
+    "status": "B4_seed42_training_complete_B4_seed43_running_observation_local_tested_not_server_run",
+    "training_source_commit": "7ff759dd722c8b12b730be5a3714672796655ddf",
+    "B4_seed42": {
+      "best_epoch": 1,
+      "epochs_trained": 11,
+      "parameters": 289695,
+      "precision": 0.8512880562060889,
+      "recall": 0.6639269406392694,
+      "f1": 0.7460236018471011,
+      "upcoming_hits": 0,
+      "upcoming_targets": 145,
+      "threshold": 0.65,
+      "former_training_python_pid": 400222,
+      "process_absent": true,
+      "current_seven_files_and_prior_11_archive_members_reverified": true,
+      "snapshot": "baseline_dense_joint_onset_b4s42_training20260913.json",
+      "snapshot_bytes": 32785,
+      "snapshot_sha256": "b37da8eab23d468685f16c554020eaae5e0a6bb5b0173a963cfa8e697b8a7187"
+    },
+    "active_training": {
+      "pane_pid": 400178,
+      "driver_pid": 400181,
+      "python_pid": 405436,
+      "model": "B4",
+      "seed": 43,
+      "observed_epoch": 6
+    },
+    "observation": {
+      "scope": "one-forward frozen joint output ablation at saved threshold; not an independently trained continue-only baseline",
+      "records": [
+        "raw_continue_probability",
+        "onset_selected_from_logits",
+        "cold_exact_logit_ties",
+        "observed_history_gate",
+        "extra_reports_hits_false_alarms_by_group",
+        "three_head_upcoming_vs_negative_AP",
+        "joint_and_continue_only_canonical_reports_at_saved_threshold"
+      ],
+      "does_not_change_predictions_weights_rng_thresholds_or_selection": true,
+      "joint_auxiliary_scope_text_corrected": true,
+      "local_tests_passed": 39,
+      "local_subtests_passed": 9,
+      "directory_creating_tests_deselected": 3,
+      "server_tests_completed": false,
+      "frozen_diagnostics_started": false,
+      "execution_plan": "fixed Git source via stdin; no checkout or pull of running server modules"
+    },
+    "test_evaluated": false,
+    "goal_met": false
+  },
   "joint_onset_real_preflight_passed_and_training_launched_20260913": {
     "status": "four_configurations_real_preflight_passed_serial_training_live_first_config_and_archive_verified",
     "server_training_commit": "7ff759dd722c8b12b730be5a3714672796655ddf",
@@ -1071,7 +1122,7 @@
     "next_action": "Follow running event_fbeta_launch_20260913; preserve fixed runtime and validation-only protocol",
     "deployed_checkout": "1728ca69bd85e695f6004522ff774a20eaaab8e4"
   },
-  "status": "joint_onset_real_preflight_passed_training_started_goal_not_met",
+  "status": "joint_onset_B4_seed42_complete_B4_seed43_running_diagnostics_pending_goal_not_met",
   "history_graph_B4_both_completed_20260913": {
     "status": "two_training_runs_and_eight_diagnostics_completed_verified",
     "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",
