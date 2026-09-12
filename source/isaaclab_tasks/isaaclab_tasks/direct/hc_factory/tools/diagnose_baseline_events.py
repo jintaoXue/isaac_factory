@@ -666,6 +666,66 @@ def summarize_temporal_attention(arrays: dict[str, np.ndarray], query_l2: float)
     }
 
 
+@torch.no_grad()
+def predict_with_history_graph_observation(model: torch.nn.Module, inputs: dict) -> tuple[dict, dict]:
+    """Measure the applied history-graph residual in one unmodified eval forward."""
+    block = getattr(model, "history_graph", None)
+    if block is None or model.training:
+        raise ValueError("History graph observation requires a refinement model in eval mode")
+    observed = {}
+
+    def capture(module, args, refined):
+        if observed:
+            raise ValueError("Expected a single history graph invocation")
+        history, _, mask = args
+        baseline = history * mask[:, :, None].to(history.dtype)
+        observed.update(history_graph_base_l2=baseline.norm(dim=-1),
+                        history_graph_refined_l2=refined.norm(dim=-1),
+                        history_graph_shift_l2=(refined - baseline).norm(dim=-1))
+
+    handle = block.register_forward_hook(capture)
+    try:
+        result = model(**inputs)
+    finally:
+        handle.remove()
+    if not observed:
+        raise ValueError("The registered history graph module was not used")
+    return result, observed
+
+
+def summarize_history_graph(arrays: dict[str, np.ndarray], output_weight_l2: float) -> dict:
+    """Describe learned residual size, not its causal contribution to predictions."""
+    valid = arrays["occ_node_mask"] > .5
+    norms = {name: arrays["history_graph_" + name + "_l2"] for name in ("base", "refined", "shift")}
+    if valid.ndim != 2 or any(value.shape != valid.shape for value in norms.values()):
+        raise ValueError("History graph norms must share the sample/node grid")
+    if not np.isfinite(output_weight_l2) or output_weight_l2 < 0:
+        raise ValueError("Invalid history graph output weight norm")
+    for value in norms.values():
+        if not np.isfinite(value[valid]).all() or (value[valid] < 0).any():
+            raise ValueError("Invalid history graph norm")
+    positive = (arrays["event_will"] > .5) & valid
+    masks = {"ongoing": positive & (arrays["event_start"] == 0),
+             "upcoming": positive & (arrays["event_start"] > 0),
+             "negative": valid & ~positive}
+    groups = {}
+    for name, mask in masks.items():
+        row = {"count": int(mask.sum()), "base_norm_below_floor_count": 0}
+        if mask.any():
+            row["base_norm_below_floor_count"] = int((norms["base"][mask] < 1e-8).sum())
+            stats = {key + "_l2": value[mask].astype(np.float64) for key, value in norms.items()}
+            stats["shift_over_base_l2"] = stats["shift_l2"] / np.maximum(stats["base_l2"], 1e-8)
+            row.update({key + "_q10_q50_q90": np.quantile(value, [.1, .5, .9]).tolist()
+                        for key, value in stats.items()})
+        groups[name] = row
+    return dict(output_projection_weight_l2=float(output_weight_l2), groups=groups,
+                relative_shift_denominator_floor=1e-8,
+                scope="One original eval forward; norms measure the actually applied residual. "
+                      "Future labels only stratify statistics. Output projection was initialized to zero. "
+                      "Nonzero updates show an active path, not beneficial or causal predictive information; "
+                      "no predictions, thresholds or checkpoint selection are changed.")
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset_dir", type=Path, required=True)
@@ -679,7 +739,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--compare_hot_head", action="store_true", help="Compare existing event and hot forecast outputs without changing reports")
     parser.add_argument("--compare_onset_report", action="store_true", help="Score frozen event-only and history-cold onset-max policies without selecting or changing official reports")
     parser.add_argument("--inspect_onset_frontier", action="store_true", help="Compute a labelled empirical oracle over independent event/onset thresholds; no calibration or deployment")
-    parser.add_argument("--inspect_temporal_attention", action="store_true", help="Observe frozen temporal pooling weights and representation changes without changing predictions")
+    observation = parser.add_mutually_exclusive_group()
+    observation.add_argument("--inspect_temporal_attention", action="store_true", help="Observe frozen temporal pooling weights and representation changes without changing predictions")
+    observation.add_argument("--inspect_history_graph", action="store_true", help="Observe applied post-GRU graph residuals without changing predictions")
     parser.add_argument("--source_commit", help="Pinned diagnostic Git source when executing this file via stdin")
     parser.add_argument("--thresholds", type=float, nargs="+", default=[
         0.20, 0.30, 0.40, 0.50, 0.55, 0.60, 0.68, 0.75, 0.80, 0.85, 0.90, 0.95,
@@ -706,6 +768,8 @@ def main() -> None:
         raise ValueError("Onset report comparison requires a checkpoint with an independent onset head")
     if args.inspect_temporal_attention and getattr(model, "history_attention", None) is None:
         raise ValueError("Temporal observation requires an attention-readout checkpoint")
+    if args.inspect_history_graph and getattr(model, "history_graph", None) is None:
+        raise ValueError("History graph observation requires a refinement checkpoint")
     if checkpoint["metadata"]["dataset_manifest_sha256"] != _manifest_hash(
         args.dataset_dir / "dataset_manifest.json"
     ):
@@ -729,6 +793,8 @@ def main() -> None:
             observed = {}
             if args.inspect_temporal_attention:
                 result, observed = predict_with_temporal_observation(model, _model_inputs(batch))
+            elif args.inspect_history_graph:
+                result, observed = predict_with_history_graph_observation(model, _model_inputs(batch))
             else:
                 result = model(**_model_inputs(batch))
             values = {key: batch[key] for key in (
@@ -756,6 +822,10 @@ def main() -> None:
     if args.inspect_temporal_attention:
         report["temporal_attention_observation"] = summarize_temporal_attention(
             arrays, float(model.history_attention.query.norm().item()),
+        )
+    if args.inspect_history_graph:
+        report["history_graph_observation"] = summarize_history_graph(
+            arrays, float(model.history_graph.output.weight.norm().item()),
         )
     if args.compare_hot_head:
         report["prediction_head_comparison"] = summarize_prediction_heads(arrays, chosen_threshold)

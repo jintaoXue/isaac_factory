@@ -3167,3 +3167,23 @@ history_graph_refine=true、near、last_mean、onset_aux=false、evaluate_test=f
 
 训练期间不得pull后续诊断或文档提交。待每组权重终态后按原口径检查best/last的
 train/validation，继续核验归档、模型实际配置、来源及最终指标。
+
+### 36.2 新图路径只读诊断
+
+新增diagnose_baseline_events.py --inspect_history_graph：在一次原始eval forward
+中hook实际history_graph输入/输出，记录掩码后原历史表示、更新后表示和实际残差
+的L2范数，以及初始为零的输出投影当前L2范数。按既有ongoing/upcoming/negative
+分组记录q10/q50/q90与相对更新量；相对分母下限1e-8并记录低于下限的数量。未来
+标签只用于事后分组，不影响forward或诊断量。非零更新只能证明路径活跃，不能
+当作有益信息或因果贡献，更不能代替train/validation泛化比较。
+
+新增3项检查通过，覆盖实际B4/B5单次forward输出/参数/RNG完全不变、初始零更新、
+非零更新、掩码、hook异常清理、分组统计/空支持/非法值和CLI；与原诊断及新模型
+合计33项测试、23个子测试通过。新观察与旧temporal_attention观察互斥；当前新
+候选使用last_mean，原时间汇聚候选仍按原开关诊断，不改变其预测。
+
+待每组训练完成并核验record/config/权重后执行best/last × train/validation，
+保持原报告和排序口径、CPU2线程，无test。用Git对象stdin执行新增诊断，不在当前
+训练中pull源码；底层模型模块保持371afb6。输出登记为
+b4_seed42_train_diagnostics_postgru20260913.json等，last权重在diagnostics前加last_。
+本节为准备状态，真实权重诊断尚未运行。

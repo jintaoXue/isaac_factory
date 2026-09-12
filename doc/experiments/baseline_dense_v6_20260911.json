@@ -1,5 +1,25 @@
 {
   "status": "input_identity_completed_history_graph_refine_training_started_goal_not_met",
+  "history_graph_observation_preparation_20260913": {
+    "status": "implemented_locally_tested_not_run",
+    "flag": "--inspect_history_graph",
+    "training_runtime_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",
+    "local_tests": 33,
+    "local_subtests": 23,
+    "observation": "Actual single-forward masked history, refined representation and applied residual L2, plus zero-initialized output projection weight L2; grouped quantiles and relative change.",
+    "prediction_parameters_rng_unchanged": true,
+    "interpretation_limit": "An active learned path is not evidence of beneficial or causal predictive information.",
+    "splits": [
+      "train",
+      "validation"
+    ],
+    "weights": [
+      "best.pt",
+      "last.pt"
+    ],
+    "new_training": false,
+    "test_evaluated": false
+  },
   "history_graph_refine_registered_20260913": {
     "status": "server_preflight_passed_four_run_batch_started_first_B4_seed42_live",
     "variant": "history_graph_refine",

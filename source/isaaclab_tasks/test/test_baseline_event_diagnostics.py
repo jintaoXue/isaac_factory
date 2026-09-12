@@ -19,6 +19,7 @@ from diagnose_baseline_events import (
     cold_onset_report_probability, summarize_onset_reports,
     independent_onset_report_mask, summarize_onset_frontier, _OnsetPrefixTree,
     predict_with_temporal_observation, summarize_temporal_attention,
+    predict_with_history_graph_observation, summarize_history_graph,
 )
 from factory_baselines.artifacts import archive_files
 from factory_baselines.b4_gcn_gru import B4GcnGru, B4ModelConfig
@@ -26,6 +27,75 @@ from factory_baselines.b5_gat_gru import B5GatGru, B5ModelConfig
 
 
 class TestEventDiagnostics(unittest.TestCase):
+    def test_history_graph_observer_preserves_outputs_state_rng_and_one_forward(self):
+        import test_b5_gat_gru as fixture_module
+        fixture = fixture_module.TestB5GatGru(); fixture.setUp()
+        inputs = fixture._inputs(fixture._batch())
+        for cls, cfg, spatial in ((B4GcnGru, B4ModelConfig, "gcn_hidden"),
+                                  (B5GatGru, B5ModelConfig, "gat_hidden")):
+            with self.subTest(model=cls.__name__):
+                model = cls(cfg(6, 2, 5, **{spatial: 8}, gru_hidden=8,
+                                temporal_readout="last_mean", history_graph_refine=True)).eval()
+                _, zero = predict_with_history_graph_observation(model, inputs)
+                self.assertTrue((zero["history_graph_shift_l2"] == 0).all())
+                with torch.no_grad():
+                    model.history_graph.output.weight.normal_(std=.1)
+                state = {k: v.clone() for k, v in model.state_dict().items()}
+                expected = model(**inputs); rng = torch.get_rng_state().clone()
+                calls = []; handle = model.gru.register_forward_hook(lambda *args: calls.append(1))
+                actual, observed = predict_with_history_graph_observation(model, inputs); handle.remove()
+                self.assertEqual(len(calls), 1)
+                self.assertTrue(torch.equal(rng, torch.get_rng_state()))
+                for key, value in expected.items():
+                    torch.testing.assert_close(actual[key], value, rtol=0, atol=0)
+                self.assertTrue(all(torch.equal(v, model.state_dict()[k]) for k, v in state.items()))
+                for value in observed.values():
+                    self.assertEqual(value.shape, inputs["node_mask"].shape)
+                    self.assertTrue(torch.isfinite(value).all())
+                    self.assertTrue((value[~inputs["node_mask"].bool()] == 0).all())
+                self.assertGreater(observed["history_graph_shift_l2"].max().item(), 0)
+                self.assertEqual(len(model.history_graph._forward_hooks), 0)
+                with patch.object(model, "forward", side_effect=RuntimeError("forward failed")):
+                    with self.assertRaisesRegex(RuntimeError, "forward failed"):
+                        predict_with_history_graph_observation(model, inputs)
+                self.assertEqual(len(model.history_graph._forward_hooks), 0)
+                with self.assertRaisesRegex(ValueError, "eval"):
+                    predict_with_history_graph_observation(model.train(), inputs)
+
+    def test_history_graph_summary_masks_labels_without_changing_canonical_report(self):
+        arrays = self._three_class_arrays(); expected = summarize_events(arrays, [.55])
+        arrays.update(history_graph_base_l2=np.array([[1., 2., 0., np.nan]]),
+                      history_graph_refined_l2=np.array([[1., 3., 0., np.nan]]),
+                      history_graph_shift_l2=np.array([[0., 1., 0., np.nan]]))
+        saved = {k: v.copy() for k, v in arrays.items()}
+        report = summarize_history_graph(arrays, .5)
+        self.assertEqual(report["groups"]["upcoming"]["count"], 1)
+        self.assertEqual(report["groups"]["upcoming"]["shift_over_base_l2_q10_q50_q90"], [.5] * 3)
+        self.assertEqual(report["groups"]["negative"]["base_norm_below_floor_count"], 1)
+        self.assertEqual(report["groups"]["negative"]["shift_over_base_l2_q10_q50_q90"], [0.] * 3)
+        self.assertEqual(expected, summarize_events(arrays, [.55]))
+        for key, value in saved.items():
+            np.testing.assert_array_equal(arrays[key], value)
+        arrays["occ_node_mask"][:] = 0
+        self.assertTrue(all(row["count"] == 0 for row in summarize_history_graph(arrays, 0)["groups"].values()))
+
+    def test_history_graph_summary_rejects_invalid_values_and_cli_options(self):
+        arrays = self._three_class_arrays()
+        arrays.update({"history_graph_"+key+"_l2": np.ones((1, 4)) for key in ("base", "refined", "shift")})
+        for bad in (np.full((1, 4), -1.), np.full((1, 4), np.nan), np.ones((2, 4))):
+            with self.assertRaises(ValueError):
+                summarize_history_graph({**arrays, "history_graph_shift_l2": bad}, 0)
+        for bad in (-1., float("nan"), float("inf")):
+            with self.assertRaises(ValueError):
+                summarize_history_graph(arrays, bad)
+        with self.assertRaisesRegex(ValueError, "refinement"):
+            predict_with_history_graph_observation(torch.nn.Identity().eval(), {})
+        common = ["--dataset_dir", "data", "--checkpoint", "best.pt", "--output", "result.json"]
+        self.assertFalse(parse_args(common).inspect_history_graph)
+        self.assertTrue(parse_args([*common, "--inspect_history_graph"]).inspect_history_graph)
+        with self.assertRaises(SystemExit):
+            parse_args([*common, "--inspect_history_graph", "--inspect_temporal_attention"])
+
     def test_onset_frontier_matches_exhaustive_two_threshold_enumeration(self):
         rng = np.random.default_rng(18)
         for trial in range(80):
