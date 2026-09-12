@@ -1,5 +1,23 @@
 {
-  "status": "temporal_attention_four_training_runs_and_sixteen_diagnostics_completed_verified_upcoming_goal_not_met",
+  "status": "temporal_attention_completed_independent_onset_frontier_registered_not_launched",
+  "independent_onset_frontier_registered_20260913": {
+    "status": "implemented_locally_tested_not_run_on_server",
+    "tag": "onsetfrontier20260913",
+    "flag": "--inspect_onset_frontier",
+    "models": ["B4", "B5"], "seeds": [42, 43], "splits": ["train", "validation"],
+    "files": 8,
+    "weights": "Original onset_aux selected best.pt from model_before_farprec20260913.zip",
+    "model_runtime_commit": "abc671383c92135483fdd6c5e09971018015364c",
+    "policy": "event>=thresholdE OR (observed history_hot<=0.5 AND onset>=thresholdO), each branch optionally disabled",
+    "coverage": "All distinct scalar-threshold report sets; ties atomic; exact integer precision feasibility",
+    "constraints": ["fixed saved event threshold, P>=0.8", "both thresholds free, P>=0.8", "both thresholds free, P>=0.8 and total R>=0.7"],
+    "interpretation": "Label-informed empirical oracle for this split and frozen checkpoint, not an unbiased validation score or deployed calibration. Does not bound other weights, fusion functions or backbones.",
+    "local_tests": 25, "local_subtests": 5, "random_exhaustive_comparison_cases": 80,
+    "canonical_witness_verification": true,
+    "original_reports_and_input_arrays_unchanged": true,
+    "new_training": false, "new_threshold_or_checkpoint_selected": false,
+    "test_evaluated": false, "new_directories_created": false
+  },
   "temporal_attention_all_completed_20260913": {
     "status": "four_training_runs_and_sixteen_diagnostics_completed_verified",
     "training_source_commit": "abc671383c92135483fdd6c5e09971018015364c",

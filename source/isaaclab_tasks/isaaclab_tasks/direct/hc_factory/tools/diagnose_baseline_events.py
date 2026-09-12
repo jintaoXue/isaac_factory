@@ -322,6 +322,226 @@ def summarize_onset_reports(arrays: dict[str, np.ndarray], thresholds: list[floa
     }
 
 
+def independent_onset_report_mask(event: np.ndarray, onset: np.ndarray,
+                                  history_hot: np.ndarray, event_threshold: float | None,
+                                  onset_threshold: float | None) -> np.ndarray:
+    """Two scalar thresholds; None disables that branch. No target inputs."""
+    event, onset, history_hot = (np.asarray(x) for x in (event, onset, history_hot))
+    if event.ndim != 2 or onset.shape != event.shape or history_hot.shape != event.shape:
+        raise ValueError("Expected matching event/onset/history grids")
+    for value in (event, onset, history_hot):
+        if not np.isfinite(value).all() or (value < 0).any() or (value > 1).any():
+            raise ValueError("Expected finite probabilities and history-hot values in [0, 1]")
+    for threshold in (event_threshold, onset_threshold):
+        if threshold is not None and (not np.isfinite(threshold) or not 0 <= threshold <= 1):
+            raise ValueError("Expected a threshold in [0, 1] or None to disable the branch")
+    reported = np.zeros(event.shape, dtype=bool)
+    if event_threshold is not None:
+        reported |= event >= event_threshold
+    if onset_threshold is not None:
+        reported |= (history_hot <= .5) & (onset >= onset_threshold)
+    return reported
+
+
+class _OnsetPrefixTree:
+    """Dynamic score-tie groups; rightmost prefix satisfying 5*hits-4*reports.
+
+    For a fixed event threshold, additional reports are a prefix in descending
+    onset score. Its hit/upcoming counts cannot decrease with prefix length.
+    The rightmost precision-feasible prefix therefore maximizes upcoming hits;
+    it also has the most total hits among feasible prefixes. All score ties
+    enter together. Integer slack implements precision>=0.8 without rounding.
+    """
+
+    def __init__(self, counts: np.ndarray, hits: np.ndarray, upcoming: np.ndarray):
+        self.groups = len(counts)
+        self.size = 1 << max(self.groups - 1, 0).bit_length()
+        self.count = [0] * (2 * self.size)
+        self.hit = [0] * (2 * self.size)
+        self.up = [0] * (2 * self.size)
+        self.max_prefix = [0] * (2 * self.size)
+        for i, (n, h, u) in enumerate(zip(counts, hits, upcoming)):
+            leaf = self.size + i
+            self.count[leaf], self.hit[leaf], self.up[leaf] = int(n), int(h), int(u)
+            self.max_prefix[leaf] = max(0, 5 * int(h) - 4 * int(n))
+        for node in range(self.size - 1, 0, -1):
+            self._pull(node)
+
+    def _pull(self, node: int) -> None:
+        left, right = 2 * node, 2 * node + 1
+        self.count[node] = self.count[left] + self.count[right]
+        self.hit[node] = self.hit[left] + self.hit[right]
+        self.up[node] = self.up[left] + self.up[right]
+        self.max_prefix[node] = max(
+            self.max_prefix[left],
+            5 * self.hit[left] - 4 * self.count[left] + self.max_prefix[right],
+        )
+
+    def remove(self, group: int, hit: bool, upcoming: bool) -> None:
+        node = self.size + group
+        self.count[node] -= 1
+        self.hit[node] -= int(hit)
+        self.up[node] -= int(upcoming)
+        if not 0 <= self.up[node] <= self.hit[node] <= self.count[node]:
+            raise AssertionError("Invalid remaining onset score group")
+        self.max_prefix[node] = max(0, 5 * self.hit[node] - 4 * self.count[node])
+        node //= 2
+        while node:
+            self._pull(node)
+            node //= 2
+
+    def rightmost(self, required_slack: int) -> tuple[int, int, int, int] | None:
+        if self.max_prefix[1] < required_slack:
+            return None
+        node, count, hit, up = 1, 0, 0, 0
+        while node < self.size:
+            left, right = 2 * node, 2 * node + 1
+            left_slack = 5 * (hit + self.hit[left]) - 4 * (count + self.count[left])
+            if left_slack + self.max_prefix[right] >= required_slack:
+                count += self.count[left]
+                hit += self.hit[left]
+                up += self.up[left]
+                node = right
+            else:
+                node = left
+        end = node - self.size
+        if 5 * (hit + self.hit[node]) - 4 * (count + self.count[node]) >= required_slack:
+            count += self.count[node]
+            hit += self.hit[node]
+            up += self.up[node]
+            end += 1
+        return min(end, self.groups), count, hit, up
+
+
+def summarize_onset_frontier(arrays: dict[str, np.ndarray], saved_threshold: float) -> dict:
+    """Exact empirical maximum over two scalar thresholds; explicitly an oracle.
+
+    Future targets evaluate the frontier, never the alarm mask. This does not
+    calibrate or select a deployable threshold and cannot estimate unseen-data
+    performance. Runtime is O(N log N), rather than a quadratic threshold grid.
+    """
+    if "event_onset_probability" not in arrays:
+        raise ValueError("Onset frontier requires an independent onset head")
+    if "event_kind_probability" in arrays:
+        raise ValueError("Onset frontier requires the binary event head")
+    if not np.isfinite(saved_threshold) or not 0 <= saved_threshold <= 1:
+        raise ValueError("Invalid saved threshold")
+    valid = arrays["occ_node_mask"] > .5
+    safe = []
+    for key in ("will_probability", "event_onset_probability", "hist_last_hot"):
+        value = np.asarray(arrays[key])
+        if value.shape != valid.shape:
+            raise ValueError("Expected the same valid sample/node grid")
+        if not np.isfinite(value[valid]).all() or (value[valid] < 0).any() or (value[valid] > 1).any():
+            raise ValueError("Invalid valid-node probability/history value")
+        safe.append(np.where(valid, value, 0))
+    event_grid, onset_grid, history_grid = safe
+    positive, target_start, _ = node_event_targets(
+        arrays["y_hot"], remain_mask=arrays["remain_mask"],
+        occ_node_mask=arrays["occ_node_mask"], hist_last_hot=arrays["hist_last_hot"],
+        **event_rule_kwargs(8),
+    )
+    if not np.array_equal(positive[valid], arrays["event_will"][valid]) or not np.array_equal(
+        target_start[(positive > .5) & valid], arrays["event_start"][(positive > .5) & valid]
+    ):
+        raise ValueError("Frontier targets differ from the current event contract")
+    positive = (positive > .5) & valid
+    upcoming = positive & (target_start > 0)
+    decoded_start = np.where(history_grid > .5, 0, arrays["predicted_start"])
+    hits = positive & (np.abs(decoded_start - target_start) <= 3)
+    event, onset, cold = event_grid[valid], onset_grid[valid], history_grid[valid] <= .5
+    hit, up = hits[valid], (hits & upcoming)[valid]
+    n_true, n_up = int(positive.sum()), int(upcoming.sum())
+    levels = np.unique(onset[cold])[::-1]
+    groups = np.full(len(event), -1, dtype=np.int64)
+    groups[cold] = np.searchsorted(-levels, -onset[cold])
+    counts = np.bincount(groups[cold], minlength=len(levels))
+    hit_counts = np.bincount(groups[cold & hit], minlength=len(levels))
+    up_counts = np.bincount(groups[cold & up], minlength=len(levels))
+    tree = _OnsetPrefixTree(counts, hit_counts, up_counts)
+    best = {"saved_event_threshold_P80": None, "all_thresholds_P80": None,
+            "all_thresholds_P80_R70": None}
+    base_n = base_h = base_u = 0
+
+    def inspect(event_threshold: float | None, fixed: bool = False) -> None:
+        prefix = tree.rightmost(4 * base_n - 5 * base_h)
+        if prefix is None:
+            return
+        end, added_n, added_h, added_u = prefix
+        n, h, u = base_n + added_n, base_h + added_h, base_u + added_u
+        if n == 0:
+            return  # Canonical precision is zero for an empty report set.
+        if 5 * h < 4 * n:
+            raise AssertionError("Frontier precision feasibility failed")
+        keys = ["saved_event_threshold_P80"] if fixed else ["all_thresholds_P80"]
+        if not fixed and 10 * h >= 7 * n_true:
+            keys.append("all_thresholds_P80_R70")
+        for key in keys:
+            # Keep one witness for maximal upcoming hits; do not claim F1-optimal ties.
+            if best[key] is None or u > best[key]["upcoming_hits"]:
+                best[key] = dict(
+                    event_threshold=event_threshold,
+                    onset_threshold=float(levels[end - 1]) if end else None,
+                    n_pred_who=n, n_matched_report=h, upcoming_hits=u,
+                    ongoing_hits=h-u, report_false_alarm_count=n-h,
+                    report_precision=h/n, report_recall=h/max(n_true, 1),
+                    report_f1=2*h/max(n+n_true, 1), report_recall_upcoming=u/max(n_up, 1),
+                )
+
+    inspect(None)
+    order = np.argsort(-event, kind="stable")
+    sorted_event = event[order]
+    saved_reports = event >= saved_threshold  # Preserve NumPy's array/scalar dtype semantics.
+    ends = (np.flatnonzero(np.r_[sorted_event[1:] != sorted_event[:-1], True]) + 1
+            if len(order) else np.array([], dtype=int))
+    fixed_seen, begin = False, 0
+    for end in ends:
+        score = sorted_event[begin]
+        if not fixed_seen and not saved_reports[order[begin]]:
+            inspect(saved_threshold, fixed=True)
+            fixed_seen = True
+        entered = order[begin:end]
+        base_n += len(entered)
+        base_h += int(hit[entered].sum())
+        base_u += int(up[entered].sum())
+        for index in entered[cold[entered]]:
+            tree.remove(int(groups[index]), bool(hit[index]), bool(up[index]))
+        inspect(float(score))
+        begin = end
+    if not fixed_seen:
+        inspect(saved_threshold, fixed=True)
+    for point in best.values():
+        if point is None:
+            continue
+        mask = independent_onset_report_mask(
+            event_grid, onset_grid, history_grid, point["event_threshold"], point["onset_threshold"],
+        )
+        report = station_report_metrics(
+            arrays["y_hot"], mask.astype(np.float32), arrays["predicted_start"],
+            arrays["predicted_duration"], arrays["remain_mask"], arrays["occ_node_mask"],
+            threshold=.5, **event_rule_kwargs(8), start_tol_windows=3,
+            hist_last_hot=arrays["hist_last_hot"], force_ongoing_will=False,
+        )
+        for key in ("n_pred_who", "n_matched_report", "report_precision", "report_recall",
+                    "report_f1", "report_recall_upcoming"):
+            if abs(report[key] - point[key]) > 1e-10:
+                raise AssertionError(f"Frontier witness differs from canonical report: {key}")
+        point["canonical_report"] = report
+    return {
+        "version": "factory_frozen_independent_onset_frontier_v1",
+        "policy": "event>=event_threshold OR (observed history_hot<=0.5 AND onset>=onset_threshold); None disables a branch",
+        "coverage": "All distinct report sets from scalar thresholds in [0,1], plus disabled branches; score ties are atomic",
+        "valid_targets": int(valid.sum()), "true_events": n_true, "true_upcoming": n_up,
+        "distinct_event_scores": len(ends), "distinct_cold_onset_scores": len(levels),
+        "event_states_examined": len(ends) + 1, "saved_event_threshold": saved_threshold,
+        "precision_floor": .8, "additional_recall_floor": .7, "empirical_maxima": best,
+        "scope": "Label-informed empirical oracle on this split and frozen checkpoint only. "
+                 "Witness thresholds are not selected or deployed and are not an unbiased estimate of "
+                 "calibrated generalization. Shared predicted start/duration, target definition and denominator "
+                 "are unchanged. Does not bound new weights, other fusion functions or another backbone.",
+    }
+
+
 def summarize_prediction_heads(arrays: dict[str, np.ndarray], event_threshold: float) -> dict:
     """Retrospective score comparison, leaving event reports and selection untouched."""
     event = arrays["will_probability"]
@@ -458,6 +678,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--compare_hot_head", action="store_true", help="Compare existing event and hot forecast outputs without changing reports")
     parser.add_argument("--compare_onset_report", action="store_true", help="Score frozen event-only and history-cold onset-max policies without selecting or changing official reports")
+    parser.add_argument("--inspect_onset_frontier", action="store_true", help="Compute a labelled empirical oracle over independent event/onset thresholds; no calibration or deployment")
     parser.add_argument("--inspect_temporal_attention", action="store_true", help="Observe frozen temporal pooling weights and representation changes without changing predictions")
     parser.add_argument("--source_commit", help="Pinned diagnostic Git source when executing this file via stdin")
     parser.add_argument("--thresholds", type=float, nargs="+", default=[
@@ -481,7 +702,7 @@ def main() -> None:
     model, checkpoint, provenance = load_diagnostic_checkpoint(
         args.checkpoint, device, args.archive_member,
     )
-    if args.compare_onset_report and not checkpoint["model_config"].get("event_onset_aux", False):
+    if (args.compare_onset_report or args.inspect_onset_frontier) and not checkpoint["model_config"].get("event_onset_aux", False):
         raise ValueError("Onset report comparison requires a checkpoint with an independent onset head")
     if args.inspect_temporal_attention and getattr(model, "history_attention", None) is None:
         raise ValueError("Temporal observation requires an attention-readout checkpoint")
@@ -542,6 +763,8 @@ def main() -> None:
         report["onset_report_comparison"] = summarize_onset_reports(
             arrays, checkpoint["train_config"]["report_threshold_sweep"], chosen_threshold,
         )
+    if args.inspect_onset_frontier:
+        report["independent_onset_frontier"] = summarize_onset_frontier(arrays, chosen_threshold)
     attach_node_catalog(report, args.dataset_dir / "node_catalog.csv", manifest)
     if args.compare_onset_report:
         for policy in report["onset_report_comparison"]["policies"].values():
@@ -579,6 +802,12 @@ def main() -> None:
                 key: row[key] for key in ("report_precision", "report_recall", "report_f1",
                                          "report_recall_upcoming", "report_false_alarm_count")
             }), flush=True)
+    if "independent_onset_frontier" in report:
+        for constraint, point in report["independent_onset_frontier"]["empirical_maxima"].items():
+            print("Empirical onset frontier (not selected):", constraint, json.dumps(
+                {key: value for key, value in point.items() if key != "canonical_report"}
+                if point is not None else None
+            ), flush=True)
     print("threshold P R F1 upcoming_R upcoming_probability_misses upcoming_timing_misses")
     for row in report["thresholds"]:
         print(row["threshold"], *[round(row[k], 4) for k in (

@@ -17,6 +17,7 @@ from diagnose_baseline_events import (
     attach_node_catalog, load_diagnostic_checkpoint, parse_args, summarize_events,
     predicted_hot_run_score, summarize_prediction_heads,
     cold_onset_report_probability, summarize_onset_reports,
+    independent_onset_report_mask, summarize_onset_frontier, _OnsetPrefixTree,
     predict_with_temporal_observation, summarize_temporal_attention,
 )
 from factory_baselines.artifacts import archive_files
@@ -25,6 +26,111 @@ from factory_baselines.b5_gat_gru import B5GatGru, B5ModelConfig
 
 
 class TestEventDiagnostics(unittest.TestCase):
+    def test_onset_frontier_matches_exhaustive_two_threshold_enumeration(self):
+        rng = np.random.default_rng(18)
+        for trial in range(80):
+            count = 1 + trial % 19
+            kind = rng.integers(0, 3, size=(1, count))
+            start = np.where(kind == 1, 0, 2)
+            hot = np.zeros((1, 15, count), dtype=np.float32)
+            for node in range(count):
+                if kind[0, node]:
+                    first = start[0, node]
+                    hot[0, first:first+8, node] = 1
+            scores = np.array([0., .2, .55, .7, .9, 1.], dtype=np.float32)
+            arrays = dict(
+                y_hot=hot, remain_mask=np.ones((1, 15)),
+                occ_node_mask=(rng.random((1, count)) > .15).astype(float),
+                hist_last_hot=rng.choice([0., .5, .51, 1.], size=(1, count)),
+                event_will=(kind > 0).astype(float), event_start=start,
+                will_probability=rng.choice(scores, size=(1, count)),
+                event_onset_probability=rng.choice(scores, size=(1, count)),
+                predicted_start=rng.choice([0, 2, 5, 14], size=(1, count)),
+                predicted_duration=np.full((1, count), 8.),
+            )
+            saved = {key: value.copy() for key, value in arrays.items()}
+            threshold = [.55, .7, 0., 1.][trial % 4]
+            actual = summarize_onset_frontier(arrays, threshold)
+            valid = arrays["occ_node_mask"] > .5
+            positive = (kind > 0) & valid
+            target_up = (kind == 2) & valid
+            decoded = np.where(arrays["hist_last_hot"] > .5, 0, arrays["predicted_start"])
+            hit = positive & (np.abs(decoded - start) <= 3)
+            expected = dict.fromkeys(actual["empirical_maxima"])
+            event_levels = [None, *np.unique(arrays["will_probability"][valid]).tolist()]
+            onset_levels = [None, *np.unique(arrays["event_onset_probability"][valid]).tolist()]
+            for fixed, event_thresholds in ((False, event_levels), (True, [threshold])):
+                for event_threshold in event_thresholds:
+                    for onset_threshold in onset_levels:
+                        mask = np.zeros(valid.shape, dtype=bool)
+                        if event_threshold is not None:
+                            mask |= arrays["will_probability"] >= event_threshold
+                        if onset_threshold is not None:
+                            mask |= (arrays["hist_last_hot"] <= .5) & (arrays["event_onset_probability"] >= onset_threshold)
+                        mask &= valid
+                        n, h, u = int(mask.sum()), int((mask & hit).sum()), int((mask & hit & target_up).sum())
+                        if n == 0 or 5*h < 4*n:
+                            continue
+                        keys = ["saved_event_threshold_P80"] if fixed else ["all_thresholds_P80"]
+                        if not fixed and 10*h >= 7*int(positive.sum()):
+                            keys.append("all_thresholds_P80_R70")
+                        for key in keys:
+                            expected[key] = max(expected[key] if expected[key] is not None else -1, u)
+            for key, point in actual["empirical_maxima"].items():
+                self.assertEqual(None if point is None else point["upcoming_hits"], expected[key], (trial, key))
+            for key, value in saved.items():
+                np.testing.assert_array_equal(arrays[key], value)
+
+    def test_onset_prefix_tree_handles_disconnected_feasible_prefixes_and_removals(self):
+        # Slack +1,+1,-4,+1,+1,+1 has disconnected feasible lengths 0,1,2,5,6.
+        counts = np.ones(6, dtype=int)
+        hits = np.array([1, 1, 0, 1, 1, 1])
+        up = np.array([0, 1, 0, 0, 1, 0])
+        tree = _OnsetPrefixTree(counts, hits, up)
+        for required in range(-5, 5):
+            prefix_slack = np.r_[0, np.cumsum(5*hits-4*counts)]
+            feasible = np.flatnonzero(prefix_slack >= required)
+            found = tree.rightmost(required)
+            if not len(feasible):
+                self.assertIsNone(found)
+            else:
+                end = int(feasible[-1])
+                self.assertEqual(found, (end, int(counts[:end].sum()), int(hits[:end].sum()), int(up[:end].sum())))
+        tree.remove(2, False, False)
+        self.assertEqual(tree.rightmost(0), (6, 5, 5, 2))
+        self.assertEqual(_OnsetPrefixTree(np.array([]), np.array([]), np.array([])).rightmost(0), (0, 0, 0, 0))
+
+    def test_independent_onset_mask_has_no_target_inputs_and_respects_hot_gate(self):
+        event = np.array([[.2, .2, .9, .2]])
+        onset = np.array([[.9, .9, .1, .9]])
+        history = np.array([[1., .5, 0., .51]])
+        np.testing.assert_array_equal(
+            independent_onset_report_mask(event, onset, history, .8, .9),
+            [[False, True, True, False]],
+        )
+        self.assertFalse(independent_onset_report_mask(event, onset, history, None, None).any())
+        for bad in (np.nan, -.1, 1.1):
+            with self.assertRaises(ValueError):
+                independent_onset_report_mask(event, onset, history, .5, bad)
+
+    def test_onset_frontier_excludes_invalid_nodes_and_preserves_original_reports(self):
+        arrays = self._three_class_arrays()
+        arrays.pop("event_kind_probability")
+        arrays["event_onset_probability"] = np.array([[.2, .9, .1, np.nan]])
+        original = summarize_events(arrays, [.55])
+        report = summarize_onset_frontier(arrays, .55)
+        self.assertEqual(report["valid_targets"], 3)
+        self.assertEqual(report["empirical_maxima"]["all_thresholds_P80"]["upcoming_hits"], 1)
+        self.assertEqual(original, summarize_events(arrays, [.55]))
+        arrays["occ_node_mask"][:] = 0
+        self.assertTrue(all(v is None for v in summarize_onset_frontier(arrays, .55)["empirical_maxima"].values()))
+        arrays["occ_node_mask"][:] = 1
+        with self.assertRaises(ValueError):
+            summarize_onset_frontier(arrays, .55)
+        common = ["--dataset_dir", "data", "--checkpoint", "best.pt", "--output", "result.json"]
+        self.assertFalse(parse_args(common).inspect_onset_frontier)
+        self.assertTrue(parse_args([*common, "--inspect_onset_frontier"]).inspect_onset_frontier)
+
     def test_temporal_observer_preserves_single_forward_outputs_state_and_rng(self):
         import test_b5_gat_gru as fixture_module
         fixture = fixture_module.TestB5GatGru()
