@@ -14,7 +14,7 @@ from factory_baselines.dataset import load_shared_dataset
 from factory_bn_shared.bundle import file_hash
 
 
-DENSE_VARIANTS = ("history_control", "graph_context", "upcoming_weighted", "three_class", "near_precursor", "far_precursor", "onset_aux", "temporal_attention")
+DENSE_VARIANTS = ("history_control", "graph_context", "upcoming_weighted", "three_class", "near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine")
 
 
 def dense_configuration(model: str, variant: str, seed: int, device: str) -> tuple:
@@ -34,12 +34,14 @@ def dense_configuration(model: str, variant: str, seed: int, device: str) -> tup
                      temporal_readout="last_mean", node_embedding=0,
                      event_context=variant == "graph_context",
                      event_head="three_class" if variant == "three_class" else "binary")
-    if variant in {"near_precursor", "far_precursor", "onset_aux", "temporal_attention"}:
+    if variant in {"near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine"}:
         overrides["event_precursor"] = "near_far" if variant == "far_precursor" else "near"
     if variant == "temporal_attention":
         overrides["temporal_readout"] = "last_attention"
     if variant == "onset_aux":
         overrides["event_onset_aux"] = True
+    if variant == "history_graph_refine":
+        overrides["history_graph_refine"] = True
     overrides.update({"gcn_hidden": 64} if b4 else {"gat_hidden": 64, "gat_heads": 4})
     loss = MultiTaskLossConfig(
         event_will_upcoming_pos_weight=12.0 if variant == "upcoming_weighted" else 4.0,
@@ -99,7 +101,12 @@ def run_control(model: str, dataset_dir: Path, output_dir: Path, archive_tag: st
         "event_supervision_partition": "positive_start_zero_ongoing_positive_start_greater_zero_upcoming",
         "event_head": overrides["event_head"],
         "temporal_readout": overrides["temporal_readout"],
-        "parent_control": "near_precursor" if variant in {"far_precursor", "onset_aux", "temporal_attention"} else None,
+        "parent_control": "near_precursor" if variant in {"far_precursor", "onset_aux", "temporal_attention", "history_graph_refine"} else None,
+        "history_graph_refinement": {
+            "enabled": variant == "history_graph_refine",
+            "mechanism": "extra_residual_GCN_or_GAT_on_pooled_GRU_histories_zero_output_projection",
+            "additional_attention_dropout": 0.0,
+        },
         "onset_auxiliary": {
             "enabled": variant == "onset_aux", "coefficient": loss_config.lambda_event_onset_aux,
             "loss": "half_mean_upcoming_BCE_plus_half_mean_negative_BCE_per_batch_absent_class_zero",

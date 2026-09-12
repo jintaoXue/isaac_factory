@@ -137,7 +137,9 @@ def test_control_archives_stale_test_and_starts_fresh_validation_only(tmp_path, 
     assert calls[0]["train_config"].evaluate_test is False
     assert calls[0]["train_config"].batch_size == batch_size
     assert "warm_start_checkpoint" not in calls[0]
-    assert calls[0]["model_overrides"]["temporal_readout"] == "last_mean"
+    assert calls[0]["model_overrides"]["temporal_readout"] == (
+        "last_attention" if variant == "temporal_attention" else "last_mean"
+    )
     assert calls[0]["model_overrides"]["event_context"] == (variant == "graph_context")
     assert calls[0]["model_overrides"]["event_head"] == ("three_class" if variant == "three_class" else "binary")
     assert calls[0]["train_config"].training_profile == f"dense_{variant}_v2"

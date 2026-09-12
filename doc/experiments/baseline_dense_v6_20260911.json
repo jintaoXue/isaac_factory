@@ -1,5 +1,38 @@
 {
   "status": "input_identity_audit_completed_verified_upcoming_goal_not_met",
+  "history_graph_refine_registered_20260913": {
+    "status": "implemented_registered_locally_tested_not_started",
+    "variant": "history_graph_refine",
+    "tag": "postgru20260913",
+    "models": [
+      "B4",
+      "B5"
+    ],
+    "seeds": [
+      42,
+      43
+    ],
+    "parent": "near_precursor",
+    "added_parameters": {
+      "B4": 16576,
+      "B5": 16704
+    },
+    "mechanism": "Same-family graph exchange on pooled GRU histories: 128 to 64 GCN/GAT, LayerNorm, GELU, zero initialized biasless 64 to 128 residual output. Adds one graph layer; not a full Transformer.",
+    "original_weights_initial_outputs_and_rng_preserved": true,
+    "new_graph_attention_dropout": 0.0,
+    "event_precursor": "near",
+    "event_onset_aux": false,
+    "event_context": false,
+    "temporal_readout": "last_mean",
+    "max_epochs": 60,
+    "existing_losses_sampling_optimization_scoring_selection_unchanged": true,
+    "test_evaluated": false,
+    "local_tests": 88,
+    "local_subtests": 32,
+    "archive_tag": "model_before_postgru20260913.zip",
+    "log": "postgru20260913_train.log",
+    "interpretation_limit": "Explicit added-capacity graph-GRU variant, reported separately from original baseline. Does not isolate or exhaust the complete main-model architecture."
+  },
   "input_identity_audit_registered_20260913": {
     "status": "completed_verified_on_real_train_validation_data",
     "tool": "audit_baseline_input_identity.py",

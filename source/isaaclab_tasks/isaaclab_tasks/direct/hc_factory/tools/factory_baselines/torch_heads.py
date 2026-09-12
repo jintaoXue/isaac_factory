@@ -25,6 +25,27 @@ class TemporalAttentionPool(nn.Module):
         return history.mean(dim=1) + (correction[:, :, None] * history).sum(dim=1)
 
 
+class HistoryGraphRefinement(nn.Module):
+    """Exchange GRU history representations through the baseline's graph layer.
+
+    A zero output projection preserves the parent's initial predictions. No new
+    dropout draws are used, so the control and candidate retain the same RNG stream.
+    """
+
+    def __init__(self, graph_layer: nn.Module, spatial_dim: int, temporal_dim: int) -> None:
+        super().__init__()
+        self.graph_layer = graph_layer
+        self.norm = nn.LayerNorm(spatial_dim)
+        self.output = nn.Linear(spatial_dim, temporal_dim, bias=False)
+        nn.init.zeros_(self.output.weight)
+
+    def forward(self, history: torch.Tensor, adjacency: torch.Tensor,
+                node_mask: torch.Tensor) -> torch.Tensor:
+        message = self.graph_layer(history, adjacency, node_mask)
+        correction = self.output(torch.nn.functional.gelu(self.norm(message)))
+        return (history + correction) * node_mask[:, :, None].to(history.dtype)
+
+
 class FactoryPredictionHeads(nn.Module):
     def __init__(
         self,

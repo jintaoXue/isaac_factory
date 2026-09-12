@@ -9,7 +9,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from .torch_heads import FactoryPredictionHeads, TemporalAttentionPool
+from .torch_heads import FactoryPredictionHeads, HistoryGraphRefinement, TemporalAttentionPool
 
 
 @dataclass
@@ -28,6 +28,7 @@ class B5ModelConfig:
     event_onset_aux: bool = False
     node_embedding: int = 0
     temporal_readout: str = "last"
+    history_graph_refine: bool = False
     prediction_horizon: float = 180.0
     max_remain_windows: int = 15
     num_causes: int = 10
@@ -196,6 +197,14 @@ class B5GatGru(nn.Module):
             event_precursor_dim=0 if config.event_precursor == "none" else 23,
             event_onset_aux=config.event_onset_aux,
         )
+        self.history_graph = None
+        if config.history_graph_refine:
+            with torch.random.fork_rng(devices=[]):
+                self.history_graph = HistoryGraphRefinement(
+                    DenseGraphAttention(config.gru_hidden, first_head_dim,
+                                        config.gat_heads, concat=True, dropout=0.0),
+                    config.gat_hidden, config.gru_hidden,
+                )
 
     def forward(
         self,
@@ -253,6 +262,8 @@ class B5GatGru(nn.Module):
         node_hidden = readout.view(
             batch_size, node_count, self.config.gru_hidden
         )
+        if self.history_graph is not None:
+            node_hidden = self.history_graph(node_hidden, adjacency, node_mask)
         return self.heads(
             node_hidden,
             node_mask,

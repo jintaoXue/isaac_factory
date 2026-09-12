@@ -3111,3 +3111,35 @@ hist_last_hot，未把不进入事件头的全局/订单/target_node_mask字段�
 源码SHA为006607ffbf165c89ec7efd6b665a59a32b860283c42bc274b008071f8acb4e2e。
 完成后独立重算五个数据文件的全量SHA并与审计前一致；六个运行模块也与abc6713的
 Git对象及记录哈希一致。共享tensor包被加载，但未遍历/评价test样本。
+
+## 36. GRU历史表示后的图交互对照
+
+登记history_graph_refine / postgru20260913，以near_precursor为父对照，B4/B5各
+seed42/43，从头训练、最多60 epoch。动机是原模型在每分钟先做两层空间图处理，
+再逐节点GRU，已编码的工位历史之间没有后续图交换。新增一层同类型GCN/GAT，
+作用于last_mean汇聚后的GRU历史表示，检查这条时空交互路径能否改善upcoming。
+它不是完整BNPDFormer的多层时空注意力复刻；失败不能证明所有时空交互无效。
+
+新增路径为128维历史→同类型图层64维→LayerNorm/GELU→无bias线性128维→残差。
+最后投影初始化为零，额外模块在fork_rng内创建，保留原参数和RNG；不新增随机
+dropout，B5新增图层attention dropout为0。初始全部任务输出与父对照逐元素相同，
+初次反传更新输出投影，之后梯度可进入图层。B4新增16576参数，B5新增16704参数；
+实际总参数需服务器真实配置复核。输出表示仍进入原预测头及原多任务损失。
+
+保留原两层前置GCN/GAT、GRU和last_mean、30分钟历史及near摘要、二分类头、aux
+关闭、event_context关闭、均匀抽样、学习率/优化器、早停、阈值、P/R门和选模规则。
+这是增加一个图层的明确架构变体，应与原两层baseline分开报告；不能将容量变化
+隐去或把该候选称为已验证标准baseline。正式比较仍保留共同204包缺口。
+
+本地验证包括新增5项测试（18子测试），与输入审计/precursor/B5模型共30项（28
+子测试）通过；B3/B4、图表示、归档和dense评分相关58项（4子测试）通过。归档测试
+中旧temporal_attention的两个断言仍固定last_mean，与原注册不符，修正为其注册
+last_attention后26项归档检查通过；未改变该旧候选模型。检查覆盖控制配置/损失、
+初始化及训练时RNG、原输出、新增梯度、历史邻居依赖、图边/掩码、节点置换、checkpoint
+恢复，以及新增参数。所有旧模型默认关闭该层，无新增状态参数。
+
+启动前先核验timeattention完整导出及四组现有模型关键文件哈希、两项pane退出、
+manifest和现有目录。用已有逐成员验证ZIP逻辑归档model_before_postgru20260913.zip，
+复用candidate_history/seed42或43目录；无新目录、无test。日志postgru20260913_train.log。
+判读两颗seed正式P/R/F1/upcoming、best/last的train/validation排序与误报；不按
+upcoming单项挑epoch或拼接预测头。此处仅为注册，尚未启动。
