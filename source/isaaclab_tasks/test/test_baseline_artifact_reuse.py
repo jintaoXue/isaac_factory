@@ -122,6 +122,9 @@ def test_control_archives_stale_test_and_starts_fresh_validation_only(tmp_path, 
                         str(repo) if "--show-toplevel" in command else "dev_xwt" if "branch" in command else "abcdef")
     monkeypatch.setattr(control, "load_shared_dataset", lambda path:
                         ({}, {"shared_bundle_alignment": {"status": "passed"}}))
+    # Feature construction is separately exercised against real tensors. This test
+    # mocks the dataset and checks archival and launch boundaries for every arm.
+    monkeypatch.setattr("factory_baselines.precursor.attach_precursor", lambda payload, *args: (payload, None))
     calls = []
     def train(**kwargs):
         calls.append(kwargs)
@@ -160,7 +163,8 @@ def test_dense_candidates_are_single_variable_and_leave_scoring_unchanged(model)
         training_values = asdict(training)
         training_values.pop("training_profile")
         configurations[variant] = (training_values, overrides, loss.to_dict())
-    base, context, weighted, three_class = (configurations[name] for name in control.DENSE_VARIANTS)
+    base, context, weighted, three_class = (configurations[name] for name in
+                                          ("history_control", "graph_context", "upcoming_weighted", "three_class"))
     assert base[0] == context[0] == weighted[0] == three_class[0]
     assert base[0]["evaluate_test"] is False
     assert base[0]["event_oversample_factor"] == 1
@@ -170,5 +174,11 @@ def test_dense_candidates_are_single_variable_and_leave_scoring_unchanged(model)
     assert {k for k in base[2] if base[2][k] != weighted[2][k]} == {"event_will_upcoming_pos_weight"}
     assert base[2] == three_class[2]
     assert {k for k in base[1] if base[1][k] != three_class[1][k]} == {"event_head"}
+    near, far, onset = (configurations[name] for name in ("near_precursor", "far_precursor", "onset_aux"))
+    assert near[0] == far[0] == onset[0] == base[0]
+    assert near[2] == far[2] == base[2]
+    assert {k for k in near[1] if near[1][k] != far[1][k]} == {"event_precursor"}
+    assert {**near[1], "event_onset_aux": True} == onset[1]
+    assert {**near[2], "lambda_event_onset_aux": 1.0} == onset[2]
     with pytest.raises(ValueError, match="registered dense variant"):
         control.dense_configuration(model, "unknown", 42, "cpu")

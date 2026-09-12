@@ -2263,3 +2263,62 @@ B4 近窗 last 的 train AP 明显提高但 validation 仍弱，是同一输入�
 输入、无原数组改动、mask/ongoing 排除、空支持测试；本地诊断及 precursor 相关测试
 共 18 项、11 个子测试通过。首轮使用近窗候选已有 best.pt 的 train/validation，
 不新增训练、不替换 best、不运行 test。实际执行状态后续另记。
+
+### 29.4 近窗整批与冻结预测头诊断完成
+
+四次近窗训练正常结束，训练代码保持 `e5f6cb4`。按 B4 seed42/43、B5 seed42/43 排序，
+best epoch 为 2/5/6/5，total epoch 为 12/15/26/25。B4 validation P/R/F1/upcoming R
+均值为 0.82205317/0.69132420/0.75102038/0.01379310；B5 为
+0.83816708/0.67579909/0.74823627/0.01034483。近窗方案没有稳定的实质 upcoming 提升。
+完整四次 metrics/config/运行记录与 best/last 等文件哈希保存在
+`baseline_dense_near_metrics_20260912.json`（113320 bytes），SHA-256：
+`e71c84ded25a2b5fe861b45ecc12e2a0941193043a526654a9d8327a9d7a4b27`。
+
+随后在无训练进程时部署 `00d4c6f`，以这四个冻结 best 权重完成
+`b[45]_seed4[23]_{train,validation}_diagnostics_headprobe20260912.json` 共 8 份。
+逐份核验 checkpoint SHA-256 与完整近窗导出、当前文件一致，诊断源码哈希与提交一致，
+manifest 未变，epoch 和 train/validation 样本数 23859/5439 正确。四份 validation
+canonical P/R/F1/upcoming R 与原保存 metrics 在 1e-10 容差内相同。两项 tmux 均
+dead=1、exit=0，无相应训练或诊断进程，未使用 test。
+
+| Validation frozen best | B4 s42 | B4 s43 | B5 s42 | B5 s43 |
+|---|---:|---:|---:|---:|
+| Event upcoming-vs-negative AP | 0.006336 | 0.008807 | 0.008201 | 0.007818 |
+| Predicted hot-run upcoming-vs-negative AP | 0.008456 | 0.009430 | 0.010149 | 0.007853 |
+| Hot 越阈值、event 未越阈值的 upcoming | 0 | 0 | 1 | 0 |
+| Hot 越阈值、event 未越阈值的负例 | 33 | 16 | 11 | 21 |
+
+AP 转录到六位小数，精确值保存在服务器。阈值为 checkpoint 原 event 阈值及固定 hot
+0.45，越阈值数不是 canonical report 命中。现有 hot 输出没有提供大量可补回的 upcoming，
+不据此移植主模型占用补报逻辑。下一项转向专门监督，而不是继续降低报警阈值。
+
+## 30. 独立 onset 辅助监督受控实验
+
+### 30.1 预注册与实现
+
+`onset_aux` 以已完成的 `near_precursor` 为父对照，保留同一 208 episode、原 v6
+manifest、近窗摘要及 GCN/GAT-GRU。唯一机制变化是添加独立 onset 辅助分支及其损失。
+分支复制原二分类事件头的初始参数，但不共享参数；不消耗额外 RNG，所有已有参数及
+原首次 forward 输出严格相同。新增分支在事件表示上训练，不参与正式报警或选模。
+
+辅助目标严格沿用评分分组：正例为有效节点上的 event_will=1 且 start>0，负例为
+event_will=0；所有 start=0 正例（包括历史 cold 的 start=0）和无效节点排除。
+每个 batch 的辅助损失为 `0.5*mean(BCE_upcoming)+0.5*mean(BCE_negative)`，
+某类缺失时其项为零，不重新归一化另一类；总损失系数固定 1.0，不搜索。这个定义是
+batch 内按类归一化，不冒称全数据集均衡抽样，也不等同于主模型原加权 onset BCE。
+它避免该辅助分支的正例梯度再按大量负例目标数稀释，检验额外监督对共享表示的影响。
+
+保持原二分类事件头、其他所有损失、均匀抽样、优化器/学习率、dropout、早停、报告阈值
+列表及 canonical 总 report F1 选模。B4/B5 各 seed42/43，共 4 次最多 60 epoch，
+min_epochs/patience 仍为 B4 10/10、B5 15/20。归档标签 `onsetaux20260912`，复用原
+目录，先逐文件验证归档近窗结果。near_far 尚未启动；不增加历史信息或复制主报警规则。
+
+实现同时添加辅助头的只读 AP/AUC 诊断；分数与正式事件报告分开，不能用于选 checkpoint。
+判读同时看两颗 seed 的正式 P/R/F1/upcoming recall、原事件头及辅助头的 train/validation
+upcoming AP、误报与时间 MAE。若辅助头有信号而事件头没有，需要另行验证部署决策；
+若仍只有训练改善，继续诊断泛化，不以本轮失败直接宣布骨干上限。
+
+本地相关测试 29 passed / 11 subtests：涵盖正负梯度方向、ongoing/mask 排除、缺类、
+无效配置、共享骨干梯度、初始权重/RNG/正式输出一致、辅助头参数不改变报警、内存
+checkpoint 回读与配置差异。服务器开训前已确认干净 `dev_xwt@00d4c6f`、两项旧会话
+退出 0、无相关 Python 进程；GPU 上其他 Isaac 进程保持原样。此处尚未记录开训成功。

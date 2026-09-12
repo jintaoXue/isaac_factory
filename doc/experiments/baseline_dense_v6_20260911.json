@@ -1,13 +1,14 @@
 {
-  "status": "208_episode_near_precursor_four_run_batch_active",
+  "status": "near_and_head_diagnostics_completed_onset_aux_prepared",
   "handoff_date": "2026-09-12",
   "optimization_goal_met": false,
-  "continue_automatically": false,
+  "continue_automatically": true,
   "handoff_document": "doc/experiments/Baseline交接与远端执行指南.md",
-  "stop_reason": "User requested finishing current work, stopping this thread goal and moving further optimization to a new conversation",
+  "stop_reason": null,
+  "historical_stop_superseded": "Earlier handoff stop was superseded by the user authorization to optimize B4/B5 on 208 episodes",
   "terminal_state_verification": {
     "server_branch": "dev_xwt",
-    "server_code_at_verification": "79a5df6",
+    "server_code_at_verification": "00d4c6f",
     "baseline_dense_v6": {"pane_dead": true, "exit_code": 0},
     "baseline_dense_diag": {"pane_dead": true, "exit_code": 0},
     "matching_training_or_diagnostic_processes": 0,
@@ -15,7 +16,7 @@
     "other_users_processes_modified": false
   },
   "experiment_role": "exploratory_dense_migration_control_not_formal_main_comparison",
-  "next_search_started": true,
+  "next_search_started": false,
   "full_metric_collection": {
     "status": "remote_restored_full_metrics_preserved_summary_extended",
     "last_attempt_date": "2026-09-11",
@@ -26,14 +27,14 @@
     "local_detailed_transcription_pending": ["full per-class confusion matrix", "probability quantiles", "training cost; exact values retained in server export"],
     "policy": "Do not substitute zero, older runs, training-epoch values or main test values for missing validation metrics"
   },
-  "next_search_prerequisite": "User authorized continuing on existing 208 episodes. Run the bounded near-only precursor comparison after tests and clean server preflight. Formal 204-cohort artifacts remain required for final main-model comparison, not this development experiment.",
+  "next_search_prerequisite": "User authorized continuing on existing 208 episodes. Near-only comparison and frozen head diagnostics have completed; next is the registered onset auxiliary comparison after deployment preflight. Formal 204-cohort artifacts remain required for final main-model comparison, not this development experiment.",
   "upcoming_208_resume": {
-    "status": "near_precursor_four_run_batch_active",
+    "status": "near_precursor_four_runs_completed",
     "code_commit": "e5f6cb4",
     "local_tests_passed": 79, "local_subtests_passed": 14, "server_prelaunch_tests_passed": 4,
     "tmux": "baseline_dense_v6", "training_log": "nearprec20260912_train.log",
     "startup_pane_pid": 45693, "startup_training_pid": 45709,
-    "latest_verified_progress": "B4 both runs and B5 seed42 completed (B5 best6/total26); B5 seed43 started and training process observed alive. B4 best and last diagnostics each completed 4/4, checkpoint hashes verified, diagnostic pane exited 0. Recheck actual processes, never rely on saved PIDs",
+    "latest_verified_progress": "All four near runs completed (best epochs 2/5/6/5; total 12/15/26/25). Frozen best head diagnostics completed 8/8 with checkpoint/source/manifest/epoch/sample checks and unchanged canonical validation metrics. Both tmux panes dead=1 exit=0 and no matching Python tasks at last verification; recheck before launch.",
     "models": ["B4", "B5"], "seeds": [42, 43], "runs": 4, "max_epochs_each": 60,
     "variant": "near_precursor", "archive_tag": "nearprec20260912",
     "input_feature_contract": "factory_baseline_precursor_v1", "mode": "near",
@@ -55,7 +56,7 @@
     "report_recall_upcoming": [0.013793103448275862, 0.013793103448275862],
     "upcoming_hits": [2, 2], "upcoming_targets_each_run": 145,
     "report_threshold": [0.6, 0.6],
-    "conclusion": "B4 upcoming recall remains low; a one-target improvement for seed43 is not a stable material gain. Full four-run comparison and train/validation diagnosis are pending.",
+    "conclusion": "B4 upcoming recall remains low; a one-target improvement for seed43 is not a stable material gain. The completed four-run comparison and frozen head diagnosis are recorded below.",
     "metrics_precision_note": "P/R transcribed to seven decimals; exact full metrics remain in server run directories. F1 and integer upcoming counts verified."
   },
   "dense_event_support_20260912": {
@@ -130,7 +131,146 @@
     "graph_validation": {"episodes": 30, "target_nodes": 380, "targets_reaching_all_active_nodes": 254, "missing_target_to_target_pairs": 0},
     "unreachable_source_types": ["buffer"],
     "conclusion": "Two spatial layers do not structurally hide other target machines in these graphs. Temporal representation, onset supervision, decoding, input budget, and training are distinct hypotheses; backbone ceiling is not established.",
-    "next_diagnostic": "Compare frozen B4/B5 event scores with scores derived from their existing predicted hot grids; no change to official scoring or training yet."
+    "next_diagnostic": "Frozen head comparison completed; no useful mass of missed upcoming in hot outputs. Proceed with the registered independent onset auxiliary supervision experiment, leaving official report decoding unchanged."
+  },
+  "near_precursor_four_runs_completed": {
+    "status": "completed_four_runs_and_eight_best_head_diagnostics_verified",
+    "training_code_commit": "e5f6cb4",
+    "seed_order": [
+      "B4 seed42",
+      "B4 seed43",
+      "B5 seed42",
+      "B5 seed43"
+    ],
+    "best_epoch": [
+      2,
+      5,
+      6,
+      5
+    ],
+    "epochs_trained": [
+      12,
+      15,
+      26,
+      25
+    ],
+    "upcoming_hits": [
+      2,
+      2,
+      1,
+      2
+    ],
+    "upcoming_targets_each": 145,
+    "mean_metrics_order": [
+      "report_precision",
+      "report_recall",
+      "report_f1",
+      "report_recall_upcoming"
+    ],
+    "B4_mean": [
+      0.82205317,
+      0.6913242,
+      0.75102038,
+      0.0137931
+    ],
+    "B5_mean": [
+      0.83816708,
+      0.67579909,
+      0.74823627,
+      0.01034483
+    ],
+    "precision_note": "Means rounded to eight decimals; exact per-run metrics and artifact hashes retained in server export",
+    "server_export": "baseline_dense_near_metrics_20260912.json",
+    "server_export_bytes": 113320,
+    "server_export_sha256": "e71c84ded25a2b5fe861b45ecc12e2a0941193043a526654a9d8327a9d7a4b27",
+    "test_evaluated": false,
+    "conclusion": "No stable material upcoming improvement from near summary."
+  },
+  "frozen_head_probe_20260912": {
+    "status": "eight_completed_all_provenance_and_canonical_checks_passed",
+    "source_commit": "00d4c6fb65efd020cd31f8d6fad62e758abaeee6",
+    "file_pattern": "b[45]_seed4[23]_{train,validation}_diagnostics_headprobe20260912.json",
+    "seed_order": [
+      "B4 seed42",
+      "B4 seed43",
+      "B5 seed42",
+      "B5 seed43"
+    ],
+    "validation_event_ap": [
+      0.006336,
+      0.008807,
+      0.008201,
+      0.007818
+    ],
+    "validation_hot_run_ap": [
+      0.008456,
+      0.00943,
+      0.010149,
+      0.007853
+    ],
+    "train_event_ap": [
+      0.006838,
+      0.010117,
+      0.012276,
+      0.009178
+    ],
+    "train_hot_run_ap": [
+      0.008734,
+      0.01328,
+      0.01762,
+      0.009816
+    ],
+    "validation_hot_only_upcoming_score_crossings": [
+      0,
+      0,
+      1,
+      0
+    ],
+    "validation_hot_only_negative_score_crossings": [
+      33,
+      16,
+      11,
+      21
+    ],
+    "event_thresholds": [
+      0.6,
+      0.6,
+      0.55,
+      0.65
+    ],
+    "fixed_hot_threshold": 0.45,
+    "scope": "Upcoming versus no-event negatives. Score crossings are not canonical report hits. AP rounded to six decimals. Same frozen best weights; no training/test or alarm-policy change.",
+    "canonical_validation_metric_tolerance": 1e-10,
+    "conclusion": "Do not adopt hot union: negligible extra upcoming with extra negative crossings."
+  },
+  "onset_auxiliary_experiment": {
+    "status": "implemented_local_tests_passed_not_launched",
+    "variant": "onset_aux",
+    "archive_tag": "onsetaux20260912",
+    "parent_variant": "near_precursor",
+    "models": [
+      "B4",
+      "B5"
+    ],
+    "seeds": [
+      42,
+      43
+    ],
+    "runs": 4,
+    "max_epochs_each": 60,
+    "head": "Independent copy of the initialized binary event MLP; gradients enter shared event representation",
+    "targets": "positive_start_greater_zero_vs_no_event; all_positive_start_zero_and_invalid_nodes_excluded",
+    "loss": "0.5*mean_positive_BCE+0.5*mean_negative_BCE_per_batch; absent_class_contributes_zero",
+    "loss_coefficient": 1.0,
+    "new_head_used_for_reports": false,
+    "existing_initial_parameters_outputs_and_rng_unchanged": true,
+    "history_backbones_other_losses_sampling_optimizer_selection_scoring_unchanged": true,
+    "local_tests_passed": 29,
+    "local_subtests_passed": 11,
+    "server_preflight_before_deployment": "dev_xwt@00d4c6f clean; train/diagnostic tmux dead=1 exit=0; no matching Python tasks",
+    "test_evaluated": false,
+    "near_far_launched": false,
+    "purpose": "Test dedicated class-normalized onset supervision, not an exact reproduction of main-model dual-head decoding or a claim of backbone ceiling"
   },
   "code_commit": "5394034",
   "branch": "dev_xwt",

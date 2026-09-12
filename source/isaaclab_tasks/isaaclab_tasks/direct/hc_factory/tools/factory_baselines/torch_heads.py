@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from copy import deepcopy
 
 import torch
 from torch import nn
@@ -20,11 +21,14 @@ class FactoryPredictionHeads(nn.Module):
         event_context: bool = False,
         event_head: str = "binary",
         event_precursor_dim: int = 0,
+        event_onset_aux: bool = False,
     ) -> None:
         super().__init__()
         if event_head not in {"binary", "three_class"}:
             raise ValueError("event_head must be binary or three_class")
         self.event_head = event_head
+        if event_onset_aux and event_head != "binary":
+            raise ValueError("Onset auxiliary supervision requires the binary event control")
         if event_precursor_dim not in {0, 23}:
             raise ValueError("event_precursor_dim must be zero or 23")
         self.event_precursor_dim = event_precursor_dim
@@ -94,6 +98,9 @@ class FactoryPredictionHeads(nn.Module):
                 )
                 nn.init.zeros_(self.precursor_projection[-1].weight)
                 nn.init.zeros_(self.precursor_projection[-1].bias)
+        # Independent parameters, identical initialization, no RNG consumption.
+        # This head supplies training gradients only; it never changes event decoding.
+        self.event_onset_head = deepcopy(self.event_will_head) if event_onset_aux else None
 
     def forward(
         self,
@@ -163,4 +170,6 @@ class FactoryPredictionHeads(nn.Module):
         }
         if self.event_head == "three_class":
             result["event_kind_logits"] = event_logits
+        if self.event_onset_head is not None:
+            result["event_onset_logit"] = self.event_onset_head(event_hidden).squeeze(-1)
         return result

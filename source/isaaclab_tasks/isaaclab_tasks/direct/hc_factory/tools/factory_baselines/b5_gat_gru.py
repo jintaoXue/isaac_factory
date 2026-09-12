@@ -25,6 +25,7 @@ class B5ModelConfig:
     event_context: bool = False
     event_head: str = "binary"
     event_precursor: str = "none"
+    event_onset_aux: bool = False
     node_embedding: int = 0
     temporal_readout: str = "last"
     prediction_horizon: float = 180.0
@@ -189,6 +190,7 @@ class B5GatGru(nn.Module):
             event_context=config.event_context,
             event_head=config.event_head,
             event_precursor_dim=0 if config.event_precursor == "none" else 23,
+            event_onset_aux=config.event_onset_aux,
         )
 
     def forward(

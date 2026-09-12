@@ -24,6 +24,7 @@ class MultiTaskLossConfig:
     lambda_event_will: float = 2.5
     lambda_event_start: float = 1.5
     lambda_event_duration: float = 1.0
+    lambda_event_onset_aux: float = 0.0
     hot_pos_weight: float = 4.0
     hot_pos_weight_by_type: dict[str, float] = field(
         default_factory=lambda: {
@@ -53,6 +54,8 @@ class MultiTaskLossConfig:
     prediction_horizon: float = 180.0
 
     def __post_init__(self) -> None:
+        if not math.isfinite(self.lambda_event_onset_aux) or self.lambda_event_onset_aux < 0:
+            raise ValueError("lambda_event_onset_aux must be finite and non-negative")
         if not math.isfinite(self.event_short_hot_fp_multiplier) or self.event_short_hot_fp_multiplier < 1:
             raise ValueError("event_short_hot_fp_multiplier must be finite and at least one")
         if not math.isfinite(self.event_focal_gamma) or self.event_focal_gamma < 0:
@@ -104,6 +107,29 @@ def _event_binary_loss(logits: torch.Tensor, target: torch.Tensor, gamma: float)
         return error
     # exp(-BCE) is the probability assigned to the true binary class.
     return error * (-torch.expm1(-error)).pow(gamma)
+
+
+def _onset_auxiliary_loss(
+    logits: torch.Tensor, batch: dict[str, torch.Tensor],
+) -> torch.Tensor:
+    """Half the mean positive BCE plus half the mean negative BCE per batch.
+
+    Positive start-zero events are excluded, including history-cold events.
+    An absent class contributes zero without renormalizing the other class.
+    This is batch class normalization, not a claim of dataset-balanced sampling.
+    """
+    will, start = batch["event_will"], batch["event_start"]
+    valid = batch["occ_node_mask"].bool()
+    if logits.shape != will.shape or start.shape != will.shape or valid.shape != will.shape:
+        raise ValueError("Onset logits and targets must share the (batch, nodes) shape")
+    positive = (will > .5) & valid
+    if bool((positive & (start < 0)).any()):
+        raise ValueError("Positive events require a valid start for onset supervision")
+    upcoming, negative = positive & (start > 0), valid & ~positive
+    zero = logits.sum() * 0.0
+    positive_loss = F.softplus(-logits[upcoming]).mean() if upcoming.any() else zero
+    negative_loss = F.softplus(logits[negative]).mean() if negative.any() else zero
+    return .5 * (positive_loss + negative_loss)
 
 
 def _short_hot_negative_mask(batch: dict[str, torch.Tensor]) -> torch.Tensor:
@@ -328,6 +354,11 @@ def compute_multitask_loss(
         if event_parts
         else (event_will_raw * event_weight).sum() / event_weight.sum().clamp_min(1.0)
     )
+    event_onset_aux = zero
+    if config.lambda_event_onset_aux > 0:
+        if "event_onset_logit" not in outputs:
+            raise ValueError("Enabled onset auxiliary loss requires its independent head")
+        event_onset_aux = _onset_auxiliary_loss(outputs["event_onset_logit"], batch)
     if upcoming.any():
         start_logits = outputs["event_start_logit"][upcoming]
         soft_start = gaussian_start_soft_labels(
@@ -376,4 +407,7 @@ def compute_multitask_loss(
         + config.lambda_event_start * event_start
         + config.lambda_event_duration * event_duration
     )
+    if config.lambda_event_onset_aux > 0:
+        components["event_onset_aux"] = event_onset_aux
+        total = total + config.lambda_event_onset_aux * event_onset_aux
     return total, components

@@ -800,6 +800,8 @@ def train_torch_baseline(
     }
     model_class, config_class, baseline_id, model_name = _model_spec(model_kind)
     model_config = config_class(**model_values)
+    if bool(getattr(model_config, "event_onset_aux", False)) != (loss_config.lambda_event_onset_aux > 0):
+        raise ValueError("Onset auxiliary head and positive loss coefficient must be enabled together")
     payload, input_feature_contract = attach_precursor(
         payload, manifest, dataset_dir, getattr(model_config, "event_precursor", "none"),
         ("train", "validation", "test") if train_config.evaluate_test else ("train", "validation"),

@@ -22,6 +22,25 @@ from factory_baselines.b4_gcn_gru import B4GcnGru, B4ModelConfig
 
 
 class TestEventDiagnostics(unittest.TestCase):
+    def test_onset_auxiliary_ranking_cannot_change_reports(self):
+        arrays = self._three_class_arrays()
+        arrays.pop("event_kind_probability")
+        expected = summarize_events(arrays, [.55])
+        arrays["event_onset_probability"] = np.array([[.99, .8, .1, np.nan]])
+        actual = summarize_events(arrays, [.55])
+        aux = actual.pop("onset_auxiliary_diagnostics")
+        self.assertEqual(expected, actual)
+        self.assertEqual(aux["upcoming_count"], 1)
+        self.assertEqual(aux["negative_count"], 1)
+        self.assertEqual(aux["upcoming_vs_negative_ap"], 1)
+        for bad in (np.ones((2, 4)), np.full((1, 4), np.nan), np.full((1, 4), 2.)):
+            arrays["event_onset_probability"] = bad
+            with self.assertRaises(ValueError):
+                summarize_events(arrays, [.55])
+        arrays["occ_node_mask"][:] = 0
+        empty = summarize_events(arrays, [.55])["onset_auxiliary_diagnostics"]
+        self.assertIsNone(empty["upcoming_vs_negative_ap"])
+
     def test_predicted_hot_score_requires_an_early_continuous_run(self):
         p = np.full((2, 15, 3), .1)
         p[0, 2:10, 0] = .8  # latest eligible onset

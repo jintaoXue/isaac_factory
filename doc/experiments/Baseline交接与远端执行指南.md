@@ -12,14 +12,23 @@
 原骨干、损失、抽样、评分和选模规则不变，最多 60 epoch。详见长报告第 28 节和 JSON
 `upcoming_208_resume`。不要把下方较早的等待主包记录当作新的用户停止指令。
 
-近窗首轮已有 B4 两颗 seed 与 B5 seed42 完成；B4 upcoming 均为 2/145，B5 seed43
-在最近核验时已进入训练。B4 best/last 各四份诊断均已结束且权重哈希通过；last train
-upcoming AP 0.0821/0.1799，validation 仍约 0.0095。实际进程须重新查询。独立事件支持诊断已完成：train/validation 的
+近窗首轮四次训练已全部正常结束；B4 upcoming 均为 2/145，B5 为 1/145、2/145。
+B4 best/last 各四份诊断均已结束且权重哈希通过；last train upcoming AP
+0.0821/0.1799，validation 仍约 0.0095。独立事件支持诊断已完成：train/validation 的
 595/145 个 upcoming 窗口目标对应 299/73 次去重起始事件；未来至起点才出现本地
 扰动的目标分别为 300/82，不能据此推定不可预测或骨干上限。详见长报告 28.3。
 用户随后要求主模型架构对照，源码及实际图边表核查见第 29 节：两跳未覆盖的目标节点
 对为零，不能归因为看不到其他机器；主模型另有 onset 专门监督与占用预测补报路径。
-STGNPP 在主参考配置中关闭。下一项是同一权重的事件头/hot 头诊断，尚未启动该诊断。
+STGNPP 在主参考配置中关闭。同一 best 权重的事件头/hot 头诊断已完成 8/8，
+代码 `00d4c6f`，权重/源码/manifest/epoch/样本数核验通过，validation 原指标一致。
+固定 hot 阈值额外覆盖的 upcoming 为 0/0/1/0，同时多出 33/16/11/21 个负例越阈值；
+不采用直接补报。最新核验两项 tmux 均 dead=1、exit=0，无对应 Python 任务。
+
+下一轮已登记 `onset_aux` / `onsetaux20260912`，以近窗方案为父对照，只加独立 onset
+辅助头和按正负类分别取均值的 BCE（系数 1.0，ongoing 排除，缺类贡献零）。辅助头
+不参与正式报警；骨干、历史信息、抽样、其他损失、阈值与选模不变。B4/B5 各 seed42/43，
+最多 60 epoch，复用原目录。新增实现本地 29 tests / 11 subtests 通过；此记录为准备，
+实际开训状态须看第 30 节后续记录或服务器进程，不能凭预案重复启动。
 
 ### 2026-09-12 新对话续接：输入审计已完成
 
@@ -150,12 +159,15 @@ e3d7b2008ad7c5d0844c10a4c0670ff36c5ba961382706695689daf7a050244f
 |---|---:|---:|---:|---:|
 | B4 原 history 控制组 | 0.8078 | 0.6968 | 0.7482 | 0.0103 |
 | B5 原 history 控制组 | 0.8298 | 0.6826 | 0.7490 | 0.0138 |
-| B4 最新三分类候选 | 0.8296 | 0.6872 | 0.7515 | 0.0034 |
-| B5 最新三分类候选 | 0.8459 | 0.6785 | 0.7530 | 0.0138 |
+| B4 三分类候选 | 0.8296 | 0.6872 | 0.7515 | 0.0034 |
+| B5 三分类候选 | 0.8459 | 0.6785 | 0.7530 | 0.0138 |
+| B4 近窗摘要候选 | 0.8221 | 0.6913 | 0.7510 | 0.0138 |
+| B5 近窗摘要候选 | 0.8382 | 0.6758 | 0.7482 | 0.0103 |
 
 已完成控制组、图上下文、upcoming 正例权重 4->12、三分类事件头四组对照，
 每组两模型各 seed42/43。没有稳定的 upcoming 提升，三分类不提升为正式最优方案。
-当前普通路径中的 best.pt/last.pt 是三分类候选，不能误认为原控制组。
+本次开训前普通路径中的 best.pt/last.pt 是近窗候选；下一轮会先存入
+`model_before_onsetaux20260912.zip`。必须核验 config 与归档来源，不能按路径猜候选。
 
 新诊断最重要的证据：
 
@@ -217,11 +229,13 @@ models/tuning/b5_representation_v1/candidate_history/seed43/
 | `model_before_upcontext20260911.zip` | 原 history 控制组 |
 | `model_before_upweight20260912.zip` | 图上下文候选 |
 | `model_before_upclass20260912.zip` | upcoming 加权候选 |
-| `best.pt` / `last.pt` | 三分类候选的选中/最后权重 |
+| `model_before_nearprec20260912.zip` | 三分类候选 |
+| `best.pt` / `last.pt` | 最新候选；当前开训前为近窗，后续以 config/运行记录为准 |
 
 benchmark 根目录有四份完整 metrics 汇总：
 `baseline_dense_control_metrics_20260911.json`、`baseline_dense_context_metrics_20260912.json`、
-`baseline_dense_weighted_metrics_20260912.json`、`baseline_dense_three_class_metrics_20260912.json`。
+`baseline_dense_weighted_metrics_20260912.json`、`baseline_dense_three_class_metrics_20260912.json`，
+另有 `baseline_dense_near_metrics_20260912.json`（四次近窗完整结果及文件哈希）。
 诊断文件模式 `b[45]_seed4[23]_{train|validation}_diagnostics_<tag>.json`，标签有
 `upcoming20260911`、`upcontext20260912`、`upweight20260912`、`upclass20260912`、
 `upclasslast20260912`。精确完整指标保存在服务器，Git 中为审计与摘要记录。
@@ -319,15 +333,15 @@ export TOOLS="$PWD/source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools"
   `git pull --ff-only origin dev_xwt`，核验 commit。不要在训练期间更新训练模块。
 - 当前入口为 `batch_factory_baseline_dense.sh`；训练实现为
   `tools/train_dense_baseline_control.py`，诊断为 `tools/diagnose_baseline_events.py`。
-- **现在不要直接重跑。** 后续用户确认受控方案后才设置 `ARCHIVE_TAG`、
-  `TRAIN_VARIANT`、`TRAIN_SEEDS`、`DEVICE` 并复用已有 tmux/模型目录。
+- 用户已授权 208-episode B4/B5 受控优化。先查进程和已完成标签，再设置唯一
+  `ARCHIVE_TAG`、`TRAIN_VARIANT`、`TRAIN_SEEDS`、`DEVICE` 并复用已有 tmux/模型目录。
 - `ARCHIVE_TAG` 唯一且旧权重先归档；不创建新源码副本。不得重用已存在输出标签。
 - 诊断 ZIP 可用 `--archive_member best.pt` 直接验证读取，不解压覆盖当前权重。
 - 只对确认已退出的 pane 使用 respawn；正在运行时等待。SSH 断开不等于 tmux 任务停止。
 - 避免终端一次打印完整大型 JSON；提取关键字段，完整结果文件留在服务器。
 
 本地测试解释器为 `/tmp/factory-baseline-tests/bin/python`（临时路径，新对话要查是否仍存在）。
-最近代码验证 152 tests / 15 subtests 通过；本次收尾不修改模型代码，只更新文档。
+较早收尾验证 152 tests / 15 subtests；新 onset 实现的验证记录在第 30 节，不能混用计数。
 
 ## 9. 给新对话的起始提示
 

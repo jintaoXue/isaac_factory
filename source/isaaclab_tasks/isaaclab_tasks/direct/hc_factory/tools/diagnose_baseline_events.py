@@ -251,6 +251,23 @@ def summarize_events(arrays: dict[str, np.ndarray], thresholds: list[float]) -> 
         output["thresholds"].append(row)
     if "event_kind_probability" in arrays:
         output["event_kind_diagnostics"] = summarize_event_kinds(arrays, groups)
+    if "event_onset_probability" in arrays:
+        score = arrays["event_onset_probability"]
+        if score.shape != valid.shape:
+            raise ValueError("Onset probabilities must share the event sample/node grid")
+        if not np.isfinite(score[valid]).all() or (score[valid] < 0).any() or (score[valid] > 1).any():
+            raise ValueError("Invalid onset probabilities")
+        selected = groups["upcoming"] | groups["negative"]
+        metrics = _binary_metrics(groups["upcoming"][selected].astype(np.int64), score[selected])
+        output["onset_auxiliary_diagnostics"] = {
+            "upcoming_count": metrics["positive_count"], "negative_count": metrics["negative_count"],
+            "upcoming_vs_negative_ap": metrics["pr_auc"], "upcoming_vs_negative_auc": metrics["roc_auc"],
+            "score_q10_q50_q90": {
+                name: np.quantile(score[mask], [.1, .5, .9]).tolist() if mask.any() else None
+                for name, mask in groups.items() if name in {"upcoming", "negative"}
+            },
+            "scope": "Training-only auxiliary head; independent ranking diagnosis, excluded from canonical report decisions and checkpoint selection.",
+        }
     return output
 
 
@@ -373,6 +390,8 @@ def main() -> None:
             )
             if "event_kind_logits" in result:
                 values["event_kind_probability"] = result["event_kind_logits"].softmax(-1)
+            if "event_onset_logit" in result:
+                values["event_onset_probability"] = result["event_onset_logit"].sigmoid()
             if args.compare_hot_head:
                 values["predicted_hot_probability"] = result["remain_hot_logit"].sigmoid()
             for key, value in values.items():
@@ -407,6 +426,8 @@ def main() -> None:
     print(json.dumps(report["training_partition_audit"], indent=2), flush=True)
     if args.compare_hot_head:
         print(json.dumps(report["prediction_head_comparison"], indent=2), flush=True)
+    if "onset_auxiliary_diagnostics" in report:
+        print(json.dumps(report["onset_auxiliary_diagnostics"], indent=2), flush=True)
     print("threshold P R F1 upcoming_R upcoming_probability_misses upcoming_timing_misses")
     for row in report["thresholds"]:
         print(row["threshold"], *[round(row[k], 4) for k in (
