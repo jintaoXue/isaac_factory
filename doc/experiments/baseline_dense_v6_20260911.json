@@ -8,10 +8,11 @@
   "historical_stop_superseded": "Earlier handoff stop was superseded by the user authorization to optimize B4/B5 on 208 episodes",
   "terminal_state_verification": {
     "server_branch": "dev_xwt",
-    "server_code_at_verification": "00d4c6f",
-    "baseline_dense_v6": {"pane_dead": true, "exit_code": 0},
+    "server_code_at_verification": "df9ee0e",
+    "baseline_dense_v6": {"pane_dead": false, "exit_code": null, "startup_pane_pid": 94376},
     "baseline_dense_diag": {"pane_dead": true, "exit_code": 0},
-    "matching_training_or_diagnostic_processes": 0,
+    "matching_training_or_diagnostic_processes": 1,
+    "training_python_pid_at_verification": 94392,
     "last_checkpoint_diagnostics_verified": 8,
     "other_users_processes_modified": false
   },
@@ -251,7 +252,7 @@
     "training_log": "onsetaux20260912_train.log",
     "startup_pane_pid": 94376,
     "startup_python_pid": 94392,
-    "latest_verified_progress": "B4 seed42 started; near archive verified against frozen export; config has auxiliary head and coefficient 1.0. Remaining runs sequential, verify actual processes before any action.",
+    "latest_verified_progress": "B4 seed42 last checkpoint epoch4 verified; 16641 auxiliary parameters have diverged from the initially copied event head, all model parameters finite, source df9ee0e, manifest unchanged, test false. Near archive verified against frozen export. Remaining runs sequential; query actual processes before acting.",
     "variant": "onset_aux",
     "archive_tag": "onsetaux20260912",
     "parent_variant": "near_precursor",

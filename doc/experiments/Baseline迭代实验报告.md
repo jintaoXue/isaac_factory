@@ -2336,3 +2336,7 @@ checkpoint 回读与配置差异。服务器开训前已确认干净 `dev_xwt@00
 `dense_onset_aux_v2`、`event_onset_aux=true`、`lambda_event_onset_aux=1.0`。
 后续每组训练仍在开始前归档，不将尚未开始的组误写为已归档/完成。不在整批训练中
 更新服务器源码，不根据中间 upcoming 单项改选模或临时改配方。当前尚无本轮最终成绩。
+
+开训后又只读核验 B4 seed42 的 epoch4 last.pt：16641 个辅助头参数已与初始化时
+相同的事件头发生分化，全部模型参数有限；源码为 df9ee0e，manifest 未变，
+evaluate_test=false。这证明辅助分支实际参与更新，不代表已改善 validation upcoming。
