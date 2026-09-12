@@ -77,8 +77,9 @@ RNG与首次输出一致；13项定向测试及28项相关检查（11子测试�
 upcoming仍2/145，与相同seed的near父对照相同；F1微升，不能与两seed均值混比。
 B4 seed43也已正常完成（best5/total15），P/R/F1为0.81925134/0.69954338/0.75467980，
 upcoming仍2/145。两组实际配置last_attention、near、aux关闭、test关闭，far归档均通过。
-B5 seed42正在训练，实际Python PID198500、最近epoch23，其far归档11文件及新配置已
-核验；B5 seed43尚未开始。
+B5 seed42/43也已正常完成（best3/5、total23/25），upcoming均2/145，F1分别
+0.74873865/0.74776564。四次训练均结束，训练pane退出0，日志末行为TRAIN_BATCH_EXIT_CODE=0；
+四组far归档各11成员及实际配置已核验。这次轻量时间汇聚没有获得实质upcoming改善。
 
 首组best/last × train/validation四份诊断已正常退出0，来源/权重/样本核验通过。
 Best validation与正式CUDA值相差1个负例报告，数值审计已定位为CPU0.599993与CUDA0.600031
@@ -88,11 +89,24 @@ SHA 9172284d23cf648a7079c52faa45f8ab58bdce1c1c66f4ed72fb238ce7185759。详见33.
 
 首组last upcoming AP train/validation为0.07918116/0.00968419，仍有泛化差距；best汇聚
 接近均值，last upcoming表示改变量中位数约1.4%/1.7%，不是骨干上限证据。
-当前运行B4 seed43的四份诊断，日志timeattn20260913_b4s43_diagnose.log，pane PID207920、
-实际Python PID207925。新增--inspect_temporal_attention观察组件实际
+B4 seed43四份诊断也已正常结束并核验；完整B4导出为baseline_dense_timeattn_b4_20260913.json，
+257125 bytes，SHA 7030c7505836dbc935f5e8120c0f02cd1a028255077a2ac1ebb2e34956235abf。
+Seed43 last AP train/validation为0.19218590/0.01024910。B5 seed42四份诊断已正常退出0并
+核验，last AP为0.18110063/0.00801939，best validation正式指标复现通过。
+B5 seed43最后四份诊断也已正常结束并核验，日志timeattn20260913_b5s43_diagnose.log，
+pane PID220198退出0；last AP train/validation为0.31128931/0.00858045。16/16份全部核验，
+完整导出baseline_dense_timeattn_metrics_20260913.json，489113 bytes，SHA
+f3f66b75ccae759b36c5e52d9d56867b33d473d20e9f26b29e5f3be137abfe16。两项pane均退出0，
+未发现相应baseline Python任务。新增--inspect_temporal_attention观察组件实际
 权重和表示改变量，不改预测；本地19项/5子测试及服务器3项检查通过。诊断代码4b48e2b
-通过Git对象经stdin执行，模型模块和HEAD保持abc6713。详见第33.2–33.5节，运行中不pull，
-不重复训练/诊断；当前尚无时间汇聚整批结论。
+通过Git对象经stdin执行，模型模块和HEAD保持abc6713。详见第33.2–33.8节，
+不重复训练/诊断。训练结果不支持采用本次汇聚候选，但不能外推为全部时间注意力无效。
+
+本次也复核了第21节旧134-episode/v5抽样实验：uniform_control、event4、upcoming4，
+B4/B5各seed42/43共12次已完成，因precision/F1代价未采用加权抽样。它不是当前208包
+对照，也不是从未尝试的新方向；未启动新抽样搜索。架构归因应区分已有未来起点头、
+独立onset监督、时间编码、输入范围与报警融合。当前直接证据仍是判别与泛化不足，
+不能宣称GCN/GAT-GRU在结构上无法预测upcoming。
 
 ### 2026-09-12 新对话续接：输入审计已完成
 

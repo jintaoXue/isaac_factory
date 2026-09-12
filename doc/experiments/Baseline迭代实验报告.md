@@ -2877,3 +2877,88 @@ CPU24/32均为0.5999934673309326，CUDA24/32及重复CUDA24均为0.6000308990478
 最初审计启动因tmux缺少DENSE_DIR环境变量退出1，未开始推理/生成结果；补齐参数并
 将复用检查改为确认该已失败终态后，仅重试审计。原失败日志保留，成功日志为
 timeattn20260913_b4s42_numerical_audit_retry1.log；未重启训练、未覆盖四份原诊断。
+
+### 33.6 四次时间汇聚训练完成，冻结诊断继续收尾
+
+训练pane已正常退出0，timeattn20260913_train.log末行为TRAIN_BATCH_EXIT_CODE=0。
+B5 seed42/43分别为best3/5、total23/25；实际配置均为last_attention、near、aux关闭、
+test关闭，四组far归档各11个成员均已核验。下表沿用各次正式选定checkpoint的原CUDA
+验证指标，不根据upcoming单项另选epoch；四组upcoming均为2/145。
+
+| B5 validation | Seed42 | Seed43 |
+|---|---:|---:|
+| P | 0.83652762 | 0.81936888 |
+| R | 0.67762557 | 0.68767123 |
+| F1 | 0.74873865 | 0.74776564 |
+| Upcoming R | 0.01379310 | 0.01379310 |
+| Ongoing R | 0.77894737 | 0.79052632 |
+| 阈值 | 0.55 | 0.60 |
+| Start MAE (min) | 0.04851752 | 0.02523240 |
+| Duration MAE (min) | 2.28531456 | 2.41945028 |
+| Remain MAE (min) | 20.49183636 | 13.84202161 |
+
+B4八份冻结诊断已全部核验，seed43的best validation与保存正式指标在1e-10容差内
+一致；seed42保留33.5的设备差异说明。完整B4导出baseline_dense_timeattn_b4_20260913.json，
+257125 bytes，SHA-256：
+`7030c7505836dbc935f5e8120c0f02cd1a028255077a2ac1ebb2e34956235abf`。
+导出包含原CUDA指标、CPU诊断报告及完整数值审计，不混淆两路数值。
+
+| Upcoming诊断 | Best train | Best validation | Last train | Last validation |
+|---|---:|---:|---:|---:|
+| B4 seed43 AP | 0.01011920 | 0.00879545 | 0.19218590 | 0.01024910 |
+| B4 seed43汇聚相对均值改变量中位数 | 0.00598663 | 0.00594889 | 0.02001793 | 0.02281547 |
+| B5 seed42 AP | 0.00650444 | 0.00611549 | 0.18110063 | 0.00801939 |
+| B5 seed42汇聚相对均值改变量中位数 | 0.00278260 | 0.00296816 | 0.02326306 | 0.02498073 |
+
+B5 seed42四份诊断正常退出0，来源、权重、manifest、epoch、样本数和观察分组计数
+核验通过；best validation与正式指标在1e-10容差内一致。随后复用baseline_dense_diag
+启动seed43最后四份检查，日志timeattn20260913_b5s43_diagnose.log，pane PID220198。
+诊断仍使用4b48e2b的Git对象经stdin执行，服务器HEAD/模型模块保持abc6713。
+此时12/16份诊断已核验，最后四份尚在运行，不重新启动训练或已有诊断。
+
+### 33.7 已完成搜索复核与架构归因边界
+
+重新查第21节和baseline_event_sampling_20260907.json，确认旧134-episode/v5包已有
+B4/B5各uniform_control、event4、upcoming4、seed42/43共12次完整抽样对照。其manifest
+为66c6554d0ae1c7a293e482a201829a4c324f1d9d0b88934c1c2a6c1e27333183，train 13813窗，
+与当前208包不同。旧实验中event4/upcoming4提高部分召回，但precision和F1下降，
+两模型均保留uniform_control。不能将其写成当前208包结论，也不能把过采样说成从未
+尝试的新方向直接重跑。本次只复核历史，未登记或启动新抽样搜索。
+
+原B4/B5已有事件概率、未来起点和时长预测头，低upcoming不能解释为没有未来输出。
+主模型参考配方具有独立onset监督和冷状态补报、多层时空注意力等差异；其中监督、
+输入范围、报警决策和训练经历必须与骨干结构分开讨论。已有onset辅助头明显改善
+最后权重的训练排序，但验证排序仍弱；固定raw-max补报伴随大量误报。当前时间汇聚
+四次训练也未获得实质upcoming改善。这些证据支持“提前信号判别与泛化不足”，尚不能
+证明GCN/GAT-GRU在架构上无法预测upcoming，也不能把一个轻量汇聚查询的负结果外推
+为全部时间注意力无效。主模型同包、同输入、同解码的受控结果仍未获得，正式净结构
+优势不能由主204包和baseline208包的分数差直接推出。
+
+### 33.8 整批16份冻结诊断完成并保留完整结果
+
+B5 seed43最后四份诊断正常退出0，日志末行为DIAG_BATCH_EXIT_CODE=0；权重、源码、
+manifest、best5/last25、train23859/validation5439和观察分组计数均通过。Best validation
+与原CUDA正式指标在1e-10容差内一致。Upcoming AP依best train/validation、last
+train/validation顺序为0.00918577/0.00784095/0.31128931/0.00858045，汇聚相对均值
+改变量中位数为0.00592527/0.00727255/0.03036844/0.03325982。训练排序提高而验证仍弱。
+
+四组完整记录、配置、原CUDA指标、文件哈希及16份CPU诊断汇总为
+baseline_dense_timeattn_metrics_20260913.json，489113 bytes，SHA-256：
+`f3f66b75ccae759b36c5e52d9d56867b33d473d20e9f26b29e5f3be137abfe16`。
+导出包含B4 seed42完整数值审计；该组显式保留CPU/CUDA差异，其余三组best validation
+正式指标复现通过。四组input_feature_contract与各自near父对照完全一致。
+
+| 两seed原CUDA指标均值 | B4 | B5 |
+|---|---:|---:|
+| P | 0.8140060103 | 0.8279482502 |
+| R | 0.6954337900 | 0.6826484018 |
+| F1 | 0.7500626981 | 0.7482521442 |
+| Upcoming R | 0.0137931034 | 0.0137931034 |
+
+B4两颗seed命中均与near父对照相同；B5由1/2变为2/2，尚无实质改善。保留本次
+负结果，不采用该时间汇聚候选，也不根据中间epoch或CPU复算替换正式成绩。该结论
+只限这项单查询汇聚对照，不代表所有时空注意力无效或模型骨干已被证明无法提前识别。
+
+最终核实训练/诊断pane均dead=1、exit=0，均有对应整批退出0标志，未发现使用该
+benchmark的相应训练/诊断Python；服务器HEAD仍为abc6713，tracked clean。未评test、
+未启动下一轮训练、未改主仓库。当前upcoming优化目标仍未达到。
