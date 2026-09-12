@@ -9,7 +9,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from .torch_heads import FactoryPredictionHeads
+from .torch_heads import FactoryPredictionHeads, TemporalAttentionPool
 
 
 @dataclass
@@ -52,8 +52,8 @@ class B5ModelConfig:
             raise ValueError("global_dim must be non-negative")
         if self.node_embedding < 0:
             raise ValueError("node_embedding must be non-negative")
-        if self.temporal_readout not in {"last", "last_mean"}:
-            raise ValueError("temporal_readout must be last or last_mean")
+        if self.temporal_readout not in {"last", "last_mean", "last_attention"}:
+            raise ValueError("temporal_readout must be last, last_mean or last_attention")
         if self.event_head not in {"binary", "three_class"}:
             raise ValueError("event_head must be binary or three_class")
         if self.event_precursor not in {"none", "near", "near_far"}:
@@ -178,7 +178,11 @@ class B5GatGru(nn.Module):
                 nn.GELU(),
                 nn.LayerNorm(config.gru_hidden),
             )
-            if config.temporal_readout == "last_mean" else None
+            if config.temporal_readout in {"last_mean", "last_attention"} else None
+        )
+        self.history_attention = (
+            TemporalAttentionPool(config.gru_hidden)
+            if config.temporal_readout == "last_attention" else None
         )
         self.heads = FactoryPredictionHeads(
             node_hidden_dim=config.gru_hidden,
@@ -238,8 +242,12 @@ class B5GatGru(nn.Module):
         )
         temporal_output, _ = self.gru(temporal_input)
         last = temporal_output[:, -1]
+        history = (
+            self.history_attention(temporal_output)
+            if self.history_attention is not None else temporal_output.mean(dim=1)
+        )
         readout = (
-            self.history_readout(torch.cat((last, temporal_output.mean(dim=1)), dim=-1))
+            self.history_readout(torch.cat((last, history), dim=-1))
             if self.history_readout is not None else last
         )
         node_hidden = readout.view(

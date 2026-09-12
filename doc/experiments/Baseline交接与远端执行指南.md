@@ -49,8 +49,11 @@ onset 辅助头关闭。普通模型路径随批次转为 far_precursor；未开
 核验并导出为 baseline_dense_far_b4_20260913.json。两颗 seed 的 last AP train 为
 0.088649/0.202656，validation 为 0.010517/0.010266，仍有泛化差距。
 B5 两组也已完成（best3/5、total23/25、upcoming 均为2/145），训练 pane 已退出0。
-当前正在执行 B5 best/last 的八份 far 诊断，日志 farprec20260913_b5_diagnose.log，
-pane PID169477、最近实际 Python PID171249。两组 B4 旧 onset
+四组共16份 far best/last 诊断也已全部正常结束并核验，训练/诊断 pane 均退出0，
+B5日志有 DIAG_BATCH_EXIT_CODE=0。完整导出 baseline_dense_far_metrics_20260913.json，
+345240 bytes，SHA d3420cc6c4c23ccd4a3d07b514bdc35443e1f8e39e964c0b444ab7cb1994f020。
+B5 last AP train为0.184805/0.308020，validation为0.008044/0.008621，仍有泛化差距。
+两组 B4 旧 onset
 归档各 11 个文件均已核验；新配置确认为 near_far、额外 30 窗、aux 关闭、test 关闭。
 继续时须重新核验实时状态，详见第 31 节。
 
@@ -59,8 +62,15 @@ pane PID169477、最近实际 Python PID171249。两组 B4 旧 onset
 内存3项测试通过。Seed42 原阈值下 upcoming 仍0/145、误报135→155；seed43
 upcoming 3→52/145，但 precision 0.822→0.238、误报161→2613，不采用该组合。
 完整核验与曲线存 baseline_onset_report_b4_20260913.json。该诊断外壳处于Z终态，
-tmux未回收退出码；结果完整性已独立核验，不能写成正常退出0。B5 冻结报告检查尚未
-执行，等当前八份 far 诊断完成后再复用会话。详见第32节；不要在这些诊断期间 pull。
+tmux未回收退出码；结果完整性已独立核验，不能写成正常退出0。B5四份冻结报告检查
+现已启动，日志 onsetreport20260913_b5_diagnose.log，pane PID179389、最近实际Python
+PID181276；使用3b0e784 Git对象经stdin执行，HEAD/模型模块仍df9ee0e。详见第32节；
+不要在这些诊断期间 pull，不要重复启动。
+
+本地已准备时间汇聚单项对照 temporal_attention / timeattn20260913，父对照near，
+只将GRU历史均值改为内容注意力加权均值，保留末状态及融合层，新增128参数。原参数、
+RNG与首次输出一致；13项定向测试及28项相关检查（11子测试）通过。尚未部署或开训，
+须先完成当前B5冻结检查、保存结果，再预检并归档当前far权重。详见第33节。
 
 ### 2026-09-12 新对话续接：输入审计已完成
 
@@ -196,14 +206,16 @@ e3d7b2008ad7c5d0844c10a4c0670ff36c5ba961382706695689daf7a050244f
 | B4 近窗摘要候选 | 0.8221 | 0.6913 | 0.7510 | 0.0138 |
 | B5 近窗摘要候选 | 0.8382 | 0.6758 | 0.7482 | 0.0103 |
 | B4 onset 辅助监督候选 | 0.8331 | 0.6735 | 0.7448 | 0.0103 |
+| B5 onset 辅助监督候选 | 0.8251 | 0.6877 | 0.7500 | 0.0241 |
 
-B5 onset 候选尚在训练，不填入未完成均值。当前 B4 onset 的独立分支只用于训练，
-其诊断 AP 不能替代正式事件头的 report 指标。
+B4/B5 onset 候选均已完成，表内为原正式事件头结果。独立分支训练时没有参与正式
+报警，其诊断 AP 不能替代 report 指标；冻结双头报警的另行检查见上方最新状态。
 
 已完成控制组、图上下文、upcoming 正例权重 4->12、三分类事件头四组对照，
 每组两模型各 seed42/43。没有稳定的 upcoming 提升，三分类不提升为正式最优方案。
-本次开训前普通路径中的 best.pt/last.pt 是近窗候选；下一轮会先存入
-`model_before_onsetaux20260912.zip`。必须核验 config 与归档来源，不能按路径猜候选。
+当前普通路径中的 best.pt/last.pt 均为已完成的far候选，旧近窗和onset分别保留在
+model_before_onsetaux20260912.zip 和 model_before_farprec20260913.zip。
+必须核验 config 与归档来源，不能按路径猜候选。
 
 新诊断最重要的证据：
 
@@ -230,7 +242,8 @@ B5 onset 候选尚在训练，不填入未完成均值。当前 B4 onset 的独�
 
 新增确认的输入差异：主分支 `PDFormer/factory_bn/remain.py` 定义
 `PRECURSOR_FAR_WINDOWS=30`；`dataset.py` 构造编码窗口之前最多 30 分钟摘要；
-`model.py::_fuse_precursor` 实际进入事件头。当前 baseline 没有这些远历史摘要。
+`model.py::_fuse_precursor` 实际进入事件头。baseline近窗父对照没有这些远历史摘要；
+新增far对照已单独加入五维更早历史摘要并完成训练，未见稳定增益。
 这是额外过去信息，不是未来泄漏；但“双方基础输入完全一致”尚不成立。
 尚不能证明上述文档 checkpoint 使用了非零摘要权重，更不能把全部分差归因于此。
 

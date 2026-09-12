@@ -2598,6 +2598,26 @@ B5 seed42/43 都已正常结束，best3/5、total23/25；训练 pane dead=1、ex
 一次包装命令的字符串语法错误发生在启动前，未运行训练或诊断；修正后才实际启动。
 此时整批训练已完成，B5 八份诊断仍待完成及逐份核验。
 
+### 31.8 四次训练及 16 份远历史诊断全部完成
+
+2026-09-13 核验训练和诊断 pane 均 dead=1、exit=0，B5 诊断日志末行为
+DIAG_BATCH_EXIT_CODE=0。逐份核对四组 best/last 权重、源码 df9ee0e、manifest、
+epoch、split 及样本数，四份 best validation canonical 指标与原保存 metrics 在
+1e-10 容差内相同。实际配置均 near_far、onset 辅助关闭、test 关闭。
+
+| B5 远历史 upcoming-vs-negative AP | s42 train | s42 validation | s43 train | s43 validation |
+|---|---:|---:|---:|---:|
+| Best | 0.006051 | 0.006104 | 0.009204 | 0.007873 |
+| Last | 0.184805 | 0.008044 | 0.308020 | 0.008621 |
+
+AP 转录至六位小数。四组 upcoming 命中为 0/2/2/2（每组145个目标），没有稳定的
+实质增益；B5 后期训练排序与验证排序仍有明显差距。这只是否定当前五维摘要方案的
+稳定增益，不是所有远历史建模的上限，也不证明双方正式输入已经完全一致。
+
+四次完整 metrics/config/运行记录、文件哈希及全部诊断摘要保存为
+`baseline_dense_far_metrics_20260913.json`（345240 bytes），SHA-256：
+`d3420cc6c4c23ccd4a3d07b514bdc35443e1f8e39e964c0b444ab7cb1994f020`。
+
 ## 32. 冻结 onset 报警路径检查
 
 用户指出 baseline 可能缺少提前识别组件。第 30 节只检验辅助监督，不能代替 onset
@@ -2693,3 +2713,36 @@ upcoming 从3/145增至52/145，但误报从161增至2613，不能采用该固�
 `1900fb4d778c142f4cdf001da0b428600cc56a46c50c4550a3d824fac3387cd7`。
 源码通过 stdin 使用3b0e784，底层模型运行模块和服务器 HEAD 保持df9ee0e。
 B5 冻结 onset 报告检查尚未执行，等当前 B5 far 原诊断完成后再复用会话；不新增训练。
+
+### 32.4 B5 四份冻结报告检查启动
+
+在第31.8节完整导出与退出核验后，复用 baseline_dense_diag，启动 B5 seed42/43 的
+onset_aux best.pt × train/validation 四份检查。读取既有
+model_before_farprec20260913.zip，逐一验证 ZIP CRC 及关键成员哈希与完整 onset 导出
+相同；不解压替换当前 far 权重。使用同一3b0e784诊断 Git 对象经 stdin 执行，底层模块
+及 HEAD 仍 df9ee0e，CPU2线程。新日志 onsetreport20260913_b5_diagnose.log，启动
+pane PID179389；最近实际 Python PID181276，seed42 train 已输出、validation 正在运行。
+包装器语法检查通过，并登记日志退出标记；四份结果尚待完整核验，不重复启动。
+
+## 33. 时间注意力汇聚对照准备
+
+针对“是否缺少提前识别组件”的问题，单独检验 GRU 历史均值是否削弱了部分历史信号。
+B5 既有 GAT 是每个时刻的空间注意力，不能等同于主模型的历史时间注意力；但 GRU
+本身能编码顺序，因此这一差异不构成 baseline 无法学习 upcoming 的证明。
+
+注册 `temporal_attention` / `timeattn20260913`，父对照为 near_precursor，B4/B5 各
+seed42/43、最多60epoch。将 `last_mean` 改为 `last_attention`：保留 GRU 末状态，
+将历史均值替换为单个可学习查询对历史 GRU 状态的 softmax 加权均值，再用相同的
+Linear/GELU/LayerNorm 融合。每个模型新增128个参数，GCN/GAT层及GRU保持不变。
+这是增强 baseline 的单项消融，不称为原始架构结果，也不是主模型多层时空注意力的复刻。
+
+查询从零初始化，不消耗 RNG；采用“原均值 + 相对均匀权重的修正”计算，在初始化时
+原参数、RNG与全部首次输出严格相同。近窗输入、二分类事件头、其他预测头、损失、
+均匀抽样、优化器、学习率、早停、阈值和 canonical report F1 选模不变；aux关闭，
+远历史关闭。没有根据任何新训练成绩修改配方。
+
+本地13项汇聚/模型检查通过，另28项相关回归检查、11个子测试通过。覆盖初始参数及
+带dropout的首次输出/RNG一致、注意力能选择不同历史状态、梯度回传、节点mask、
+内存checkpoint回读、两个骨干及两颗seed、与父对照的唯一配置差异。服务器尚未部署
+该实现，尚未启动训练。等第32节 B5 检查完成并保留结果后，再做服务器预检、逐文件
+归档当前 far 结果并复用原目录；期间不 pull 模型模块、不评 test。

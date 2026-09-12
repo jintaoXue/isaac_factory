@@ -1,4 +1,4 @@
-"""Prediction heads shared by the B3-B5 PyTorch baselines."""
+"""Prediction heads and temporal pooling for the PyTorch baselines."""
 
 from __future__ import annotations
 
@@ -7,6 +7,22 @@ from copy import deepcopy
 
 import torch
 from torch import nn
+
+
+class TemporalAttentionPool(nn.Module):
+    """Content-weighted historical GRU pooling, initialized to the exact mean."""
+
+    def __init__(self, hidden_dim: int) -> None:
+        super().__init__()
+        self.query = nn.Parameter(torch.zeros(hidden_dim))
+
+    def forward(self, history: torch.Tensor) -> torch.Tensor:
+        scores = torch.einsum("bth,h->bt", history, self.query) / math.sqrt(self.query.numel())
+        weights = scores.softmax(dim=1)
+        # This is a weighted mean. The residual form preserves the control's
+        # floating-point mean exactly at initialization, without consuming RNG.
+        correction = weights - torch.full_like(weights, 1.0 / history.shape[1])
+        return history.mean(dim=1) + (correction[:, :, None] * history).sum(dim=1)
 
 
 class FactoryPredictionHeads(nn.Module):
