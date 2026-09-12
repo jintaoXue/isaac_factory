@@ -136,6 +136,7 @@ def test_control_archives_stale_test_and_starts_fresh_validation_only(tmp_path, 
     assert "warm_start_checkpoint" not in calls[0]
     assert calls[0]["model_overrides"]["temporal_readout"] == "last_mean"
     assert calls[0]["model_overrides"]["event_context"] == (variant == "graph_context")
+    assert calls[0]["model_overrides"]["event_head"] == ("three_class" if variant == "three_class" else "binary")
     assert calls[0]["train_config"].training_profile == f"dense_{variant}_v2"
     assert calls[0]["loss_config"].event_will_upcoming_pos_weight == (
         12.0 if variant == "upcoming_weighted" else 4.0
@@ -159,13 +160,15 @@ def test_dense_candidates_are_single_variable_and_leave_scoring_unchanged(model)
         training_values = asdict(training)
         training_values.pop("training_profile")
         configurations[variant] = (training_values, overrides, loss.to_dict())
-    base, context, weighted = (configurations[name] for name in control.DENSE_VARIANTS)
-    assert base[0] == context[0] == weighted[0]
+    base, context, weighted, three_class = (configurations[name] for name in control.DENSE_VARIANTS)
+    assert base[0] == context[0] == weighted[0] == three_class[0]
     assert base[0]["evaluate_test"] is False
     assert base[0]["event_oversample_factor"] == 1
     assert base[2] == context[2]
     assert {k for k in base[1] if base[1][k] != context[1][k]} == {"event_context"}
     assert base[1] == weighted[1]
     assert {k for k in base[2] if base[2][k] != weighted[2][k]} == {"event_will_upcoming_pos_weight"}
+    assert base[2] == three_class[2]
+    assert {k for k in base[1] if base[1][k] != three_class[1][k]} == {"event_head"}
     with pytest.raises(ValueError, match="registered dense variant"):
         control.dense_configuration(model, "unknown", 42, "cpu")

@@ -22,6 +22,7 @@ class B4ModelConfig:
     gru_layers: int = 1
     dropout: float = 0.2
     event_context: bool = False
+    event_head: str = "binary"
     node_embedding: int = 0
     temporal_readout: str = "last"
     prediction_horizon: float = 180.0
@@ -47,6 +48,8 @@ class B4ModelConfig:
             raise ValueError("node_embedding must be non-negative")
         if self.temporal_readout not in {"last", "last_mean"}:
             raise ValueError("temporal_readout must be last or last_mean")
+        if self.event_head not in {"binary", "three_class"}:
+            raise ValueError("event_head must be binary or three_class")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -123,6 +126,7 @@ class B4GcnGru(nn.Module):
             max_remain_windows=config.max_remain_windows,
             num_causes=config.num_causes,
             event_context=config.event_context,
+            event_head=config.event_head,
         )
 
     def forward(

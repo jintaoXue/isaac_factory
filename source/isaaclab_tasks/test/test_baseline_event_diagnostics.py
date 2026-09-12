@@ -1,17 +1,59 @@
 """Event diagnostics must partition misses without changing canonical metrics."""
 
+import hashlib
+import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+import zipfile
 
 import numpy as np
+import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isaaclab_tasks/direct/hc_factory/tools"))
-from diagnose_baseline_events import attach_node_catalog, parse_args, summarize_events
+from diagnose_baseline_events import attach_node_catalog, load_diagnostic_checkpoint, parse_args, summarize_events
+from factory_baselines.artifacts import archive_files
+from factory_baselines.b4_gcn_gru import B4GcnGru, B4ModelConfig
 
 
 class TestEventDiagnostics(unittest.TestCase):
+    def test_archived_checkpoint_matches_direct_load_without_extraction(self):
+        config = B4ModelConfig(input_dim=3, global_dim=0, num_nodes=2, gcn_hidden=2, gru_hidden=4)
+        model = B4GcnGru(config)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            path = root / "best.pt"
+            torch.save({"model_kind": "b4_gcn_gru", "model_config": config.to_dict(),
+                        "model_state_dict": model.state_dict(), "epoch": 7}, path)
+            expected, _, direct = load_diagnostic_checkpoint(path, torch.device("cpu"), None)
+            archive = archive_files(root, ["best.pt"], "saved.zip")
+            before = archive.read_bytes()
+            actual, checkpoint, source = load_diagnostic_checkpoint(archive, torch.device("cpu"), "best.pt")
+            self.assertEqual(checkpoint["epoch"], 7)
+            self.assertEqual(source["checkpoint_member_sha256"], direct["checkpoint_file_sha256"])
+            self.assertEqual(source["checkpoint_file_sha256"], hashlib.sha256(before).hexdigest())
+            self.assertEqual(set(root.iterdir()), {archive})
+            self.assertEqual(archive.read_bytes(), before)
+            for key, value in expected.state_dict().items():
+                torch.testing.assert_close(actual.state_dict()[key], value, rtol=0, atol=0)
+
+    def test_archive_rejects_bad_checksum_before_deserializing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / "bad.zip"
+            with zipfile.ZipFile(archive, "x") as stream:
+                stream.writestr("archive_manifest.json", json.dumps({"best.pt": "incorrect"}))
+                stream.writestr("best.pt", b"not a checkpoint")
+            with patch("diagnose_baseline_events.load_checkpoint") as loader:
+                with self.assertRaisesRegex(ValueError, "checksum"):
+                    load_diagnostic_checkpoint(archive, torch.device("cpu"), "best.pt")
+                with self.assertRaisesRegex(ValueError, "direct-child"):
+                    load_diagnostic_checkpoint(archive, torch.device("cpu"), "../best.pt")
+                with self.assertRaisesRegex(ValueError, "Expected one"):
+                    load_diagnostic_checkpoint(archive, torch.device("cpu"), "missing.pt")
+                loader.assert_not_called()
+
     def test_restarted_upcoming_is_audited_without_relabeling(self):
         hot = np.zeros((1, 15, 3), dtype=np.float32)
         hot[0, 1:9, 0] = 1

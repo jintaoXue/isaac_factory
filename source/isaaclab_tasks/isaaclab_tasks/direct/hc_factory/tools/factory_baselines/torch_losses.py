@@ -293,9 +293,22 @@ def compute_multitask_loss(
             _short_hot_negative_mask(batch), config.event_short_hot_fp_multiplier, 1.0
         )
         event_weight = event_weight * multiplier
-    event_will_raw = _event_binary_loss(
-        outputs["event_will_logit"], event_will_target, config.event_focal_gamma
-    )
+    if "event_kind_logits" in outputs:
+        logits = outputs["event_kind_logits"]
+        if logits.shape != (*event_will_target.shape, 3):
+            raise ValueError("Expected three-class event logits with shape (batch, nodes, 3)")
+        if bool((positive_event & (batch["event_start"] < 0)).any()):
+            raise ValueError("Positive events require a valid start for three-class supervision")
+        kinds = torch.zeros_like(batch["event_start"], dtype=torch.long)
+        kinds[ongoing] = 1
+        kinds[upcoming] = 2
+        event_will_raw = F.cross_entropy(logits.movedim(-1, 1), kinds, reduction="none")
+        if config.event_focal_gamma > 0:
+            event_will_raw = event_will_raw * (-torch.expm1(-event_will_raw)).pow(config.event_focal_gamma)
+    else:
+        event_will_raw = _event_binary_loss(
+            outputs["event_will_logit"], event_will_target, config.event_focal_gamma
+        )
     event_weight = event_weight * occ_mask.float()
     event_parts = []
     for raw_mask in type_masks.values():

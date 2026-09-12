@@ -14,7 +14,7 @@ from factory_baselines.dataset import load_shared_dataset
 from factory_bn_shared.bundle import file_hash
 
 
-DENSE_VARIANTS = ("history_control", "graph_context", "upcoming_weighted")
+DENSE_VARIANTS = ("history_control", "graph_context", "upcoming_weighted", "three_class")
 
 
 def dense_configuration(model: str, variant: str, seed: int, device: str) -> tuple:
@@ -32,7 +32,8 @@ def dense_configuration(model: str, variant: str, seed: int, device: str) -> tup
     )
     overrides = dict(gru_hidden=128, gru_layers=1, dropout=.2,
                      temporal_readout="last_mean", node_embedding=0,
-                     event_context=variant == "graph_context")
+                     event_context=variant == "graph_context",
+                     event_head="three_class" if variant == "three_class" else "binary")
     overrides.update({"gcn_hidden": 64} if b4 else {"gat_hidden": 64, "gat_heads": 4})
     loss = MultiTaskLossConfig(
         event_will_upcoming_pos_weight=12.0 if variant == "upcoming_weighted" else 4.0,
@@ -85,6 +86,8 @@ def run_control(model: str, dataset_dir: Path, output_dir: Path, archive_tag: st
         "selection_split": "validation", "test_evaluated": False,
         "comparison_role": "exploratory_upcoming_optimization_not_verified_main_cohort",
         "event_supervision_partition": "positive_start_zero_ongoing_positive_start_greater_zero_upcoming",
+        "event_head": overrides["event_head"],
+        "event_classification_loss": "three_class_cross_entropy" if variant == "three_class" else "binary_cross_entropy",
         "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(),
     }
     record_path.write_text(json.dumps(record, indent=2) + "\n")

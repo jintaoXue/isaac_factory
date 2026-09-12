@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import torch
 from torch import nn
 
@@ -16,8 +18,12 @@ class FactoryPredictionHeads(nn.Module):
         max_remain_windows: int,
         num_causes: int,
         event_context: bool = False,
+        event_head: str = "binary",
     ) -> None:
         super().__init__()
+        if event_head not in {"binary", "three_class"}:
+            raise ValueError("event_head must be binary or three_class")
+        self.event_head = event_head
         self.node_hidden_dim = node_hidden_dim
         self.global_dim = global_dim
         self.num_nodes = num_nodes
@@ -67,6 +73,13 @@ class FactoryPredictionHeads(nn.Module):
             )
             if event_context else None
         )
+        if event_head == "three_class":
+            # Match all common initial weights and the RNG stream across the two arms.
+            with torch.random.fork_rng(devices=[]):
+                self.event_will_head[-1] = nn.Linear(node_hidden_dim, 3)
+            with torch.no_grad():
+                self.event_will_head[-1].bias[0] = 0.0
+                self.event_will_head[-1].bias[1:] = -1.5 - math.log(2.0)
 
     def forward(
         self,
@@ -109,10 +122,16 @@ class FactoryPredictionHeads(nn.Module):
                 torch.cat((node_hidden, context), dim=-1)
             )
             event_hidden = event_hidden * mask_float
-        return {
-            "remain_score": self.remain_score_head(future_context),
-            "remain_hot_logit": self.remain_hot_head(future_context).squeeze(-1),
-            "event_will_logit": self.event_will_head(event_hidden).squeeze(-1),
+        remain_score = self.remain_score_head(future_context)
+        remain_hot = self.remain_hot_head(future_context).squeeze(-1)
+        event_logits = self.event_will_head(event_hidden)
+        result = {
+            "remain_score": remain_score,
+            "remain_hot_logit": remain_hot,
+            "event_will_logit": (
+                torch.logsumexp(event_logits[..., 1:], dim=-1) - event_logits[..., 0]
+                if self.event_head == "three_class" else event_logits.squeeze(-1)
+            ),
             "event_start_logit": self.event_start_head(event_hidden),
             "event_duration": self.event_duration_head(event_hidden).squeeze(-1),
             "remain_len": self.remain_len_head(
@@ -121,3 +140,6 @@ class FactoryPredictionHeads(nn.Module):
             "cause_logits": self.cause_head(graph_context),
             "node_hidden": node_hidden,
         }
+        if self.event_head == "three_class":
+            result["event_kind_logits"] = event_logits
+        return result

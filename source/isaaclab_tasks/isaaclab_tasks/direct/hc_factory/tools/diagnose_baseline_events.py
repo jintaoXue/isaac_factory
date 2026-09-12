@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
+import io
 import json
 from pathlib import Path
+import zipfile
 
 import numpy as np
 import torch
@@ -22,6 +25,30 @@ from factory_baselines.torch_trainer import (
     load_checkpoint,
 )
 from factory_bn_shared.remain import node_event_targets, station_report_metrics
+
+
+def load_diagnostic_checkpoint(path: Path, device: torch.device, archive_member: str | None):
+    with path.open("rb") as stream:
+        source_hash = hashlib.file_digest(stream, "sha256").hexdigest()
+    provenance = {"checkpoint_file_sha256": source_hash, "checkpoint_archive_member": archive_member}
+    if archive_member is None:
+        model, checkpoint = load_checkpoint(path, device)
+        return model, checkpoint, provenance
+    if Path(archive_member).name != archive_member or archive_member in {"", ".", ".."}:
+        raise ValueError("Checkpoint archive member must be a direct-child filename")
+    with zipfile.ZipFile(path) as archive:
+        for name in ("archive_manifest.json", archive_member):
+            if archive.namelist().count(name) != 1:
+                raise ValueError(f"Expected one archive member: {name}")
+        manifest = json.loads(archive.read("archive_manifest.json"))
+        content = archive.read(archive_member)
+    member_hash = hashlib.sha256(content).hexdigest()
+    if manifest.get(archive_member) != member_hash:
+        raise ValueError("Archived checkpoint checksum does not match its manifest")
+    provenance["checkpoint_member_sha256"] = member_hash
+    # Read the verified member in memory; do not restore over a live training directory.
+    model, checkpoint = load_checkpoint(io.BytesIO(content), device)
+    return model, checkpoint, provenance
 
 
 def attach_node_catalog(report: dict, catalog_path: Path, manifest: dict) -> None:
@@ -181,6 +208,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset_dir", type=Path, required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
+    parser.add_argument("--archive_member", help="Read this checkpoint member from a verified archive")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--split", choices=("train", "validation"), default="validation")
     parser.add_argument("--device", default="cpu")
@@ -199,7 +227,9 @@ def main() -> None:
     torch.set_num_threads(args.threads)
     device = _resolve_device(args.device)
     payload, manifest = load_shared_dataset(args.dataset_dir)
-    model, checkpoint = load_checkpoint(args.checkpoint, device)
+    model, checkpoint, provenance = load_diagnostic_checkpoint(
+        args.checkpoint, device, args.archive_member,
+    )
     if checkpoint["metadata"]["dataset_manifest_sha256"] != _manifest_hash(
         args.dataset_dir / "dataset_manifest.json"
     ):
@@ -233,6 +263,7 @@ def main() -> None:
     report = summarize_events(arrays, thresholds)
     attach_node_catalog(report, args.dataset_dir / "node_catalog.csv", manifest)
     report.update(
+        **provenance,
         split=args.split, test_evaluated=False,
         checkpoint=str(args.checkpoint.resolve()), epoch=checkpoint["epoch"],
         dataset_manifest_sha256=checkpoint["metadata"]["dataset_manifest_sha256"],
