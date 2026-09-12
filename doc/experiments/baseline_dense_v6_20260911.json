@@ -1,4 +1,61 @@
 {
+  "joint_onset_preflight_failure_and_mask_fix_20260913": {
+    "status": "deployed_v1_real_preflight_failed_v2_mask_fix_local_only",
+    "server_commit": "9c741c5fa4c1135925b9c3df58671d8626681a4d",
+    "deployment_export": {
+      "file": "baseline_joint_onset_deployment20260913.json",
+      "bytes": 2426,
+      "sha256": "bc3f2b94ae08040da1dbad3d048fef406ef9b1101deb1d04696009c71b78d501"
+    },
+    "server_tests": {
+      "passed": 61,
+      "subtests_passed": 17,
+      "deselected": 3,
+      "file": "baseline_joint_onset_server_tests20260913.json",
+      "bytes": 1476,
+      "sha256": "25163ed4581a793f4c12fa5b84aa4f0c58ee0e80945116fdce04f340eba569be"
+    },
+    "preflight": {
+      "pane_pid": 382787,
+      "exit_code": 1,
+      "script": "baseline_joint_onset_preflight20260913.py",
+      "script_bytes": 12426,
+      "script_sha256": "50b75db4daff3c604b6177a1400ac07bb36ed7d2c0af1f68b8824fc7e10aafc4",
+      "log": "jointonset20260913_preflight.log",
+      "log_bytes": 619,
+      "log_sha256": "712bd23377d0b2bab9cd71def89cb70da8152b181f46de564b898550250311",
+      "failure": "Line43 compared saved node-index lists with generated binary type-mask vectors",
+      "correction_required": "Compare strictly identical node-index representations without changing type membership",
+      "outputs_preserved_in_place": true,
+      "all_four_real_checks_completed": false
+    },
+    "mask_fix": {
+      "scope": "new onset history builder only",
+      "reproduced_counterexample": "Inactive human unavailable 0 to1 changes valid stalled machine gate 0 to1 under old post-mask-only code",
+      "correction": "Zero all inactive node channels after denormalization before canonical ops, then mask final output",
+      "contract_version": "factory_baseline_observed_onset_history_v2",
+      "deployed": false,
+      "actual_208_impact_quantified": false,
+      "explains_completed_training_results": false
+    },
+    "local_tests": {
+      "passed": 90,
+      "subtests_passed": 17,
+      "deselected": 3,
+      "new_gate_regression_passed": true,
+      "constraint_violation": "Broad artifact_reuse selection invoked existing tmp_path fixtures and created system temporary directories",
+      "pytest_directory": "/var/folders/_f/gg6rlmn16b760vw5j5tkhgs40000gn/T/pytest-of-xuwantong/pytest-49",
+      "fixture_directories": 27,
+      "user_informed": true,
+      "directories_not_deleted": true,
+      "future_artifact_test_selection": "test_dense_candidates_are_single_variable_and_leave_scoring_unchanged only; audit other tests for directory creation"
+    },
+    "new_training_started": false,
+    "test_evaluated": false,
+    "main_repository_modified": false,
+    "goal_met": false,
+    "next_action": "Deploy corrected source with no active jobs; directory-free tests; preserve failed script/log before replacement; correct index representation and quantify v1/v2 gates; require full real208 four-configuration preflight before training"
+  },
   "event_fbeta_all_completed_20260913": {
     "status": "four_training_runs_and_16_diagnostics_and_full_export_completed_verified",
     "training_source_commit": "1728ca69bd85e695f6004522ff774a20eaaab8e4",
@@ -885,7 +942,7 @@
     "next_action": "Follow running event_fbeta_launch_20260913; preserve fixed runtime and validation-only protocol",
     "deployed_checkout": "1728ca69bd85e695f6004522ff774a20eaaab8e4"
   },
-  "status": "event_fbeta_complete_joint_onset_registered_not_deployed_goal_not_met",
+  "status": "event_fbeta_complete_joint_onset_preflight_failed_mask_fix_local_goal_not_met",
   "history_graph_B4_both_completed_20260913": {
     "status": "two_training_runs_and_eight_diagnostics_completed_verified",
     "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",

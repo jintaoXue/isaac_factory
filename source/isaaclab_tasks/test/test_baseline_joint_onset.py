@@ -206,16 +206,41 @@ def test_observed_gate_rejects_full_episode_lookahead_and_uses_frozen_normalizat
     std = np.full(21, 2., dtype=np.float32)
     x = raw[:30].copy(); x[..., :21] = (x[..., :21] - mean) / std
     original = x.copy()
-    actual = observed_history_hot(x, mean, std)
+    mask = np.ones(2, dtype=bool)
+    actual = observed_history_hot(x, mean, std, mask)
     # The same current operational state can be a short observed run or a long one.
     np.testing.assert_array_equal(actual, [0., 1.])
     np.testing.assert_array_equal(ops_hot_mask(raw, min_hot_windows=8, gap_windows=1)[29], [1., 1.])
     np.testing.assert_array_equal(actual, ops_hot_mask(raw[:30], min_hot_windows=8, gap_windows=1)[-1])
     raw[30:] = 0  # Changing the future never enters this builder's input.
-    np.testing.assert_array_equal(observed_history_hot(x, mean, std), actual)
+    np.testing.assert_array_equal(observed_history_hot(x, mean, std, mask), actual)
     np.testing.assert_array_equal(x, original)
     for bad in (x[:29], x[:, :, :26], np.full_like(x, np.nan)):
-        with pytest.raises(ValueError): observed_history_hot(bad, mean, std)
+        with pytest.raises(ValueError): observed_history_hot(bad, mean, std, mask)
+
+
+def test_inactive_operator_cannot_change_active_machine_gate_after_denormalization():
+    raw = np.zeros((30, 2, 27), dtype=np.float32)
+    raw[:, 0, 21] = 1; raw[:, 0, 6] = 60  # Stalled machine with no queue.
+    raw[:, 1, 23] = 1  # Operator that is absent from this episode's active graph.
+    mean = np.zeros(21, dtype=np.float32); mean[9] = 1
+    std = np.full(21, 2., dtype=np.float32)
+    mask = np.array([1, 0])
+    for unavailable in (0., 1.):
+        raw[:, 1, 9] = unavailable
+        x = raw.copy(); x[..., :21] = (x[..., :21] - mean) / std
+        original = x.copy()
+        # The old post-mask-only implementation lets an inactive human mark
+        # the valid machine hot. A valid human must still affect that rule.
+        np.testing.assert_array_equal(ops_hot_mask(raw)[-1], [bool(unavailable), False])
+        np.testing.assert_array_equal(observed_history_hot(x, mean, std, mask), [0., 0.])
+        np.testing.assert_array_equal(observed_history_hot(x, mean, std, np.ones(2)),
+                                      [unavailable, 0.])
+        np.testing.assert_array_equal(x, original)
+        np.testing.assert_array_equal(observed_history_hot(x, mean, std, np.zeros(2)), [0., 0.])
+    for bad_mask in (np.ones((1, 2)), np.ones(3), np.array([1., .5]), np.array([1., np.nan])):
+        with pytest.raises(ValueError, match="binary validity mask"):
+            observed_history_hot(x, mean, std, bad_mask)
 
 
 def test_attachment_uses_only_selected_existing_x_and_preserves_legacy_labels_and_masks():
@@ -234,6 +259,8 @@ def test_attachment_uses_only_selected_existing_x_and_preserves_legacy_labels_an
         torch.testing.assert_close(output["event_history_hot"], torch.tensor([[1., 0.], [1., 1.], [0., 0.]]))
         assert output["event_history_hot_valid"].tolist() == [True, True, False]
         assert contract["extra_history_windows"] == 0
+        assert contract["version"] == "factory_baseline_observed_onset_history_v2"
+        assert contract["node_mask_rule"] == "zero_all_inactive_node_channels_after_denormalization_before_ops"
         assert not contract["legacy_hist_last_hot_used_as_model_input"]
         changed = {**payload, "hist_last_hot": torch.ones(3, 2), "event_will": torch.ones(3, 2)}
         repeated, repeated_contract = attach_onset_history(changed, manifest, Path("."), True,

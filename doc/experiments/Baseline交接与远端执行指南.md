@@ -4,21 +4,30 @@
 
 ## 1. 交接状态
 
-**当前最新状态：**event_fbeta四次训练、16份冻结诊断及整批完整核验均已结束，
+**当前最新状态：**joint_onset已部署服务器dev_xwt@9c741c5，服务器61 tests/17 subtests
+通过；首次真实208预检pane382787已退出1，尚未开训。失败在类型掩码对比：旧metadata
+保存节点索引列表，预检直接与0/1向量比较。须严格转换成相同索引表示，不能跳过检查。
+另发现新历史门控仅在ops之后mask会让无效human影响有效machine；本地已改为反归一化
+后、ops之前清零无效节点全部通道，契约升级v2，真实影响尚未量化。详见38.3。
+本地90 tests/17 subtests通过，但误纳入旧tmp_path测试，自动创建系统临时目录；已告知
+用户，不删除这些目录。后续不得整文件运行artifact_reuse，只选择不创建目录的具体测试。
+旧预检脚本/日志原地保留，重新使用文件名前须先核验归档；未改主仓库或进行test调参。
+
+event_fbeta四次训练、16份冻结诊断及整批完整核验均已结束，
 两项pane均退出0，无对应Python，服务器HEAD1728ca6、tracked clean。四组upcoming
 命中0/2/0/0（各145），近窗对照2/2/1/2；平均F1虽升至B4 0.75947、B5 0.76195，
 提前召回未改善。五个冻结数据文件及episodes.npz全量SHA已重验，四份旧图归档
 各11成员与原导出一致。完整汇总baseline_dense_fbeta_metrics_20260913.json，
 2642311 bytes，SHA 3d375d44317934c1e6e0f3670bc435299e6216699ec419989d39a834d10abf28。
-详见37.9；不重复任何已完成训练/诊断。后续joint_onset仅本地注册，尚未部署或训练。
+详见37.9；不重复任何已完成训练/诊断。后续joint_onset状态以上段为准。
 
 新增第38节只读源码核查：主参考在训练时已组合continue/onset分数，并对组合值施加
 主事件损失；baseline旧onset_aux及事后raw-max/独立阈值诊断不等同于这条联合训练
 路径。38.1联合路径已通过57 tests/17 subtests；38.2现已登记joint_onset（父对照
 onset_aux、两模型两seed、最多60epoch），新增配置/归档边界定向检查16+2 tests通过。
-F-beta整批汇总现已完成；joint_onset尚未部署或训练，下一步为部署与真实208预检。
+F-beta整批汇总现已完成；joint_onset首次预检失败，下一步为修正与完整预检。
 注意legacy hist_last_hot有整局平滑前视问题，禁止新增为网络输入；草稿已改为从原30窗
-X独立计算event_history_hot，有独立checkpoint契约。真实208预检尚未执行，不根据
+X独立计算event_history_hot，有独立checkpoint契约。真实208预检尚未通过，不根据
 本地测试宣称指标收益，也不将现有协议当作严格在线因果性已经验证。
 
 history_graph_refine四次训练及16份诊断已全部正常结束并核验，

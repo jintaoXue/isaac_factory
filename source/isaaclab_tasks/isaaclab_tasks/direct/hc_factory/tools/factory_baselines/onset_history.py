@@ -13,19 +13,29 @@ from factory_bn_shared.bundle import file_hash
 from factory_bn_shared.remain import ops_hot_mask
 
 
-def observed_history_hot(x: np.ndarray, mean: np.ndarray, std: np.ndarray) -> np.ndarray:
-    """Invert frozen normalization and smooth only the supplied observed history."""
+def observed_history_hot(
+    x: np.ndarray, mean: np.ndarray, std: np.ndarray, node_mask: np.ndarray,
+) -> np.ndarray:
+    """Smooth observed history after excluding inactive nodes from operational rules."""
     if x.ndim != 3 or x.shape[0] != 30 or x.shape[-1] != 27:
         raise ValueError("Onset history requires exactly thirty existing 27-channel windows")
     if mean.shape != (21,) or std.shape != (21,):
         raise ValueError("Expected frozen normalization for twenty-one continuous channels")
+    if node_mask.shape != (x.shape[1],) or not np.isin(node_mask, (0, 1)).all():
+        raise ValueError("Onset history requires one binary validity mask per node")
     if not np.isfinite(x).all() or not np.isfinite(mean).all() or not (np.isfinite(std) & (std > 0)).all():
         raise ValueError("Non-finite history or invalid normalization")
     raw = np.asarray(x, dtype=np.float32).copy()
     raw[..., :21] = raw[..., :21] * std + mean
     if not np.isfinite(raw).all():
         raise ValueError("Non-finite reconstructed operational history")
-    return ops_hot_mask(raw, window_size_s=60., min_hot_windows=8, gap_windows=1)[-1].astype(np.float32)
+    # Operator absence is a cross-node rule. Masking only its output lets an
+    # inactive human change an active machine's gate. Clear all channels after
+    # inversion, since normalized zero can reconstruct nonzero feature means.
+    active = node_mask.astype(bool)
+    raw[:, ~active, :] = 0
+    hot = ops_hot_mask(raw, window_size_s=60., min_hot_windows=8, gap_windows=1)[-1]
+    return np.where(active, hot, 0).astype(np.float32)
 
 
 def attach_onset_history(
@@ -42,10 +52,11 @@ def attach_onset_history(
     if manifest["input_windows"] != 30 or manifest["window_size_s"] != 60:
         raise ValueError("Onset history requires the fixed thirty-minute input contract")
     contract = {
-        "version": "factory_baseline_observed_onset_history_v1",
+        "version": "factory_baseline_observed_onset_history_v2",
         "field": "event_history_hot", "encoder_windows": 30, "extra_history_windows": 0,
         "source": "existing_normalized_x_inverted_with_frozen_training_normalization",
         "rule": "ops_hot_mask_on_thirty_observed_windows_only_then_last",
+        "node_mask_rule": "zero_all_inactive_node_channels_after_denormalization_before_ops",
         "window_size_s": 60., "min_hot_windows": 8, "gap_windows": 1,
         "legacy_hist_last_hot_used_as_model_input": False,
         "dataset_manifest_sha256": file_hash(dataset_dir / "dataset_manifest.json"),
@@ -65,7 +76,8 @@ def attach_onset_history(
     for i in expected:
         if not 0 <= i < len(result):
             raise ValueError("Onset-history index outside frozen payload")
-        result[i] = torch.from_numpy(observed_history_hot(payload["x"][i].numpy(), mean, std))
-        result[i] *= payload["node_mask"][i]
+        result[i] = torch.from_numpy(observed_history_hot(
+            payload["x"][i].numpy(), mean, std, payload["node_mask"][i].numpy(),
+        ))
         valid[i] = True
     return {**payload, "event_history_hot": result, "event_history_hot_valid": valid}, contract

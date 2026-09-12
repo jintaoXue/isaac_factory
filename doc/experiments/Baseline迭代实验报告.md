@@ -3706,3 +3706,51 @@ run_control先构建并检查near和新的onset历史输入，成功后才归档
 
 该候选仅登记，尚未部署或开训。F-beta最后四份已正常结束，正在逐文件汇总核验；
 整批完整导出完成并复核后，才允许部署、执行真实208数据/四组配置预检，再串行训练。
+
+### 38.3 联合路径部署、真实预检失败及无效节点门控修正
+
+F-beta整批完整核验后，服务器由1728ca6快进至9c741c5，四组原权重/结果共28文件
+哈希不变。部署前守卫最初因git默认引用中文文件名而拒绝路径检查，未发生merge；
+改为git diff --name-only -z的NUL分隔后保持原目录范围限制，通过并部署。
+部署记录baseline_joint_onset_deployment20260913.json，2426 bytes，SHA
+bc3f2b94ae08040da1dbad3d048fef406ef9b1101deb1d04696009c71b78d501。
+服务器61 tests、17 subtests通过，3项目录型测试排除；记录
+baseline_joint_onset_server_tests20260913.json，1476 bytes，SHA
+25163ed4581a793f4c12fa5b84aa4f0c58ee0e80945116fdce04f340eba569be。
+
+首次真实预检在baseline_dense_diag复用pane382787执行，现dead=1、exit=1；训练
+pane326665仍dead=1、exit=0。脚本baseline_joint_onset_preflight20260913.py，
+12426 bytes，SHA 50b75db4daff3c604b6177a1400ac07bb36ed7d2c0af1f68b8824fc7e10aafc4。
+其第43行比较父onset_aux保存的occupancy_type_masks失败：父metadata为节点索引
+列表（例如machine=[27,28,29,30,31]），_occupancy_type_masks返回的是38维0/1
+向量。两者须严格统一为索引列表再比较，不改变实际类型分配，不移除这一守卫。
+失败日志jointonset20260913_preflight.log，619 bytes，SHA
+712bd23377d0b2bab9cd71def89cb70da8152b181f46de564b898550250311。
+没有完成四组预检、没有优化器更新或联合训练；脚本与日志原地保留，重用名称前须
+通过已有archive_files机制验证归档。不能把61项合成测试写成真实208预检通过。
+
+另在本地源码审查中复现独立的门控边界缺陷：一个有效machine连续blocked=60、
+queue=0，另一个node_mask=0的human，其unavailable从0变1时，旧observed_history_hot
+会让有效machine的gate从0变1。共同ops_occupancy_raw对操作员缺席使用跨节点any，
+因此只对最终gate乘node_mask不够。此反例不证明当前208样本实际受到影响。
+
+本地修正observed_history_hot显式接收既有node_mask，验证为逐节点binary；在冻结
+训练归一化反变换之后，将无效节点全部27通道（包括类型）置零，再调用原30窗ops规则，
+最后仍屏蔽输出。归一化之前置零不等价，因为归一化零值可能还原为非零均值。
+独立onset_history_contract升级v2并记录mask顺序；旧variant默认关闭，不改变旧权重
+或原标签/解码。新增回归同时验证无效human不影响有效machine、有效human仍影响规则、
+非零归一化均值、全无效节点、输入不被修改以及无效mask形状/数值被拒绝。
+
+修正后本地90 tests、17 subtests通过，3项显式排除。执行范围有一次违规：误把
+test_baseline_artifact_reuse.py整文件纳入，旧tmp_path测试自动在系统临时目录创建
+pytest-49及27个fixture目录，与用户不新建目录/仅指定仓库写入的约束冲突。已在对话
+告知用户，不删除这些目录，不将本次描述为完全符合执行边界。路径为
+/var/folders/_f/gg6rlmn16b760vw5j5tkhgs40000gn/T/pytest-of-xuwantong/pytest-49。
+后续该文件仅允许显式node id test_dense_candidates_are_single_variable_and_leave_scoring_unchanged，
+不得沿用整文件命令。其他测试也先查tmp_path/TemporaryDirectory等fixture再选择。
+
+服务器仍9c741c5，v2修正尚未部署。下一步在无活动任务时部署修正，运行不创建目录的
+定向检查，保留旧失败证据后严格修复预检索引表示，并量化v1/v2 gate在真实train/
+validation的差异；全部四组配置、输入契约和损失路径通过之后才允许joint_onset开训。
+这项修正不解释既有低召回：新门控尚未用于任何已完成训练。架构结论仍是联合报警
+训练路径值得单独检验，已有训练/验证差距不足以宣称GCN/GAT-GRU无法预测upcoming。
