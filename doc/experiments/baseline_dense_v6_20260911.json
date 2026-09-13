@@ -1,4 +1,39 @@
 {
+  "event_representation_exports_completed_20260913": {
+    "status": "four_exports_independently_verified_both_panes_exit_zero",
+    "source_commit": "d79a09357fa14fc277d904a1b969ef4409dc7101",
+    "source_sha256": "9ce7bf672414716f4eb92664240f419dc85c8af046886e3370a20c0170b1235b",
+    "runtime_commit": "979c680fb4d1919ae760cdfb0038f69fb7cc6708",
+    "panes": [
+      579375,
+      579371
+    ],
+    "exit_codes": [
+      0,
+      0
+    ],
+    "verification": {
+      "file": "baseline_repr_exports_verification20260913.json",
+      "bytes": 3320,
+      "sha256": "d9971652a72fc24eb6388482e9c28382fcab226b2d0e76f8f7bd96f269e35f3d"
+    },
+    "raw_summary_and_row_identity_exactly_equal": true,
+    "original_scores_counts_AP_reproduced": true,
+    "do_not_repeat_forward": true,
+    "model_training": false,
+    "test_evaluated": false,
+    "goal_met": false
+  },
+  "representation_transfer_analysis_prepared_20260913": {
+    "status": "local_four_tests_passed_server_not_started",
+    "file": "diagnose_frozen_representation_transfer.py",
+    "reuse_four_verified_archives": true,
+    "model_forward": false,
+    "model_training": false,
+    "diagnostic_statistical_fit": true,
+    "test_evaluated": false,
+    "goal_met": false
+  },
   "event_representation_diagnostic_registered_20260913": {
     "status": "local_four_tests_passed_server_not_started",
     "models": [

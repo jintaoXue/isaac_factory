@@ -4569,3 +4569,26 @@ B5 last按计划兼容性分组的upcoming-vs-negative AP（屏幕输出保留5�
 解释规则：若原输入统计能迁移而骨干不能，优先查编码阶段；若骨干可迁移而事件头输入/正式概率不能，优先查后续投影/报警头；若各简单视图都弱，只能缩小具体探针解释范围，不能证明完整30帧信号不可预测或架构上限。诊断不自动转成正式报警政策。
 
 本地4项无目录测试通过：真实B4 joint/B5 vector模型的全部输出及RNG逐值不变，hook移除；行身份/有效mask/三种标签准确且改变标签不改变三个表示或原预测；canonical校验覆盖结构化计数并拒绝改变AP。待服务器同4项内存测试后在既有两会话各运行两份表示导出，不新建目录，不用test。
+
+### 44.1 四份表示缓存已完成并独立核验
+
+导出源码d79a09357fa14fc277d904a1b969ef4409dc7101，SHA 9ce7bf672414716f4eb92664240f419dc85c8af046886e3370a20c0170b1235b，通过服务器同4项内存测试。B4 pane579375、B5 pane579371均正常退出0，无对应导出/训练Python。每个模型train 301938行、validation 68426行，标签顺序negative/ongoing/upcoming为297152/4191/595及67331/950/145。
+
+独立核验逐个检查四份NPZ及内嵌来源/外部JSON，全部sample/node唯一身份和完整split样本覆盖、三个表示维数/有限值、canonical计数和AP；740个upcoming逐行概率/start复现上一项分层结果。B4/B5的原输入84维摘要、行身份和标签逐值完全相等。28当前模型SHA、6数据stat、驱动/测试来源、两pane终态和相关进程消失全部通过，服务器仍dev_xwt@979c680、tracked clean。新观察未改变预测，没有重新训练。
+
+| 既有D中的缓存 | Bytes | SHA256 |
+|---|---:|---|
+| baseline_repr_b4s42_last_train20260913.npz | 303372444 | 41093930256264f6f1f9a2bf65d4aa19e8180b5f947708827403f0e239234a98 |
+| baseline_repr_b4s42_last_validation20260913.npz | 68669464 | bc77427f0c29283e4884645539f7104e8f287496f994d8393dbe437033b98ae7 |
+| baseline_repr_b5s42_last_train20260913.npz | 302695986 | cbc1b746b519e3f66e7ec979d660d5e175be9077aa1b48744ca17b04577cf66f |
+| baseline_repr_b5s42_last_validation20260913.npz | 68521990 | 66e4b6ad4514000de1a51cae7da8dc7422cac35c711a6dd6b70696686ff43e07 |
+
+独立终态baseline_repr_exports_verification20260913.json：3320 bytes，SHA d9971652a72fc24eb6388482e9c28382fcab226b2d0e76f8f7bd96f269e35f3d。后续直接复用以上缓存，禁止重复四次forward；尚没有表示迁移分析结果。
+
+### 44.2 固定类中心与同工位近邻分析准备
+
+新增diagnose_frozen_representation_transfer.py读取44.1缓存，不加载模型、不做forward。三个视图均用训练标准化后的正/负类中心差作为诊断分数，类先验固定相等；方差小于1e-12的列使用单位缩放，不搜索正则。训练参考episode排除时，该episode也从特征标准化和两个类中心中排除；权重曾见过这些训练episode的限制仍成立。
+
+距离使用训练的无标签标准化尺度、相同物理工位参考池，分别查每个upcoming最近的训练正例和负例；训练查询排除本episode所有参考窗口，同时记录仅排除自身时最近邻是否来自本episode。标签只划分诊断参考类别；validation不参与拟合/参考池，不把近邻规则作为报警政策。原输入摘要不能代表完整时序信号，简单类中心失败也不能证明非线性头无法利用表示。
+
+本地4项无目录测试通过：固定类中心的尺度/常量列；整个episode的标签及标准化统计排除；同episode近邻与跨episode参考身份；缺正例参考明确为None。待服务器同4项内存测试后两个模型各运行一次统计分析；必须通过固定44.1独立核验SHA后才能读缓存，不能重复模型导出。
