@@ -1,4 +1,62 @@
 {
+  "factorywide_runtime_start_audit_complete_cache_strata_registered_20260913": {
+    "status": "all_740_temporal_joins_independently_verified_18_cache_analysis_pending",
+    "report_sections": [
+      "48.2",
+      "48.3"
+    ],
+    "audit_source_commit": "f39597f5eee83d13c7576602e49f9aefe31b3efd",
+    "server_tests_passed": 4,
+    "artifacts": {
+      "audit": {
+        "file": "baseline_factorywide_upcoming_starts20260913.json",
+        "bytes": 745684,
+        "sha256": "9eeed528ccbe1534a0e29cbdda21dfec613659e53ba84acd3ca63a5b1ed57cf9"
+      },
+      "server_checks": {
+        "file": "baseline_factorywide_upcoming_starts_tests20260913.json",
+        "bytes": 665,
+        "sha256": "260f656ecd676238808bc942529f16cb86b52710fdca8031e91c20a1846f47a4"
+      },
+      "verification": {
+        "file": "baseline_factorywide_upcoming_starts_verification20260913.json",
+        "bytes": 1160,
+        "sha256": "f98538a4aac37d2f103deca09d352a886bd631ed5d30586d6f4b0ae4fd985ae5"
+      }
+    },
+    "groups_local_only_remote_only_none": {
+      "original_train": [
+        299,
+        59,
+        237
+      ],
+      "fit": [
+        221,
+        51,
+        179
+      ],
+      "heldout": [
+        78,
+        8,
+        58
+      ],
+      "original_validation": [
+        80,
+        22,
+        43
+      ]
+    },
+    "local_and_remote_count_all_views": 0,
+    "registered_cache_views": 18,
+    "cache_analysis_local_tests_passed": 4,
+    "cache_analysis_server_pending": true,
+    "runtime_commit": "90a41a5b9c44e625f8c80083a8a950cd50f5eb13",
+    "capacity_training_pane_pid": 783323,
+    "model_training": false,
+    "model_forward": false,
+    "test_evaluated": false,
+    "goal_met": false
+  },
   "factorywide_runtime_start_audit_registered_20260913": {
     "status": "local_implementation_four_tests_passed_server_pending",
     "report_section": "48.1",

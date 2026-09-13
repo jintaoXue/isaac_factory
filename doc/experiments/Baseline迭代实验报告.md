@@ -4987,3 +4987,30 @@ B5末轮召回fit60.75%、heldout4.86%、原validation2.76%。正例概率中位
 范围只含已审计的machine_failure/human_unavailable/transport_delay/material_shortage四类runtime事件，不能把“没有这四类新启动”说成排除了质量hold或所有外部冲击。时间伴随不是因果或不可预测性证明；同一起点在两次预测边界可跨分组，窗口数可相加而各组独立起点数可能重叠。若出现其他资源only组，说明旧“无局部未来启动”组不能直接代表“无全厂未来启动”；随后可复用已经完成的真实神经留出缓存分析这些目标，无需重新forward。
 
 新增audit_factorywide_upcoming_starts.py及4本地测试通过，覆盖半开边界、已活跃状态、同资源旧语义完全保持、同一起点跨组和非法记录拒绝。只读JSON、不重读原CSV、不读checkpoint、不训练；所有旧同资源命中IDs需逐条回归，当前14运行源码/6数据stat前后保护。服务器仍固定90a41a5、原容量批次783323运行；本脚本通过Git对象单独执行，禁止pull运行checkout。当前尚无全工厂扩展计数或模型分组新结论，原目标未完成。
+
+
+### 48.2 关联范围补缺完成：原validation额外22个目标只匹配其他资源启动
+
+源码f39597f5eee83d13c7576602e49f9aefe31b3efd仅fetch对象，4服务器检查通过后运行一次纯JSON审计，exit0；再独立重算全部740目标的事件ID集合、时间边界、已活跃集合及原同资源子集/分组计数，全部通过。没有原CSV重读、模型forward、训练或新阈值；14运行源码和6数据stat保持。四类runtime事件限制及非因果边界仍按48.1。
+
+| 视图 | 仅同资源启动 | 仅其他资源启动 | 二者均有 | 无全厂已记录新启动 | 合计 |
+|---|---:|---:|---:|---:|---:|
+| 原138 train | 299 | 59 | 0 | 237 | 595 |
+| 107 fit | 221 | 51 | 0 | 179 | 451 |
+| 31 heldout | 78 | 8 | 0 | 58 | 144 |
+| 原30 validation | 80 | 22 | 0 | 43 | 145 |
+
+原validation的旧“无局部未来启动”65个目标中，有22个只匹配其他资源的新启动；其余43个没有四类已记录的全厂新启动。旧组不能全部代表没有未来外部事件；当前剩余43个也不能据此排除quality hold等其他机制或已有活跃扰动。三个诊断视图的onset窗开始前已发生未来启动目标143/20/60，只有onset窗内启动129/66/42；二者相加分别为272/86/102，与有全厂启动计数一致。时间粒度拆分只描述先后关系，不能证明谁导致了瓶颈。
+
+- baseline_factorywide_upcoming_starts20260913.json：745684 bytes，SHA 9eeed528ccbe1534a0e29cbdda21dfec613659e53ba84acd3ca63a5b1ed57cf9。
+- baseline_factorywide_upcoming_starts_tests20260913.json：665 bytes，SHA 260f656ecd676238808bc942529f16cb86b52710fdca8031e91c20a1846f47a4。
+- baseline_factorywide_upcoming_starts_verification20260913.json：1160 bytes，SHA f98538a4aac37d2f103deca09d352a886bd631ed5d30586d6f4b0ae4fd985ae5。
+
+
+### 48.3 登记后续18缓存分组（本地4检查通过，尚未服务器执行）
+
+复用第46节已完成的B4/B5各seed42、固定10/30/60轮、fit/heldout/original_validation共18份NPZ+JSON，以48.2四类全厂启动分组逐目标关联并计数。仍固定.70、canonical整数起点及容差3，分别报窗口召回/独立起点至少一次命中/概率分位数/概率与起点漏报；总命中严格回归report_recall_upcoming×n_true_upcoming，不无条件使用who。无新启动组额外分有/无预测时已活跃的已记录扰动。仅对已知upcoming正例进行事后分组，不在缺少对应负例总体时构造分组AP。
+
+这批是原128宽度、107-fit诊断模型的缓存，与正在运行的原138训练GRU32候选不同，不能混写为新容量成绩。保持全部固定轮次和视图，不选表现好的一组或一轮。目的：检验有无其他资源未来启动是否足以解释已有泛化差距；不是因果识别或信息上限证明。
+
+新增analyze_holdout_factory_starts.py、4本地检查通过：完整/重复身份保护、float32阈值边界、canonical整数起点与hot覆盖、同一起点两个anchor和空组/时间边界。服务器检查及一次缓存分析待执行，通过Git对象复用现有空闲diag pane，不pull或影响原容量训练783323；test不用，原目标未完成。
