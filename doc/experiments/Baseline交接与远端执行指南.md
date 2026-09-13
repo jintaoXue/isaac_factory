@@ -4,7 +4,15 @@
 
 ## 1. 交接状态
 
-**当前最新状态：**joint_onset两颗B4均正常结束并核验，upcoming=0/145、1/145，
+**当前最新状态：**joint_onset两颗B4的训练及全部8份冻结诊断均正常结束并独立核验。
+末轮组合upcoming AP train/validation为0.234417/0.014917、0.383150/0.019378；
+onset分支确实参与报警，但泛化差距仍明显，正式best命中仍0/145、1/145。
+B5 seed42也已完成并核验：best7/total27，P/R/F1为0.82997763/0.67762557/0.74610357，
+upcoming=3/145；seed43 Python424214继续训练，训练pane400178。
+B5 seed42四份诊断已接续到pane430931，使用d5670bc Git对象stdin；服务器仍固定7ff759d，
+禁止运行中pull或重跑已完成的B4诊断。新核验及组件解释见38.8–38.9，目标尚未达成。
+
+此前joint_onset两颗B4均正常结束并核验，upcoming=0/145、1/145，
 F1均值0.74186426；没有优于onset_aux父对照。B5 seed42 Python411056正在训练，
 pane400178/driver400181仍live，服务器固定7ff759d。新增观察源码d5670bc已通过服务器
 独立进程3项测试；首组best validation已完成，canonical分数/计数及保存阈值复现通过。

@@ -1,4 +1,87 @@
 {
+  "joint_onset_B4_all_diagnostics_and_B5_seed42_training_complete_20260913": {
+    "status": "B4_eight_diagnostics_verified_B5_seed42_diagnostics_launched_B5_seed43_training",
+    "training_source_commit": "7ff759dd722c8b12b730be5a3714672796655ddf",
+    "diagnostic_source_commit": "d5670bcfe40cbfe186dd8fc757f1b624c60c4948",
+    "B4_diagnostic_aggregates": [
+      {
+        "seed": 42,
+        "file": "baseline_joint_onset_b4s42_diagnostics20260913.json",
+        "bytes": 604578,
+        "sha256": "7638c88b88e68377781f051cb8a058727e8115bb64e56ea1959a01347fd89408",
+        "pane_pid": 416164,
+        "exit_code": 0,
+        "independently_reverified": true
+      },
+      {
+        "seed": 43,
+        "file": "baseline_joint_onset_b4s43_diagnostics20260913.json",
+        "bytes": 605207,
+        "sha256": "ed6de57ee2d7f87fe83579b322f4bd7f082462e9652b27f45977d7c7c85fd1a4",
+        "pane_pid": 424055,
+        "exit_code": 0,
+        "independently_reverified": true
+      }
+    ],
+    "B4_diagnostic_order": ["best_train", "best_validation", "last_train", "last_validation"],
+    "B4_seed42": {
+      "upcoming_AP_rounded6": [0.009566, 0.007888, 0.234417, 0.014917],
+      "upcoming_hits": [0, 0, 145, 5],
+      "onset_extra_upcoming_hits": [0, 0, 137, 5],
+      "onset_extra_false_alarms": [0, 0, 169, 62],
+      "saved_thresholds": [0.65, 0.65, 0.9, 0.9]
+    },
+    "B4_seed43": {
+      "upcoming_AP_rounded6": [0.020260, 0.013752, 0.383150, 0.019378],
+      "upcoming_hits": [4, 1, 243, 6],
+      "onset_extra_upcoming_hits": [4, 1, 226, 5],
+      "onset_extra_false_alarms": [12, 0, 212, 65],
+      "saved_thresholds": [0.7, 0.7, 0.9, 0.9]
+    },
+    "B4_targets_by_diagnostic_order": [595, 145, 595, 145],
+    "B4_upcoming_timing_misses_all_eight": 0,
+    "interpretation": "The onset path contributes training hits but validation ranking and reporting remain weak. Timing misses equal zero only after the probability gate; this does not establish a perfect time head or an architecture ceiling. Output ablation is within each joint-trained checkpoint, not a separately trained causal control.",
+    "B5_seed42_training": {
+      "best_epoch": 7,
+      "epochs_trained": 27,
+      "parameters": 302623,
+      "threshold": 0.65,
+      "precision": 0.8299776286353467,
+      "recall": 0.6776255707762557,
+      "f1": 0.7461035696329815,
+      "upcoming_hits": 3,
+      "upcoming_targets": 145,
+      "onset_aux_parent_upcoming_hits": 5,
+      "file": "baseline_dense_joint_onset_b5s42_training20260913.json",
+      "bytes": 33059,
+      "sha256": "fdc0a8b9d9804ec39d96de75b0847eb522345d55b0ee9c235a0b90f18c7107d3",
+      "current_seven_files_and_prior_11_archive_members_reverified": true,
+      "former_python_pid": 411056,
+      "former_process_absent": true
+    },
+    "B5_seed42_diagnostics": {
+      "status": "launched_not_yet_complete",
+      "pane_pid": 430931,
+      "script": "baseline_joint_onset_b5s42_diagnose20260913.py",
+      "script_bytes": 6015,
+      "script_sha256": "12b167760cd66032c5c82b7be468073fb27d383c1e348dac321e76d59a720931",
+      "log": "jointonset20260913_b5s42_diagnose.log"
+    },
+    "active_training": {"model": "B5", "seed": 43, "python_pid": 424214, "pane_pid": 400178, "driver_pid": 400181},
+    "main_component_reaudit": {
+      "reference_commit": "20c40e230aedee6aef2429d352413fbcf0fa571a",
+      "main_actual_checkpoint_overrides_not_verified": true,
+      "onset_threshold_mapping": "Reference cold score >= 0.50 can be lifted to the 0.70 report bar; old frozen threshold-frontier diagnostics already complete",
+      "occupancy_union": "Reference hot threshold 0.45 with a continuous 8-window run; cold upcoming enabled and final start <= 2. Existing fixed hot-head probe offers only 0/0/1/0 extra positive threshold crossings with 33/16/11/21 negative crossings",
+      "prefix": "Requires hist_last_hot > 0.5 when history is present; cannot directly recover cold upcoming. Indirect influence on ongoing and selected threshold has not been isolated",
+      "stgnpp_enabled": false,
+      "remaining_confounders": ["repeated temporal/geographic/semantic interaction", "position and pattern encoding", "continued training and loss/sampling recipe", "component interactions", "different main dataset and actual checkpoint recipe"],
+      "new_search_launched_from_reaudit": false
+    },
+    "test_evaluated": false,
+    "main_repository_modified": false,
+    "goal_met": false
+  },
   "joint_onset_B4_both_completed_and_first_diagnostic_20260913": {
     "status": "B4_both_training_completed_B5_seed42_running_B4_seed42_diagnostics_resumed",
     "training_source_commit": "7ff759dd722c8b12b730be5a3714672796655ddf",
@@ -1236,7 +1319,7 @@
     "next_action": "Follow running event_fbeta_launch_20260913; preserve fixed runtime and validation-only protocol",
     "deployed_checkout": "1728ca69bd85e695f6004522ff774a20eaaab8e4"
   },
-  "status": "joint_onset_B4_both_complete_B5_training_first_diagnostics_running_goal_not_met",
+  "status": "joint_onset_B4_all_diagnostics_complete_B5_seed42_complete_seed43_training_goal_not_met",
   "history_graph_B4_both_completed_20260913": {
     "status": "two_training_runs_and_eight_diagnostics_completed_verified",
     "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",

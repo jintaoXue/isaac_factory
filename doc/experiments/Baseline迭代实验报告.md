@@ -3926,3 +3926,73 @@ diag pane416164 live，实际Python416194在运行best train。它先按固定SH
 分支已抬高多数upcoming分数，但在该best的固定阈值下没有改变报告，不能解释成onset
 路径没有接上。该观察只针对同一联合训练权重，不能视为与独立训练原头的因果消融，
 也不证明其他epoch/seed相同。剩余三份诊断和B5训练继续，未宣称目标已达成。
+
+### 38.8 两颗B4全部冻结诊断完成，B5接续
+
+B4 seed42的接续诊断正常结束，pane416164退出0、最后实际Python417961已消失；
+四份结果均完成，首份best validation按原SHA复用而未重算。完整汇总
+baseline_joint_onset_b4s42_diagnostics20260913.json，604578 bytes，SHA
+7638c88b88e68377781f051cb8a058727e8115bb64e56ea1959a01347fd89408。
+B4 seed43随后在pane424055完成四份诊断并退出0；汇总
+baseline_joint_onset_b4s43_diagnostics20260913.json，605207 bytes，SHA
+ed6de57ee2d7f87fe83579b322f4bd7f082462e9652b27f45977d7c7c85fd1a4。
+两组均独立复核原JSON与汇总内嵌结果、四份SHA、当前七文件、checkpoint/source、
+best validation canonical计数与非MAE分数；没有替换best或搜索新阈值。
+
+| Joint frozen诊断 | B4 s42 best train | best validation | last train | last validation |
+|---|---:|---:|---:|---:|
+| Upcoming AP | 0.009566 | 0.007888 | 0.234417 | 0.014917 |
+| Upcoming命中 | 0/595 | 0/145 | 145/595 | 5/145 |
+| Onset较同权重continue-only新增upcoming命中 | 0 | 0 | 137 | 5 |
+| Onset新增误报 | 0 | 0 | 169 | 62 |
+
+| Joint frozen诊断 | B4 s43 best train | best validation | last train | last validation |
+|---|---:|---:|---:|---:|
+| Upcoming AP | 0.020260 | 0.013752 | 0.383150 | 0.019378 |
+| Upcoming命中 | 4/595 | 1/145 | 243/595 | 6/145 |
+| Onset较同权重continue-only新增upcoming命中 | 4 | 1 | 226 | 5 |
+| Onset新增误报 | 12 | 0 | 212 | 65 |
+
+AP表为六位小数；两seed的best/last保存阈值分别0.65/0.90、0.70/0.90。
+以上八份诊断的upcoming timing misses均为0，剩余漏报均先被概率阈值挡住。
+这不是“时间头完美”的证据，因为概率未过线的目标不进入后续timing miss分支。
+额外贡献是同一联合训练权重的冻结输出消融，不是独立训练的因果效果。模型能拟合
+训练集部分upcoming，验证收益小且伴随误报，排除分支完全未接入，尚不能归因于某个
+骨干组件或证明GCN/GAT-GRU上限。
+
+B5 seed42训练已正常结束、原Python411056消失；best7/total27、参数302623，阈值0.65，
+P/R/F1为0.8299776286353467/0.6776255707762557/0.7461035696329815，upcoming=3/145。
+当前七文件和旧F-beta归档11成员独立复核通过，joint=true、F-beta=0、test=false。
+训练快照baseline_dense_joint_onset_b5s42_training20260913.json，33059 bytes，SHA
+fdc0a8b9d9804ec39d96de75b0847eb522345d55b0ee9c235a0b90f18c7107d3。
+对应onset_aux父对照为5/145，单seed尚无改善。B5 seed43 Python424214接续训练。
+
+确认B4 seed43诊断pane退出0及汇总SHA后，复用baseline_dense_diag启动B5 seed42的
+best/last × train/validation四份缺项，pane430931。驱动
+baseline_joint_onset_b5s42_diagnose20260913.py，6015 bytes，SHA
+12b167760cd66032c5c82b7be468073fb27d383c1e348dac321e76d59a720931；日志
+jointonset20260913_b5s42_diagnose.log。诊断源码固定d5670bc，经Git对象stdin执行，
+模型模块和训练HEAD保持7ff759d，不pull。该段记录的是启动状态，不能当作B5诊断完成。
+
+### 38.9 主参考组件路径复核：哪些结论成立
+
+按用户最新要求再次只读核对20c40e2的FactoryBN_dense_f1_p80.json、model.py的
+_combine_will_logit、_event_span_loss、_apply_occupancy_union、predict及backbone.py。
+这仍是固定参考配方，缺正式主checkpoint的实际覆盖配置与同208包结果，不能把主模型
+公布的upcoming分数当作纯架构差异的受控证据。
+
+1. 主配方的onset阈值0.50低于report阈值0.70，cold概率达到onset阈值时会被抬到
+   report阈值。此路径影响报警，不能只比较原始事件头概率。旧onset冻结双阈值边界已
+   完整检查过；不要再把同一阈值搜索当新实验，也不能把旧权重的结果外推到所有架构。
+2. 未来occupancy以概率0.45判热、连续8窗构造候选，event_union_upcoming=true允许
+   cold目标补报；随后仍受最晚起点2窗约束。29.4的同权重hot探针已覆盖对应0/1/2起点
+   的连续8窗信号，新增upcoming越阈值只有0/0/1/0，负例越阈值33/16/11/21。
+   不重复该检查，现有输出不足以支持直接搬入补报。
+3. prefix解码在hist_last_hot存在时要求其>0.5，因而不能直接挽救cold upcoming；
+   它对ongoing报警和整体阈值选择的间接作用未单独识别。STGNPP在参考配方关闭。
+4. 主模型5层中反复进行时间/地理/语义交互；B4/B5先做逐时刻两层图编码，再逐节点
+   GRU及末状态/均值汇聚。已测的末端时间汇聚、GRU后单层图残差只是有限近似，负结果
+   不能排除反复时空交互、位置/模式编码的潜在作用。
+5. 主配方还有续训、focal、事件窗采样及不同损失归一化；当前joint仅隔离组合训练机制，
+   不等于完整复制主模型配方。组件间相互作用仍未识别。现有最直接证据是概率排序与
+   泛化不足；把它进一步解释成某个架构组件缺失，需要新的受控证据，不能由架构图推定。
