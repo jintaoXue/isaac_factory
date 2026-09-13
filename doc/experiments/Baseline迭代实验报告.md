@@ -4801,3 +4801,9 @@ AP表保留8位小数，精确值在服务器完整JSON；AP不是正式召回�
 只读实际冻结plan：三视图各21个raw run。每run episode数直方图，fit为{2:11,5:1,6:3,9:1,10:2,11:3}；heldout为{1:15,2:2,3:4}；原validation为{1:15,2:3,3:3}。因此46.5固定run的episode重采样对两未见集中各15个单例run没有抽样波动。该区间仍是已登记的条件性描述，但不能用它宣称跨新run、不同训练seed或不同留出分组的稳健性，也不能把零宽区间理解为没有不确定性。既有分析和训练协议不变，没有按结果修改分组或选择轮次。
 
 进一步核对现有源码而非重复数据审计：diagnose_upcoming_schedule_support.py::match_future_runtime显式要求event.target==onset.resource_id，故42节“无匹配同工位未来启动”仍允许其他资源新启动的影响，不能写成所有未来外部扰动已排除。factory_baselines.dataset::_split_groups在raw run内shuffle whole episodes，原validation不能预先称作按时间留出的较晚分布。上述是对既有证据适用范围的核验，不是新模型结论；主prefix8匹配原包仍缺，不据此重复主目录搜索或旧优化方向。
+
+### 46.8 登记107-fit正例支持计数，避免混淆训练支持减少与过拟合
+
+第40/42节支持统计使用全部138原train，不能直接代表本轮107-fit对两个未见集的支持。新增audit_episode_holdout_support.py只读固定plan与已有dense_event_support20260912.json（SHA 56d2dc07169d12e420ed1d2877bcf3290d2cd53d0abdd317ea6581845b32cd93），按fit的独立upcoming起点统计node/scenario/node×scenario支持，分别描述heldout与原validation中支持数≤0/1/2/3/5/10的独立起点及窗口目标数量。这是本轮新分组的计数，不重复原完整138的已完成模型诊断；不读概率、不forward、不训练，不更改分组或模型。
+
+复用旧summarize_support_cells实现，但供给训练计数的只能是107 fit episode，两个未见集分别只用于描述目标。4本地检查通过：heldout不能充当fit正例；独立起点和两个重叠窗口不混计；节点支持与节点×scenario支持区分；另一未见集标签不影响本视图支持；拒绝跨视图、缺失coverage及test。相同工位/场景有正例支持也不等于历史特征匹配或可预测，不能把低支持计数当作根因证明。当前登记与本地检查完成，服务器计数待执行；原训练712854/统计等待727985不变。

@@ -72,3 +72,5 @@
 第46.6节最新接续：上述4项服务器检查通过，原训练712854继续至B4第31轮，新增等待pane727985已独立核验实际进程/来源/日志。它等待原两模型18视图和训练exit0后自动执行已登记缓存分析，提前训练失败则退出报错，不自动重训。尚无新未见集指标；不得重复启动。详见JSON `episode_holdout_cache_analysis_wait_started_verified_20260913`。
 
 第46.7节只读范围核验：三视图均21 raw run；heldout/原validation各15个singleton run，既有批次内bootstrap对这些run无重采样波动，不用条件区间声称跨run/seed稳健。原validation是run内随机分组，旧未来故障审计仅同资源匹配；不得误称所有外部冲击已排除。B4第39/60轮、两原pane live，无新训练/forward或未见集指标。
+
+第46.8节登记107-fit支持计数：只复用冻结plan与已有独立起点记录，不forward或训练；旧138-train支持计数不能代表新107-fit。按node/scenario/node×scenario描述两未见集支持≤0/1/2/3/5/10的目标，4本地测试通过，服务器待执行；不据支持计数修改分组。

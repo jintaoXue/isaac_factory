@@ -1,4 +1,35 @@
 {
+  "episode_holdout_fitting_support_registered_20260913": {
+    "status": "local_four_tests_passed_server_audit_pending",
+    "source": "audit_episode_holdout_support.py",
+    "plan_sha256": "459945152e82ae529dd50bcb7b6427951e3b9204f4ea4ef0fdb71b9ac0ab4e2a",
+    "original_support_sha256": "56d2dc07169d12e420ed1d2877bcf3290d2cd53d0abdd317ea6581845b32cd93",
+    "fitting_episodes": 107,
+    "evaluation_views": [
+      "heldout",
+      "original_validation"
+    ],
+    "support_levels": [
+      "node",
+      "scenario",
+      "node_scenario"
+    ],
+    "maximum_fitting_onsets": [
+      0,
+      1,
+      2,
+      3,
+      5,
+      10
+    ],
+    "difference_from_previous": "Previous support diagnosis fitted all138 original train episodes; this audit counts support remaining after 31 whole episodes are excluded.",
+    "model_training": false,
+    "model_forward": false,
+    "test_evaluated": false,
+    "partition_modified": false,
+    "goal_met": false,
+    "report_section": "46.8"
+  },
   "episode_holdout_live_wait_and_uncertainty_scope_20260913": {
     "status": "verified_live_wait_and_bootstrap_scope_audit",
     "training_pane": "712854|0|",
