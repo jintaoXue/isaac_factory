@@ -1,4 +1,24 @@
 {
+  "matched_six_task_completion_priority_20260914": {
+    "status": "phase_scoped_to_finish_six_matched_tasks_remote_observation_unavailable",
+    "user_direction": "Finish only the six updated-protocol B4/B5 experiments and formal verification/summary before further diagnosis",
+    "new_root_cause_diagnostics_paused": true,
+    "proposed_last_checkpoint_diagnostic_started": false,
+    "proposed_last_checkpoint_diagnostic_implemented": false,
+    "last_verified_training_pane": 1037530,
+    "last_verified_b5_start5_epoch": 17,
+    "runtime_commit": "6289761c11d09e3570899b89858486b29e9f4c83",
+    "current_liveness": "not_newly_observed_due_to_stalled_UU_terminal",
+    "training_restarted": false,
+    "finisher": "finish_baseline_matched_curriculum.py",
+    "finisher_local_checks": 10,
+    "finisher_server_deployment": "pending",
+    "finisher_server_execution": "not_started",
+    "final_verification_artifact": "baseline_matched_protocol_training20260913_final_verification.json",
+    "test_evaluated": false,
+    "main_repository_modified": false,
+    "new_directory_created": false
+  },
   "matched_b4_start5_history_audit_completed_20260913": {
     "status": "b4_start5_history_audited",
     "source_commit": "552b888e88fa504e8cbba8b7b569877152c9350e",
