@@ -4,7 +4,7 @@
 
 ## 1. 交接状态
 
-**当前最新状态（以下旧“此前”段落均为历史）：**第45节readout_dropout四组串行训练及后续16份冻结诊断已启动，固定服务器dev_xwt@ee838f59d2bdf2893a35ec00acae1308f9dd0e07。训练pane/driver610573 live，首组B4 seed42实际Python610616、control=started，实际config readout_dropout=.2/near/test=false已核对，并观察至epoch4。首组归档11成员和6关键旧文件核验通过，另三组21文件/6数据stat未变。预检pane609036已退出0；当前禁止pull、重启已有训练或重复旧诊断。此前11类训练及第42–44节全部诊断正常结束并核验。最新候选尚无最终指标，原目标未达成。
+**当前最新状态（以下旧“此前”段落均为历史）：**readout_dropout四组batch仍在pane/driver610573运行，服务器固定dev_xwt@ee838f59d2bdf2893a35ec00acae1308f9dd0e07。B4 seed42/43已正常结束，best4/7、total14/17，正式upcoming为0/145、3/145（父near均2/145），整体F1均值约.751124，暂无稳定提升。两份快照及各12当前文件SHA已独立核验。B5/16份候选诊断仍待完成，实际子进程须重新查询；禁止pull、重启原任务或重复旧诊断。原目标未达成。
 
 **先查去重索引：[Baseline_upcoming排查台账.md](Baseline_upcoming排查台账.md)。** 当前208训练、诊断、旧134搜索及未解假设分开记录；禁止重复已完成搜索。四份`baseline_repr_{b4,b5}s42_last_{train,validation}20260913.npz`供后续复用，禁止重复对应forward。
 
@@ -12,7 +12,7 @@
 
 四表示独立核验`baseline_repr_exports_verification20260913.json`：3320 bytes，SHA d9971652a72fc24eb6388482e9c28382fcab226b2d0e76f8f7bd96f269e35f3d。两项缓存分析独立核验`baseline_repr_transfer_verification20260913.json`：14544 bytes，SHA f02a22360b1a89f7356fec2e9a42c334412ff0d548ab9a20a397364bfc0bed6f。导出源码d79a093、分析源码f0090c7，分别本地/服务器各4测试通过；分析没有模型forward或训练。
 
-**第45节共享时序读出dropout已通过预检并开训（45.1）。** 固定p=.2、共同near父对照、B4/B5各seed42/43、原max60预算；无新参数，推理恒等。20项本地检查/22子检查及4项服务器测试通过；四组真实CUDA批初始化/RNG/所有初始eval输出完全一致，训练mask及梯度通过。完整预检36918 bytes，SHA a357eb599f05e5e3b715ab547c6f1d1ae3ce90ff02305e437d36b39bed3c0f9a；独立终态/源码/28当前文件/6数据stat核验609 bytes，SHA 74a98d2bee7bf07b38ad654633a600842d68da33be57206458da423350067413。日志readoutdrop20260913_train.log；执行器自动逐组快照及接续诊断，不能手工并发重跑。
+**第45节共享时序读出dropout已通过预检并开训（45.1）。** 固定p=.2、共同near父对照、B4/B5各seed42/43、原max60预算；无新参数，推理恒等。20项本地检查/22子检查及4项服务器测试通过；四组真实CUDA批初始化/RNG/所有初始eval输出完全一致，训练mask及梯度通过。完整预检36918 bytes，SHA a357eb599f05e5e3b715ab547c6f1d1ae3ce90ff02305e437d36b39bed3c0f9a；独立终态/源码/28当前文件/6数据stat核验609 bytes，SHA 74a98d2bee7bf07b38ad654633a600842d68da33be57206458da423350067413。日志readoutdrop20260913_train.log；执行器自动逐组快照及接续诊断，不能手工并发重跑。§45.2另确认父near已有12份诊断可复用、只缺B5 last四份；已准备批次终态后补齐的只读驱动，本地4测试通过，尚未启动。
 
 此前正式B4 joint_onset best upcoming为0/145、1/145，B5 vector_gat best为3/145、2/145，尚无稳定可采用提升。last仅用于诊断，两者为不同负消融，不能当作骨干单因素比较。主prefix8文档.633的n_up=98，baseline=145；对应dense权重/原始配置/共同包仍缺，不能把当前主源码组件全部当作prefix8实际组件。保持固定208开发，原目标仍未达成。
 

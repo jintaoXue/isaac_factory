@@ -1,4 +1,77 @@
 {
+  "readout_dropout_b4_training_completed_20260913": {
+    "status": "two_B4_runs_completed_B5_and_frozen_diagnostics_pending",
+    "runtime_commit": "ee838f59d2bdf2893a35ec00acae1308f9dd0e07",
+    "training_pane_pid": 610573,
+    "seed_order": [
+      42,
+      43
+    ],
+    "best_epoch": [
+      4,
+      7
+    ],
+    "epochs_trained": [
+      14,
+      17
+    ],
+    "upcoming_hits": [
+      0,
+      3
+    ],
+    "upcoming_targets_each": 145,
+    "parent_near_hits": [
+      2,
+      2
+    ],
+    "report_precision": [
+      0.8333333333333334,
+      0.8103813559322034
+    ],
+    "report_recall": [
+      0.684931506849315,
+      0.6986301369863014
+    ],
+    "report_f1": [
+      0.7518796992481204,
+      0.7503678273663561
+    ],
+    "snapshots": [
+      {
+        "file": "baseline_readout_dropout_b4s42_training20260913.json",
+        "bytes": 31349,
+        "sha256": "3c2c80ec8d13ece9bf262dfe073b479409a54c9a79b97160c3cc33ec90da54d7"
+      },
+      {
+        "file": "baseline_readout_dropout_b4s43_training20260913.json",
+        "bytes": 31647,
+        "sha256": "44936d1611757e6ba87bfb235f72d9135e41727aa86efb9b6702a071b9f39a04"
+      }
+    ],
+    "current_files_per_run_verified": 12,
+    "stable_improvement_observed": false,
+    "test_evaluated": false,
+    "goal_met": false
+  },
+  "readout_parent_missing_diagnostics_registered_20260913": {
+    "status": "local_four_tests_passed_not_launched",
+    "runtime_commit": "ee838f59d2bdf2893a35ec00acae1308f9dd0e07",
+    "existing_diagnostic_metadata_scanned": 183,
+    "reuse_existing_views": 12,
+    "missing_views": [
+      "B5 seed42 last train",
+      "B5 seed42 last validation",
+      "B5 seed43 last train",
+      "B5 seed43 last validation"
+    ],
+    "wait_for_existing_pane_pid": 610573,
+    "wait_for_existing_four_training_and_sixteen_diagnostics": true,
+    "source": "compare_baseline_readout_parent.py",
+    "parent_archive": "model_before_onsetaux20260912.zip",
+    "parent_training_repeated": false,
+    "test_evaluated": false,
+    "goal_met": false
+  },
   "readout_dropout_first_run_verified_20260913": {
     "status": "first_B4_seed42_training_observed_through_epoch4",
     "source_commit": "ee838f59d2bdf2893a35ec00acae1308f9dd0e07",

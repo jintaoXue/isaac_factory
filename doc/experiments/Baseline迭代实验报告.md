@@ -4665,3 +4665,21 @@ B4/B5各seed42/43，从头初始化。保持near的30×38×27输入及23维近�
 本次是训练层正则化控制，父near正式验证命中2/2/1/2（各145）直接复用，不将当前B4 joint与B5 vector的不同负消融混为父对照。上一代best保存在原目录的已校验archive中。未动主仓库、未用test、未新建或删除目录，原目标仍未达成。
 
 首组随后观察至epoch4，正式中间日志upcoming仍0；不提前判定候选有效或无效。独立启动复核baseline_readout_dropout_start_verification20260913.json：573 bytes，SHA 6b9cbdbd3078c1fcfcde0c743c4053b04ad7dd7fef8c5cfa90c1c0f053e5934f；新config所有模型/训练/损失字段与预检一致，旧archive 11数据成员CRC/SHA及6关键旧文件通过，另三组21当前文件与6固定数据stat未变。此时driver610573、训练Python610616仍live。
+
+
+### 45.2 B4两次训练完成；补齐父对照诊断覆盖而不重训
+
+B4 readout_dropout seed42/43均正常结束，训练快照status为training_completed_and_files_and_prior_archive_verified，实际control均validation_completed；各12当前文件SHA独立重验通过，batch pane610573仍live。
+
+| B4 seed | best / total epoch | P | R | F1 | upcoming命中 / 145 | 父near命中 |
+|---|---|---|---|---|---|---|
+| 42 | 4 / 14 | .8333333333333334 | .684931506849315 | .7518796992481204 | 0 | 2 |
+| 43 | 7 / 17 | .8103813559322034 | .6986301369863014 | .7503678273663561 | 3 | 2 |
+
+B4整体F1均值.7511237633，与near约.7510203841基本持平；upcoming总命中3/290低于父near4/290，未取得稳定收益。尚无本轮完整训练/验证AP诊断，不能据此判断正则化是否降低表示层过拟合，不能改动已登记B5两组设置。
+
+两快照baseline_readout_dropout_b4s42_training20260913.json：31349 bytes，SHA 3c2c80ec8d13ece9bf262dfe073b479409a54c9a79b97160c3cc33ec90da54d7；b4s43对应文件：31647 bytes，SHA 44936d1611757e6ba87bfb235f72d9135e41727aa86efb9b6702a071b9f39a04。当前模型源码仍固定ee838f5；B5和随后16份冻结诊断继续由原driver负责，不重启。
+
+为做同父对照比较，按四颗near last权重SHA检索D内183份diagnostics或last诊断JSON：只找到B4已有四份last诊断，B5尚无对应last诊断。已找到两模型共8份best headprobe及B4四份last，合计12份，可按原权重SHA/epoch/split/目标计数复用；不能因它们的旧路径后来复用而去加载该路径当前的新权重。
+
+新增compare_baseline_readout_parent.py仅补缺失的B5 seed42/43 last×train/validation四份，冻结父near存于model_before_onsetaux20260912.zip。先等待原pane610573及四训练/16诊断全部正常终态；不同时占用训练GPU、不重训父near、不重复现有12份、不选阈值或test。新增4项本地检查通过，覆盖旧松散checkpoint哈希、新ZIP与member哈希区分、split/epoch/manifest/计数不符拒绝，以及best正式指标一致性。尚未运行服务器检查或启动补充驱动。
