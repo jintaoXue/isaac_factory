@@ -1,4 +1,44 @@
 {
+  "schedule_strata_diagnostics_prepared_20260913": {
+    "status": "local_implementation_six_tests_four_subtests_passed_not_started_on_server",
+    "models": [
+      "b4_joint_onset",
+      "b5_vector_gat"
+    ],
+    "seeds": [
+      42,
+      43
+    ],
+    "checkpoints": [
+      "best",
+      "last"
+    ],
+    "splits": [
+      "train",
+      "validation"
+    ],
+    "diagnostic_count": 16,
+    "new_model_training": false,
+    "post_prediction_strata": [
+      "future_local_runtime_start",
+      "train_joint_unique_onset_support",
+      "generator_compatibility"
+    ],
+    "original_device_batch_preserved": {
+      "b4": [
+        "cpu",
+        32
+      ],
+      "b5": [
+        "cuda:0",
+        16
+      ]
+    },
+    "old_scores_counts_AP_must_reproduce": true,
+    "no_future_diagnostic_metadata_in_inference": true,
+    "test_evaluated": false,
+    "goal_met": false
+  },
   "schedule_support_full_audit_completed_20260913": {
     "status": "primary_historical_comparison_and_independent_final_verification_complete",
     "runtime_source_commit": "979c680fb4d1919ae760cdfb0038f69fb7cc6708",

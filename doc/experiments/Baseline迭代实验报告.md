@@ -4456,3 +4456,25 @@ train.py::_epoch_loop将station_report_metrics结果写入日志，up_r不是hot
 当前正式baseline尚无稳定upcoming提升。下一项可在固定208上继续做历史状态分类的
 因果输入/支持审计或冻结预测分组分析，但尚未实现/启动；不再仅凭现版主组件列表立即
 登记新的训练。主正式数据/权重的缺口限制跨模型因果结论，不阻止已授权208开发工作。
+
+## 42. 固定权重的故障与支持分层诊断
+
+在41节限制下，先检验当前208上漏报是否集中于具体数据条件，而非再登记架构训练。
+现有predictions_validation.csv只保存cause/remain预测，occupancy_events是hot头的二值
+事件，均不含正式事件头逐工位will概率，不能用它们伪造新的概率分层。
+
+新增diagnose_baseline_events.py --inspect_schedule_strata：在原forward后，将每个
+真实upcoming按sample_index/group_id/物理resource ID/起点window/start offset逐项
+连接40节冻结审计。按真实未来本地runtime启动、训练节点×scenario独立起点支持、
+历史计划兼容性分组，记录保存阈值下命中、概率漏报、时间漏报和概率分位数；兼容性
+类别另计算本组upcoming对负例AP，排除ongoing。保存740个目标逐行结果，不以未来
+分组过滤推理/报警，也不选阈值。各分组的去重起点可能因anchor边界跨组，不能加和。
+
+本地6 tests/4 subtests通过（新分层3项、既有时间/支持3项）：乱序sample身份、阈值
+等号/时间漏报/历史强制start、重复或错位目标拒绝、排除ongoing、训练支持不含验证
+起点、诊断标签改变不改变原概率/总命中、禁止test。新driver只读当前B4 joint_onset和
+B5 vector_gat的best/last，两seed各自train/validation，共16份新诊断；这不是B4/B5
+骨干单因素比较。B4沿用原诊断CPU batch32，B5沿用CUDA batch16；逐份须复现旧诊断
+保存阈值、权重/epoch/样本身份、canonical分数/计数和upcoming AP。
+服务器保持979c680；新代码拟以固定Git对象stdin执行，不pull。新结果只写既有D目录，
+严格校验后才能复用，绝不重启训练。当前本地实现完成，尚待服务器3测试与实际运行。

@@ -25,6 +25,9 @@ SHA e90919aeaae88f5bb924324bfc7d36451957f028f7dec0c554ba2e9b7f3285ae；独立终
 列在后续未采用的uphist，不能将当前主源码全部路径当作prefix8实际组件。
 重新只读遍历主仓库仍无dense产物，主HEAD f322dbf；现有n10旧checkpoint不能替代。
 历史状态分类输入审计尚未实现或运行；当前没有新的训练在跑，不能声称已改善。
+新增第42节固定权重分层诊断已本地实现，6 tests/4 subtests通过；待服务器3测试及
+两模型各8份诊断。只读当前B4 joint_onset/B5 vector_gat，保持原device/batch及阈值。
+不得因新诊断而重训或改报警，尚无分层结果。
 
 此前vector_gat B5 seed42训练及四份冻结诊断均已完成并独立核验，
 diag pane489190退出0。两层实际动态排序在全部595/145个train/validation upcoming

@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import subprocess
 import zipfile
+from collections import Counter
 
 import numpy as np
 import torch
@@ -26,6 +27,136 @@ from factory_baselines.torch_trainer import (
     load_checkpoint,
 )
 from factory_bn_shared.remain import node_event_targets, station_report_metrics
+
+
+def summarize_schedule_strata(arrays, sample_rows, node_ids, audit, support, historical, split, threshold):
+    """Join retrospective strata after prediction; do not filter reports or choose a threshold."""
+    if split not in {"train", "validation"}:
+        raise ValueError("Schedule strata are restricted to train/validation")
+    selected = [row for row in sample_rows if row["split"] == split]
+    lookup = {int(row["sample_index"]): row for row in selected}
+    indices = np.asarray(arrays["sample_index"]).reshape(-1)
+    if len(lookup) != len(selected) or len(set(indices.tolist())) != len(indices) or set(indices.tolist()) != set(lookup):
+        raise ValueError("Prediction/sample-index identities differ")
+    episodes = {ep["group_id"]: ep for ep in support["episodes"]}
+    compatibility = {row["group_id"]: row["match_class"] for row in historical["episodes"]}
+    plans = {row["group_id"]: row for row in audit["episode_plan_reconstruction"]}
+    train_support = Counter((event["resource_id"], ep["scenario_id"])
+        for ep in support["episodes"] if ep["split"] == "train" for event in ep["upcoming_onsets"])
+    targets = {}
+    for row in audit["upcoming_targets"]:
+        if row["split"] != split:
+            continue
+        key = (row["group_id"], row["resource_id"], row["onset_window_index"], row["start_index"])
+        if key in targets:
+            raise ValueError("Duplicate audited upcoming anchor")
+        targets[key] = row
+    valid = arrays["occ_node_mask"] > .5
+    positive = valid & (arrays["event_will"] > .5)
+    upcoming = positive & (arrays["event_start"] > 0)
+    negative = valid & ~positive
+    probability = arrays["will_probability"]
+    decoded = np.where(arrays["hist_last_hot"] > .5, 0, arrays["predicted_start"])
+    if probability.shape != (len(indices), len(node_ids)) or not np.isfinite(probability).all():
+        raise ValueError("Invalid node probability shape/values")
+    family = []
+    records, seen = [], set()
+    for position, sample_index in enumerate(indices):
+        sample = lookup[int(sample_index)]
+        group = sample["group_id"]
+        ep, plan = episodes[group], plans[group]
+        if ep["split"] != split or plan["split"] != split or ep["scenario_id"] != sample["scenario_id"]:
+            raise ValueError("Episode/split/scenario mismatch")
+        if plan["schedule_mode"] == "resample_per_episode":
+            label = compatibility[group]
+        else:
+            if group in compatibility:
+                raise ValueError("Unexpected reconstructed non-resampled episode")
+            label = "no_resampled_schedule"
+        family.append(label)
+        for node in np.flatnonzero(upcoming[position]):
+            start = int(arrays["event_start"][position, node])
+            first_s = float(sample["first_future_start_s"])
+            first = round(first_s / 60)
+            if first_s != first * 60 or start not in (1, 2):
+                raise ValueError("Upcoming window contract differs")
+            key = (group, node_ids[node], first + start, start)
+            if key not in targets or key in seen:
+                raise ValueError("Predicted target identity differs from frozen onset audit")
+            seen.add(key)
+            target = targets[key]
+            if target["first_future_time_s"] != first_s:
+                raise ValueError("Forecast time differs from runtime audit")
+            p = float(probability[position, node])
+            timing_ok = abs(int(decoded[position, node]) - start) <= 3
+            count = train_support[(node_ids[node], ep["scenario_id"])]
+            support_bin = "0" if count == 0 else "1" if count == 1 else "2-3" if count <= 3 else "4-10" if count <= 10 else ">10"
+            records.append(dict(sample_index=int(sample_index), group_id=group, resource_id=node_ids[node],
+                onset_window_index=first + start, target_start=start, generator_compatibility=label,
+                future_local_runtime_start=target["matched_future_local_runtime_start"],
+                no_prior_runtime_start=target["no_prior_recorded_runtime_start"],
+                train_joint_unique_onset_support=count, train_joint_support_bin=support_bin,
+                probability=p, predicted_start=int(arrays["predicted_start"][position, node]),
+                decoded_start=int(decoded[position, node]), report_hit=bool(p >= threshold and timing_ok),
+                probability_miss=bool(p < threshold), timing_miss=bool(p >= threshold and not timing_ok)))
+    if seen != set(targets):
+        raise ValueError("Incomplete audited upcoming target coverage")
+
+    def counts(rows):
+        identities = {(x["group_id"], x["resource_id"], x["onset_window_index"]) for x in rows}
+        hit_ids = {(x["group_id"], x["resource_id"], x["onset_window_index"]) for x in rows if x["report_hit"]}
+        return dict(window_targets=len(rows), unique_onsets=len(identities), report_hits=sum(x["report_hit"] for x in rows),
+            unique_onsets_with_any_hit=len(hit_ids), probability_misses=sum(x["probability_miss"] for x in rows),
+            timing_misses=sum(x["timing_miss"] for x in rows),
+            probability_q10_q50_q90=np.quantile([x["probability"] for x in rows], [.1, .5, .9]).tolist() if rows else None)
+
+    groups = {}
+    for field in ("generator_compatibility", "future_local_runtime_start", "train_joint_support_bin"):
+        groups[field] = {str(value): counts([x for x in records if x[field] == value])
+                         for value in sorted({x[field] for x in records}, key=str)}
+    family = np.asarray(family)
+    ranking = {}
+    for label in sorted(set(family.tolist())):
+        mask = np.broadcast_to((family == label)[:, None], upcoming.shape) & (upcoming | negative)
+        m = _binary_metrics(upcoming[mask].astype(np.int64), probability[mask])
+        ranking[label] = dict(positive_count=m["positive_count"], negative_count=m["negative_count"],
+            tie_aware_average_precision=m["pr_auc"], roc_auc=m["roc_auc"])
+    return dict(version="factory_frozen_upcoming_schedule_strata_v1", saved_threshold=threshold,
+        summary=counts(records), groups=groups, compatibility_upcoming_vs_negative=ranking, upcoming_targets=records,
+        scope="Post-prediction diagnosis only. No future schedule, support count, or label enters inference, filtering, threshold selection or checkpoint selection.",
+        limitations=["Compatibility does not uniquely identify the historical collector version.",
+            "Runtime temporal coincidence does not establish causal unpredictability.",
+            "Training support counts include the target training episode; validation support counts use training episodes only.",
+            "Unique onsets may span multiple strata because anchors have different observation cutoffs.",
+            "These current B4 joint-onset and B5 vector-GAT checkpoints are distinct negative ablations, not an architecture-isolated B4/B5 comparison."])
+
+
+def attach_schedule_strata(report, arrays, dataset_dir, manifest, split, threshold):
+    expected = {
+        "baseline_upcoming_schedule_support20260913.json": "ebeead2dff053e3b8041ad563d3e95519c5a58b3b91c4006b0586cc6e3d86d02",
+        "dense_event_support20260912.json": "56d2dc07169d12e420ed1d2877bcf3290d2cd53d0abdd317ea6581845b32cd93",
+        "baseline_upcoming_schedule_historical_match20260913.json": "4890663f63dbb570f4e5591cea441f6380ac39911ed20e785cfcbaa3587cc193",
+    }
+    sources = []
+    for name, expected_hash in expected.items():
+        content = (dataset_dir / name).read_bytes()
+        if hashlib.sha256(content).hexdigest() != expected_hash:
+            raise ValueError("Frozen schedule source changed: " + name)
+        sources.append(json.loads(content))
+    if sources[0]["manifest_sha256"] != hashlib.sha256((dataset_dir / "dataset_manifest.json").read_bytes()).hexdigest():
+        raise ValueError("Schedule audit and model dataset manifests differ")
+    with (dataset_dir / "model_sample_index.csv").open(newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    result = summarize_schedule_strata(arrays, rows, manifest["node_ids"], *sources, split, threshold)
+    canonical = next(row for row in report["thresholds"] if row["threshold"] == threshold)
+    for key, original in (("window_targets", "n_true_upcoming"), ("probability_misses", "upcoming_probability_misses"), ("timing_misses", "upcoming_timing_misses")):
+        if result["summary"][key] != canonical[original]:
+            raise ValueError("Stratum totals differ from canonical upcoming metrics")
+    if result["summary"]["report_hits"] != canonical["n_true_upcoming"] - canonical["upcoming_probability_misses"] - canonical["upcoming_timing_misses"]:
+        raise ValueError("Stratum hits differ from canonical upcoming report")
+    result["source_files_sha256"] = expected
+    result["sample_index_sha256"] = hashlib.sha256((dataset_dir / "model_sample_index.csv").read_bytes()).hexdigest()
+    report["schedule_strata"] = result
 
 
 def load_diagnostic_checkpoint(path: Path, device: torch.device, archive_member: str | None):
@@ -949,6 +1080,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--compare_hot_head", action="store_true", help="Compare existing event and hot forecast outputs without changing reports")
     parser.add_argument("--compare_onset_report", action="store_true", help="Score frozen event-only and history-cold onset-max policies without selecting or changing official reports")
     parser.add_argument("--inspect_onset_frontier", action="store_true", help="Compute a labelled empirical oracle over independent event/onset thresholds; no calibration or deployment")
+    parser.add_argument("--inspect_schedule_strata", action="store_true", help="Join frozen upcoming schedule/support strata after prediction without changing reports")
     observation = parser.add_mutually_exclusive_group()
     observation.add_argument("--inspect_temporal_attention", action="store_true", help="Observe frozen temporal pooling weights and representation changes without changing predictions")
     observation.add_argument("--inspect_history_graph", action="store_true", help="Observe applied post-GRU graph residuals without changing predictions")
@@ -1042,6 +1174,8 @@ def main() -> None:
     chosen_threshold = float(checkpoint["metadata"]["event_report_threshold"])
     thresholds = sorted(set([*args.thresholds, chosen_threshold]))
     report = summarize_events(arrays, thresholds)
+    if args.inspect_schedule_strata:
+        attach_schedule_strata(report, arrays, args.dataset_dir, manifest, args.split, chosen_threshold)
     if joint:
         report["joint_onset_diagnostics"] = summarize_joint_onset(arrays, chosen_threshold)
     if args.inspect_temporal_attention:
