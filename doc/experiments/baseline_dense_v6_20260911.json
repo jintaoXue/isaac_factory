@@ -1,4 +1,63 @@
 {
+  "state_transfer_diagnostic_completed_20260913": {
+    "status": "completed_and_independently_verified",
+    "source_commit": "78be1c33c7da3965698e129125755a8bedaf6a0f",
+    "source_sha256": "7cf7f10568759a7c11296065ae161c3040d9f9b2d8dfe62951f67e5f4ac6844a",
+    "runtime_commit": "979c680fb4d1919ae760cdfb0038f69fb7cc6708",
+    "pane_pid": 567897,
+    "exit_code": 0,
+    "server_tests_passed": 4,
+    "local_tests_passed": 4,
+    "episodes": 168,
+    "samples": 29298,
+    "raw_reference_and_inverted_X_state_disagreement": 0,
+    "raw_and_inverted_results_identical": true,
+    "order": [
+      "train_in_sample",
+      "train_leave_episode_out",
+      "validation_train_only"
+    ],
+    "average_precision": {
+      "node": [
+        0.00362269833792062,
+        0.0029648630576866505,
+        0.003732032857813447
+      ],
+      "state": [
+        0.0026587815576677156,
+        0.002014041296302894,
+        0.002752981303438343
+      ],
+      "node_state": [
+        0.006741277122282187,
+        0.004861166496850141,
+        0.005333727947298506
+      ],
+      "node_state_transition": [
+        0.008835850368244486,
+        0.005558566350797087,
+        0.006348987200249184
+      ]
+    },
+    "artifacts": [
+      {
+        "file": "baseline_upcoming_state_transfer20260913.json",
+        "bytes": 16094,
+        "sha256": "c94d9eef888e0520de75d46d70b1e1f718eb1e2479dbd916f8279cbbede74f5d"
+      },
+      {
+        "file": "baseline_upcoming_state_transfer_verification20260913.json",
+        "bytes": 1125,
+        "sha256": "577a428471369a3af14e64aec2184865eb07186627447b7829d552ff5f1121cf"
+      }
+    ],
+    "model_training": false,
+    "diagnostic_statistical_fit": true,
+    "test_evaluated": false,
+    "goal_met": false,
+    "interpretation": "Coarse physical states agree across actual baseline X and raw reference. Their weak transfer does not reproduce the neural train/validation gap and does not establish a full-input or architecture upper bound.",
+    "next_unimplemented": "Locate episode-specific associations in learned neural representations before registering another training candidate"
+  },
   "state_transfer_diagnostic_registered_20260913": {
     "status": "local_four_tests_passed_server_not_started",
     "file": "diagnose_upcoming_state_transfer.py",
