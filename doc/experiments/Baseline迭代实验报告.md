@@ -3873,3 +3873,56 @@ b37da8eab23d468685f16c554020eaae5e0a6bb5b0173a963cfa8e697b8a7187。
 误报及起点错误分离、canonical原报告/输入保持不变、无效节点和空支持定义。只改
 诊断脚本/测试及文档，服务器训练模块保持7ff759d；新诊断通过Git对象stdin执行，
 先做服务器独立内存测试，再启动首组四份冻结诊断，不在运行期间pull源码。
+
+### 38.7 两颗B4完成，首份联合分支诊断核验及接续
+
+B4 seed43也已正常结束并逐文件核验，实际Python405436已消失；best3/total13，
+参数289695，P/R/F1为0.8401400233372228/0.6575342465753424/0.7377049180327869，
+upcoming=1/145，阈值0.70。当前七文件与快照、旧F-beta归档CRC/11成员均通过。
+baseline_dense_joint_onset_b4s43_training20260913.json，32931 bytes，SHA
+5a91b5118fdb25eb556b5b4ae2c3d4c109807f329e1cc1f24a94642a3d655a4b。
+两seed平均P/R/F1/upcoming recall为
+0.8457140397716558/0.6607305936073059/0.7418642599399441/0.0034482758620689655。
+对应onset_aux命中0/3、near命中2/2；B4本候选未改善，不能因此推广为骨干上限。
+B5 seed42已接续，实际Python411056；服务器训练pane400178保持live、HEAD7ff759d。
+
+观察源码d5670bcfe40cbfe186dd8fc757f1b624c60c4948已push，服务器仅fetch Git对象。
+独立CPU进程将固定诊断/测试源码载入内存，新增3项测试通过，实际运行模块逐份哈希
+仍匹配7ff759d。源码SHA 73a86dfff21fa49cd180e19bdfd5f4a87854192ea79aaf5878db4da2ad013893。
+测试记录baseline_joint_onset_observation_tests20260913.json，1374 bytes，SHA
+453e22a458379c2e4b603c12ffb7304232fc3561d6421137b9bdbd3653a04793。
+未创建测试目录、未更改训练模块。首组诊断驱动在原baseline_dense_diag启动，
+初始pane413059；源码5547 bytes，SHA
+c6df3a1b0c11f5da8e1c05c557425b2586145ad7153753db6d32d20b8bd3f3d4。
+
+首份best validation预测和诊断正常生成后，驱动后处理因KeyError:
+report_threshold_used退出1。该字段由torch_trainer附加，canonical报告中没有；
+不是预测失败。保留首份完整JSON，修正后处理为比较canonical非MAE分数/计数，并
+单独严格核对保存阈值、训练report_threshold_used和诊断阈值相同。训练报告其他
+附加字段差异只允许MAE相关项，连续CPU/GPU MAE不作逐位一致性宣称；没有放宽
+P/R/F1或计数的1e-10核验。未重复执行已生成的best validation。
+
+旧驱动/日志两文件通过archive_files逐字节验证后归档
+baseline_joint_onset_b4s42_diag_guard20260913.zip，4677 bytes，SHA
+bffd1fd12436a87cb655f1d9db21417998911ecee81c28fc0cdfbda24f85d78d。
+旧日志5054 bytes，SHA 6fb00fe44b24e594c6e6734c6e907571475f9812b5312c473916f57f3e723169。
+接续驱动复用原文件名baseline_joint_onset_b4s42_diagnose20260913.py，6495 bytes，
+SHA 07fae8c7379f0317d9083eea7d87047b361dd32ce8edefdfb1b3bade39dd03bf；
+diag pane416164 live，实际Python416194在运行best train。它先按固定SHA复用并
+核验首份结果，然后只运行best train、last validation、last train三个缺项。
+
+首份baseline_joint_onset_b4s42_best_validation20260913.json，129118 bytes，SHA
+4dadbee8c79cb33e4b6c252d09458b2500baf2609e520fe283f21ff1f9c026e7。
+已通过来源、checkpoint、epoch1、样本5439、分组950/145/67331、正式canonical分数/
+计数及阈值0.65复现。组合upcoming-vs-negative AP=0.00788754369669698；观察结果：
+
+| Best validation组 | ongoing | upcoming | negative |
+|---|---:|---:|---:|
+| 目标数 | 950 | 145 | 67331 |
+| observed hot | 334 | 0 | 97 |
+| cold时onset logit胜出 | 107 | 142 | 64794 |
+| 保存阈值下新增报警/命中/误报 | 0/0/0 | 0/0/0 | 0/0/0 |
+
+分支已抬高多数upcoming分数，但在该best的固定阈值下没有改变报告，不能解释成onset
+路径没有接上。该观察只针对同一联合训练权重，不能视为与独立训练原头的因果消融，
+也不证明其他epoch/seed相同。剩余三份诊断和B5训练继续，未宣称目标已达成。

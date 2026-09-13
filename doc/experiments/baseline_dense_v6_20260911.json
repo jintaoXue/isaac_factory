@@ -1,4 +1,118 @@
 {
+  "joint_onset_B4_both_completed_and_first_diagnostic_20260913": {
+    "status": "B4_both_training_completed_B5_seed42_running_B4_seed42_diagnostics_resumed",
+    "training_source_commit": "7ff759dd722c8b12b730be5a3714672796655ddf",
+    "diagnostic_source_commit": "d5670bcfe40cbfe186dd8fc757f1b624c60c4948",
+    "diagnostic_source_sha256": "73a86dfff21fa49cd180e19bdfd5f4a87854192ea79aaf5878db4da2ad013893",
+    "B4_seed43": {
+      "best_epoch": 3,
+      "epochs_trained": 13,
+      "parameters": 289695,
+      "precision": 0.8401400233372228,
+      "recall": 0.6575342465753424,
+      "f1": 0.7377049180327869,
+      "upcoming_hits": 1,
+      "upcoming_targets": 145,
+      "threshold": 0.7,
+      "snapshot": "baseline_dense_joint_onset_b4s43_training20260913.json",
+      "snapshot_bytes": 32931,
+      "snapshot_sha256": "5a91b5118fdb25eb556b5b4ae2c3d4c109807f329e1cc1f24a94642a3d655a4b",
+      "current_files_and_prior_archive_reverified": true
+    },
+    "B4_means_order": [
+      "precision",
+      "recall",
+      "f1",
+      "upcoming_recall"
+    ],
+    "B4_means": [
+      0.8457140397716558,
+      0.6607305936073059,
+      0.7418642599399441,
+      0.0034482758620689655
+    ],
+    "B4_upcoming_hits": [
+      0,
+      1
+    ],
+    "onset_aux_parent_upcoming_hits": [
+      0,
+      3
+    ],
+    "near_parent_upcoming_hits": [
+      2,
+      2
+    ],
+    "active_training": {
+      "model": "B5",
+      "seed": 42,
+      "python_pid": 411056,
+      "pane_pid": 400178,
+      "driver_pid": 400181
+    },
+    "server_observation_tests": {
+      "passed": 3,
+      "runtime_files_unchanged": true,
+      "file": "baseline_joint_onset_observation_tests20260913.json",
+      "bytes": 1374,
+      "sha256": "453e22a458379c2e4b603c12ffb7304232fc3561d6421137b9bdbd3653a04793"
+    },
+    "first_diagnostic": {
+      "file": "baseline_joint_onset_b4s42_best_validation20260913.json",
+      "bytes": 129118,
+      "sha256": "4dadbee8c79cb33e4b6c252d09458b2500baf2609e520fe283f21ff1f9c026e7",
+      "reused_without_reexecution": true,
+      "canonical_non_MAE_scores_counts_and_threshold_verified": true,
+      "upcoming_AP": 0.00788754369669698,
+      "group_order": [
+        "ongoing",
+        "upcoming",
+        "negative"
+      ],
+      "counts": [
+        950,
+        145,
+        67331
+      ],
+      "observed_hot": [
+        334,
+        0,
+        97
+      ],
+      "onset_selected": [
+        107,
+        142,
+        64794
+      ],
+      "extra_reports_hits_false_alarms_all_groups": 0,
+      "inference": "The onset path changes most upcoming scores but creates no extra reports at this best checkpoint saved threshold; not evidence of a disconnected head or a universal architecture ceiling"
+    },
+    "diagnostic_resumption": {
+      "initial_pane_pid": 413059,
+      "initial_exit_code": 1,
+      "failure": "Postprocessing assumed trainer-added report_threshold_used was a canonical key",
+      "correction": "Compare canonical non-MAE scores/counts and separately verify saved threshold; do not relax count or P/R/F1 comparison",
+      "archive": "baseline_joint_onset_b4s42_diag_guard20260913.zip",
+      "archive_bytes": 4677,
+      "archive_sha256": "bffd1fd12436a87cb655f1d9db21417998911ecee81c28fc0cdfbda24f85d78d",
+      "script": "baseline_joint_onset_b4s42_diagnose20260913.py",
+      "script_bytes": 6495,
+      "script_sha256": "07fae8c7379f0317d9083eea7d87047b361dd32ce8edefdfb1b3bade39dd03bf",
+      "pane_pid": 416164,
+      "actual_python_pid": 416194,
+      "current_checkpoint": "best",
+      "current_split": "train",
+      "remaining_new_diagnostics": [
+        "best_train",
+        "last_validation",
+        "last_train"
+      ],
+      "complete": false
+    },
+    "test_evaluated": false,
+    "main_repository_modified": false,
+    "goal_met": false
+  },
   "joint_onset_B4_seed42_training_and_observation_prepared_20260913": {
     "status": "B4_seed42_training_complete_B4_seed43_running_observation_local_tested_not_server_run",
     "training_source_commit": "7ff759dd722c8b12b730be5a3714672796655ddf",
@@ -1122,7 +1236,7 @@
     "next_action": "Follow running event_fbeta_launch_20260913; preserve fixed runtime and validation-only protocol",
     "deployed_checkout": "1728ca69bd85e695f6004522ff774a20eaaab8e4"
   },
-  "status": "joint_onset_B4_seed42_complete_B4_seed43_running_diagnostics_pending_goal_not_met",
+  "status": "joint_onset_B4_both_complete_B5_training_first_diagnostics_running_goal_not_met",
   "history_graph_B4_both_completed_20260913": {
     "status": "two_training_runs_and_eight_diagnostics_completed_verified",
     "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",

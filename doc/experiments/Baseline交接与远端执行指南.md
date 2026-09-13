@@ -4,7 +4,16 @@
 
 ## 1. 交接状态
 
-**当前最新状态：**joint_onset首组B4 seed42已正常结束，best1/total11，P/R/F1为
+**当前最新状态：**joint_onset两颗B4均正常结束并核验，upcoming=0/145、1/145，
+F1均值0.74186426；没有优于onset_aux父对照。B5 seed42 Python411056正在训练，
+pane400178/driver400181仍live，服务器固定7ff759d。新增观察源码d5670bc已通过服务器
+独立进程3项测试；首组best validation已完成，canonical分数/计数及保存阈值复现通过。
+该权重onset胜出142/145 upcoming，但保存阈值下新增报警/命中/误报均为0。
+后处理曾因report_threshold_used字段不在canonical报告而退出，已验证归档旧驱动/日志，
+复用首份结果后接续剩余三份；当前diag pane416164、实际Python416194为best train。
+详见38.7。诊断源码仅通过Git对象stdin执行，禁止训练中pull或重复首份诊断。
+
+此前joint_onset首组B4 seed42已正常结束，best1/total11，P/R/F1为
 0.85128806/0.66392694/0.74602360，upcoming=0/145，阈值0.65。完整训练快照及
 当前七文件/旧F-beta归档11成员独立核验通过；B4 seed43 Python405436正在运行，
 训练pane400178/driver400181仍live，服务器保持7ff759d。详见38.6。
