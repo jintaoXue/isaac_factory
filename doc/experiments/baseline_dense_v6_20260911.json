@@ -1,4 +1,28 @@
 {
+  "matched_history_audit_registered_20260913": {
+    "status": "read_only_history_inspected_audit_driver_server_pending",
+    "runtime_commit": "6289761c11d09e3570899b89858486b29e9f4c83",
+    "runtime_pane_pid": 1037530,
+    "runtime_verified_live": true,
+    "b5_start5_epoch_observed": 9,
+    "b4_start5_observed": {
+      "epochs": 41,
+      "selected_epoch": 1,
+      "selected_hits": 32,
+      "upcoming_support": 431,
+      "retrospective_max_hits": 35,
+      "retrospective_max_epoch": 18,
+      "epochs_with_more_hits_than_selected": 3,
+      "last_hits": 16
+    },
+    "new_analysis": "analyze_baseline_matched_history.py",
+    "local_checks_passed": 5,
+    "server_execution": "pending",
+    "new_training": false,
+    "new_model_selected": false,
+    "test_evaluated": false,
+    "scope_limit": "saved epoch reports at their original thresholds only; not an architecture or all-threshold bound"
+  },
   "matched_first_stage_recovered_and_queue_resumed_20260913": {
     "status": "b4_start5_independently_verified_remaining_five_live",
     "runtime_commit": "6289761c11d09e3570899b89858486b29e9f4c83",

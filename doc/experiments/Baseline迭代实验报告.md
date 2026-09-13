@@ -5220,3 +5220,7 @@ validation按will15 F1及P≥.8/R≥.7选模、按参考阈值流程选阈值；
 恢复日志baseline_matched_protocol_training_resume20260913.log；实际启动及独立核验baseline_matched_protocol_training_resume20260913_start.json、baseline_matched_protocol_training_resume20260913_verification.json。后者SHA 1a43d8284035da381a8de6d9ae7df55213fdf044b448cf20a8c4d52ccf1647a7。B4正式best1/total41、阈值.5；will15 F1 train69.18%/val66.43%，upcoming who5.99%/7.42%、strict5.59%/7.42%，val ongoing who706/874=80.78%。验证399个upcoming漏报全部在报警层面，起点超差追加漏报0；仅描述此选中权重，不代表架构上限或旧泛化结论被推翻，不能与旧145分母直接比较。其余五项目前无完成成绩。
 
 下方52.5“恢复待执行”、52.4“原pane live”均为历史。恢复核验只补正报告合法增加window_size_s=60的字段比较，不更改模型、训练或阈值。独立启动校验首个尝试因系统Python无hashlib.file_digest在只读阶段退出，改用等价分块SHA后通过；未重复训练或数据预检。服务器运行期间只更新本地文档，不pull。
+
+### 52.7 逐轮选模轨迹：是否丢掉了高 upcoming 模型
+
+**52.7 新增纯历史检查（不改选模）：**原pane1037530/实际Python已重新确认live，B5 Start5最新观察9轮，服务器runtime仍6289761。B4保存的41轮history已按阶段记录SHA核对：正式best1命中32/431；逐轮原阈值下最高35/431（8.12%，epoch18），该轮整体P约.5922、F1约.5068；只有3轮比best多命中，末轮16/431。未发现高upcoming模型被will15选模漏掉；这个上界只覆盖已保存轮次/原阈值，不是其他阈值或架构上限。训练总损失首末3.80065→.98215，验证1.46066→2.99723，与训练后验证恶化一致；train是重采样损失、val是原始窗口，不从损失推断训练召回。新增analyze_baseline_matched_history.py及5项本地检查通过，服务器冻结源码执行/历史审计产物尚待生成。保留全部旧结果与当前五项训练，不重跑B4或旧诊断。
