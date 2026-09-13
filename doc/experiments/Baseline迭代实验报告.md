@@ -5211,3 +5211,12 @@ validation按will15 F1及P≥.8/R≥.7选模、按参考阈值流程选阈值；
 
 732b98c旧独立核验器14项服务器内存检查已通过，产物baseline_matched_result_verifier_tests_direct20260913.json。此前将测试放入D交给pytest收集触发IsaacLab包初始化缺pxr，14项均setup error而非测试主体失败；错误产物保留，不重复该收集方式、不安装依赖。恢复后以新独立核验及实际新pane为准，下方live进度均为历史。
 
+### 52.6 B4 完整恢复核验与剩余五项实际接续
+
+**52.6 当前权威进度：首组已独立核验并恢复，剩余五项已真实接续。** 修复/编排Git对象8c9507645607ea48cd143b0d914e5fe26bac8028在服务器通过31项检查；运行checkout继续固定dev_xwt@6289761。B4 Start≤5全部产物、权重头、history选模/累计预算、两split预测行和指标核验通过，15份文件保持原SHA，无重训；原失败计划/记录/日志保留，仅修复阶段登记。独立B4核验SHA 3059dd39dcbc24fafa0a152e0b0544935457a117d8d40e146a816b5027ec5ff1。
+
+原baseline_dense_v6:0.0复用为pane1037530，独立核验实际Python live、B5 Start≤5已完成4轮；新日志首个且唯一阶段启动为B5 5，计划明确reused_completed_tasks=[[B4,5]]。后续B4s10→B5s10→B4s15→B5s15自动接续，禁止重启或重复首组。实际B5 training/loss与原登记一致、input/evaluation contract与原预检一致；164个原受保护文件通过stat或两模型首档归档验证，主仓库只读HEAD仍7b2ab39，未用test或新建目录。全批尚未结束。
+
+恢复日志baseline_matched_protocol_training_resume20260913.log；实际启动及独立核验baseline_matched_protocol_training_resume20260913_start.json、baseline_matched_protocol_training_resume20260913_verification.json。后者SHA 1a43d8284035da381a8de6d9ae7df55213fdf044b448cf20a8c4d52ccf1647a7。B4正式best1/total41、阈值.5；will15 F1 train69.18%/val66.43%，upcoming who5.99%/7.42%、strict5.59%/7.42%，val ongoing who706/874=80.78%。验证399个upcoming漏报全部在报警层面，起点超差追加漏报0；仅描述此选中权重，不代表架构上限或旧泛化结论被推翻，不能与旧145分母直接比较。其余五项目前无完成成绩。
+
+下方52.5“恢复待执行”、52.4“原pane live”均为历史。恢复核验只补正报告合法增加window_size_s=60的字段比较，不更改模型、训练或阈值。独立启动校验首个尝试因系统Python无hashlib.file_digest在只读阶段退出，改用等价分块SHA后通过；未重复训练或数据预检。服务器运行期间只更新本地文档，不pull。

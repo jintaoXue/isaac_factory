@@ -1,4 +1,60 @@
 {
+  "matched_first_stage_recovered_and_queue_resumed_20260913": {
+    "status": "b4_start5_independently_verified_remaining_five_live",
+    "runtime_commit": "6289761c11d09e3570899b89858486b29e9f4c83",
+    "driver_commit": "8c9507645607ea48cd143b0d914e5fe26bac8028",
+    "server_checks_passed": 31,
+    "server_checks_artifact": "baseline_matched_recovery_checks20260913.json",
+    "pane_pid": 1037530,
+    "pane_dead": false,
+    "active_model": "B5",
+    "active_max_start": 5,
+    "completed_epochs_observed": 4,
+    "reused_completed_tasks": [
+      [
+        "B4",
+        5
+      ]
+    ],
+    "remaining_tasks": [
+      [
+        "B5",
+        5
+      ],
+      [
+        "B4",
+        10
+      ],
+      [
+        "B5",
+        10
+      ],
+      [
+        "B4",
+        15
+      ],
+      [
+        "B5",
+        15
+      ]
+    ],
+    "b4_verification_artifact": "baseline_matched_b4_start5_verification20260913.json",
+    "b4_verification_sha256": "3059dd39dcbc24fafa0a152e0b0544935457a117d8d40e146a816b5027ec5ff1",
+    "resume_log": "baseline_matched_protocol_training_resume20260913.log",
+    "resume_verification_artifact": "baseline_matched_protocol_training_resume20260913_verification.json",
+    "resume_verification_sha256": "1a43d8284035da381a8de6d9ae7df55213fdf044b448cf20a8c4d52ccf1647a7",
+    "b4_artifacts_preserved": 15,
+    "protected_original_files_verified": 164,
+    "b4_retrained": false,
+    "test_evaluated": false,
+    "new_directory_created": false,
+    "main_read_only_head": "7b2ab393e838c1b54a78b2f125d41e0066d53ce0",
+    "batch_completed": false,
+    "fixed_failure": "post-export report contract includes window_size_s=60",
+    "old_failure_preserved": true,
+    "root_cause_solved": false,
+    "stable_upcoming_improvement_established": false
+  },
   "matched_first_stage_guard_recovery_registered_20260913": {
     "status": "first_stage_export_completed_queue_failed_recovery_not_yet_run",
     "runtime_commit": "6289761c11d09e3570899b89858486b29e9f4c83",

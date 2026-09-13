@@ -4,6 +4,14 @@
 
 ## 1. 交接状态
 
+**52.6 当前权威进度：首组已独立核验并恢复，剩余五项已真实接续。** 修复/编排Git对象8c9507645607ea48cd143b0d914e5fe26bac8028在服务器通过31项检查；运行checkout继续固定dev_xwt@6289761。B4 Start≤5全部产物、权重头、history选模/累计预算、两split预测行和指标核验通过，15份文件保持原SHA，无重训；原失败计划/记录/日志保留，仅修复阶段登记。独立B4核验SHA 3059dd39dcbc24fafa0a152e0b0544935457a117d8d40e146a816b5027ec5ff1。
+
+原baseline_dense_v6:0.0复用为pane1037530，独立核验实际Python live、B5 Start≤5已完成4轮；新日志首个且唯一阶段启动为B5 5，计划明确reused_completed_tasks=[[B4,5]]。后续B4s10→B5s10→B4s15→B5s15自动接续，禁止重启或重复首组。实际B5 training/loss与原登记一致、input/evaluation contract与原预检一致；164个原受保护文件通过stat或两模型首档归档验证，主仓库只读HEAD仍7b2ab39，未用test或新建目录。全批尚未结束。
+
+恢复日志baseline_matched_protocol_training_resume20260913.log；实际启动及独立核验baseline_matched_protocol_training_resume20260913_start.json、baseline_matched_protocol_training_resume20260913_verification.json。后者SHA 1a43d8284035da381a8de6d9ae7df55213fdf044b448cf20a8c4d52ccf1647a7。B4正式best1/total41、阈值.5；will15 F1 train69.18%/val66.43%，upcoming who5.99%/7.42%、strict5.59%/7.42%，val ongoing who706/874=80.78%。验证399个upcoming漏报全部在报警层面，起点超差追加漏报0；仅描述此选中权重，不代表架构上限或旧泛化结论被推翻，不能与旧145分母直接比较。其余五项目前无完成成绩。
+
+下方52.5“恢复待执行”、52.4“原pane live”均为历史。恢复核验只补正报告合法增加window_size_s=60的字段比较，不更改模型、训练或阈值。独立启动校验首个尝试因系统Python无hashlib.file_digest在只读阶段退出，改用等价分块SHA后通过；未重复训练或数据预检。服务器运行期间只更新本地文档，不pull。
+
 **52.5 当前状态：B4 Start≤5 已训练/评估完成，队列停在结果登记校验；尚未恢复。** 原pane993123已核验dead/exit1，B4总41轮、validation选epoch1，阈值0.5，无轮次同时满足P≥.8/R≥.7。保存结果will15 F1 train=.6917637271、validation=.6642664266；upcoming who/strict train=105/98（分母1753），validation=32/32（分母431）。验证399个漏报全部在工位报警步骤，已报警者无额外起点超差。此best的训练upcoming也低，不能套用旧107-fit末轮训练60%以上的结论；不把整体F1等同upcoming召回，不与旧145分母直接比较。
 
 停止原因已定位为新队列的产物校验：实际报告在模型协议字典上合法增加window_size_s=60，而runner用未扩展字典做全等比较；train/validation支持数及其余协议字段均一致，模型训练与最终导出本身完成。源码修复仅限编排与纯产物核验，不改训练器、模型、任务或阈值。31项本地检查通过，含真实add_time_metric_metadata三档回归；窄恢复入口先独立核验全部B4产物，再保留旧失败记录并接续剩余五项，禁止重训B4或重复真实208预检。服务器runtime继续固定6289761，只fetch新编排Git对象；恢复尚待服务器检查与执行。
