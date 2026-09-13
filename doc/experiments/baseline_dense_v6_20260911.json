@@ -1,4 +1,19 @@
 {
+  "readout_remote_terminal_unavailable_after_unlock_20260913": {
+    "status": "mac_unlocked_but_independent_UU_terminal_unavailable_after_three_resumed_turns",
+    "manual_terminal_open_requested": true,
+    "source_commit_ready": "9862d72ec778dd17fdc06429954b52439863baa2",
+    "server_fetch_or_new_diagnostic_command_sent": false,
+    "last_verified_runtime_commit": "ee838f59d2bdf2893a35ec00acae1308f9dd0e07",
+    "last_verified_training_pane_pid": 610573,
+    "last_verified_B4_hits": [
+      0,
+      3
+    ],
+    "B5_and_full_diagnostic_status_after_access_loss": "unknown",
+    "server_jobs_not_restarted_or_stopped": true,
+    "goal_met": false
+  },
   "readout_parent_server_access_pending_20260913": {
     "status": "local_source_pushed_server_checks_and_parent_driver_not_started_mac_locked",
     "source_commit": "9862d72ec778dd17fdc06429954b52439863baa2",
