@@ -4285,3 +4285,27 @@ validation的分数中位数反而很低，AP未随train升高。这不支持把
 ee18d021d94092f5d3c9c15de8f9f1d7e7b023a3d152d6d58023f0f144c5dc6f。
 seed43仍按原预算训练，禁止重新运行seed42；待其结束后用同一冻结驱动执行四份
 诊断，再完成两seed/八诊断/六数据全量SHA整批核验。未改主仓库，未用test调参。
+
+### 39.7 第二颗训练与自动诊断接续已核验
+
+独立回读seed42漏报拆分：best train/validation、last train/validation的upcoming
+概率未过阈值分别为582/142/335/142，时间误差漏报全部为0。当前低召回主要在事件
+存在性分数上，不能用放宽起始时间容差解释。seed43实际model/training/loss逐项等于
+预检，旧joint归档CRC/11成员及原七文件的归档或保留位置均核验通过。
+
+继续脚本finish_baseline_vector_gat_batch.py已提交于f41d3e983c822c36e334ae1305daad9f195f345e，
+服务器D既有目录中的baseline_vector_gat_finish20260913.py为7505 bytes，SHA
+bb6592c809cd35e72bc89c195376ce0622f6f52755712462edb4359fd3c24f08。
+只在原训练pane终态0且两训练汇总存在后，调用已冻结cbcec6b驱动执行seed43四诊断。
+训练失败或两小时等待上限会退出，绝不重启训练或重复seed42。每15秒检查固定runtime
+和数据stat；输出只在阶段变化时写日志。完成后核验两seed文件、两旧joint归档、
+八诊断及六数据全量SHA，并写baseline_dense_vector_gat_metrics_20260913.json。
+脚本内不能证明自身pane已经退出，因此最终汇总保留该退出状态待独立外部核验。
+
+原diag pane489190退出0后已接续到pane496576，实际Python496579。最新读取日志仍为
+WAITING_FOR_EXISTING_SEED43_TRAINING_NO_RESTART；训练pane472305、seed43 Python486258
+正常运行至epoch21。HEAD仍979c680；只fetch新Git对象，运行中没有pull/checkout。
+启动记录baseline_vector_gat_finish_launch20260913.json，581 bytes，SHA
+6e8f9e0c348684bebf3def7ca34fb92d43e00bcd40c150c06332835ba31bf9b6。
+一次只读查询将末段SHA抄错导致断言失败，未改文件/进程；已分16字符重新读回正确值。
+后续只查看训练和vectorgat20260913_finish.log，不手动再启动第二颗诊断。

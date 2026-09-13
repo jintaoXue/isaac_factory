@@ -1,4 +1,66 @@
 {
+  "vector_gat_seed43_training_and_automatic_completion_live_20260913": {
+    "status": "seed43_epoch21_training_live_bounded_diagnostic_completion_waiting_for_existing_training",
+    "training_source_commit": "979c680fb4d1919ae760cdfb0038f69fb7cc6708",
+    "seed43": {
+      "training_pane_pid": 472305,
+      "actual_python_pid": 486258,
+      "latest_observed_epoch": 21,
+      "model_training_loss_match_preflight": true,
+      "prior_joint_archive_members_verified": 11
+    },
+    "continuation": {
+      "source_commit": "f41d3e983c822c36e334ae1305daad9f195f345e",
+      "file": "baseline_vector_gat_finish20260913.py",
+      "bytes": 7505,
+      "sha256": "bb6592c809cd35e72bc89c195376ce0622f6f52755712462edb4359fd3c24f08",
+      "pane_pid": 496576,
+      "python_pid": 496579,
+      "log": "vectorgat20260913_finish.log",
+      "latest_state": "WAITING_FOR_EXISTING_SEED43_TRAINING_NO_RESTART",
+      "training_wait_bound_seconds": 7200,
+      "training_restart_allowed": false,
+      "sequence": [
+        "wait_for_existing_training_exit_zero_and_both_training_snapshot_aggregate",
+        "same_frozen_driver_seed43_four_diagnostics",
+        "verify_two_seed_files_and_joint_archives_and_B4_unchanged",
+        "verify_eight_diagnostic_files_and_six_full_dataset_hashes",
+        "write_full_batch_aggregate"
+      ],
+      "final_output": "baseline_dense_vector_gat_metrics_20260913.json",
+      "final_pane_exit_status_requires_later_independent_check": true
+    },
+    "launch_record": {
+      "file": "baseline_vector_gat_finish_launch20260913.json",
+      "bytes": 581,
+      "sha256": "6e8f9e0c348684bebf3def7ca34fb92d43e00bcd40c150c06332835ba31bf9b6"
+    },
+    "seed42_miss_audit": {
+      "order": [
+        "best_train",
+        "best_validation",
+        "last_train",
+        "last_validation"
+      ],
+      "upcoming_probability_misses": [
+        582,
+        142,
+        335,
+        142
+      ],
+      "upcoming_timing_misses": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "do_not_manually_launch_duplicate_seed43_diagnostics": true,
+    "server_checkout_unchanged": true,
+    "test_evaluated": false,
+    "main_repository_modified": false,
+    "goal_met": false
+  },
   "vector_gat_seed42_four_frozen_diagnostics_completed_20260913": {
     "status": "B5_seed42_training_and_four_frozen_diagnostics_completed_and_independently_verified_seed43_training_live",
     "training_source_commit": "979c680fb4d1919ae760cdfb0038f69fb7cc6708",

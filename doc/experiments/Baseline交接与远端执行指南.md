@@ -11,8 +11,11 @@ diag pane489190退出0。两层实际动态排序在全部595/145个train/valida
 原标量GAT的邻居排序限制。正式best=3/145（父near=1/145），seed43训练仍在继续。
 四诊断汇总536937 bytes，SHA 02c92f54bf9361efdf0a59ce1277c075fdbc1704f44c9d50658f5c7f4385b256；
 独立复核4675 bytes，SHA ee18d021d94092f5d3c9c15de8f9f1d7e7b023a3d152d6d58023f0f144c5dc6f。
-详见39.6；服务器固定979c680，禁止pull或重跑seed42，下一步待seed43训练结束后
-用同一8677-byte frozen driver做其四份诊断，最后核验两seed和六数据全量SHA。
+详见39.6–39.7；seed43已核验至epoch21，实际Python486258/训练pane472305。
+自动接续现已启动：diag pane496576、Python496579，日志vectorgat20260913_finish.log，
+正在等现有训练正常终态，不重启训练；随后自动做seed43四份诊断及八诊断/两seed/
+六数据全量SHA汇总。服务器固定979c680，禁止pull或手动再启动seed43诊断。
+接续7505-byte脚本来自f41d3e9；最终汇总如生成，仍须在退出后独立核验pane状态。
 未改主仓库、未用test，原目标仍未完成。
 
 此前vector_gat B5 seed42已正常结束，best8/total28，正式P/R/F1为
