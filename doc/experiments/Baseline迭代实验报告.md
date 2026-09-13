@@ -5224,3 +5224,5 @@ validation按will15 F1及P≥.8/R≥.7选模、按参考阈值流程选阈值；
 ### 52.7 逐轮选模轨迹：是否丢掉了高 upcoming 模型
 
 **52.7 新增纯历史检查（不改选模）：**原pane1037530/实际Python已重新确认live，B5 Start5最新观察9轮，服务器runtime仍6289761。B4保存的41轮history已按阶段记录SHA核对：正式best1命中32/431；逐轮原阈值下最高35/431（8.12%，epoch18），该轮整体P约.5922、F1约.5068；只有3轮比best多命中，末轮16/431。未发现高upcoming模型被will15选模漏掉；这个上界只覆盖已保存轮次/原阈值，不是其他阈值或架构上限。训练总损失首末3.80065→.98215，验证1.46066→2.99723，与训练后验证恶化一致；train是重采样损失、val是原始窗口，不从损失推断训练召回。新增analyze_baseline_matched_history.py及5项本地检查通过，服务器冻结源码执行/历史审计产物尚待生成。保留全部旧结果与当前五项训练，不重跑B4或旧诊断。
+
+服务器执行补记：新增analyze_baseline_matched_history.py已通过本地/服务器各5项检查，固定Git对象552b888执行完成并回读核验。历史审计baseline_matched_b4_start5_history_audit20260913.json为26513 bytes，SHA 93d272adeeb2e572ad504faa0845d5c388be6e2eb94bbc170c083690c3666bd8；5项服务器检查产物1442 bytes，SHA a7be6ce63b96568f9834de0e1749d4b9dc7214c80d8301772c5d042316074757。该方向已完成，不重复分析或更改正式选模。 逐文件回读确认审计status=completed_history_audited，最高仅epoch18的35/431，整体precision=.5922131147540983、F1=.5067952652345461。当前原pane1037530/ps Python仍live（16分33秒），B5 Start5日志至17轮，无Traceback，runtime6289761 tracked clean。历史审计既未forward也未重新选权重，不重复正式B4验证或训练。其他五项未完成，原目标保持未达成。
