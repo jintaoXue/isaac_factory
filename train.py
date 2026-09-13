@@ -143,7 +143,7 @@ parser.add_argument(
     "--algo_variant",
     type=str,
     default=None,
-    help="Version tag for wandb/metrics: T0|T1|T1R|T1RH|T2.",
+    help="Journal tag: E1|E2|E3|E3-no-oru|E4|E4-no-oru|E*.5|… (asserted knobs in HierarchicalTPA).",
 )
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument(

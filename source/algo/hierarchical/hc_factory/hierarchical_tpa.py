@@ -147,11 +147,27 @@ class HierarchicalTPA:
         "E2": (False, False, 1.0, 1.0, False, True),
         "E2.5": (True, False, 2.0, 1.5, False, True),
         "E3": (False, False, 1.0, 1.0, True, True),
+        "E3-no-oru": (False, False, 1.0, 1.0, True, False),
         "E3.5": (True, False, 2.0, 1.5, True, True),
         "E4": (True, True, 2.0, 1.5, True, True),
+        "E4-no-oru": (True, True, 2.0, 1.5, True, False),
+        # Planned (assert when entry lands):
         "E5": (False, False, 1.0, 1.0, True, True),
         "E6": (True, True, 2.0, 1.5, True, True),
+        "E6-no-oru": (True, True, 2.0, 1.5, True, False),
+        "E6-no-guide": (True, True, 2.0, 1.5, False, True),
     }
+
+    @staticmethod
+    def _normalize_algo_variant(name: str) -> str:
+        """E1_5→E1.5, E3_no_oru→E3-no-oru; keep E3-no-oru / E1.5 as-is."""
+        v = str(name or "").strip()
+        if not v:
+            return v
+        # Half-credit line: E1_5 / E2_5 / E3_5
+        if len(v) >= 4 and v[0] == "E" and v.endswith("_5") and v[1:-2].isdigit():
+            return f"E{v[1:-2]}.5"
+        return v.replace("_", "-")
 
     def _assert_experiment_knobs(self, config: dict) -> None:
         """Fail fast on silent YAML/CLI drift for known journal variants."""
@@ -162,7 +178,7 @@ class HierarchicalTPA:
                 f"[Hier] WARN: hierarchical_credit=false → effective A=B=1.0 "
                 f"(ignored config credit_scale_A={raw_A} B={raw_B})"
             )
-        v = str(self.algo_variant or "").replace("_", ".")
+        v = self._normalize_algo_variant(self.algo_variant)
         expect = self._VARIANT_KNOB_EXPECT.get(v)
         if expect is None:
             return

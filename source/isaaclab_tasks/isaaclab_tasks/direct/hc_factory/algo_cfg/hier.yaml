@@ -106,20 +106,23 @@ params:
     curriculum: False
     curriculum_start_stage: 0
     t_max_anchor: 64000
-    # ORU (T1/T2): offline warmup then decaying mix into online hard train
+    # ORU (E2+): offline warmup then decaying mix into online hard train.
+    # Ablation *-no-oru: keep oru=False (journal forces this; no catalog required).
     oru: False
     oru_warmup_updates: 0          # 0 = auto from offline size (≈5 epochs, clipped)
     oru_warmup_epochs: 5.0
     oru_warmup_min: 2000
     oru_warmup_max: 15000
-    oru_mix_start: 1.0             # right after warmup
-    oru_mix_decay_env_steps: 300000  # linear 1→0 over this many env steps
+    oru_mix_start: 1.0             # right after warmup; journal E2+ uses 0.25
+    oru_mix_decay_env_steps: 300000  # linear mix_start→0 over this many env steps
     oru_shrink_offline: True       # shrink offline buffer with mix_ratio
-    # E3 (+E): guided explore — ε branch mixes frozen teacher vs random
+    # Teacher explore / guide (E3+): ε branch mixes frozen teacher vs random.
+    # Ablation *-no-guide: teacher_explore=False.
     teacher_explore: False
     teacher_explore_ratio_start: 1.0
     teacher_explore_ratio_end: 0.0
     teacher_explore_decay_env_steps: 300000
+    # Journal algo_variant tags (asserted in HierarchicalTPA): E1…E4, E3-no-oru, E4-no-oru, …
     stagnation_l1: 400
     stagnation_l2: 600
     stagnation_l3: 800
