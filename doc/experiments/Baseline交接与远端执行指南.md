@@ -4,6 +4,10 @@
 
 ## 1. 交接状态
 
+**当前接续（新三档训练登记）：**用户确认要按新指标重新训练并跑一组结果。服务器已FF到78d206a，19项协议检查通过；真实208预检6/6通过且独立核验160个已有文件stat不变，原diag970601退出0，训练pane783323仍dead/exit0。预检35012 bytes，SHA 532d3b715d95106d54ba1fae01dc8bbc0e5d6995cfdda4ff2be2216b51281904；独立核验SHA 5d741a2f7317f9c762fcdc2b82c633124aba6e740824cb7766ca571d0ddae8e7。三档validation upcoming分母431/764/892，不能再用旧145比较命中数。
+
+新队列入口train_baseline_matched_curriculum.py已实现，本地33项定向检查通过。B4/B5各seed42，own near Start2 best→Start5→Start10→Start15；每档max100/patience40、will15选模、train/validation评估，test禁用。保留原GRU128/near及骨干；15→20只重置3个形状变化的未来头张量。采用参考共有的4倍事件窗采样、upcoming权重9/10/11、FP2.5与remain_len .5，保留baseline损失/解码路径和原各自LR/batch。累计记录旧父12/26实际训练轮次及后续所有轮次，不能称为纯架构单因素或与主模型完全等更新实验。只从实际训练轮次选模，无额外epoch0候选。原目录复用、先验证归档再移除松散文件；部分运行拒绝自动重启。服务器登记/真实父权重加载检查与正式开训待执行，当前还没有新训练成绩。详见长报告§52及JSON最新登记。
+
 **最新用户定档：保留208，完整对齐新三档评估协议。**用户已明确采用 dev_tyx 最新 start≤5/10/15、Min8、20格标签及 will15 主指标，暂时忽略双方数据来源差异；不再等待 clean 包或更换为旧204包。保持B4/B5骨干，20格下起点索引13–15被过滤的参考边界如实保留。新协议模块、原数据内存视图、四类原因评估、分段/加权剩余时间、will选阈值与选模已实现；本地19项新协议/旧口径检查及15项回归、6子检查通过。真实208完整标签计数和两骨干预检入口已实现，尚待部署执行；没有新训练。旧协议默认不变，新结果需单独标版本，不能把换任务带来的分数变化当作原upcoming问题已解决。
 
 **既有54条采样核验已回读完成。**通过UU独立Leo SSH核验：baseline仍dev_xwt@90a41a5、tracked clean；主仓库只读核验为dev_tyx@7b2ab39、tracked clean。原783323/840337均dead/exit0。`baseline_data_quantity54_plan_verification20260913.json`为1016 bytes，SHA `f16bc527d3976f7aee7d771aea65ed6394945a883834f90c2818e9011c3761be`；54-fit9050窗口，21 raw run；实际torch2.7.0+cu128 CPU sampler与参考序列/RNG一致，18095次呈现=9045样本两次+5样本一次；无forward/训练/test评估。旧“结果未回读”为历史状态，第49节数量训练仍未启动，当前优先新三档协议。

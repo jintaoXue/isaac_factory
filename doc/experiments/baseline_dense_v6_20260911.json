@@ -1,4 +1,126 @@
 {
+  "matched_curriculum208_20260913_registered": {
+    "status": "implemented_registered_locally_not_yet_launched",
+    "source_protocol_commit": "78d206a9ff3edae737d15a47babbe1a465453a5a",
+    "preflight": {
+      "file": "baseline_matched_protocol_preflight20260913.json",
+      "sha256": "532d3b715d95106d54ba1fae01dc8bbc0e5d6995cfdda4ff2be2216b51281904",
+      "bytes": 35012,
+      "model_checks": 6,
+      "protected_files": 160,
+      "server_protocol_tests": 19,
+      "verification_sha256": "5d741a2f7317f9c762fcdc2b82c633124aba6e740824cb7766ca571d0ddae8e7"
+    },
+    "label_counts": {
+      "5": {
+        "train": [
+          23859,
+          3864,
+          1753,
+          296321
+        ],
+        "validation": [
+          5439,
+          874,
+          431,
+          67121
+        ]
+      },
+      "10": {
+        "train": [
+          23859,
+          3909,
+          3109,
+          294920
+        ],
+        "validation": [
+          5439,
+          884,
+          764,
+          66778
+        ]
+      },
+      "15": {
+        "train": [
+          23859,
+          3924,
+          3624,
+          294390
+        ],
+        "validation": [
+          5439,
+          886,
+          892,
+          66648
+        ]
+      }
+    },
+    "label_count_order": [
+      "samples",
+      "ongoing",
+      "upcoming",
+      "negative"
+    ],
+    "cold_start_zero_upcoming": {
+      "train": 304,
+      "validation": 73
+    },
+    "seed": 42,
+    "tasks": [
+      [
+        "B4",
+        5
+      ],
+      [
+        "B5",
+        5
+      ],
+      [
+        "B4",
+        10
+      ],
+      [
+        "B5",
+        10
+      ],
+      [
+        "B4",
+        15
+      ],
+      [
+        "B5",
+        15
+      ]
+    ],
+    "initialization": "own archived near Start2 best then 5 then 10 then 15, weights only",
+    "parent_actual_epochs": {
+      "B4": 12,
+      "B5": 26
+    },
+    "parent_actual_steps": {
+      "B4": 11940,
+      "B5": 38792
+    },
+    "max_epochs_per_task": 100,
+    "patience": 40,
+    "event_sampling_factor": 4,
+    "upcoming_positive_weights": [
+      9,
+      10,
+      11
+    ],
+    "event_fp_weight": 2.5,
+    "remain_len_loss_coefficient": 0.5,
+    "backbone": "unchanged GCN/GAT + GRU128, near readout",
+    "reinitialized_horizon_tensors": 3,
+    "checkpoint_candidates": "trained_epochs_only",
+    "final_train_evaluation": "unweighted exhaustive once at frozen validation threshold",
+    "training_budget_caveat": "own parents, different LR/batch and baseline loss paths; not pure architecture or identical optimizer-update comparison",
+    "local_checks": 33,
+    "test_evaluated": false,
+    "new_training_started": false,
+    "root_cause_resolved": false
+  },
   "matched_protocol208_20260913_registered": {
     "user_decision": "Keep the existing 208 episodes; temporarily ignore cohort provenance differences; fully align the latest start<=5/10/15 evaluation tasks.",
     "reference_commit": "7b2ab393e838c1b54a78b2f125d41e0066d53ce0",

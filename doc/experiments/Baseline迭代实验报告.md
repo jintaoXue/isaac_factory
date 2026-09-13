@@ -5148,3 +5148,34 @@ B5 seed43训练快照SHA 6f776fb0e6ead4e776738a9502d78afbbab2c549a35b992a3bef58c
 5. 按§50保持baseline架构与对照身份，不复制主模型专有状态嵌入等设计。主.633为另一包的98个upcoming，baseline为145，对应主原始配套权重/配置尚缺；当前不能把数量级差距归因于某个主组件。
 
 接续顺序：先核对49.2已提交采样核验的现有终态；实现/预检54对107等更新数据量诊断，复用全部107父预测，原31/30评估集固定。若该比较不能支持数据量解释，再登记保持原架构的特征依赖/训练机制诊断，根据证据决定训练或采样改进，不盲目追加模块或超参搜索。严格主/基线架构归因仍需要匹配主实验包；不重复已完成主目录搜索。没有使用test调参，没有修改主实验仓库。
+
+
+## 52. 固定208，按最新Min8三档任务训练与评估
+
+用户已明确保留我们的208个episode并暂时忽略双方来源差异；完整采用dev_tyx@7b2ab39的Start≤5/10/15、Min8、20未来格和will15主指标。§51暂停已被本次继续训练请求覆盖，第49节数量诊断仍不重跑。保持第50节架构边界，不复制主prefix/hazard/occupancy-union/状态嵌入。
+
+### 52.1 已完成真实数据预检
+
+协议实现78d206a已部署服务器baseline dev_xwt；主仓库只读核验仍为dev_tyx@7b2ab39。服务器19项协议检查通过，完整train/validation标签计数、两骨干各三档CUDA forward/backward及真实评估路径全部通过。6/6只是可运行性检查，随机初始化输出不是性能成绩；无optimizer、无训练权重、无test索引。独立核验160个既有文件stat不变，diag970601正常退出0，原训练pane783323仍退出0。
+
+| cap | train ongoing/upcoming/negative | validation ongoing/upcoming/negative |
+|---|---|---|
+| 5 | 3864 / 1753 / 296321 | 874 / 431 / 67121 |
+| 10 | 3909 / 3109 / 294920 | 884 / 764 / 66778 |
+| 15 | 3924 / 3624 / 294390 | 886 / 892 / 66648 |
+
+每档仍为train23859、validation5439窗口；有效工位观察301938/68426。冷历史未来首格起热的upcoming均为304/73。参考K20/Min8导致cap15仍无起点索引13–15正例，按用户决定保留共同边界，不单方扩大23格。
+
+预检产物baseline_matched_protocol_preflight20260913.json，35012 bytes，SHA 532d3b715d95106d54ba1fae01dc8bbc0e5d6995cfdda4ff2be2216b51281904。独立核验baseline_matched_protocol_preflight_verification20260913.json，SHA 5d741a2f7317f9c762fcdc2b82c633124aba6e740824cb7766ca571d0ddae8e7。
+
+### 52.2 六阶段训练登记，尚未启动
+
+按B4s5、B5s5、B4s10、B5s10、B4s15、B5s15串行，均seed42。各自读取既有model_before_onsetaux20260912.zip内near Start2 best，后续只读本模型上一档best。B4父best2/total12、11940更新；B5父best6/total26、38792更新。旧父训练预算全部累计，选中轮次另列，不假装父只训练到best。新每档最多100轮、patience40；与主runner同样只比较实际训练轮次，不追加epoch0选模候选。
+
+保持GCN/GAT+GRU128、last_mean、near，无额外主组件。15→20只重新初始化remain_time_embedding及event_start_head末层权重/偏置，其他张量按同形状复制；之后两个阶段所有张量完全继承，优化器重置。增加严格的同seed、同manifest、配置、来源、历史完整性、选中验证指标、归档SHA及累计更新验证，异常不自动重训。
+
+共有训练配置取参考事件窗4倍有放回采样，upcoming正例权重9/10/11、事件FP2.5、remain_len .5及进度权重.25+.75×progress^1.5。原baseline各自LR、batch和损失/解码路径保留，不添加主专有hard-negative/far-start/union机制。此批对齐任务和评估，并采用对应课程与每阶段预算；旧父预算和实际更新次数、损失路径仍不同，不能声称是排除了全部训练差异的纯架构实验。
+
+validation按will15 F1及P≥.8/R≥.7选模、按参考阈值流程选阈值；同时保存严格report F1@1/@2/@3、who/strict upcoming及原因四类、剩余时间分段/加权和全局MAE。选定best后全部train窗口各评一次，使用冻结validation阈值，不用训练过采样器复评、不用test。
+
+入口train_baseline_matched_curriculum.py的prepare只登记与检查旧权重，不forward/训练；run复用两个seed42目录，每档先验证归档再移除当前松散产物。每档保存独立JSON，后续归档保留全部模型/指标，整批结果baseline_matched_protocol_training20260913_results.json。旧seed43和已有诊断不动。本地33定向检查通过，包含真实B4/B5权重迁移、连续阶段累计预算与损坏/错来源拒绝、原协议回归。服务器prepare、父权重实际加载和正式开训仍待执行；此刻没有新召回结果。

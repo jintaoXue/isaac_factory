@@ -50,6 +50,7 @@ from .precursor import attach_precursor
 class TorchTrainConfig:
     training_profile: str = "baseline_fair_v2"
     evaluate_test: bool = True
+    evaluate_train: bool = False
     batch_size: int = 16
     max_epochs: int = 50
     patience: int = 25
@@ -823,12 +824,18 @@ def train_torch_baseline(
     train_config: TorchTrainConfig | None = None,
     loss_config: MultiTaskLossConfig | None = None,
     warm_start_checkpoint: Path | None = None,
+    warm_start_archive: Path | None = None,
 ) -> dict[str, Any]:
     """Train one B3-B5 model and evaluate it with the shared protocol."""
     dataset_dir = dataset_dir.resolve()
     output_dir = output_dir.resolve()
     train_config = train_config or TorchTrainConfig()
     loss_config = loss_config or MultiTaskLossConfig()
+    if warm_start_archive is not None and (
+        warm_start_checkpoint is not None or train_config.evaluate_test
+        or train_config.evaluation_protocol != matched_protocol.VERSION
+    ):
+        raise ValueError("Archive warm start is only for the matched validation-only curriculum")
     if train_config.evaluation_protocol == matched_protocol.VERSION and not output_dir.is_dir():
         raise ValueError("Matched runs must reuse an existing output directory")
     if warm_start_checkpoint is not None and train_config.evaluate_test:
@@ -891,6 +898,16 @@ def train_torch_baseline(
             seed=train_config.seed,
             dataset_manifest_sha256=_manifest_hash(manifest_path),
             train_sample_count=len(payload["split_indices"]["train"]),
+        )
+        model.load_state_dict(state, strict=True)
+    if warm_start_archive is not None:
+        from .matched_warm_start import load_matched_archive_parent
+        state, parent = load_matched_archive_parent(
+            warm_start_archive, model_kind=model_kind, model_config=model_config.to_dict(),
+            config_class=config_class, initial_state=model.state_dict(), seed=train_config.seed,
+            dataset_manifest_sha256=_manifest_hash(manifest_path),
+            train_sample_count=len(payload["split_indices"]["train"]),
+            max_start=train_config.event_max_start_windows,
         )
         model.load_state_dict(state, strict=True)
     trainable_parameter_count = sum(
@@ -987,7 +1004,7 @@ def train_torch_baseline(
     epochs_without_improvement = 0
     started_at = time.time()
     initial_metrics = None
-    if parent is not None:
+    if parent is not None and train_config.evaluation_protocol != matched_protocol.VERSION:
         initial_metrics, _, _ = _evaluate_loader(
             model, loaders["validation"], loss_config, pos_weight, device,
             model_config.num_causes, cause_classes=cause_classes,
@@ -1233,6 +1250,19 @@ def train_torch_baseline(
             validation_confusion,
         )
     }
+    if train_config.evaluate_train:
+        # Evaluate every training window once at the frozen validation threshold.
+        # The training sampler may draw with replacement and must not be reused here.
+        train_evaluation_loader = DataLoader(
+            loaders["train"].dataset, batch_size=train_config.batch_size,
+            shuffle=False, num_workers=train_config.num_workers,
+        )
+        evaluations["train"] = _evaluate_loader(
+            best_model, train_evaluation_loader, loss_config, pos_weight, device,
+            model_config.num_causes, cause_classes=cause_classes, cause_majority=cause_majority,
+            event_threshold=event_threshold, hot_threshold=train_config.hot_eval_threshold,
+            occupancy_type_masks=occupancy_type_masks,
+        )
     if train_config.evaluate_test:
         test_metrics, test_arrays, test_confusion = _evaluate_loader(
             best_model,
