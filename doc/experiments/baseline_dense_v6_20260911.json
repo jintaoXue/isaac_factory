@@ -1,4 +1,98 @@
 {
+  "representation_transfer_analysis_completed_20260913": {
+    "status": "two_cached_analyses_completed_and_independently_checked",
+    "source_commit": "f0090c797d71281c945726e103e39a64537ca6df",
+    "source_sha256": "479d43109bbd15a6737a6b639cf101082fa87c1f93a3d7a3182318bc790593bd",
+    "runtime_commit": "979c680fb4d1919ae760cdfb0038f69fb7cc6708",
+    "panes": [
+      585575,
+      585571
+    ],
+    "exit_codes": [
+      0,
+      0
+    ],
+    "fixed_centroid_AP_order": [
+      "train_in_sample",
+      "train_reference_episode_excluded",
+      "validation_train_only"
+    ],
+    "fixed_centroid_AP": {
+      "raw_summary": [
+        0.00648659,
+        0.00560633,
+        0.01856326
+      ],
+      "b4_backbone": [
+        0.15969866,
+        0.15597322,
+        0.01212895
+      ],
+      "b4_event_input": [
+        0.14797274,
+        0.14400098,
+        0.01220315
+      ],
+      "b5_backbone": [
+        0.20860964,
+        0.2028873,
+        0.00811197
+      ],
+      "b5_event_input": [
+        0.19487247,
+        0.18953134,
+        0.00832665
+      ]
+    },
+    "AP_values_rounded_to_eight_decimals": true,
+    "nearest_nonself_same_training_episode": {
+      "raw_summary": 245,
+      "b4_backbone": 377,
+      "b4_event_input": 376,
+      "b5_backbone": 394,
+      "b5_event_input": 389,
+      "total_upcoming": 595
+    },
+    "artifacts": [
+      {
+        "file": "baseline_repr_transfer_b4s42_last20260913.json",
+        "bytes": 1744090,
+        "sha256": "9eb690dba3f6e5f0a544c1274e2486f72eb3999164579f36a315ef9aa1927350"
+      },
+      {
+        "file": "baseline_repr_transfer_b5s42_last20260913.json",
+        "bytes": 1744389,
+        "sha256": "ed290623a88742c8f16885b08b6a0d91fa48746aa4d769a1b21200fa894829b6"
+      },
+      {
+        "file": "baseline_repr_transfer_verification20260913.json",
+        "bytes": 14544,
+        "sha256": "f02a22360b1a89f7356fec2e9a42c334412ff0d548ab9a20a397364bfc0bed6f"
+      }
+    ],
+    "model_forward": false,
+    "model_training": false,
+    "test_evaluated": false,
+    "goal_met": false,
+    "interpretation": "Generalization gap is already observed at the backbone representation, before event projection. This is not a nonlinear-information or architecture upper bound."
+  },
+  "temporal_regularization_locations_audited_20260913": {
+    "status": "actual_two_seed42_last_checkpoints_inspected_no_forward",
+    "gru_layers": 1,
+    "gru_hidden": 128,
+    "gru_dropout": 0.0,
+    "spatial_dropout": 0.2,
+    "extra_readout_dropout": false,
+    "file": "baseline_temporal_regularization_audit20260913.json",
+    "bytes": 3008,
+    "sha256": "4772ba27cc5b36a43d4126a213f20176838d0524a91a36811e9715b9dec9acdf",
+    "next_hypothesis": "Controlled training-only dropout on shared temporal readout; not implemented or registered as a training candidate",
+    "not_proof_of_root_cause": true,
+    "model_forward": false,
+    "model_training": false,
+    "test_evaluated": false,
+    "goal_met": false
+  },
   "event_representation_exports_completed_20260913": {
     "status": "four_exports_independently_verified_both_panes_exit_zero",
     "source_commit": "d79a09357fa14fc277d904a1b969ef4409dc7101",

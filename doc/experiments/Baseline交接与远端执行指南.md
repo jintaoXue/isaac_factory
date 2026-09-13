@@ -4,15 +4,17 @@
 
 ## 1. 交接状态
 
-**当前最新状态（以下旧“此前”段落均为历史）：**全部已登记训练及最新16份固定权重分层诊断已正常结束并独立核验；两项分层pane549093/549099均已退出0；其后状态诊断pane567897也退出0，无相关Python。服务器仍dev_xwt@979c680、tracked clean，28当前模型文件和6数据stat未变，未用test。修复driver后复用了先完成的两份输出，旧失败日志/驱动保留，没有重训。
+**当前最新状态（以下旧“此前”段落均为历史）：**所有已登记训练、16份故障/支持分层、历史状态统计、4份神经表示导出和两项表示迁移分析均完成并独立核验。最新B4 pane585575/B5 pane585571均退出0，无相关Python。服务器仍dev_xwt@979c680、tracked clean；28当前模型SHA及6数据stat未变，主仓库未改、test未评。
 
-**先查去重索引：[Baseline_upcoming排查台账.md](Baseline_upcoming排查台账.md)。** 该表分别记录当前208训练、只读诊断、旧134实验和未解假设；不要重复已完成搜索。完整分层结果见长报告42.2及JSON `schedule_strata_diagnostics_completed_20260913`。
+**先查去重索引：[Baseline_upcoming排查台账.md](Baseline_upcoming排查台账.md)。** 当前208训练、诊断、旧134搜索及未解假设分开记录；禁止重复已完成搜索。四份`baseline_repr_{b4,b5}s42_last_{train,validation}20260913.npz`供后续复用，禁止重复对应forward。
 
-当前B4 joint_onset best upcoming为0/145、1/145，B5 vector_gat best为3/145、2/145，仍无稳定可采用提升。last仅用于诊断：在**没有匹配未来同工位runtime启动**的组，B4 train命中103/296、147/296，对应validation为1/65、2/65；B5 train为189/296、135/296，对应validation均1/65。严重泛化差距不只出现在未来局部故障组。B5有训练节点×scenario起点支持的123个验证目标也仅命中3个；零支持22个不能独自解释。新旧计划兼容类别内也仍有AP差距，生成规则混合不是已证实根因。
+**最新定位（44.3）：泛化差距在骨干输出阶段已经存在。** 固定类中心读取B4骨干AP train=.15970/validation=.01213，B5=.20861/.00811；后续context/precursor投影前后变化小。共同原输入84维摘要AP train=.00649/validation=.01856，两模型逐值一致。训练的最近邻属于同episode的upcoming由原输入245/595增至B4骨干377/595、B5骨干394/595。支持继续定位表示层过拟合，不能只把问题归于最后阈值；这些统计仍不是完整输入信息或架构上限的证明。
 
-整批独立核验baseline_schedule_strata_final_verification20260913.json，22114 bytes，SHA c1837f569cb50023ec8647a473440ca406b96be61b360463f9a174db9c2ce340。诊断源码878082e，修复驱动6a6f5b0；服务器3+1测试、本地7tests/6subtests已通过。原始预测的分数/计数/AP逐份复现，模型权重未变。
+四表示独立核验`baseline_repr_exports_verification20260913.json`：3320 bytes，SHA d9971652a72fc24eb6388482e9c28382fcab226b2d0e76f8f7bd96f269e35f3d。两项缓存分析独立核验`baseline_repr_transfer_verification20260913.json`：14544 bytes，SHA f02a22360b1a89f7356fec2e9a42c334412ff0d548ab9a20a397364bfc0bed6f。导出源码d79a093、分析源码f0090c7，分别本地/服务器各4测试通过；分析没有模型forward或训练。
 
-**当前解释：泛化差距已确认；过拟合的具体原因和架构因果归属未定。** 历史物理状态/episode留一诊断也已完成并独立核验（43.1）：本地与服务器各4测试通过，pane567897退出0，无相关Python；实际输入与原始参考状态差异为0。节点×两帧状态AP train=.00884、留episode=.00556、validation=.00635，没有复现神经模型数量级泛化差距。它是固定规则统计探针，不是新的B4/B5训练候选；不重跑。第44.1节四份表示缓存已全部导出并独立核验：B4 pane579375/B5 pane579371均退出0，无相关Python；原指标复现，两个模型原输入摘要逐值相等。独立核验3320 bytes、SHA d9971652a72fc24eb6388482e9c28382fcab226b2d0e76f8f7bd96f269e35f3d。禁止重复四次forward。44.2固定类中心/近邻分析本地4测试通过，待服务器测试与一次分析，尚未登记新训练。主正式prefix8文档up_r=.633但n_up=98，baseline为145；尚缺对应dense原始权重/配置/共同包，不能把当前主源码所有组件当作prefix8实际组件。数据生成规则差异不是张量格式损坏（40–41节）。保持固定208继续开发，目标尚未达成。
+**下一项尚未实施的假设（44.4）：共享时序表示的训练正则化。** 实际checkpoint均单层GRU128、gru.dropout=0，现有p=.2在空间/输入处，读出路径没有额外dropout。已有AdamW/早停仍有效，不能称整个网络无正则，也未证明这是根因。尚未实现或登记具体训练配置，不能声称有新训练在跑。若继续，先明确单项父对照、参数/评估不变与真实数据预检；不自动重跑旧加权、onset或图层变体。
+
+当前正式B4 joint_onset best upcoming仍0/145、1/145，B5 vector_gat best仍3/145、2/145，尚无稳定可采用提升。last仅用于诊断，两者为不同负消融，不能当作骨干单因素比较。主prefix8文档.633的n_up=98，baseline=145；对应dense权重/原始配置/共同包仍缺，不能把当前主源码组件全部当作prefix8实际组件。保持固定208开发，原目标仍未达成。
 
 此前vector_gat B5 seed42训练及四份冻结诊断均已完成并独立核验，
 diag pane489190退出0。两层实际动态排序在全部595/145个train/validation upcoming
