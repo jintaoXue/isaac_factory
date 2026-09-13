@@ -4854,3 +4854,14 @@ AP表保留8位小数，精确值在服务器完整JSON；AP不是正式召回�
 B4完整baseline_episodeholdout20260913_b4s42_complete.json：1837618 bytes，SHA 77c45d0250c7ac44c63c224266d2143613f9e8d57d7a9a94e1e60d2ec858b0d5。支持分组baseline_episodeholdout20260913_b4s42_support_strata.json：7708 bytes，SHA 369324c208cc9d6613af2e8c8e87ea4a3e72b50b44e4eb5cdb58807051e5ae93。5服务器检查baseline_episodeholdout20260913_support_strata_tests.json：669 bytes，SHA fb6a895f99fc11a03b171570ff3675d2f3a378b96165ec54115f2078215dc74a。独立终态baseline_episodeholdout20260913_b4_complete_verification.json：7494 bytes，SHA 008d408c3e7771e14ab75cdefcf248e3f8e6da5ea215de9095f1c37f2f6870c5。上表/分位数是屏幕精简显示的舍入值，完整精度保存在上述server JSON。
 
 核验时B5已到第3/60轮，原712854与自动bootstrap等待727985均live，运行checkout仍EE。继续等待B5原60轮+9视图，之后执行已部署且5检查已通过的analyze_holdout_support_predictions.py --source_commit 9551920bfe8994a64a481002df781291632dfd5a --model b5一次；B5支持分组没有另外挂等待器，需要接续时确认完成后运行。全18视图episode bootstrap仍由原727985自动接续，不手动再开。B4所有训练/诊断/分组均完成禁止重跑，test未用，原目标仍未达到。
+
+
+### 46.12 用已保存AP检验单一概率尺度解释，不重扫阈值
+
+B4未见正例概率随训练趋近0，但低召回是否仅因阈值尺度不合适需要单独限定。旧34节两头前沿针对138-train的另一批权重，不能当作本轮107-fit三checkpoint的数值。新增bound_holdout_probability_calibration.py只读每模型完整9份JSON中的AP和U/O计数，不读NPZ或forward、不选择/扫描概率阈值，给出整体report precision≥.80时、单一全局阈值或保持排序的单调校准的必要上界。
+
+令U为upcoming总数、O为ongoing总数、h为某阈值正确报告的upcoming。即便给所有ongoing正确报告，TP≤O+h。P≥4/5要求FP≤floor((O+h)/4)=F。在去掉ongoing的upcoming-vs-negative排序中，该阈值至少包含h个正例、至多F个负例；第j个正例的精度贡献至少j/(F+j)，所以AP≥sum(j/(F+j),j=1..h)/U。概率同分的组精度也不小于这个把所有负例提前放置的下界。忽略阈值后的全部正例、允许所有ongoing及起点完美，都让该条件偏乐观；因此最大满足条件的h只是可能命中的上界，不是可达到的具体阈值性能。
+
+适用范围仅固定同一事件分数的全局阈值/单调重标度；节点特定校准、增加头或特征、重新排序/重训均在范围外。该界不能称为信息或架构上限。使用已固定的整体P≥.80要求，不拿算出的h选择checkpoint、阈值或参数；不变更既有.70诊断报告。
+
+4项本地检查通过，包括3up/2ongoing/2negative的全部210种排序、32种正例起点成功组合与7个阈值逐一验证可行命中不超过界；另查同分、ongoing精度余量、低AP和参数拒绝。当前源码/推导/本地检查完成，服务器检查及实际B4代入待执行。B5实时核验第11轮，原712854/727985仍live，旧任务不重跑。

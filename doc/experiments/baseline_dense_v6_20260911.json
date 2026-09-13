@@ -1,4 +1,20 @@
 {
+  "episode_holdout_probability_scale_bound_registered_20260913": {
+    "status": "four_local_tests_passed_server_analytic_bound_pending",
+    "source": "bound_holdout_probability_calibration.py",
+    "model_views": "each completed model all9 fixed views",
+    "required_overall_precision": 0.8,
+    "formula": "AP>=sum(j/(floor((O+h)/4)+j),j=1..h)/U for any threshold yielding h correctly reported upcoming, granting O perfectly correct ongoing",
+    "purpose": "Distinguish a single global probability scale issue from insufficient current ranking without selecting or scanning thresholds",
+    "tests": "All210 unique rank orders of3up/2ongoing/2neg;32 timing success assignments;7 thresholds, plus ties/cushion and validation cases",
+    "scope": "Necessary optimistic bound only; not an attainable threshold frontier, node-specific or multihead calibration, or architecture upper bound",
+    "model_training": false,
+    "model_forward": false,
+    "threshold_search": false,
+    "test_evaluated": false,
+    "goal_met": false,
+    "report_section": "46.12"
+  },
   "episode_holdout_b4_complete_and_support_strata_verified_20260913": {
     "status": "b4_fixed_training_nine_views_and_six_cached_support_strata_verified",
     "training_source": "ecc39e81c8f14483eaa50d90beea9743f9ac485c",

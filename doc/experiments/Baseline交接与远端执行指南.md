@@ -6,6 +6,8 @@
 
 **当前最新状态（46.11，以下旧阶段为历史）：**真正神经episode留出诊断的B4 seed42已完成60轮/45240更新、9视图及6缓存支持分组，并独立核验。第60轮fit AP=.93113、命中402/451，heldout AP=.007674/7/144，原validation AP=.007897/7/145；有同node×scenario正例支持者仍仅7/118与7/115，零支持均0命中，9视图upcoming起点漏报均0。这确认本次B4严重跨episode泛化失败，不仅原validation特殊或完全无类别支持；尚非架构上限/具体捷径的证明。原训练712854已自动接续B5，最新3/60轮；统计等待727985 live，等待两模型18视图后自动bootstrap。运行checkout保持EE，禁止pull/重启/重复B4。B5支持分组脚本已在D部署并通过5服务器测试，待B5完整9视图后只运行--model b5一次；没有另挂自动支持分组。原目标未完成，未用test。
 
+**概率尺度解析检查（46.12）：**bound_holdout_probability_calibration.py已登记并通过4本地检查；只用保存AP/计数求P≥.80时单一全局阈值/单调校准的乐观命中上界，不扫描阈值或重新forward。服务器检查及B4代入待完成，不能当作架构上限。B5最近实时观察11轮，原两pane live。
+
 **107-fit支持计数已完成（46.9）：**源码4273566通过4服务器测试及独立重计数，不forward或训练。fit有226独立起点/451窗口目标；两未见集各73独立起点。heldout和原validation的同工位×同scenario零正例支持分别26/144与30/145，剩118/115个有联合支持目标；单独node/scenario零支持均0。原validation没有明显更高的类别零支持比例，不能据计数证明可预测。审计及核验产物已在D，详见JSON最新key；原712854/727985仍live。
 
 **B4完整核验产物：**baseline_episodeholdout20260913_b4_complete_verification.json，7494 bytes，SHA 008d408c3e7771e14ab75cdefcf248e3f8e6da5ea215de9095f1c37f2f6870c5；完整B4汇总SHA 77c45d0250c7ac44c63c224266d2143613f9e8d57d7a9a94e1e60d2ec858b0d5。9NPZ/JSON、3权重、progress、48原模型/6数据stat/12源码均核验。B4 support strata源码9551920、产物SHA 369324c208cc9d6613af2e8c8e87ea4a3e72b50b44e4eb5cdb58807051e5ae93，不重复推理或分组。
