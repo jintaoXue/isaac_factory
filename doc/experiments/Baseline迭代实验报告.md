@@ -4792,3 +4792,12 @@ AP表保留8位小数，精确值在服务器完整JSON；AP不是正式召回�
 部署前确认原训练712854 live、旧diag705965已exit0、专用源码/日志/启动记录尚不存在；只将已结束的diag pane复用为727985，训练没有重启。新日志episodeholdout20260913_episode_analysis.log输出WAITING_FOR_EXISTING_TRAINING 712854|0|。等待器要求原PID、完整两模型汇总和训练pane exit0，才执行纯缓存统计；若训练提前停止则报错，不能自行重跑。完整命令保存在baseline_episodeholdout20260913_analysis_launch.json：4332 bytes，SHA 86c1abda1d2bd48a5a205259839a2c73a69410835dfd1e014f0a9aaa61b93960。
 
 独立读取实际727985命令、两live pane、分析源码SHA、4服务器检查记录及等待日志通过。核验文件baseline_episodeholdout20260913_analysis_wait_verification.json：695 bytes，SHA 07edec499c6cee79cfbe88f766e6f32e7acb4ea1641c6f44903d3704f4e2f45c。此时B4最新日志第31/60轮、loss1.073933892396314；这仍不是未见集性能。B5及18视图/统计尚未完成。后续预期产物baseline_episodeholdout20260913_episode_analysis.json与baseline_episodeholdout20260913_analysis_verification.json生成后仍须读取内容及核验终态，不能把已启动等待器当作分析已完成。原根因目标继续未达成，不用test、不改主仓库。
+
+
+### 46.7 实时等待与统计结论范围复核
+
+本次goal接续将上一轮归为实际进展（新增缓存统计已部署、4服务器测试及等待进程核验），当前对原handle再读：训练712854、等待727985均live，B4日志39/60轮，等待日志仍指向原712854。没有完整两模型汇总或未见集指标，不重启、不将等待当作根因已找到。
+
+只读实际冻结plan：三视图各21个raw run。每run episode数直方图，fit为{2:11,5:1,6:3,9:1,10:2,11:3}；heldout为{1:15,2:2,3:4}；原validation为{1:15,2:3,3:3}。因此46.5固定run的episode重采样对两未见集中各15个单例run没有抽样波动。该区间仍是已登记的条件性描述，但不能用它宣称跨新run、不同训练seed或不同留出分组的稳健性，也不能把零宽区间理解为没有不确定性。既有分析和训练协议不变，没有按结果修改分组或选择轮次。
+
+进一步核对现有源码而非重复数据审计：diagnose_upcoming_schedule_support.py::match_future_runtime显式要求event.target==onset.resource_id，故42节“无匹配同工位未来启动”仍允许其他资源新启动的影响，不能写成所有未来外部扰动已排除。factory_baselines.dataset::_split_groups在raw run内shuffle whole episodes，原validation不能预先称作按时间留出的较晚分布。上述是对既有证据适用范围的核验，不是新模型结论；主prefix8匹配原包仍缺，不据此重复主目录搜索或旧优化方向。

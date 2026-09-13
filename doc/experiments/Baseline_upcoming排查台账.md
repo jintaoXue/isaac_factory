@@ -70,3 +70,5 @@
 第46.5节已登记纯缓存episode统计：固定512次raw-run内整episode重采样，复用18新诊断，报告三个固定轮次的AP/召回及fit-heldout、heldout-original_validation差值区间。4项本地测试通过，尚未服务器执行；不重训、不forward、不选择最优轮次。B4最新日志25/60、pane712854 live；目前无新未见集指标。
 
 第46.6节最新接续：上述4项服务器检查通过，原训练712854继续至B4第31轮，新增等待pane727985已独立核验实际进程/来源/日志。它等待原两模型18视图和训练exit0后自动执行已登记缓存分析，提前训练失败则退出报错，不自动重训。尚无新未见集指标；不得重复启动。详见JSON `episode_holdout_cache_analysis_wait_started_verified_20260913`。
+
+第46.7节只读范围核验：三视图均21 raw run；heldout/原validation各15个singleton run，既有批次内bootstrap对这些run无重采样波动，不用条件区间声称跨run/seed稳健。原validation是run内随机分组，旧未来故障审计仅同资源匹配；不得误称所有外部冲击已排除。B4第39/60轮、两原pane live，无新训练/forward或未见集指标。

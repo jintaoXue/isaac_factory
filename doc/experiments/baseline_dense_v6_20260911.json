@@ -1,4 +1,45 @@
 {
+  "episode_holdout_live_wait_and_uncertainty_scope_20260913": {
+    "status": "verified_live_wait_and_bootstrap_scope_audit",
+    "training_pane": "712854|0|",
+    "analysis_wait_pane": "727985|0|",
+    "observed_training": {
+      "model": "b4",
+      "epoch": 39,
+      "max_epochs": 60
+    },
+    "runs_per_view": {
+      "fit": 21,
+      "heldout": 21,
+      "original_validation": 21
+    },
+    "episodes_per_run_histogram": {
+      "fit": {
+        "2": 11,
+        "5": 1,
+        "6": 3,
+        "9": 1,
+        "10": 2,
+        "11": 3
+      },
+      "heldout": {
+        "1": 15,
+        "2": 2,
+        "3": 4
+      },
+      "original_validation": {
+        "1": 15,
+        "2": 3,
+        "3": 3
+      }
+    },
+    "interpretation_limit": "Within-run episode bootstrap leaves singleton strata fixed; its conditional intervals do not measure new-run or training-seed uncertainty. Read all three prespecified checkpoints; never declare architectural ceiling from these intervals.",
+    "prior_audit_scope": "Future runtime join requires event target equal to onset resource; the no-matching-local-start subgroup does not exclude starts at other resources. Original validation is shuffled within raw runs, not a chronological late split.",
+    "new_training_or_forward": false,
+    "test_evaluated": false,
+    "goal_met": false,
+    "report_section": "46.7"
+  },
   "episode_holdout_cache_analysis_wait_started_verified_20260913": {
     "status": "cache_analysis_waiter_source_tests_and_actual_live_process_verified",
     "analysis_source_commit": "d4a92c1aaba81b3c4c6d54ec08f104fb4d89d698",
