@@ -1,4 +1,35 @@
 {
+  "episode_holdout_support_prediction_strata_registered_20260913": {
+    "status": "five_local_tests_passed_pending_complete_model_caches",
+    "source": "analyze_holdout_support_predictions.py",
+    "models": [
+      "b4",
+      "b5"
+    ],
+    "epochs": [
+      10,
+      30,
+      60
+    ],
+    "views": [
+      "heldout",
+      "original_validation"
+    ],
+    "groups": [
+      "zero_joint_support",
+      "positive_joint_support"
+    ],
+    "threshold": 0.7,
+    "start_tolerance": 3,
+    "fitting_support_source": "all independent onsets in107 fitting episodes, including cells that are negative-only in query views",
+    "read_only": true,
+    "model_training": false,
+    "model_forward": false,
+    "test_evaluated": false,
+    "selection": false,
+    "goal_met": false,
+    "report_section": "46.10"
+  },
   "episode_holdout_fitting_support_completed_20260913": {
     "status": "fitting_support_counts_independently_recomputed",
     "source_commit": "42735664e8e2c36482021fc3b2e1f8e7e3555a99",

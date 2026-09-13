@@ -4824,3 +4824,12 @@ AP表保留8位小数，精确值在服务器完整JSON；AP不是正式召回�
 审计baseline_episodeholdout20260913_fitting_support.json：56707 bytes，SHA 97b05d4f2a6f224a61865cc0aaa83772f6deee544274639f01bfd99e3cf52be4。四测试baseline_episodeholdout20260913_fitting_support_tests.json：580 bytes，SHA 9112783a053fd97c8ad87e79281dc73b65d33d69fe65fdae354b8c4cd61b4cfb。独立核验baseline_episodeholdout20260913_fitting_support_verification.json：598 bytes，SHA b665482580473af0fd76aa89e5eecd0a7a48ab54425f94c7b54f156eda31c2c4。完整stdout保留episodeholdout20260913_fitting_support_run.log。
 
 后续须先读三个预定轮次的神经诊断。若两个未见集都差，可复用本轮NPZ按零/正joint支持分组检查漏报是否仍在有支持目标中普遍存在；此时不是重做旧138-train权重的42节诊断，而是新107-fit神经权重的支持解释。当前还没有本轮未见分数，不认定模型架构限制或根因已找到。
+
+
+### 46.10 登记新权重的零/正joint支持缓存分组
+
+针对46.9计数，新增analyze_holdout_support_predictions.py。每个模型必须先完整完成60轮及9视图，之后只读6个未见视图缓存，固定10/30/60轮、.70阈值、起点容差3，按训练node×scenario独立起点支持为0或>0分组，报告upcoming/negative数量、AP、命中/召回、概率/起点漏报、正例概率分位数。两模型分文件保存，允许B4已完成后先分析其缓存，B5继续原训练；不重复任何forward，不选择轮次或改变模型，不把结果替换正式208分数。
+
+所有支持键必须从107-fit的完整独立起点重建，不能直接用46.9仅含query正例的coverage cell列表去划分negative，否则“query只有负例、fit有正例”的cell会被错分为零支持。本地代码审阅时即修正此未部署的分析路径，并加入明确反例测试。5本地测试通过：样本/节点身份正确、排除ongoing和无效节点；概率与起点漏报分解；query标签不改fit支持；空正例分组为未定义；完整fit cell包含负query类别且不借用heldout正例。已有46.9计数未用这种负例划分，不受影响。
+
+需要真实模型缓存出现后校验NPZ与JSON/完成汇总、固定split与源SHA，且分组总目标/命中/负例须复现canonical，零支持目标须复现26/30。当前源码/本地检查完成，服务器测试与分组执行尚待完成。
