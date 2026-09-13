@@ -1,4 +1,43 @@
 {
+  "episode_holdout_cache_analysis_wait_started_verified_20260913": {
+    "status": "cache_analysis_waiter_source_tests_and_actual_live_process_verified",
+    "analysis_source_commit": "d4a92c1aaba81b3c4c6d54ec08f104fb4d89d698",
+    "analysis_source_sha256": "368a4b13092173298f7a5619cab79f6dc74990ca207353ea5082f5ee757a57d6",
+    "runtime_commit": "ee838f59d2bdf2893a35ec00acae1308f9dd0e07",
+    "training_pane": "712854|0|",
+    "analysis_wait_pane": "727985|0|",
+    "observed_training_epoch": 31,
+    "model": "b4",
+    "seed": 42,
+    "training_log": "episodeholdout20260913_train_resume.log",
+    "analysis_log": "episodeholdout20260913_episode_analysis.log",
+    "server_tests": {
+      "count": 4,
+      "file": "baseline_episodeholdout20260913_analysis_server_tests.json",
+      "bytes": 660,
+      "sha256": "b9a84b3c81f0d7bc9830c62855141dbf8b992eec0f3602a3671cd07751b60bc0"
+    },
+    "launch": {
+      "file": "baseline_episodeholdout20260913_analysis_launch.json",
+      "bytes": 4332,
+      "sha256": "86c1abda1d2bd48a5a205259839a2c73a69410835dfd1e014f0a9aaa61b93960"
+    },
+    "independent_wait_verification": {
+      "file": "baseline_episodeholdout20260913_analysis_wait_verification.json",
+      "bytes": 695,
+      "sha256": "07edec499c6cee79cfbe88f766e6f32e7acb4ea1641c6f44903d3704f4e2f45c"
+    },
+    "wait_policy": "Reuse existing training 712854 only; require both models/18 views complete and training pane exit0 before running cache-only analysis. A premature stop fails explicitly without restarting training.",
+    "pending": [
+      "B4 fixed training and 9 diagnostic views",
+      "B5 fixed training and 9 diagnostic views",
+      "512-replicate whole-episode cache analysis and terminal verification"
+    ],
+    "test_evaluated": false,
+    "neural_training_restarted": false,
+    "goal_met": false,
+    "report_section": "46.6"
+  },
   "episode_holdout_episode_bootstrap_registered_20260913": {
     "status": "local_four_tests_passed_server_execution_pending",
     "observed_training": {

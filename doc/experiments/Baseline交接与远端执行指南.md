@@ -4,7 +4,7 @@
 
 ## 1. 交接状态
 
-**当前最新状态（以下旧“此前”段落均为历史）：**第46节真正神经episode留出诊断已进入训练。107 fit/31 heldout/原30 validation；B4 seed42已独立核验至7/60轮、5278次优化器更新，B5随后串行；pane712854 live，日志episodeholdout20260913_train_resume.log。预先保存10/30/60权重并在每个模型训练完成后计分三个视图，共18份诊断；两个未见集不参与梯度、归一化、早停或选模。尚无本轮未见集指标，原目标未达成。禁止pull、重启或并发本批诊断。
+**当前最新状态（以下旧“此前”段落均为历史）：**第46节真正神经episode留出诊断正在运行：107 fit/31 heldout/原30 validation；B4 seed42日志已核验至31/60轮，B5随后串行。原训练pane712854 live，日志episodeholdout20260913_train_resume.log；预先保存10/30/60权重并计分共18视图。新增纯缓存episode统计已通过服务器4测试，diag pane727985 live，正在等原训练/18视图全部正常结束后自动统计；日志episodeholdout20260913_episode_analysis.log。独立等待核验695 bytes，SHA 07edec499c6cee79cfbe88f766e6f32e7acb4ea1641c6f44903d3704f4e2f45c。运行checkout仍EE，分析源码d4a92c1仅fetch对象；禁止pull、重启或并发本批任务。尚无本轮未见集指标，原目标未达成。
 
 **新增缓存统计登记（46.5）：**B4日志已观察至25/60轮、pane712854仍live；既有7轮独立checkpoint核验记录继续保留。新增纯缓存整episode统计脚本已通过4本地测试，固定512次raw-run内episode重采样，比较AP/固定阈值召回及两类未见集差值；无forward/训练/阈值或轮次选择。须等18份固定诊断完整结束后执行，当前尚无留出指标。
 
