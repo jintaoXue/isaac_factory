@@ -1,4 +1,18 @@
 {
+  "readout_parent_server_access_pending_20260913": {
+    "status": "local_source_pushed_server_checks_and_parent_driver_not_started_mac_locked",
+    "source_commit": "9862d72ec778dd17fdc06429954b52439863baa2",
+    "source_sha256": "1a9bb51118dbade8f5e0e22f900fd50c133cdfa5f77a20f07f2831ec0d5e6b44",
+    "local_tests_passed": 4,
+    "last_verified_runtime_commit": "ee838f59d2bdf2893a35ec00acae1308f9dd0e07",
+    "last_verified_training_pane_pid": 610573,
+    "last_verified_training_pane_live": true,
+    "server_process_terminal_not_inferred_from_access_failure": true,
+    "manual_unlock_requested": true,
+    "do_not_pull_or_restart": true,
+    "test_evaluated": false,
+    "goal_met": false
+  },
   "readout_dropout_b4_training_completed_20260913": {
     "status": "two_B4_runs_completed_B5_and_frozen_diagnostics_pending",
     "runtime_commit": "ee838f59d2bdf2893a35ec00acae1308f9dd0e07",
