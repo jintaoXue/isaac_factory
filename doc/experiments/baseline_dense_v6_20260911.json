@@ -1,4 +1,54 @@
 {
+  "gru_capacity32_b4s42_training_complete_b4s43_running_20260913": {
+    "status": "first_training_independently_verified_second_training_live_no_candidate_diagnostics_yet",
+    "report_section": "47.5",
+    "runtime_source_commit": "90a41a5b9c44e625f8c80083a8a950cd50f5eb13",
+    "training_pane_pid": 783323,
+    "completed_case": {
+      "model": "B4",
+      "seed": 42,
+      "best_epoch": 6,
+      "epochs_trained": 16,
+      "upcoming_report_hits": 0,
+      "upcoming_true": 145,
+      "parent_near_report_hits": 2,
+      "precision": 0.8380520951302378,
+      "recall": 0.6757990867579908,
+      "f1": 0.7482305358948432,
+      "current_model_files_independently_verified": 12,
+      "prior_archive_members_independently_verified": 11
+    },
+    "current_case": {
+      "model": "B4",
+      "seed": 43,
+      "observed_epoch": 4
+    },
+    "comparison_source_commit": "182ab933bb0a1be0ee25522811bff2d658fedc03",
+    "comparison_server_tests_passed": 3,
+    "actual_parent_cached_views_checked": 16,
+    "actual_comparison_pending_full_batch": true,
+    "artifacts": {
+      "comparison_checks": {
+        "file": "baseline_gru_capacity_comparison_tests20260913.json",
+        "bytes": 726,
+        "sha256": "ac26ae44786c0de6267f085fc9c906a23e810d3dcd0eaaeb63d66978eb4e1638"
+      },
+      "b4s42_training": {
+        "file": "baseline_gru_capacity_b4s42_training20260913.json",
+        "bytes": 31469,
+        "sha256": "49d8f24a4cbf3879d6cfa907d5bfa4af540ced0524360d67c57096824ef73881"
+      },
+      "b4s42_verification": {
+        "file": "baseline_gru_capacity_b4s42_training_verification20260913.json",
+        "bytes": 3377,
+        "sha256": "892b5f25a81385d0c5810e580e39d7120f77e6ee195efdec9ebc8d6e537e84c1"
+      }
+    },
+    "do_not_pull_or_restart": true,
+    "test_evaluated": false,
+    "main_repository_modified": false,
+    "goal_met": false
+  },
   "gru_capacity32_preflight_passed_training_started_20260913": {
     "status": "first_b4_seed42_training_observed_epoch12_other_three_runs_not_started",
     "report_section": "47.4",

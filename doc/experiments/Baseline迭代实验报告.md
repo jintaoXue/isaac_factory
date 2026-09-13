@@ -4959,3 +4959,18 @@ B5末轮召回fit60.75%、heldout4.86%、原validation2.76%。正例概率中位
 - baseline_gru_capacity_start_verification20260913.json：1708 bytes，SHA c184265762118a0f61f141686847795ceecebe679994d0180481d96fde8578ad。
 
 实际任务已启动而非仍待批准；仍无新候选完整分数/可采用提升，test未用、主仓库未改，原根因或合理改善目标保持未完成。
+
+
+### 47.5 首组B4 seed42已正常完成：容量控制当前没有收益
+
+首组B4 seed42按原选择/早停规则正常完成，best6/total16，正式P/R/F1=.8380520951302378/.6757990867579908/.7482305358948432，upcoming=0/145（父near=2/145）。31469-byte训练快照与当前12文件、原11训练成员归档、原配置/训练/损失/input contract、14运行源码和6数据stat独立核验通过。首组未改善，不把单seed负结果扩展成容量假设或架构上限的最终结论；其train/validation AP及概率分布还需批次后冻结诊断。
+
+第二组B4 seed43已真实训练，日志最新观察epoch4；pane783323仍live。后续B5两seed及全部16候选诊断由原driver接续，不能另启同一诊断导致重复。运行checkout保持90a41a5b9c44e625f8c80083a8a950cd50f5eb13，不pull或重启；首组已完成训练严禁重跑。
+
+配对源码182ab933bb0a1be0ee25522811bff2d658fedc03仅fetch对象，3服务器检查与真实16份父缓存文件SHA/内容/计数兼容性检查均通过，没有模型forward/训练。确认旧缓存具备upcoming_timing_misses字段，view_stats按报告召回乘真例数核对who减timing miss，不偷换计数。训练14源码与6数据stat保持。整批完成后，以实际baseline_dense_gru_capacity_metrics_20260913.json SHA调用此固定Git对象的compare_baseline_gru_capacity.py一次，生成baseline_gru_capacity_parent_comparison20260913.json；不要重跑已完成的3检查/16缓存检查或父诊断。
+
+- baseline_gru_capacity_comparison_tests20260913.json：726 bytes，SHA ac26ae44786c0de6267f085fc9c906a23e810d3dcd0eaaeb63d66978eb4e1638。
+- baseline_gru_capacity_b4s42_training20260913.json：31469 bytes，SHA 49d8f24a4cbf3879d6cfa907d5bfa4af540ced0524360d67c57096824ef73881。
+- baseline_gru_capacity_b4s42_training_verification20260913.json：3377 bytes，SHA 892b5f25a81385d0c5810e580e39d7120f77e6ee195efdec9ebc8d6e537e84c1。
+
+原完整目标仍未完成；已确认泛化失败模式，当前容量候选尚无可采用的改善。test未用，主仓库未改。
