@@ -4335,7 +4335,7 @@ validation真例分数中位数0.16032501/0.00104852。与seed42同样表现为�
 e90919aeaae88f5bb924324bfc7d36451957f028f7dec0c554ba2e9b7f3285ae。
 该文件生成时保留自身pane退出状态待核验，现通过独立记录补全：
 baseline_vector_gat_final_verification20260913.json，13191 bytes，SHA
-4f5659cb13afedbb8885fa70b1d45ebdaee91fba3fafdc60ee0cc927097a879b。
+4f5679cb13afedbb8885fa70b1d45ebdaee91fba3fafdc60ee0cc927097a879b。
 独立核验覆盖两seed实际配置、best阈值及正式分数/计数、八个逐文件结果和权重/epoch/
 源码、28当前训练文件、两份旧joint归档22成员、六冻结数据全量SHA与stat、B4不变。
 没有替换正式best、没有评test、没有改主仓库；原目标仍未完成。
@@ -4364,3 +4364,95 @@ gantry序号可与物理resource ID不同，因此只用实际日志ID做起点�
 本地3项测试通过：实际目标ID、时间区间边界、重叠anchor的不同边界、先前其他工位
 启动的处理、去重起点与窗口目标计数区别、联合场景支持和空集合。未新建目录，未改
 模型或训练文件，尚待服务器运行；输出只允许写既有D目录新JSON。
+
+### 40.1 真实运行与历史计划兼容性审计完成
+
+源码02bc0a7d58216ea36a937b7fc4b670e6cf9e2919通过Git对象在服务器内存执行，
+未pull运行checkout；HEAD仍979c680、dev_xwt、tracked clean。服务器3项测试通过，
+原diag pane513374退出0，无该审计Python。primary输出548216 bytes：
+`baseline_upcoming_schedule_support20260913.json`，
+`ebeead2dff053e3b8041ad563d3e95519c5a58b3b91c4006b0586cc6e3d86d02`。
+
+| 实际runtime起点对齐 | Train | Validation |
+|---|---:|---:|
+| Episode | 138 | 30 |
+| 去重upcoming起点 | 299 | 73 |
+| Upcoming窗口目标 | 595 | 145 |
+| 同工位runtime在首未来窗开始至起点窗末启动 | 299 | 80 |
+| 上述匹配且此前无任何已记录runtime启动 | 75 | 12 |
+| 有匹配的去重upcoming起点 | 150 | 40 |
+
+匹配用实际物理resource ID及半开时间区间，不使用计划target直接猜映射。
+“此前没有runtime启动”不排除QC、其他历史信号或seed/配置相关性；时间伴随也不证明
+故障造成了该标签。未来计划只用于事后审计，不进入任何网络或报警过滤器。
+节点和scenario各自的验证起点均有训练支持；联合节点×scenario有11个去重起点、
+22个窗口目标缺少训练upcoming支持，其中10个窗口也匹配未来runtime启动。
+联合训练支持≤1/2/3个独立起点覆盖验证窗口56/72/88个，不能按窗口数当独立事件。
+
+### 40.2 生成规则差异，不是数据格式不兼容
+
+168个episode中153个保存resample_per_episode计划，另15个没有重采样计划。
+现版函数还原84个、不能还原69个。69个差异中47个只有最短duration变为600秒，
+另外22个有其他差异（物流target改动）；按事件字段统计duration变化67处（涉及55个episode），target变化22处（涉及22个episode）。
+旧源码c1154978b8b04b9b0db9a042820c177ba6da7fb4的cfg_disturbance.py为31932 bytes，
+SHA eabedf6b49a104dc1cafe6f9ba26431a7d1913e3e15d0261dcec3da86058ddd1，
+最短时长360秒，且没有现版ensure AGV freeze步骤。只通过Git对象在内存比较，未checkout。
+
+| 保存计划与生成函数的兼容性 | Train episode | Validation episode | Train upcoming目标 | Validation upcoming目标 |
+|---|---:|---:|---:|---:|
+| 仅旧函数还原 | 52 | 17 | 319 | 105 |
+| 新旧均可还原 | 56 | 10 | 190 | 34 |
+| 仅现版还原 | 17 | 1 | 74 | 4 |
+| 没有重采样计划 | 13 | 2 | 12 | 2 |
+
+所有153个重采样计划至少被其中一个函数准确还原；私有生成器未改变全局random状态。
+输出相等仅证明函数兼容，不唯一确定历史采集Git版本。验证“仅旧函数还原”占比更高，
+但尚未按固定模型预测进行分组误差分析，不能说这解释了泛化差距。
+冻结208数据没有重新生成，所有已完成B4/B5变体之间仍使用同一数据；混合生成规则
+可能影响任务难度，却不等于既有模型结果失效或格式损坏。主比较仍需要共同episode和split。
+
+差异记录baseline_upcoming_schedule_plan_differences20260913.json，27247 bytes，SHA
+26b4116dc888a1fcb52c7a313f489f9dbb6645ecee8e368e44a65adc251759a6。
+历史比对baseline_upcoming_schedule_historical_match20260913.json，26859 bytes，SHA
+4890663f63dbb570f4e5591cea441f6380ac39911ed20e785cfcbaa3587cc193。
+
+### 40.3 独立复核与转录修正
+
+独立重验740个目标的唯一身份/实际起点匹配、336个原始配置和扰动文件SHA、168个
+train/validation episode集合、60秒窗/步长、新旧生成源码SHA、28当前模型文件及6数据
+stat，全部通过。本次不重复上一项已完成的6数据全量哈希；冻结vector整批和独立报告也复核。
+终态baseline_upcoming_schedule_final_verification20260913.json，7743 bytes，SHA
+17bb7349324fe5747736a89c0d9bc84eac542206808b7cae53bba1643c0c1612。
+服务器3测试记录334 bytes，SHA
+6b9af0fa3bd128c1b6a7aba5f33cd8a014f363692e8fb7f6f1b190dad3608338。
+驱动2088 bytes，SHA 89b4a514a79dcb0cecde5c3c1300ffee9b91f4fcf8cf27288b3bf93cd2c234c1。
+
+核验初稿因两处人工转录SHA不符，在写出前失败；重读每16位哈希纠正后全部通过。
+其中旧vector独立复核SHA开头应为4f5679cb，而非先前文档的4f5659cb；三份本地文档
+已纠正全文值。产物、权重、训练和模型指标没有改动，不重新执行已完成实验。
+
+## 41. 主0.633与baseline约0.01的差距：先核验正式结果来源
+
+用户要求不要把数量级差距轻率归因于baseline架构。重新读取主引用20c40e2的
+modelnote.md第86–90行及F1提升实验历程.md第92–141行：正式prefix8 validation
+up_r=0.633、n_up=98（按三位小数可对应62/98，但62是推算，尚非原始字段）；
+本轮baseline validation有145个目标。两者名称都是report_recall_upcoming；当前
+train.py::_epoch_loop将station_report_metrics结果写入日志，up_r不是hot AP。
+公开在仓库里的摘要不是当前208的重评结果，也不是多个seed的均值。
+
+更具体的来源限制：主历程将近窗+远历史precursor列在后续未采用的uphist阶段，而
+现版model.py已经包含这条路径。历史源码/配置是否与正式prefix8权重匹配，不能靠
+当前分支名、默认开关或文件名判断。旧n10参考权重曾严格加载缺cluster_emb.weight，
+也说明“现版有这个组件”不等于“旧结果由这个组件取得”，但n10不是dense的证据替身。
+主模型评估指标.md内部还同时出现event_min=5/8和有/无start≤2的相互冲突说明；
+实际config和当前代码使用8及start≤2，正式历史权重仍需原始配置/评估源码确认。
+
+通过UU独立Leo SSH重新只读遍历主仓库（不跟随外部符号链接、跳过.git），未找到
+文件名dense或匹配范围内位于dense路径的模型/metrics/manifest产物，现有BNPDFormer
+权重均为旧n10系列，主HEAD f322dbf9854e06598d0461af2296ab7c095d7f4b。
+服务器没有rg，首个只读命令未执行搜索即失败，随后用os.walk完成；未安装工具或改主仓库。
+不能用n10的validation0.2698替代正式dense0.633；也不能宣称已复现后者。
+
+当前正式baseline尚无稳定upcoming提升。下一项可在固定208上继续做历史状态分类的
+因果输入/支持审计或冻结预测分组分析，但尚未实现/启动；不再仅凭现版主组件列表立即
+登记新的训练。主正式数据/权重的缺口限制跨模型因果结论，不阻止已授权208开发工作。

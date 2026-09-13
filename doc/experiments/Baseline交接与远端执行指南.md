@@ -10,10 +10,21 @@ pane472305/诊断pane496576均退出0、无相关Python；服务器979c680、tra
 last AP train=0.42392727/0.28651585，validation=0.00816133/0.00865408；两层动态
 排序在全部upcoming目标上都有实际使用，但泛化差距仍然存在。整批1262573 bytes，
 SHA e90919aeaae88f5bb924324bfc7d36451957f028f7dec0c554ba2e9b7f3285ae；独立终态
-核验13191 bytes，SHA 4f5659cb13afedbb8885fa70b1d45ebdaee91fba3fafdc60ee0cc927097a879b。
+核验13191 bytes，SHA 4f5679cb13afedbb8885fa70b1d45ebdaee91fba3fafdc60ee0cc927097a879b。
 六数据全量SHA、28当前文件、22旧joint归档成员及八诊断已复核。详见39.8。
-下一项为只读真实故障计划/起点与训练支持审计（第40节），不重复训练。新源码及3项
-本地测试完成，尚未运行；不把未来局部故障直接当作不可预测或架构上限的证明。
+真实故障计划/起点与训练支持审计及独立复核也已完成（40.1–40.3），diag pane513374
+退出0。验证145个upcoming目标中80个在预测开始至起点窗末出现同工位真实runtime启动；
+22个缺少训练节点×scenario独立起点支持，其中10个也有上述runtime启动。这不是不可预测证明。
+168个train/validation episode中153个重采样计划：66个新旧函数均可还原、69个仅旧函数、
+18个仅现版。区别是生成规则，不是CSV/张量格式；既有冻结数据和28当前模型文件不变。
+独立复核7743 bytes，SHA 17bb7349324fe5747736a89c0d9bc84eac542206808b7cae53bba1643c0c1612。
+不重跑任何已完成训练/诊断，未用test，原优化目标仍未达成。
+
+用户最新质疑主0.5–0.6与baseline约0.01差距，优先核验主正式指标/权重来源（第41节）。
+主文档prefix8 validation up_r=0.633、n_up=98；baseline为145。主文档将远历史前兆头
+列在后续未采用的uphist，不能将当前主源码全部路径当作prefix8实际组件。
+重新只读遍历主仓库仍无dense产物，主HEAD f322dbf；现有n10旧checkpoint不能替代。
+历史状态分类输入审计尚未实现或运行；当前没有新的训练在跑，不能声称已改善。
 
 此前vector_gat B5 seed42训练及四份冻结诊断均已完成并独立核验，
 diag pane489190退出0。两层实际动态排序在全部595/145个train/validation upcoming

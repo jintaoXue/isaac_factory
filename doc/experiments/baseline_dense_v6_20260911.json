@@ -1,4 +1,132 @@
 {
+  "schedule_support_full_audit_completed_20260913": {
+    "status": "primary_historical_comparison_and_independent_final_verification_complete",
+    "runtime_source_commit": "979c680fb4d1919ae760cdfb0038f69fb7cc6708",
+    "source_commit": "02bc0a7d58216ea36a937b7fc4b670e6cf9e2919",
+    "pane_pid": 513374,
+    "exit_code": 0,
+    "episodes": [
+      138,
+      30
+    ],
+    "upcoming_targets": [
+      595,
+      145
+    ],
+    "unique_upcoming_onsets": [
+      299,
+      73
+    ],
+    "actual_future_local_runtime_start_targets": [
+      299,
+      80
+    ],
+    "matching_and_no_prior_runtime_start_targets": [
+      75,
+      12
+    ],
+    "validation_zero_joint_training_onset_support_targets": 22,
+    "validation_zero_joint_support_also_matching_runtime_start": 10,
+    "historical_plan_compatibility": {
+      "both": 66,
+      "historical_only": 69,
+      "current_only": 18
+    },
+    "compatibility_by_split": {
+      "train": {
+        "episodes": [
+          52,
+          56,
+          17,
+          13
+        ],
+        "upcoming_targets": [
+          319,
+          190,
+          74,
+          12
+        ]
+      },
+      "validation": {
+        "episodes": [
+          17,
+          10,
+          1,
+          2
+        ],
+        "upcoming_targets": [
+          105,
+          34,
+          4,
+          2
+        ]
+      },
+      "order": [
+        "historical_only",
+        "both",
+        "current_only",
+        "no_resampled_schedule"
+      ]
+    },
+    "primary": {
+      "file": "baseline_upcoming_schedule_support20260913.json",
+      "bytes": 548216,
+      "sha256": "ebeead2dff053e3b8041ad563d3e95519c5a58b3b91c4006b0586cc6e3d86d02"
+    },
+    "plan_differences": {
+      "file": "baseline_upcoming_schedule_plan_differences20260913.json",
+      "bytes": 27247,
+      "sha256": "26b4116dc888a1fcb52c7a313f489f9dbb6645ecee8e368e44a65adc251759a6"
+    },
+    "historical_comparison": {
+      "file": "baseline_upcoming_schedule_historical_match20260913.json",
+      "bytes": 26859,
+      "sha256": "4890663f63dbb570f4e5591cea441f6380ac39911ed20e785cfcbaa3587cc193"
+    },
+    "independent_verification": {
+      "file": "baseline_upcoming_schedule_final_verification20260913.json",
+      "bytes": 7743,
+      "sha256": "17bb7349324fe5747736a89c0d9bc84eac542206808b7cae53bba1643c0c1612"
+    },
+    "raw_files_rehashed": 336,
+    "current_model_files_rehashed": 28,
+    "dataset_files_stat_checked": 6,
+    "limitations": [
+      "Generator compatibility is not unique historical source identity.",
+      "Temporal coincidence is not causality or an information-theoretic recall ceiling.",
+      "Both cohorts contain compatible plan families; no per-family frozen prediction errors computed yet.",
+      "No dataset regeneration, model-input changes, future schedule inputs, or formal metric substitutions."
+    ],
+    "test_evaluated": false,
+    "model_training": false,
+    "goal_met": false
+  },
+  "main_formal_reference_provenance_rechecked_20260913": {
+    "reference_commit": "20c40e230aedee6aef2429d352413fbcf0fa571a",
+    "source_sha256": {
+      "modelnote.md": "9001ddaed389733558624f2a2ce4f943511dec40057a16c4d88a6d571d030e41",
+      "F1提升实验历程.md": "d577ebd84fd39baf48f31590c0a68bcc507b8310fc53f7015b433de2606f0d28",
+      "模型评估指标.md": "b05dc681932b69720a2b3beacd4262551da659e3d322d69c769c80b5c7a1eabe",
+      "source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/PDFormer/factory_bn/train.py": "e7e5b5659fd48bec8db94cf76615aa0775a4f54c92a72c794fe7934bef6e6607",
+      "source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/PDFormer/factory_bn/configs/FactoryBN_dense_f1_p80.json": "da0aa87cdb14c36b0c1d83cf1284023093fb4f673b92e08fb2e03ad0d22445ac"
+    },
+    "documented_experiment": "dense_i1_a1_prefix8",
+    "documented_validation_upcoming_recall": 0.633,
+    "documented_validation_upcoming_targets": 98,
+    "baseline_validation_upcoming_targets": 145,
+    "formal_checkpoint_found_on_server": false,
+    "server_main_source_commit": "f322dbf9854e06598d0461af2296ab7c095d7f4b",
+    "current_source_components_not_assumed_to_belong_to_historical_checkpoint": true,
+    "precursor_documented_in_later_unadopted_uphist": true,
+    "metric_document_has_conflicting_event_minimum_and_start_limit_prose": true,
+    "historical_checkpoint_replayed": false,
+    "old_n10_metrics_not_substituted": true,
+    "stable_baseline_improvement": false,
+    "next_hist_cluster_audit_implemented": false,
+    "test_evaluated": false,
+    "main_repository_modified": false,
+    "goal_met": false
+  },
   "vector_gat_full_batch_completed_20260913": {
     "status": "two_trainings_eight_diagnostics_and_both_terminal_panes_independently_verified",
     "runtime_source_commit": "979c680fb4d1919ae760cdfb0038f69fb7cc6708",
@@ -44,7 +172,7 @@
     "independent_verification": {
       "file": "baseline_vector_gat_final_verification20260913.json",
       "bytes": 13191,
-      "sha256": "4f5659cb13afedbb8885fa70b1d45ebdaee91fba3fafdc60ee0cc927097a879b"
+      "sha256": "4f5679cb13afedbb8885fa70b1d45ebdaee91fba3fafdc60ee0cc927097a879b"
     },
     "training_pane_pid": 472305,
     "training_exit_code": 0,
