@@ -152,6 +152,26 @@ def test_smooth_occupancy_drops_one_minute_flicker() -> None:
     assert float(smooth_occupancy_runs(flicker, gap_windows=1, min_windows=2)[:, 0].sum()) == 0.0
 
 
+def test_close_then_filter_merges_before_min_duration() -> None:
+    hot = np.zeros((9, 1), dtype=np.float32)
+    hot[1:3, 0] = 1.0
+    hot[4:7, 0] = 1.0
+    legacy = smooth_occupancy_runs(
+        hot, gap_windows=1, min_windows=5, smoothing_order="legacy"
+    )
+    closed = smooth_occupancy_runs(
+        hot, gap_windows=1, min_windows=5, smoothing_order="close_then_filter"
+    )
+    assert float(legacy.sum()) == 0.0
+    assert closed[:, 0].tolist() == [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0]
+    try:
+        smooth_occupancy_runs(hot, smoothing_order="unknown")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("unknown smoothing order must fail")
+
+
 def test_occupancy_node_mask_machine_carrier() -> None:
     feats = np.zeros((2, 5, 26), dtype=np.float32)
     feats[:, 0, 21] = 1.0  # machine
@@ -926,6 +946,34 @@ def test_combine_will_uses_onset_when_cold() -> None:
     assert float(out_cold[0, 0]) == -4.0
 
 
+def test_discrete_hazard_mass_and_calibration() -> None:
+    import torch
+    from factory_bn.model import BNPDFormer
+    from factory_bn.remain import onset_distribution_metrics
+
+    logits = torch.tensor([[[0.0, 0.0, 0.0]]])
+    onset, survival, will = BNPDFormer._hazard_to_onset(logits)
+    assert torch.allclose(onset, torch.tensor([[[0.5, 0.25, 0.125]]]))
+    assert torch.allclose(survival, torch.tensor([[[0.5, 0.25, 0.125]]]))
+    assert torch.allclose(will, torch.tensor([[0.875]]))
+
+    y = np.zeros((1, 8, 1), dtype=np.float32)
+    y[0, 2:7, 0] = 1.0
+    p = np.zeros((1, 1, 6), dtype=np.float32)
+    p[0, 0, 2] = 1.0
+    metrics = onset_distribution_metrics(
+        y,
+        p,
+        np.ones((1, 8), dtype=np.float32),
+        np.ones((1,), dtype=np.float32),
+        min_windows=5,
+        max_start_windows=5,
+        hist_last_hot=np.zeros((1, 1), dtype=np.float32),
+    )
+    assert metrics["onset_exact_acc"] == 1.0
+    assert metrics["onset_brier"] == 0.0
+
+
 def test_recall_lift_bumps_congested_cold() -> None:
     import torch
     from factory_bn.model import BNPDFormer
@@ -951,6 +999,7 @@ if __name__ == "__main__":
     test_node_hot_includes_score()
     test_labor_saturated_appended_on_machines_only()
     test_smooth_occupancy_drops_one_minute_flicker()
+    test_close_then_filter_merges_before_min_duration()
     test_occupancy_node_mask_machine_carrier()
     test_grouped_embed_and_contrastive()
     test_type_balanced_occupancy_and_contrast_ids()
@@ -976,5 +1025,6 @@ if __name__ == "__main__":
     test_split_episodes_by_name()
     test_cause_cluster_priority()
     test_combine_will_uses_onset_when_cold()
+    test_discrete_hazard_mass_and_calibration()
     test_recall_lift_bumps_congested_cold()
     print("ok")

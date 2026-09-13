@@ -288,6 +288,7 @@ def _build_samples(
     occupancy_horizon_windows: int | None = None,
     hot_min_windows: int = 8,
     hot_gap_windows: int = 1,
+    hot_smoothing_order: str = "legacy",
     train_mode: str = "supervised",
 ) -> list[dict[str, Any]]:
     """Create causal windows with STGNPP event histories.
@@ -333,6 +334,7 @@ def _build_samples(
                 window_size_s=window_size_s,
                 min_hot_windows=hot_min_windows,
                 gap_windows=hot_gap_windows,
+                smoothing_order=hot_smoothing_order,
             )
         else:
             hot = node_hot_mask(
@@ -342,6 +344,7 @@ def _build_samples(
                 window_size_s=window_size_s,
                 min_hot_windows=hot_min_windows,
                 gap_windows=hot_gap_windows,
+                smoothing_order=hot_smoothing_order,
             )
         occ_mask = occupancy_node_mask(feats)
         window_cluster = np.asarray(
@@ -643,6 +646,7 @@ def build_infer_sample(
     hot: np.ndarray | None = None,
     hot_min_windows: int = 8,
     hot_gap_windows: int = 1,
+    hot_smoothing_order: str = "legacy",
 ) -> dict[str, Any]:
     """Pack one causal window for ``model.predict`` (no future labels required).
 
@@ -688,6 +692,7 @@ def build_infer_sample(
                 window_size_s=window_size_s,
                 min_hot_windows=hot_min_windows,
                 gap_windows=hot_gap_windows,
+                smoothing_order=hot_smoothing_order,
             )
         )
         end_i = int(done_ti) if done_ti is not None else t_len
@@ -802,10 +807,26 @@ def build_dataloaders(
     occupancy_horizon_windows: int | None = None,
     hot_min_windows: int = 8,
     hot_gap_windows: int = 1,
+    hot_smoothing_order: str = "legacy",
+    min_episode_jobs_total: float = 0.0,
     train_only_contains: list[str] | None = None,
     train_mode: str = "supervised",
 ) -> tuple[DataLoader, DataLoader, DataLoader, dict[str, Any]]:
     bundle = load_factory_bn_bundle(data_dir)
+    all_episodes = list(bundle["episodes"])
+    min_jobs = float(min_episode_jobs_total or 0.0)
+    if min_jobs > 0:
+        bundle["episodes"] = [
+            ep for ep in all_episodes if float(ep.get("jobs_total", 0.0)) >= min_jobs
+        ]
+        if not bundle["episodes"]:
+            raise RuntimeError(
+                f"No episodes have jobs_total >= {min_jobs:g}; check the dataset"
+            )
+    excluded_episodes = sorted(
+        {str(ep.get("name") or ep["episode_id"]) for ep in all_episodes}
+        - {str(ep.get("name") or ep["episode_id"]) for ep in bundle["episodes"]}
+    )
     window_size = bundle["window_size_s"]
     horizon_windows = max(1, int(round(horizon_s / window_size)))
 
@@ -823,6 +844,7 @@ def build_dataloaders(
         occupancy_horizon_windows=occupancy_horizon_windows,
         hot_min_windows=hot_min_windows,
         hot_gap_windows=hot_gap_windows,
+        hot_smoothing_order=hot_smoothing_order,
         train_mode=train_mode,
     )
     if not samples:
@@ -890,6 +912,10 @@ def build_dataloaders(
         "n_train_episodes": len(train_eps),
         "n_val_episodes": len(val_eps),
         "n_test_episodes": len(test_eps),
+        "n_source_episodes": len(all_episodes),
+        "n_filtered_episodes": len(bundle["episodes"]),
+        "excluded_episodes": excluded_episodes,
+        "min_episode_jobs_total": min_jobs,
         "train_episodes": sorted(train_eps),
         "val_episodes": sorted(val_eps),
         "test_episodes": sorted(test_eps),
@@ -915,6 +941,7 @@ def build_dataloaders(
             occupancy_horizon_windows if occupancy_horizon_windows else max_remain_windows
         ),
         "hot_score_threshold": float(hot_score_threshold),
+        "hot_smoothing_order": str(hot_smoothing_order),
         "train_mode": str(train_mode),
         "n_cluster_labeled_train": int(
             sum(1 for s in train_samples if int(s.get("cluster_id", -1)) >= 0)

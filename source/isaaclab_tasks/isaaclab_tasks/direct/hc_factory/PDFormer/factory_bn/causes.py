@@ -25,23 +25,24 @@ ROOT_CAUSE_CLASSES: tuple[str, ...] = (
 
 ROOT_CAUSE_TO_ID: dict[str, int] = {name: i for i, name in enumerate(ROOT_CAUSE_CLASSES)}
 
-# L2 injection names + score fallback: keep in the tuple for old npz, skip in loss.
+# Legacy/sparse classes stay in the tuple for checkpoint compatibility, but the
+# current experiment trains and reports only four supported process causes.
 CAUSE_IGNORE_IN_LOSS: frozenset[str] = frozenset(
     {
         "score_threshold",
         "machine_failure",
         "human_unavailable",
         "unavailable",
+        "blocked_downstream",
+        "high_utilization",
     }
 )
-# Six process heuristics from ``tools/bn_agg/labels._process_root_cause``.
+# Four process causes with usable support in ``dense_i1``.
 CAUSE_REPORT_CLASSES: tuple[str, ...] = (
     "transport_delay",
     "material_shortage",
-    "blocked_downstream",
     "starved_upstream",
     "queue_buildup",
-    "high_utilization",
 )
 
 

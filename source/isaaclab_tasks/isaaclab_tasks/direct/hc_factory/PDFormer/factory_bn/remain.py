@@ -165,11 +165,23 @@ def smooth_occupancy_runs(
     gap_windows: int = _HOT_GAP_WINDOWS,
     min_windows: int = _HOT_MIN_WINDOWS,
     min_windows_by_node: np.ndarray | None = None,
+    smoothing_order: str = "legacy",
 ) -> np.ndarray:
-    """Fill ≤gap cold holes, then drop occupancy runs shorter than min_windows."""
+    """Smooth binary occupancy runs with an explicit, reproducible operation order.
+
+    ``legacy`` preserves the historical implementation (drop short runs, then
+    fill holes). ``close_then_filter`` first closes short cold holes and then
+    applies the minimum-duration filter, matching the documented event contract.
+    """
     grid = np.asarray(hot, dtype=np.float32).copy()
     if grid.ndim != 2:
         raise ValueError(f"hot must be (T, N), got {grid.shape}")
+    order = str(smoothing_order or "legacy").strip().lower()
+    if order not in {"legacy", "close_then_filter"}:
+        raise ValueError(
+            "smoothing_order must be 'legacy' or 'close_then_filter', "
+            f"got {smoothing_order!r}"
+        )
     t_len, n_nodes = grid.shape
     gap = max(int(gap_windows), 0)
     min_default = max(int(min_windows), 1)
@@ -182,34 +194,45 @@ def smooth_occupancy_runs(
             )
     if t_len == 0 or (gap == 0 and min_default <= 1 and per_node is None):
         return grid
+    def _drop_short(col: np.ndarray, min_w: int) -> None:
+        if min_w <= 1:
+            return
+        i = 0
+        while i < t_len:
+            if col[i] < 0.5:
+                i += 1
+                continue
+            j = i + 1
+            while j < t_len and col[j] >= 0.5:
+                j += 1
+            if (j - i) < min_w:
+                col[i:j] = 0.0
+            i = j
+
+    def _fill_holes(col: np.ndarray) -> None:
+        if gap <= 0:
+            return
+        i = 0
+        while i < t_len:
+            if col[i] >= 0.5:
+                i += 1
+                continue
+            j = i
+            while j < t_len and col[j] < 0.5:
+                j += 1
+            if i > 0 and j < t_len and (j - i) <= gap:
+                col[i:j] = 1.0
+            i = j
+
     for n in range(n_nodes):
         col = grid[:, n]
-        min_w = int(per_node[n]) if per_node is not None else min_default
-        min_w = max(min_w, 1)
-        if min_w > 1:
-            i = 0
-            while i < t_len:
-                if col[i] < 0.5:
-                    i += 1
-                    continue
-                j = i + 1
-                while j < t_len and col[j] >= 0.5:
-                    j += 1
-                if (j - i) < min_w:
-                    col[i:j] = 0.0
-                i = j
-        if gap > 0:
-            i = 0
-            while i < t_len:
-                if col[i] >= 0.5:
-                    i += 1
-                    continue
-                j = i
-                while j < t_len and col[j] < 0.5:
-                    j += 1
-                if i > 0 and j < t_len and (j - i) <= gap:
-                    col[i:j] = 1.0
-                i = j
+        min_w = max(int(per_node[n]) if per_node is not None else min_default, 1)
+        if order == "close_then_filter":
+            _fill_holes(col)
+            _drop_short(col, min_w)
+        else:
+            _drop_short(col, min_w)
+            _fill_holes(col)
     return grid
 
 
@@ -381,6 +404,7 @@ def ops_hot_mask(
     machine_mask: np.ndarray | None = None,
     min_hot_windows: int | None = None,
     gap_windows: int | None = None,
+    smoothing_order: str = "legacy",
 ) -> np.ndarray:
     """Unsupervised occupancy y: operational stall / delay, no bottleneck_score.
 
@@ -403,6 +427,7 @@ def ops_hot_mask(
         gap_windows=gap,
         min_windows=min_w,
         min_windows_by_node=per_node,
+        smoothing_order=smoothing_order,
     )
 
 
@@ -415,6 +440,7 @@ def node_hot_mask(
     machine_mask: np.ndarray | None = None,
     min_hot_windows: int | None = None,
     gap_windows: int | None = None,
+    smoothing_order: str = "legacy",
 ) -> np.ndarray:
     """A.1 occupancy: process machines plus delayed / STOP gantry / AGV.
 
@@ -435,7 +461,12 @@ def node_hot_mask(
         hot = hot | ((feats[:, :, _TP_IDX] > 0.5) & machine)
     min_w = _HOT_MIN_WINDOWS if min_hot_windows is None else int(min_hot_windows)
     gap = _HOT_GAP_WINDOWS if gap_windows is None else int(gap_windows)
-    return smooth_occupancy_runs(hot.astype(np.float32), gap_windows=gap, min_windows=min_w)
+    return smooth_occupancy_runs(
+        hot.astype(np.float32),
+        gap_windows=gap,
+        min_windows=min_w,
+        smoothing_order=smoothing_order,
+    )
 
 
 def occupancy_node_mask(features: np.ndarray) -> np.ndarray:
@@ -915,11 +946,17 @@ def _empty_report_metrics() -> dict[str, float]:
         "who_precision",
         "who_recall",
         "who_f1",
+        "will15_precision",
+        "will15_recall",
+        "will15_f1",
         "report_precision",
         "report_recall",
         "report_f1",
         "start_mae",
         "dur_mae",
+        "exact_start_accuracy",
+        "exact_start_accuracy_upcoming",
+        "onset_bucket_accuracy",
         "who_recall_ongoing",
         "report_recall_ongoing",
         "start_mae_ongoing",
@@ -930,6 +967,15 @@ def _empty_report_metrics() -> dict[str, float]:
         "start_mae_upcoming",
         "dur_mae_upcoming",
         "n_true_upcoming",
+        "report_recall_upcoming_start_le_5",
+        "n_true_upcoming_start_le_5",
+        "start_mae_upcoming_start_le_5",
+        "report_recall_upcoming_start_6_10",
+        "n_true_upcoming_start_6_10",
+        "start_mae_upcoming_start_6_10",
+        "report_recall_upcoming_start_gt_10",
+        "n_true_upcoming_start_gt_10",
+        "start_mae_upcoming_start_gt_10",
         "n_pred_who",
         "n_true_who",
     )
@@ -1027,6 +1073,9 @@ def station_report_metrics(
     out["who_precision"] = wp_
     out["who_recall"] = wr
     out["who_f1"] = wf
+    out["will15_precision"] = wp_
+    out["will15_recall"] = wr
+    out["will15_f1"] = wf
     out["report_precision"] = rp
     out["report_recall"] = rr
     out["report_f1"] = rf
@@ -1035,8 +1084,28 @@ def station_report_metrics(
     if tp_who > 0:
         out["start_mae"] = float(start_err[who_tp].mean())
         out["dur_mae"] = float(np.abs(pred_dur - y_dur)[who_tp].mean())
-    ongoing = true_pos & (y_start == 0)
-    upcoming = true_pos & (y_start > 0)
+        out["exact_start_accuracy"] = float((start_err[who_tp] == 0).mean())
+    if hist_last_hot is not None:
+        last_eval = _align_hist_last(hist_last_hot, true_pos.shape) > 0.5
+        ongoing = true_pos & last_eval
+        upcoming = true_pos & ~last_eval
+    else:
+        ongoing = true_pos & (y_start == 0)
+        upcoming = true_pos & (y_start > 0)
+    if who_tp.any():
+        true_bucket = np.select(
+            [ongoing, y_start <= 5, y_start <= 10],
+            [0, 1, 2],
+            default=3,
+        )
+        pred_bucket = np.select(
+            [pred_start == 0, pred_start <= 5, pred_start <= 10],
+            [0, 1, 2],
+            default=3,
+        )
+        out["onset_bucket_accuracy"] = float(
+            (pred_bucket[who_tp] == true_bucket[who_tp]).mean()
+        )
     for name, mask in (("ongoing", ongoing), ("upcoming", upcoming)):
         n_m = float(mask.sum())
         out[f"n_true_{name}"] = n_m
@@ -1048,4 +1117,97 @@ def station_report_metrics(
         if who_m.any():
             out[f"start_mae_{name}"] = float(start_err[who_m].mean())
             out[f"dur_mae_{name}"] = float(np.abs(pred_dur - y_dur)[who_m].mean())
+            if name == "upcoming":
+                out["exact_start_accuracy_upcoming"] = float(
+                    (start_err[who_m] == 0).mean()
+                )
+    upcoming_slices = (
+        ("start_le_5", upcoming & (y_start <= 5)),
+        ("start_6_10", upcoming & (y_start >= 6) & (y_start <= 10)),
+        ("start_gt_10", upcoming & (y_start > 10)),
+    )
+    for suffix, mask in upcoming_slices:
+        n_m = float(mask.sum())
+        out[f"n_true_upcoming_{suffix}"] = n_m
+        if n_m > 0:
+            out[f"report_recall_upcoming_{suffix}"] = (
+                float((report_hit & mask).sum()) / n_m
+            )
+            who_m = who_tp & mask
+            if who_m.any():
+                out[f"start_mae_upcoming_{suffix}"] = float(
+                    start_err[who_m].mean()
+                )
     return out
+
+
+def onset_distribution_metrics(
+    y_hot: np.ndarray,
+    onset_prob: np.ndarray,
+    remain_mask: np.ndarray,
+    occ_node_mask: np.ndarray,
+    *,
+    min_windows: int = 5,
+    max_start_windows: int = 5,
+    hist_last_hot: np.ndarray | None = None,
+    ongoing_min_windows: int | None = 1,
+    n_bins: int = 10,
+) -> dict[str, float]:
+    """Brier score, ECE and exact-bin accuracy for cold-station onset forecasts."""
+    prob = np.asarray(onset_prob, dtype=np.float32)
+    if prob.ndim != 3:
+        return {"onset_brier": 0.0, "onset_ece": 0.0, "onset_exact_acc": 0.0, "onset_n": 0.0}
+    y_will, y_start, _ = node_event_targets(
+        y_hot,
+        min_windows=min_windows,
+        remain_mask=remain_mask,
+        occ_node_mask=occ_node_mask,
+        max_start_windows=max_start_windows,
+        hist_last_hot=hist_last_hot,
+        ongoing_min_windows=ongoing_min_windows,
+    )
+    b, n, k = prob.shape
+    y_will = np.asarray(y_will)[:b, :n]
+    y_start = np.asarray(y_start)[:b, :n]
+    occ = np.asarray(occ_node_mask, dtype=np.float32)
+    if occ.ndim == 1:
+        valid = np.broadcast_to(occ.reshape(1, -1)[:,:n] > 0.5, (b, n)).copy()
+    else:
+        valid = occ[:b, :n] > 0.5
+    if hist_last_hot is not None:
+        valid &= ~_align_hist_last(hist_last_hot, (b, n)).astype(bool)
+    if not valid.any():
+        return {"onset_brier": 0.0, "onset_ece": 0.0, "onset_exact_acc": 0.0, "onset_n": 0.0}
+    p = np.clip(prob[:b, :n], 0.0, 1.0)
+    no_event = np.clip(1.0 - p.sum(axis=-1), 0.0, 1.0)
+    pred = np.concatenate([p, no_event[..., None]], axis=-1)
+    target = np.zeros_like(pred)
+    positive = (y_will > 0.5) & valid & (y_start < k)
+    bi, ni = np.nonzero(positive)
+    target[bi, ni, y_start[positive].astype(np.int64)] = 1.0
+    target[..., -1] = (~positive).astype(np.float32)
+    brier = float(np.square(pred[valid] - target[valid]).sum(axis=-1).mean())
+    event_prob = np.clip(p.sum(axis=-1), 0.0, 1.0)
+    event_true = positive.astype(np.float32)
+    ece = 0.0
+    edges = np.linspace(0.0, 1.0, max(int(n_bins), 1) + 1)
+    count = float(valid.sum())
+    for i in range(len(edges) - 1):
+        in_bin = valid & (event_prob >= edges[i]) & (
+            (event_prob <= edges[i + 1]) if i == len(edges) - 2 else (event_prob < edges[i + 1])
+        )
+        if in_bin.any():
+            ece += float(in_bin.sum()) / count * abs(
+                float(event_prob[in_bin].mean()) - float(event_true[in_bin].mean())
+            )
+    exact = (
+        float((p.argmax(axis=-1)[positive] == y_start[positive]).mean())
+        if positive.any()
+        else 0.0
+    )
+    return {
+        "onset_brier": brier,
+        "onset_ece": float(ece),
+        "onset_exact_acc": exact,
+        "onset_n": count,
+    }

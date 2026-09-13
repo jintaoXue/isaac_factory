@@ -1,0 +1,110 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=18mm]{geometry}
+\usepackage{fontspec}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{siunitx}
+\usepackage{caption}
+
+\setmainfont{Times New Roman}
+\setsansfont{Arial}
+
+\sisetup{
+  detect-weight = true,
+  table-number-alignment = center,
+  table-format = 1.3
+}
+\captionsetup{font=small,labelfont=bf,skip=4pt}
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+
+\begin{document}
+
+\begin{center}
+{\LARGE\bfseries BNPDFormer Best Checkpoint Metrics}\\[3pt]
+{\large\texttt{dense\_i1\_a1\_prefix8} (unsupervised, epoch 8)}\\[2pt]
+{\normalsize Official retained recipe: \texttt{FactoryBN\_dense\_f1\_p80.json}}
+\end{center}
+
+\textbf{Protocol.}
+Dataset \texttt{dense\_i1} ($N{=}38$, $F{=}27$);
+episode split $140/28/36$ (seed 42);
+windows $20826/4331/5354$.
+Input $T_{\mathrm{in}}{=}30$\,min, horizon $H{=}15$\,min.
+A report is correct iff the station matches \emph{and} $|\hat{s}-s|\le 3$\,min.
+Thresholds are selected on validation with report precision $\ge 0.80$, then frozen on test.
+Occupancy-grid F1 and IoU-event F1 are not checkpoint metrics and are omitted (not recorded in the retained notes).
+
+\begin{center}
+\captionof{table}{Station-level event reports (primary task A.1). Checkpoint metric is report F1.}
+\begin{tabular}{l l S[table-format=1.3] S[table-format=1.3]}
+\toprule
+{Group} & {Metric} & {Validation} & {Test} \\
+\midrule
+\multirow{3}{*}{Report (primary)}
+  & Precision $P$ & 0.883 & 0.852 \\
+  & Recall $R$    & 0.881 & 0.856 \\
+  & F1            & 0.882 & \bfseries 0.854 \\
+\midrule
+\multirow{2}{*}{Stratified recall}
+  & Upcoming $R_{\mathrm{up}}$ ($s>0$) & 0.633 & 0.455 \\
+  & Ongoing $R_{\mathrm{on}}$ ($s{=}0$)  & 0.920 & 0.911 \\
+\midrule
+\multirow{3}{*}{Support}
+  & $n_{\mathrm{true}}$ upcoming & {98}  & {112} \\
+  & $n_{\mathrm{true}}$ ongoing  & {624} & {828} \\
+  & $n_{\mathrm{true}}$ total    & {722} & {940} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\captionof{table}{Order remaining time and process-cause heads (do not override report F1).}
+\begin{tabular}{l l l l}
+\toprule
+Layer & Metric & Validation & Test \\
+\midrule
+Order remaining time
+  & $\mathrm{MAE}(\textit{remain\_len})$ (min)
+  & $\approx 12.0$
+  & \textbf{10.5} \\
+\midrule
+Process cause (6 classes)
+  & Overall accuracy
+  & ---
+  & 0.965 \\
+  & Macro recall (support${>}0$)
+  & 0.774
+  & \textbf{0.971} \\
+  & Majority-class baseline (train)
+  & \multicolumn{2}{c}{0.41} \\
+  & Valid samples $n_{\mathrm{cause}}$
+  & ---
+  & 579 \\
+\midrule
+Per-class recall
+  & \textit{transport\_delay}
+  & --- & 0.956 \\
+  & \textit{material\_shortage}
+  & --- & 0.988 \\
+  & \textit{starved\_upstream}
+  & --- & 0.949 \\
+  & \textit{queue\_buildup}
+  & --- & 0.992 \\
+  & \textit{blocked\_downstream}
+  & \multicolumn{2}{c}{no support on test} \\
+  & \textit{high\_utilization}
+  & \multicolumn{2}{c}{no support on test} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\small
+\textbf{Notes.}
+(1)~Taken from retained notes for \texttt{prefix8}; \texttt{last\_metrics.json} is not in this workspace, so \texttt{who\_*}, \texttt{start\_mae}, \texttt{dur\_mae}, occupancy-grid F1 and IoU-event F1 are not invented.
+(2)~Cause labels are process-heuristic: report test macro 0.971 together with val macro 0.774 and the train majority baseline 0.41; this is not a causal claim.
+(3)~Upcoming recall 0.455 (112 test events) remains the open early-warning failure mode.
+(4)~Rejected on the same protocol: precursor head (F1 0.827), score regression (0.850), STGNPP auxiliary (0.849).
+
+\end{document}

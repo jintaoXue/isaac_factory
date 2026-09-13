@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import random
 import sys
 import time
 from pathlib import Path
@@ -37,14 +39,30 @@ from factory_bn.dataset import build_dataloaders, make_pattern_keys
 from factory_bn.model import BNPDFormer, OCC_TYPE_NAMES
 from factory_bn.remain import (
     node_event_targets,
+    onset_distribution_metrics,
     occupancy_event_metrics,
     parse_max_start_windows,
     station_report_metrics,
 )
 
 
-def _load_config(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+def _load_config(path: Path, _seen: set[Path] | None = None) -> dict[str, Any]:
+    """Load JSON config with optional relative ``extends`` inheritance."""
+    path = Path(path).resolve()
+    seen = set() if _seen is None else set(_seen)
+    if path in seen:
+        raise ValueError(f"cyclic config inheritance at {path}")
+    seen.add(path)
+    cfg = json.loads(path.read_text(encoding="utf-8"))
+    parent = cfg.pop("extends", None)
+    if not parent:
+        return cfg
+    parent_path = Path(str(parent))
+    if not parent_path.is_absolute():
+        parent_path = path.parent / parent_path
+    base = _load_config(parent_path, seen)
+    base.update(cfg)
+    return base
 
 
 def _trainable_adamw(
@@ -98,11 +116,27 @@ def _load_init_ckpt(model: torch.nn.Module, ckpt_path: Path, device: torch.devic
     own = model.state_dict()
     filtered: dict[str, Any] = {}
     skipped: list[str] = []
+    expanded: list[str] = []
     for key, val in state.items():
         if key not in own:
             skipped.append(key)
             continue
         if tuple(own[key].shape) != tuple(val.shape):
+            if (
+                key in {"event_start_mlp.2.weight", "event_start_mlp.2.bias"}
+                and own[key].ndim == val.ndim
+                and own[key].shape[0] >= val.shape[0]
+                and tuple(own[key].shape[1:]) == tuple(val.shape[1:])
+            ):
+                merged = own[key].clone()
+                merged[: val.shape[0]] = val.to(
+                    device=merged.device, dtype=merged.dtype
+                )
+                filtered[key] = merged
+                expanded.append(
+                    f"{key}{tuple(val.shape)}->{tuple(own[key].shape)}"
+                )
+                continue
             skipped.append(f"{key}{tuple(val.shape)}")
             continue
         filtered[key] = val
@@ -111,6 +145,8 @@ def _load_init_ckpt(model: torch.nn.Module, ckpt_path: Path, device: torch.devic
         f"[train] loaded init_ckpt={ckpt_path} "
         f"tensors={len(filtered)}/{len(own)} skipped={len(skipped)}"
     )
+    if expanded:
+        print(f"[train] expanded {expanded[:8]}")
     if skipped:
         print(f"[train] skip {skipped[:8]}")
 
@@ -173,6 +209,12 @@ def _wandb_write_summary(te: dict[str, Any], *, extra: dict[str, Any] | None = N
         "start_mae",
         "dur_mae",
         "remain_len_mae",
+        "remain_len_mae_progress_weighted",
+        "remain_len_mae_early",
+        "remain_len_mae_middle",
+        "remain_len_mae_middle_weighted",
+        "remain_len_mae_late",
+        "remain_len_mae_primary",
         "score_mae",
         "hot_f1",
         "cause_macro_recall",
@@ -213,12 +255,32 @@ def _init_wandb(cfg: dict[str, Any], data_feature: dict[str, Any]) -> Any:
     entity = str(cfg.get("wandb_entity") or "").strip()
     if entity:
         init_kw["entity"] = entity
+    # Prefer cfg / WANDB_MODE. If no API key, fall back to offline so training still runs.
+    mode = str(cfg.get("wandb_mode") or os.environ.get("WANDB_MODE") or "").strip().lower()
+    if not mode:
+        try:
+            logged_in = bool(wandb.api.api_key)
+        except Exception:
+            logged_in = False
+        if not logged_in:
+            mode = "offline"
+            print(
+                "[wandb] no API key — logging offline. "
+                "Run `wandb login` once, then `wandb sync <run_dir>` to upload.",
+                flush=True,
+            )
+    if mode:
+        init_kw["mode"] = mode
     run = wandb.init(**init_kw)
     wandb.define_metric("epoch")
     wandb.define_metric("Train/*", step_metric="epoch")
     wandb.define_metric("Val/*", step_metric="epoch")
     wandb.define_metric("Test/*", step_metric="epoch")
-    print(f"[wandb] project={init_kw['project']} name={run_name} url={getattr(run, 'url', '')}")
+    print(
+        f"[wandb] project={init_kw['project']} name={run_name} "
+        f"mode={mode or 'online'} url={getattr(run, 'url', '')}",
+        flush=True,
+    )
     return run
 
 
@@ -358,6 +420,12 @@ def _epoch_loop(
     score_mae = 0.0
     remain_len_mae = 0.0
     remain_n = 0
+    remain_weighted_abs = 0.0
+    remain_weight_sum = 0.0
+    remain_phase_abs = {"early": 0.0, "middle": 0.0, "late": 0.0}
+    remain_phase_n = {"early": 0, "middle": 0, "late": 0}
+    remain_phase_weighted_abs = {"early": 0.0, "middle": 0.0, "late": 0.0}
+    remain_phase_weight_sum = {"early": 0.0, "middle": 0.0, "late": 0.0}
     hot_true: list[torch.Tensor] = []
     hot_prob: list[torch.Tensor] = []
     hot_true_t: dict[str, list[torch.Tensor]] = {t: [] for t in OCC_EVAL_TYPES}
@@ -368,6 +436,7 @@ def _epoch_loop(
     will_grids: list[torch.Tensor] = []
     start_grids: list[torch.Tensor] = []
     dur_grids: list[torch.Tensor] = []
+    onset_grids: list[torch.Tensor] = []
     hist_grids: list[torch.Tensor] = []
     remain_grids: list[torch.Tensor] = []
     occ_grids: list[torch.Tensor] = []
@@ -438,10 +507,61 @@ def _epoch_loop(
                 near_k = int(getattr(model, "near_remain_windows", 60) or 60)
                 near_m = _near_remain_mask(batch.get("remain_mask"), near_k)
                 if "remain_len" in batch and "remain_len_pred" in pred:
-                    remain_len_mae += float(
-                        torch.mean(torch.abs(pred["remain_len_pred"] - batch["remain_len"])).item()
-                    ) * batch["X"].shape[0]
-                    remain_n += batch["X"].shape[0]
+                    remain_err = torch.abs(
+                        pred["remain_len_pred"] - batch["remain_len"]
+                    ).reshape(-1)
+                    remain_len_mae += float(remain_err.sum().item())
+                    remain_n += int(remain_err.numel())
+                    jobs_r = batch.get("jobs_remaining")
+                    jobs_t = batch.get("jobs_total")
+                    if jobs_r is not None and jobs_t is not None:
+                        progress = (
+                            1.0
+                            - jobs_r.float().reshape(-1)
+                            / jobs_t.float().reshape(-1).clamp_min(1.0)
+                        ).clamp(0.0, 1.0)
+                        floor = min(
+                            max(
+                                float(
+                                    getattr(
+                                        model, "remain_progress_weight_floor", 1.0
+                                    )
+                                ),
+                                0.0,
+                            ),
+                            1.0,
+                        )
+                        power = max(
+                            float(
+                                getattr(model, "remain_progress_weight_power", 1.0)
+                            ),
+                            1e-6,
+                        )
+                        remain_w = floor + (1.0 - floor) * progress.pow(power)
+                        remain_weighted_abs += float((remain_err * remain_w).sum().item())
+                        remain_weight_sum += float(remain_w.sum().item())
+                        phase_masks = {
+                            "early": progress < (1.0 / 3.0),
+                            "middle": (progress >= (1.0 / 3.0))
+                            & (progress < (2.0 / 3.0)),
+                            "late": progress >= (2.0 / 3.0),
+                        }
+                        for phase_name, phase_mask in phase_masks.items():
+                            if phase_mask.any():
+                                remain_phase_abs[phase_name] += float(
+                                    remain_err[phase_mask].sum().item()
+                                )
+                                remain_phase_n[phase_name] += int(
+                                    phase_mask.sum().item()
+                                )
+                                remain_phase_weighted_abs[phase_name] += float(
+                                    (remain_err[phase_mask] * remain_w[phase_mask])
+                                    .sum()
+                                    .item()
+                                )
+                                remain_phase_weight_sum[phase_name] += float(
+                                    remain_w[phase_mask].sum().item()
+                                )
                 if "y_hot" in batch and "hot_prob" in pred and near_m is not None:
                     cell = _occupancy_eval_mask(near_m, batch.get("occ_node_mask"))
                     if cell is not None and cell.any():
@@ -464,6 +584,8 @@ def _epoch_loop(
                             will_grids.append(pred["event_will_prob"].detach().cpu())
                             start_grids.append(pred["event_start_idx"].detach().cpu())
                             dur_grids.append(pred["event_dur"].detach().cpu())
+                            if "event_onset_prob" in pred:
+                                onset_grids.append(pred["event_onset_prob"].detach().cpu())
                         if "hist_last_hot" in batch:
                             hist_grids.append(batch["hist_last_hot"].detach().cpu())
                         remain_grids.append(near_m.detach().cpu())
@@ -482,6 +604,34 @@ def _epoch_loop(
             out.update(_will_metrics(torch.cat(will_true), torch.cat(will_prob)))
         if remain_n > 0:
             out["remain_len_mae"] = remain_len_mae / remain_n
+        if remain_weight_sum > 0:
+            out["remain_len_mae_progress_weighted"] = (
+                remain_weighted_abs / remain_weight_sum
+            )
+        for phase_name in ("early", "middle", "late"):
+            phase_n = remain_phase_n[phase_name]
+            if phase_n > 0:
+                out[f"remain_len_mae_{phase_name}"] = (
+                    remain_phase_abs[phase_name] / phase_n
+                )
+                out[f"remain_len_n_{phase_name}"] = float(phase_n)
+            phase_weight_sum = remain_phase_weight_sum[phase_name]
+            if phase_weight_sum > 0:
+                out[f"remain_len_mae_{phase_name}_weighted"] = (
+                    remain_phase_weighted_abs[phase_name] / phase_weight_sum
+                )
+        primary_phase = str(
+            getattr(model, "remain_eval_primary_phase", "global") or "global"
+        ).lower()
+        if primary_phase in {"early_weighted", "middle_weighted", "late_weighted"}:
+            phase_name = primary_phase.removesuffix("_weighted")
+            primary_key = f"remain_len_mae_{phase_name}_weighted"
+        elif primary_phase in {"early", "middle", "late"}:
+            primary_key = f"remain_len_mae_{primary_phase}"
+        else:
+            primary_key = "remain_len_mae"
+        if primary_key in out:
+            out["remain_len_mae_primary"] = float(out[primary_key])
         if hot_true:
             hm = _will_metrics(torch.cat(hot_true), torch.cat(hot_prob), thresh=hot_eval_threshold)
             out["hot_f1"] = hm["will_f1"]
@@ -579,6 +729,10 @@ def _epoch_loop(
                     # Optional val-time threshold sweep: keep P ≥ floor, max F1.
                     sweep = getattr(model, "_report_threshold_sweep", None) or []
                     min_p = float(getattr(model, "_report_ckpt_min_precision", 0.0) or 0.0)
+                    primary = str(
+                        getattr(model, "_report_primary", "report") or "report"
+                    ).lower()
+                    primary_prefix = "who" if primary in {"who", "will15"} else "report"
                     for thr in sweep:
                         thr_f = float(thr)
                         if abs(thr_f - float(event_report_threshold)) < 1e-9:
@@ -595,10 +749,10 @@ def _epoch_loop(
                             threshold=thr_f,
                             **sweep_kw,
                         )
-                        cand_p = float(cand.get("report_precision", 0.0))
-                        cand_f = float(cand.get("report_f1", 0.0))
-                        best_f = float(best_rep.get("report_f1", 0.0))
-                        best_p = float(best_rep.get("report_precision", 0.0))
+                        cand_p = float(cand.get(f"{primary_prefix}_precision", 0.0))
+                        cand_f = float(cand.get(f"{primary_prefix}_f1", 0.0))
+                        best_f = float(best_rep.get(f"{primary_prefix}_f1", 0.0))
+                        best_p = float(best_rep.get(f"{primary_prefix}_precision", 0.0))
                         best_ok = best_p + 1e-12 >= min_p
                         cand_ok = cand_p + 1e-12 >= min_p
                         if cand_ok and (not best_ok or cand_f > best_f + 1e-6):
@@ -610,6 +764,37 @@ def _epoch_loop(
                     if "report_threshold_used" not in best_rep:
                         best_rep["report_threshold_used"] = float(event_report_threshold)
                     out.update(best_rep)
+                    used_thr = float(best_rep["report_threshold_used"])
+                    for tol in (1, 2, 3):
+                        tol_kw = dict(report_kw)
+                        tol_kw["start_tol_windows"] = tol
+                        tol_kw["force_to"] = max(float(force_to or 0.0), used_thr)
+                        strict = station_report_metrics(
+                            y_cat,
+                            will_np,
+                            start_np,
+                            dur_np,
+                            r_cat,
+                            o_cat,
+                            threshold=used_thr,
+                            **tol_kw,
+                        )
+                        for key in ("report_precision", "report_recall", "report_f1"):
+                            out[f"{key}_at_{tol}"] = float(strict.get(key, 0.0))
+                    if onset_grids:
+                        onset_np = torch.cat(onset_grids, dim=0).numpy()
+                        out.update(
+                            onset_distribution_metrics(
+                                y_cat,
+                                onset_np,
+                                r_cat,
+                                o_cat,
+                                min_windows=ev_min_w,
+                                max_start_windows=int(max_start_windows or 0),
+                                hist_last_hot=last_h,
+                                ongoing_min_windows=event_ongoing_min_windows,
+                            )
+                        )
         if total_cause > 0:
             out["cause_acc"] = correct_cause / total_cause
             out["cause_n"] = float(total_cause)
@@ -632,6 +817,14 @@ def _epoch_loop(
 
 def train(cfg: dict[str, Any]) -> Path:
     cfg = dict(cfg)
+    run_seed = int(cfg.get("seed", 42))
+    random.seed(run_seed)
+    np.random.seed(run_seed)
+    torch.manual_seed(run_seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(run_seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
     if str(cfg.get("train_mode") or "supervised").strip().lower() == "unsupervised":
         cfg["train_mode"] = "unsupervised"
         if float(cfg.get("w_hot", 0.0)) <= 0.0:
@@ -661,7 +854,7 @@ def train(cfg: dict[str, Any]) -> Path:
         batch_size=int(cfg.get("batch_size", 16)),
         train_ratio=float(cfg.get("train_rate", 0.7)),
         val_ratio=float(cfg.get("eval_rate", 0.15)),
-        seed=int(cfg.get("seed", 42)),
+        seed=int(cfg.get("split_seed", run_seed)),
         max_hist_events=int(cfg.get("max_hist_events", 8)),
         remain_to_jobs_done=bool(cfg.get("remain_to_jobs_done", True)),
         max_remain_windows=int(cfg.get("max_remain_windows", 15)),
@@ -671,6 +864,8 @@ def train(cfg: dict[str, Any]) -> Path:
         ),
         hot_min_windows=int(cfg.get("hot_min_windows", 8)),
         hot_gap_windows=int(cfg.get("hot_gap_windows", 1)),
+        hot_smoothing_order=str(cfg.get("hot_smoothing_order", "legacy")),
+        min_episode_jobs_total=float(cfg.get("min_episode_jobs_total", 0.0)),
         train_only_contains=list(cfg.get("train_only_contains") or []),
         train_mode=str(cfg.get("train_mode") or "supervised"),
     )
@@ -738,6 +933,7 @@ def train(cfg: dict[str, Any]) -> Path:
         model._report_threshold_sweep = [float(x) for x in sweep]
     else:
         model._report_threshold_sweep = []
+    model._report_primary = str(cfg.get("report_primary", "report"))
     model._report_ckpt_min_precision = float(cfg.get("ckpt_min_report_precision", 0.0) or 0.0)
     init_ckpt = str(cfg.get("init_ckpt") or "").strip()
     if init_ckpt:
@@ -774,6 +970,10 @@ def train(cfg: dict[str, Any]) -> Path:
             f"[train] freeze_for_recall_finetune last_blocks={last_enc_blocks} "
             f"trainable_tensors={kept} encoder_lr={encoder_lr if encoder_lr is not None else lr}"
         )
+    elif bool(cfg.get("freeze_except_remain_len", False)):
+        kept = model.freeze_except_remain_len()
+        optimizer = _trainable_adamw(model, lr, wd, encoder_lr=encoder_lr)
+        print(f"[train] freeze_except_remain_len trainable_tensors={kept}")
     elif bool(cfg.get("freeze_except_event_onset", False)):
         kept = model.freeze_except_event_heads(
             include_continue=bool(cfg.get("unfreeze_event_continue", False))
@@ -879,7 +1079,9 @@ def train(cfg: dict[str, Any]) -> Path:
         brief = ", ".join(
             f"{name}={int(counts[i])}"
             for i, name in enumerate(classes)
-            if i < len(counts) and int(counts[i]) > 0
+            if i < len(counts)
+            and int(counts[i]) > 0
+            and str(name) in CAUSE_REPORT_CLASSES
         )
         if brief:
             print(f"[train] cause train counts: {brief} majority={cause_majority}")
@@ -982,6 +1184,7 @@ def train(cfg: dict[str, Any]) -> Path:
                     f"ev_f1={va.get('event_f1', 0):.3f} "
                     f"who_p={va.get('who_precision', 0):.3f} "
                     f"who_r={va.get('who_recall', 0):.3f} "
+                    f"who_f1={va.get('who_f1', 0):.3f} "
                     f"rep_p={va.get('report_precision', 0):.3f} "
                     f"rep_r={va.get('report_recall', 0):.3f} "
                     f"rep_f1={va.get('report_f1', 0):.3f} "
@@ -991,9 +1194,17 @@ def train(cfg: dict[str, Any]) -> Path:
                     f"n_on={va.get('n_true_ongoing', 0):.0f} "
                     f"thr={va.get('report_threshold_used', 0):.2f} "
                     f"st_mae={va.get('start_mae', 0):.2f} "
+                    f"bucket_acc={va.get('onset_bucket_accuracy', 0):.3f} "
+                    f"f1@1/2/3={va.get('report_f1_at_1', 0):.3f}/"
+                    f"{va.get('report_f1_at_2', 0):.3f}/"
+                    f"{va.get('report_f1_at_3', 0):.3f} "
                     f"dur_mae={va.get('dur_mae', 0):.2f} "
                     f"type_h={va.get('hot_type_hmean', 0):.3f} "
                     f"remain_mae={va.get('remain_len_mae', 0):.1f} "
+                    f"remain_w={va.get('remain_len_mae_progress_weighted', 0):.1f} "
+                    f"remain_e/m/l={va.get('remain_len_mae_early', 0):.1f}/"
+                    f"{va.get('remain_len_mae_middle', 0):.1f}/"
+                    f"{va.get('remain_len_mae_late', 0):.1f} "
                     f"cause_acc={va.get('cause_acc', 0):.3f} "
                     f"cause_macro={va.get('cause_macro_recall', 0):.3f} "
                     f"cluster_acc={va.get('cluster_acc', 0):.3f} "
@@ -1028,6 +1239,15 @@ def train(cfg: dict[str, Any]) -> Path:
                         and (report_f1 > best_hot_f1 + 1e-6)
                     )
                     ckpt_show = report_f1
+                elif ckpt_metric in {"who_f1", "will15_f1"}:
+                    who_p = float(va.get("who_precision", 0.0))
+                    who_f1 = float(va.get("who_f1", 0.0))
+                    improved = (
+                        (who_p + 1e-12 >= min_report_p)
+                        and (who_r + 1e-12 >= min_report_r)
+                        and (who_f1 > best_hot_f1 + 1e-6)
+                    )
+                    ckpt_show = who_f1
                 elif ckpt_metric == "report_recall":
                     improved = (
                         (report_p + 1e-12 >= min_report_p)
@@ -1058,11 +1278,14 @@ def train(cfg: dict[str, Any]) -> Path:
                     improved = mae < best_mae - 1e-6
                     ckpt_show = mae
 
-                ungated_f1 = (
-                    report_f1
-                    if ckpt_metric.startswith("report")
-                    else (event_f1 if "event" in ckpt_metric else hot_f1)
-                )
+                if ckpt_metric.startswith("report"):
+                    ungated_f1 = report_f1
+                elif ckpt_metric in {"who_f1", "will15_f1"}:
+                    ungated_f1 = float(va.get("who_f1", 0.0))
+                elif "event" in ckpt_metric:
+                    ungated_f1 = event_f1
+                else:
+                    ungated_f1 = hot_f1
                 ungated_improved = (
                     ungated_f1 > float(getattr(model, "_ungated_best_f1", -1.0)) + 1e-6
                 )
@@ -1080,6 +1303,9 @@ def train(cfg: dict[str, Any]) -> Path:
                                 "report_f1": report_f1,
                                 "report_precision": report_p,
                                 "report_recall": report_r,
+                                "will15_f1": float(va.get("who_f1", 0.0)),
+                                "will15_precision": float(va.get("who_precision", 0.0)),
+                                "will15_recall": who_r,
                                 "hot_f1": hot_f1,
                                 "hot_precision": hot_p,
                             },
@@ -1092,6 +1318,8 @@ def train(cfg: dict[str, Any]) -> Path:
                     best_mae = min(best_mae, mae)
                     if ckpt_metric == "report_f1":
                         best_hot_f1 = max(best_hot_f1, report_f1)
+                    elif ckpt_metric in {"who_f1", "will15_f1"}:
+                        best_hot_f1 = max(best_hot_f1, float(va.get("who_f1", 0.0)))
                     elif ckpt_metric == "report_recall":
                         best_hot_f1 = max(best_hot_f1, report_r)
                     elif ckpt_metric == "report_precision":
@@ -1363,14 +1591,23 @@ def train(cfg: dict[str, Any]) -> Path:
             f"ev_f1={te.get('event_f1', 0):.3f} "
             f"who_p={te.get('who_precision', 0):.3f} "
             f"who_r={te.get('who_recall', 0):.3f} "
+            f"who_f1={te.get('who_f1', 0):.3f} "
             f"rep_p={te.get('report_precision', 0):.3f} "
             f"rep_r={te.get('report_recall', 0):.3f} "
             f"rep_f1={te.get('report_f1', 0):.3f} "
             f"up_r={te.get('report_recall_upcoming', 0):.3f} "
             f"on_r={te.get('report_recall_ongoing', 0):.3f} "
             f"st_mae={te.get('start_mae', 0):.2f} "
+            f"bucket_acc={te.get('onset_bucket_accuracy', 0):.3f} "
+            f"f1@1/2/3={te.get('report_f1_at_1', 0):.3f}/"
+            f"{te.get('report_f1_at_2', 0):.3f}/"
+            f"{te.get('report_f1_at_3', 0):.3f} "
             f"type_h={te.get('hot_type_hmean', 0):.3f} "
             f"remain_mae={te.get('remain_len_mae', 0):.1f} "
+            f"remain_w={te.get('remain_len_mae_progress_weighted', 0):.1f} "
+            f"remain_e/m/l={te.get('remain_len_mae_early', 0):.1f}/"
+            f"{te.get('remain_len_mae_middle', 0):.1f}/"
+            f"{te.get('remain_len_mae_late', 0):.1f} "
             f"nll={te.get('nll', 0):.3f} cause_acc={te.get('cause_acc', 0):.3f} "
             f"cause_macro={te.get('cause_macro_recall', 0):.3f}"
         )
@@ -1447,6 +1684,7 @@ def main() -> None:
         help="Run folder under libcity/cache/model_cache/ for weights.",
     )
     parser.add_argument("--batch_size", type=int, default=None)
+    parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument(
         "--ckpt_min_hot_precision",
@@ -1499,6 +1737,8 @@ def main() -> None:
         cfg["save_dir"] = args.save_dir
     if args.batch_size is not None:
         cfg["batch_size"] = args.batch_size
+    if args.seed is not None:
+        cfg["seed"] = args.seed
     if args.device is not None:
         cfg["device"] = args.device
     if args.ckpt_min_hot_precision is not None:

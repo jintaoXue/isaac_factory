@@ -35,7 +35,7 @@
   "event_will_upcoming_pos_weight": 8.0,
   "event_will_precursor_pos_weight": 7.0,
   "event_will_near_start_pos_weight": 6.0,
-  "event_near_start_windows": 3,
+  "event_near_start_windows": 4,
   "event_will_ongoing_pos_weight": 4.5,
   "event_will_last_hot_fp_weight": 4.5,
   "event_will_upcoming_fp_weight_by_type": {
@@ -50,7 +50,7 @@
   "event_prefix_threshold": 1.5,
   "event_lift_to": 1.0,
   "event_report_ongoing_only": false,
-  "event_max_start_windows": 2,
+  "event_max_start_windows": 4,
   "split_will_heads": true,
   "sync_onset_from_will": false,
   "event_type_thr_hard_zero": false,
@@ -67,7 +67,7 @@
     "agv": 0.68
   },
   "report_threshold_sweep": [0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.82, 0.85, 0.88, 0.90, 0.94, 0.98],
-  "event_min_windows": 8,
+  "event_min_windows": 10,
   "event_ongoing_min_windows": 1,
   "event_iou_min": 0.5,
   "event_head_warmup_epochs": 0,
@@ -88,7 +88,7 @@
   },
   "hot_type_bias_init": [0.0, -0.6, 0.0, -0.3],
   "hot_eval_threshold": 0.55,
-  "hot_min_windows": 8,
+  "hot_min_windows": 10,
   "hot_gap_windows": 1,
   "near_remain_windows": 15,
   "remain_loss_tau": 40.0,
@@ -101,7 +101,7 @@
   "oversample_event_windows": 4.0,
   "patience": 12,
   "learning_rate": 0.00005,
-  "init_ckpt": "libcity/cache/model_cache/dense_i1_a1_f180/BNPDFormer_best.pt",
+  "init_ckpt": "libcity/cache/model_cache/dense_i1_a1_prefix8/BNPDFormer_best.pt",
   "unfreeze_last_encoder_blocks": 5,
   "unfreeze_occupancy_decoder": true,
   "lr_min": 1e-6,
@@ -153,6 +153,6 @@
   "type_balanced_occupancy": true,
   "wandb_activate": true,
   "wandb_project": "FactoryBN_PDFormer",
-  "wandb_name": "dense_i1_a1_prefix8",
+  "wandb_name": "dense_i1_a1_start4_min10",
   "wandb_entity": ""
 }

@@ -1,0 +1,13 @@
+{
+  "extends": "FactoryBN_dense_start5_min10.json",
+  "save_dir": "libcity/cache/model_cache/dense_i1_12_2_start5_min8_ep100",
+  "data_dir": "raw_data/dense_i1",
+  "max_remain_windows": 20,
+  "occupancy_horizon_windows": 20,
+  "occupancy_horizon_s": 1200,
+  "near_remain_windows": 20,
+  "hot_min_windows": 8,
+  "event_min_windows": 8,
+  "event_max_start_windows": 5,
+  "wandb_name": "dense_i1_12_2_start5_min8_ep100"
+}

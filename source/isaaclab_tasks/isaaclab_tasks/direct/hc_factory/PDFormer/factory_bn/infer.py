@@ -252,9 +252,26 @@ class BNPredictor:
             if hot_grid is not None:
                 rec["hot_windows"] = int((hot_grid[:, i] >= event_thresh).sum())
             if "event_will_prob" in out:
-                rec["will_block"] = float(_as_numpy(out["event_will_prob"])[0, i])
+                will15_prob = float(_as_numpy(out["event_will_prob"])[0, i])
+                rec["will_block"] = will15_prob
+                rec["will_15_prob"] = will15_prob
                 rec["start_min"] = int(_as_numpy(out["event_start_idx"])[0, i])
                 rec["duration_min"] = float(_as_numpy(out["event_dur"])[0, i])
+                if "event_start_bucket_prob" in out:
+                    bp = _as_numpy(out["event_start_bucket_prob"])[0, i]
+                    rec["onset_bucket_prob"] = {
+                        "ongoing": float(bp[0]),
+                        "1_5": float(bp[1]),
+                        "6_10": float(bp[2]),
+                        "11_15": float(bp[3]),
+                    }
+                if "event_start_minute_prob" in out:
+                    mp = _as_numpy(out["event_start_minute_prob"])[0, i]
+                    rec["minute_within_bucket_prob"] = [float(x) for x in mp]
+                if "event_onset_prob" in out:
+                    onset = _as_numpy(out["event_onset_prob"])[0, i]
+                    rec["onset_prob_by_minute"] = [float(x) for x in onset]
+                    rec["no_onset_prob"] = float(max(0.0, 1.0 - float(onset.sum())))
                 last = sample.get("hist_last_hot")
                 rec["ongoing"] = bool(
                     last is not None and float(np.asarray(last).reshape(-1)[i]) > 0.5

@@ -26,7 +26,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from factory_bn.backbone import DataEmbedding, STEncoderBlock, TokenEmbedding
-from factory_bn.causes import cause_ignore_ids
+from factory_bn.causes import cause_ignore_ids, cause_report_ids
 from factory_bn.remain import (
     PRECURSOR_DIM,
     gaussian_start_soft_labels,
@@ -44,6 +44,39 @@ OCC_TYPE_ALIASES = {
     "agv": ("transport_robot", "agv"),
     "workbench": (),
 }
+
+
+def hierarchical_onset_targets(
+    start_idx: torch.Tensor,
+    ongoing: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Map start indices to ongoing/1-5/6-10/11-15 and within-bucket minute."""
+    start = start_idx.long().clamp(min=0, max=15)
+    bucket = 1 + torch.div((start - 1).clamp_min(0), 5, rounding_mode="floor")
+    bucket = bucket.clamp(max=3)
+    bucket = torch.where(ongoing.bool(), torch.zeros_like(bucket), bucket)
+    minute = torch.remainder((start - 1).clamp_min(0), 5)
+    minute = torch.where(ongoing.bool(), torch.zeros_like(minute), minute)
+    return bucket, minute
+
+
+def decode_hierarchical_onset(
+    bucket_logits: torch.Tensor,
+    minute_logits: torch.Tensor,
+    *,
+    max_start_windows: int = 14,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Decode conditional onset classes back to legacy start indices."""
+    bucket_prob = torch.softmax(bucket_logits, dim=-1)
+    minute_prob = torch.softmax(minute_logits, dim=-1)
+    bucket = bucket_prob.argmax(dim=-1)
+    minute = minute_prob.argmax(dim=-1)
+    starts = torch.tensor(
+        [0, 1, 6, 11], device=bucket.device, dtype=bucket.dtype
+    )
+    start = starts[bucket] + minute
+    start = torch.where(bucket == 0, torch.zeros_like(start), start)
+    return start.clamp(max=max(int(max_start_windows), 0)), bucket_prob, minute_prob
 
 
 def rasterize_node_events_torch(
@@ -430,6 +463,15 @@ class BNPDFormer(nn.Module):
         self.w_dice = float(config.get("w_dice", 1.0))
         self.w_iou = float(config.get("w_iou", 1.0))
         self.w_remain_len = float(config.get("w_remain_len", 0.5))
+        self.remain_progress_weight_floor = float(
+            config.get("remain_progress_weight_floor", 1.0)
+        )
+        self.remain_progress_weight_power = float(
+            config.get("remain_progress_weight_power", 1.0)
+        )
+        self.remain_eval_primary_phase = str(
+            config.get("remain_eval_primary_phase", "global")
+        ).strip().lower()
         self.w_event_will = float(config.get("w_event_will", 0.0))
         self.w_event_start = float(config.get("w_event_start", 0.0))
         self.w_event_dur = float(config.get("w_event_dur", 0.0))
@@ -498,6 +540,24 @@ class BNPDFormer(nn.Module):
         self.event_decode_prefix = bool(config.get("event_decode_prefix", False))
         self.event_prefix_threshold = float(config.get("event_prefix_threshold", 8.0))
         self.w_prefix = float(config.get("w_prefix", 0.0))
+        self.use_discrete_hazard_decoder = bool(
+            config.get("use_discrete_hazard_decoder", False)
+        )
+        self.use_hierarchical_start_decoder = bool(
+            config.get("use_hierarchical_start_decoder", False)
+        )
+        self.hierarchical_minute_loss_weight = float(
+            config.get("hierarchical_minute_loss_weight", 1.0)
+        )
+        self.hazard_horizon_windows = int(
+            config.get(
+                "hazard_horizon_windows",
+                int(config.get("event_max_start_windows", 5) or 5) + 1,
+            )
+        )
+        self.hazard_horizon_windows = max(
+            1, min(self.hazard_horizon_windows, self.max_remain_windows)
+        )
         self.upcoming_will_floor = float(config.get("upcoming_will_floor", 0.0))
         self.event_report_ongoing_only = bool(config.get("event_report_ongoing_only", False))
         self.event_cold_will_max = bool(config.get("event_cold_will_max", True))
@@ -517,12 +577,34 @@ class BNPDFormer(nn.Module):
         self.event_will_near_start_pos_weight = float(
             config.get("event_will_near_start_pos_weight", 0.0)
         )
+        self.event_will_far_start_pos_weight = float(
+            config.get("event_will_far_start_pos_weight", 0.0)
+        )
+        self.event_start_far_boost = float(config.get("event_start_far_boost", 1.0))
+        self.event_f1_ongoing_mix = float(config.get("event_f1_ongoing_mix", 0.0))
+        self.prefix_ongoing_boost = float(config.get("prefix_ongoing_boost", 2.0))
         self.event_near_start_windows = int(config.get("event_near_start_windows", 2))
         self.event_start_sigma = float(config.get("event_start_sigma", 1.0))
         self.start_tol_windows = int(config.get("start_tol_windows", 3))
         self.w_contrast = float(config.get("w_contrast", 0.1))
         self.contrast_temp = float(config.get("contrast_temp", 0.2))
         self.fuse_hist_cluster = bool(config.get("fuse_hist_cluster", True))
+        # Focus cluster CE on cold stations / early horizon / abnormal regimes so it
+        # teaches upcoming precursors instead of whole-horizon occupancy regimes.
+        self.cluster_loss_cold_only = bool(config.get("cluster_loss_cold_only", False))
+        self.cluster_loss_early_steps = int(config.get("cluster_loss_early_steps", 0) or 0)
+        self.cluster_loss_abnormal_boost = float(
+            config.get("cluster_loss_abnormal_boost", 1.0)
+        )
+        self.cluster_loss_abnormal_ids = [
+            int(x)
+            for x in (
+                config.get("cluster_loss_abnormal_ids")
+                or config.get("recall_lift_cluster_ids")
+                or [1, 2, 3, 4, 5]
+            )
+        ]
+        self.w_cluster_contrast = float(config.get("w_cluster_contrast", 0.0))
         self.type_balanced_occupancy = bool(config.get("type_balanced_occupancy", True))
         self.use_grouped_embed = bool(config.get("use_grouped_embed", True))
         self.hot_pos_weight = float(config.get("hot_pos_weight", 8.0))
@@ -748,12 +830,42 @@ class BNPDFormer(nn.Module):
                 nn.GELU(),
                 nn.Linear(hidden, self.max_remain_windows),
             )
+            if self.use_hierarchical_start_decoder:
+                self.event_start_bucket_mlp = nn.Sequential(
+                    nn.Linear(self.embed_dim, hidden),
+                    nn.GELU(),
+                    nn.Linear(hidden, 4),
+                )
+                self.event_start_minute_mlp = nn.Sequential(
+                    nn.Linear(self.embed_dim, hidden),
+                    nn.GELU(),
+                    nn.Linear(hidden, 5),
+                )
+            else:
+                self.event_start_bucket_mlp = None
+                self.event_start_minute_mlp = None
             self.event_dur_mlp = nn.Sequential(
                 nn.Linear(self.embed_dim, hidden),
                 nn.GELU(),
                 nn.Linear(hidden, 1),
                 nn.Softplus(),
             )
+            if self.use_discrete_hazard_decoder:
+                self.event_hazard_mlp = nn.Sequential(
+                    nn.Linear(self.embed_dim, hidden),
+                    nn.GELU(),
+                    nn.Linear(hidden, 1),
+                )
+                self.event_hazard_dur_mlp = nn.Sequential(
+                    nn.Linear(self.embed_dim, hidden),
+                    nn.GELU(),
+                    nn.Linear(hidden, 1),
+                    nn.Softplus(),
+                )
+                nn.init.constant_(self.event_hazard_mlp[-1].bias, -2.0)
+            else:
+                self.event_hazard_mlp = None
+                self.event_hazard_dur_mlp = None
             self.prefix_mlp = nn.Sequential(
                 nn.Linear(self.embed_dim, hidden),
                 nn.GELU(),
@@ -776,7 +888,11 @@ class BNPDFormer(nn.Module):
             self.tpm_mlp = None
             self.cluster_emb = None
             self.event_start_mlp = None
+            self.event_start_bucket_mlp = None
+            self.event_start_minute_mlp = None
             self.event_dur_mlp = None
+            self.event_hazard_mlp = None
+            self.event_hazard_dur_mlp = None
             self.prefix_mlp = None
             self.precursor_mlp = None
             self.end_conv1 = nn.Conv2d(self.input_window, self.output_window, kernel_size=1)
@@ -846,6 +962,23 @@ class BNPDFormer(nn.Module):
                 n += 1
         return n
 
+    def freeze_except_remain_len(self) -> int:
+        """Freeze encoder and A.1 heads; train only remain_len (+ optional rate)."""
+        for p in self.parameters():
+            p.requires_grad = False
+        kept = 0
+        mods = [
+            getattr(self, "remain_len_head", None),
+            getattr(self, "remain_len_rate", None),
+        ]
+        for mod in mods:
+            if mod is None:
+                continue
+            for p in mod.parameters():
+                p.requires_grad = True
+                kept += 1
+        return kept
+
     def freeze_except_event_heads(self, include_continue: bool = False) -> int:
         """Freeze encoder; train onset / start / dur, optionally continue-will."""
         n = 0
@@ -853,7 +986,13 @@ class BNPDFormer(nn.Module):
             p.requires_grad = False
             n += 1
         kept = 0
-        mods = [self.event_will_onset_mlp, self.event_start_mlp, self.event_dur_mlp]
+        mods = [
+            self.event_will_onset_mlp,
+            self.event_start_mlp,
+            self.event_dur_mlp,
+            self.event_hazard_mlp,
+            self.event_hazard_dur_mlp,
+        ]
         if include_continue:
             mods.append(self.event_will_mlp)
         for mod in mods:
@@ -878,6 +1017,8 @@ class BNPDFormer(nn.Module):
             self.event_will_onset_mlp,
             self.event_start_mlp,
             self.event_dur_mlp,
+            getattr(self, "event_hazard_mlp", None),
+            getattr(self, "event_hazard_dur_mlp", None),
             getattr(self, "prefix_mlp", None),
             getattr(self, "precursor_mlp", None),
             self.cluster_emb,
@@ -983,6 +1124,25 @@ class BNPDFormer(nn.Module):
             else onset_logit
         )
         return torch.where(lh > 0.5, continue_logit, cold)
+
+    @staticmethod
+    def _hazard_to_onset(
+        hazard_logit: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Convert conditional hazards (B,N,K) to onset mass, survival and will."""
+        hazard = torch.sigmoid(hazard_logit)
+        one_minus = (1.0 - hazard).clamp_min(1e-7)
+        survival_before = torch.cat(
+            [
+                torch.ones_like(one_minus[..., :1]),
+                torch.cumprod(one_minus[..., :-1], dim=-1),
+            ],
+            dim=-1,
+        )
+        onset = hazard * survival_before
+        survival = torch.cumprod(one_minus, dim=-1)
+        will = onset.sum(dim=-1).clamp(1e-7, 1.0 - 1e-7)
+        return onset, survival, will
 
     def _node_type_mask(self, name: str, n_nodes: int, device: torch.device) -> torch.Tensor | None:
         buf = self._occ_type_masks().get(name)
@@ -1261,13 +1421,62 @@ class BNPDFormer(nn.Module):
             h_evt = self._fuse_precursor(h_evt, batch)
             will_cont = self.event_will_mlp(h_evt).squeeze(-1)
             will_on = None
-            if self.event_will_onset_mlp is not None:
+            if (
+                self.use_discrete_hazard_decoder
+                and self.event_hazard_mlp is not None
+                and h_k is not None
+            ):
+                k_h = min(int(self.hazard_horizon_windows), int(h_k.shape[1]))
+                hazard_state = h_k[:, :k_h] + (h_evt - h_last).unsqueeze(1)
+                hazard_logit = self.event_hazard_mlp(hazard_state).squeeze(-1).permute(0, 2, 1)
+                onset_prob, survival_prob, hazard_will = self._hazard_to_onset(hazard_logit)
+                will_on = torch.logit(hazard_will)
+                out["event_hazard_logit"] = hazard_logit
+                out["event_onset_prob"] = onset_prob
+                out["event_survival_prob"] = survival_prob
+                out["event_will_onset_logit"] = will_on
+                start_logit = torch.full(
+                    (*onset_prob.shape[:2], self.max_remain_windows),
+                    -30.0,
+                    device=onset_prob.device,
+                    dtype=onset_prob.dtype,
+                )
+                start_logit[..., :k_h] = torch.log(onset_prob.clamp_min(1e-8))
+                out["event_start_logit"] = start_logit
+                dur_by_start = (
+                    self.event_hazard_dur_mlp(hazard_state)
+                    .squeeze(-1)
+                    .permute(0, 2, 1)
+                )
+                out["event_dur_by_start"] = dur_by_start
+            elif self.event_will_onset_mlp is not None:
                 will_on = self.event_will_onset_mlp(h_evt).squeeze(-1)
                 out["event_will_onset_logit"] = will_on
             out["event_will_continue_logit"] = will_cont
             out["event_will_logit"] = self._combine_will_logit(will_cont, will_on, batch)
-            out["event_start_logit"] = self.event_start_mlp(h_evt)
-            out["event_dur"] = self.event_dur_mlp(h_evt).squeeze(-1)
+            if "event_start_logit" not in out:
+                out["event_start_logit"] = self.event_start_mlp(h_evt)
+            if (
+                self.use_hierarchical_start_decoder
+                and self.event_start_bucket_mlp is not None
+                and self.event_start_minute_mlp is not None
+            ):
+                out["event_start_bucket_logit"] = self.event_start_bucket_mlp(h_evt)
+                out["event_start_minute_logit"] = self.event_start_minute_mlp(h_evt)
+            base_dur = self.event_dur_mlp(h_evt).squeeze(-1)
+            if "event_dur_by_start" in out and "event_onset_prob" in out:
+                onset = out["event_onset_prob"]
+                onset_norm = onset / onset.sum(dim=-1, keepdim=True).clamp_min(1e-7)
+                onset_dur = (onset_norm * out["event_dur_by_start"]).sum(dim=-1)
+                last = batch.get("hist_last_hot")
+                if last is not None:
+                    lh = last.to(device=base_dur.device, dtype=base_dur.dtype)
+                    if lh.dim() == 1:
+                        lh = lh.view(1, -1).expand_as(base_dur)
+                    base_dur = torch.where(lh[:, : base_dur.shape[-1]] > 0.5, base_dur, onset_dur)
+                else:
+                    base_dur = onset_dur
+            out["event_dur"] = base_dur
             if getattr(self, "prefix_mlp", None) is not None:
                 out["prefix_len_pred"] = self.prefix_mlp(h_evt).squeeze(-1)
             if self.tpm_mlp is not None:
@@ -1360,6 +1569,38 @@ class BNPDFormer(nn.Module):
         labels = contrastive_class_ids(y_block, dim_id, type_id)
         return supervised_contrastive_loss(out["z"], labels, temperature=self.contrast_temp)
 
+    def _hist_cluster_contrast_loss(
+        self,
+        batch: dict[str, torch.Tensor],
+        out: dict[str, torch.Tensor],
+        zero: torch.Tensor,
+    ) -> torch.Tensor:
+        """SupCon on encoder z with label = dominant abnormal hist_cluster id."""
+        if self.w_cluster_contrast <= 0 or "z" not in out:
+            return zero
+        cid = batch.get("hist_cluster")
+        if cid is None:
+            return zero
+        c = cid.to(device=out["z"].device, dtype=torch.long)
+        if c.dim() == 1:
+            c = c.view(1, -1)
+        allow = self.cluster_loss_abnormal_ids
+        labels = torch.zeros(c.shape[0], dtype=torch.long, device=c.device)
+        for b in range(c.shape[0]):
+            row = c[b]
+            ok = torch.zeros_like(row, dtype=torch.bool)
+            for i in allow:
+                ok = ok | (row == int(i))
+            if ok.any():
+                vals = row[ok]
+                # mode of abnormal ids on this window
+                labels[b] = torch.mode(vals).values
+            else:
+                labels[b] = 0
+        return supervised_contrastive_loss(
+            out["z"], labels, temperature=self.contrast_temp
+        )
+
     def _cause_loss(
         self,
         batch: dict[str, torch.Tensor],
@@ -1446,8 +1687,9 @@ class BNPDFormer(nn.Module):
             lh = last.float()
             if lh.dim() == 1:
                 lh = lh.view(1, -1).expand_as(pos)
-            ongoing = lh[:, : pos.shape[-1]] > 0.5
-        ongoing = ongoing | ((y_start == 0) & pos)
+            ongoing = (lh[:, : pos.shape[-1]] > 0.5) & pos
+        else:
+            ongoing = (y_start == 0) & pos
         upcoming = pos & ~ongoing
         pos_w = torch.full_like(y_will, self.event_will_pos_weight)
         pos_w = torch.where(
@@ -1483,6 +1725,10 @@ class BNPDFormer(nn.Module):
                 torch.full_like(y_will, self.event_will_near_start_pos_weight),
                 pos_w,
             )
+        far_w = float(getattr(self, "event_will_far_start_pos_weight", 0.0) or 0.0)
+        if far_w > 0:
+            far = upcoming & (y_start > int(self.event_near_start_windows))
+            pos_w = torch.where(far, torch.full_like(y_will, far_w), pos_w)
         fp_w = torch.full_like(y_will, self.event_will_fp_weight)
         for name, extra in self.event_will_fp_weight_by_type.items():
             node = self._node_type_mask(name, y_will.shape[-1], y_will.device)
@@ -1551,11 +1797,27 @@ class BNPDFormer(nn.Module):
                 f_beta_u = (1.0 + b2) * prec_u * rec_u / (b2 * prec_u + rec_u + 1e-6)
             else:
                 f_beta_u = f_beta
-            loss_will = loss_will + self.w_event_f1 * (1.0 - 0.5 * (f_beta + f_beta_u))
+            on_mix = float(getattr(self, "event_f1_ongoing_mix", 0.0) or 0.0)
+            if on_mix > 0 and bool(ongoing.any()):
+                ow = fw * ongoing.float()
+                tp_o = (prob * ow).sum()
+                fp_o = (prob * (1.0 - y_will) * fw * ongoing.float()).sum()
+                fn_o = ((1.0 - prob) * ow).sum()
+                prec_o = tp_o / (tp_o + fp_o + 1e-6)
+                rec_o = tp_o / (tp_o + fn_o + 1e-6)
+                f_beta_o = (1.0 + b2) * prec_o * rec_o / (b2 * prec_o + rec_o + 1e-6)
+                on_mix = min(max(on_mix, 0.0), 0.5)
+                up_mix = 0.5 - on_mix
+                loss_will = loss_will + self.w_event_f1 * (
+                    1.0 - (0.5 * f_beta + up_mix * f_beta_u + on_mix * f_beta_o)
+                )
+            else:
+                loss_will = loss_will + self.w_event_f1 * (1.0 - 0.5 * (f_beta + f_beta_u))
         if (
             self.split_will_heads
             and "event_will_onset_logit" in out
             and self.w_event_onset > 0
+            and not self.use_discrete_hazard_decoder
         ):
             on_logit = out["event_will_onset_logit"]
             bce_on = F.binary_cross_entropy_with_logits(on_logit, y_will, reduction="none")
@@ -1576,7 +1838,55 @@ class BNPDFormer(nn.Module):
                 )
         loss_start = zero
         loss_dur = zero
-        if bool(upcoming.any()) and "event_start_logit" in out:
+        if (
+            self.use_hierarchical_start_decoder
+            and "event_start_bucket_logit" in out
+            and "event_start_minute_logit" in out
+            and bool(pos.any())
+        ):
+            y_bucket, y_minute = hierarchical_onset_targets(y_start, ongoing)
+            bucket_ce = F.cross_entropy(
+                out["event_start_bucket_logit"][pos],
+                y_bucket[pos],
+            )
+            minute_ce = zero
+            if bool(upcoming.any()):
+                minute_ce = F.cross_entropy(
+                    out["event_start_minute_logit"][upcoming],
+                    y_minute[upcoming],
+                )
+            loss_start = bucket_ce + self.hierarchical_minute_loss_weight * minute_ce
+        elif self.use_discrete_hazard_decoder and "event_hazard_logit" in out:
+            hz = out["event_hazard_logit"]
+            k_h = int(hz.shape[-1])
+            target = torch.zeros_like(hz)
+            start_h = y_start.clamp(0, k_h - 1)
+            target.scatter_(-1, start_h.unsqueeze(-1), 1.0)
+            target = target * upcoming.unsqueeze(-1).float()
+            steps = torch.arange(k_h, device=hz.device).view(1, 1, -1)
+            risk = torch.where(
+                upcoming.unsqueeze(-1),
+                steps <= start_h.unsqueeze(-1),
+                torch.ones_like(target, dtype=torch.bool),
+            )
+            cold = ~ongoing
+            if occ is not None:
+                node = occ.float()
+                if node.dim() == 1:
+                    node = node.view(1, -1)
+                cold = cold & (node[:, : cold.shape[-1]] > 0.5)
+            risk = risk & cold.unsqueeze(-1)
+            if risk.any():
+                hz_bce = F.binary_cross_entropy_with_logits(hz, target, reduction="none")
+                hz_w = torch.where(
+                    target > 0.5,
+                    torch.full_like(hz_bce, self.event_will_upcoming_pos_weight),
+                    torch.ones_like(hz_bce),
+                )
+                loss_start = (hz_bce * hz_w * risk.float()).sum() / (
+                    hz_w * risk.float()
+                ).sum().clamp_min(1.0)
+        elif bool(upcoming.any()) and "event_start_logit" in out:
             sl = out["event_start_logit"]
             k_cls = int(sl.shape[-1])
             soft = gaussian_start_soft_labels(
@@ -1586,9 +1896,26 @@ class BNPDFormer(nn.Module):
             )
             soft_t = torch.from_numpy(soft).to(device=sl.device, dtype=sl.dtype)
             logp = F.log_softmax(sl[upcoming], dim=-1)
-            loss_start = -(soft_t * logp).sum(dim=-1).mean()
+            ce = -(soft_t * logp).sum(dim=-1)
+            far_boost = float(getattr(self, "event_start_far_boost", 1.0) or 1.0)
+            if far_boost > 1.0:
+                far = y_start[upcoming] > int(self.event_near_start_windows)
+                w_st = torch.where(
+                    far,
+                    torch.full_like(ce, far_boost),
+                    torch.ones_like(ce),
+                )
+                loss_start = (ce * w_st).sum() / w_st.sum().clamp_min(1.0)
+            else:
+                loss_start = ce.mean()
         if bool(pos.any()) and "event_dur" in out:
-            pred_d = out["event_dur"][pos]
+            pred_all = out["event_dur"]
+            if "event_dur_by_start" in out and bool(upcoming.any()):
+                by_start = out["event_dur_by_start"]
+                gather_i = y_start.clamp(0, by_start.shape[-1] - 1).unsqueeze(-1)
+                onset_d = by_start.gather(-1, gather_i).squeeze(-1)
+                pred_all = torch.where(upcoming, onset_d, pred_all)
+            pred_d = pred_all[pos]
             loss_dur = F.smooth_l1_loss(
                 torch.log1p(pred_d.clamp_min(0.0)),
                 torch.log1p(y_dur[pos].clamp_min(0.0)),
@@ -1645,7 +1972,8 @@ class BNPDFormer(nn.Module):
             lh = last.float()
             if lh.dim() == 1:
                 lh = lh.view(1, -1).expand_as(err)
-            w = w + 2.0 * (lh[:, : err.shape[-1]] > 0.5).float()
+            boost = float(getattr(self, "prefix_ongoing_boost", 2.0) or 2.0)
+            w = w + boost * (lh[:, : err.shape[-1]] > 0.5).float()
         occ = batch.get("occ_node_mask")
         if occ is not None:
             node = occ.float()
@@ -1800,10 +2128,22 @@ class BNPDFormer(nn.Module):
                 if agv is not None:
                     loss_agv_id = agv_wrong_robot_loss(logits, y_hot, agv, hot_m)
         if "remain_len_pred" in out and "remain_len" in batch:
-            loss_remain_len = F.smooth_l1_loss(
+            remain_err = F.smooth_l1_loss(
                 torch.log1p(out["remain_len_pred"]),
                 torch.log1p(batch["remain_len"].clamp_min(0.0)),
+                reduction="none",
             )
+            jobs_r = batch.get("jobs_remaining")
+            jobs_t = batch.get("jobs_total")
+            floor = min(max(self.remain_progress_weight_floor, 0.0), 1.0)
+            if jobs_r is not None and jobs_t is not None and floor < 1.0:
+                progress = 1.0 - jobs_r.float() / jobs_t.float().clamp_min(1.0)
+                progress = progress.clamp(0.0, 1.0)
+                power = max(self.remain_progress_weight_power, 1e-6)
+                remain_w = floor + (1.0 - floor) * progress.pow(power)
+                loss_remain_len = (remain_err * remain_w).sum() / remain_w.sum().clamp_min(1e-6)
+            else:
+                loss_remain_len = remain_err.mean()
         return loss_hot, loss_dice, loss_iou, loss_remain_len, loss_agv_id
 
     def _unsupervised_loss(
@@ -1850,10 +2190,34 @@ class BNPDFormer(nn.Module):
             if step_w is not None:
                 cell = occupancy_cell_weight(step_w, batch.get("occ_node_mask")) > 0
                 valid = valid & cell
+            early_k = int(getattr(self, "cluster_loss_early_steps", 0) or 0)
+            if early_k > 0:
+                k_idx = torch.arange(cid.shape[1], device=cid.device).view(1, -1, 1)
+                valid = valid & (k_idx < early_k)
+            if bool(getattr(self, "cluster_loss_cold_only", False)):
+                last = batch.get("hist_last_hot")
+                if last is not None:
+                    lh = last.to(device=cid.device, dtype=torch.float32)
+                    if lh.dim() == 1:
+                        lh = lh.view(1, -1)
+                    cold = lh[:, : cid.shape[-1]] <= 0.5
+                    valid = valid & cold.unsqueeze(1).expand_as(valid)
             if valid.any():
-                loss_cluster = F.cross_entropy(logits[valid], cid[valid])
-                hat = logits[valid].argmax(dim=-1)
-                cluster_acc = float((hat == cid[valid]).float().mean().detach().cpu())
+                logits_v = logits[valid]
+                cid_v = cid[valid]
+                boost = float(getattr(self, "cluster_loss_abnormal_boost", 1.0) or 1.0)
+                if boost > 1.0 and self.cluster_loss_abnormal_ids:
+                    w = torch.ones(cid_v.shape[0], device=cid_v.device, dtype=logits.dtype)
+                    abn = torch.zeros_like(cid_v, dtype=torch.bool)
+                    for i in self.cluster_loss_abnormal_ids:
+                        abn = abn | (cid_v == int(i))
+                    w = torch.where(abn, w * boost, w)
+                    ce = F.cross_entropy(logits_v, cid_v, reduction="none")
+                    loss_cluster = (ce * w).sum() / w.sum().clamp_min(1.0)
+                else:
+                    loss_cluster = F.cross_entropy(logits_v, cid_v)
+                hat = logits_v.argmax(dim=-1)
+                cluster_acc = float((hat == cid_v).float().mean().detach().cpu())
         else:
             cid = batch.get("cluster_id")
             if cid is not None and logits is not None and logits.dim() == 2:
@@ -1865,6 +2229,7 @@ class BNPDFormer(nn.Module):
                     cluster_acc = float((hat == cid[valid]).float().mean().detach().cpu())
 
         loss_contrast = self._occupancy_contrast_loss(batch, out, zero)
+        loss_cluster_contrast = self._hist_cluster_contrast_loss(batch, out, zero)
 
         loss_hot, loss_dice, loss_iou, loss_remain_len, loss_agv_id = self._occupancy_aux_losses(
             batch, out, step_w, zero
@@ -1879,6 +2244,7 @@ class BNPDFormer(nn.Module):
             self.w_recon * loss_recon
             + self.w_cluster * loss_cluster
             + self.w_contrast * loss_contrast
+            + float(getattr(self, "w_cluster_contrast", 0.0) or 0.0) * loss_cluster_contrast
             + self.w_hot * loss_hot
             + self.w_dice * loss_dice
             + self.w_iou * loss_iou
@@ -1900,6 +2266,9 @@ class BNPDFormer(nn.Module):
             "loss_recon": float(loss_recon.detach().cpu()) if torch.is_tensor(loss_recon) else float(loss_recon),
             "loss_cluster": float(loss_cluster.detach().cpu()) if torch.is_tensor(loss_cluster) else float(loss_cluster),
             "loss_contrast": float(loss_contrast.detach().cpu()) if torch.is_tensor(loss_contrast) else float(loss_contrast),
+            "loss_cluster_contrast": float(loss_cluster_contrast.detach().cpu())
+            if torch.is_tensor(loss_cluster_contrast)
+            else float(loss_cluster_contrast),
             "cluster_acc": cluster_acc,
             "loss_hot": float(loss_hot.detach().cpu()) if torch.is_tensor(loss_hot) else float(loss_hot),
             "loss_dice": float(loss_dice.detach().cpu()) if torch.is_tensor(loss_dice) else float(loss_dice),
@@ -2015,13 +2384,42 @@ class BNPDFormer(nn.Module):
             out["tau"] = self.intensity.expected_tau(out["h_event"], out["tau_phase"])
         out["will_prob"] = torch.sigmoid(out["will_logit"])
         out["mark_prob"] = torch.softmax(out["mark_logits"], dim=-1)
-        out["cause_prob"] = torch.softmax(out["cause_logits"], dim=-1)
+        cause_logits = out["cause_logits"]
+        allowed_cause_ids = cause_report_ids(self._cause_class_names)
+        if allowed_cause_ids:
+            allowed = torch.zeros(
+                cause_logits.shape[-1],
+                device=cause_logits.device,
+                dtype=torch.bool,
+            )
+            allowed[allowed_cause_ids] = True
+            cause_logits = cause_logits.masked_fill(~allowed.view(1, -1), -30.0)
+        out["cause_prob"] = torch.softmax(cause_logits, dim=-1)
         out["cause_pred"] = out["cause_prob"].argmax(dim=-1)
         if "hot_logit" in out:
             out["hot_prob"] = torch.sigmoid(out["hot_logit"])
         if "event_will_logit" in out:
             will_p = torch.sigmoid(out["event_will_logit"])
-            start_idx = out["event_start_logit"].argmax(dim=-1)
+            if (
+                self.use_hierarchical_start_decoder
+                and "event_start_bucket_logit" in out
+                and "event_start_minute_logit" in out
+            ):
+                max_start = (
+                    int(self.event_max_start_windows)
+                    if self.event_max_start_windows is not None
+                    else int(self.max_remain_windows) - 1
+                )
+                start_idx, bucket_prob, minute_prob = decode_hierarchical_onset(
+                    out["event_start_bucket_logit"],
+                    out["event_start_minute_logit"],
+                    max_start_windows=max_start,
+                )
+                out["event_start_bucket_prob"] = bucket_prob
+                out["event_start_minute_prob"] = minute_prob
+                out["event_start_bucket_idx"] = bucket_prob.argmax(dim=-1)
+            else:
+                start_idx = out["event_start_logit"].argmax(dim=-1)
             last = batch.get("hist_last_hot")
             if last is not None:
                 lh = last.to(device=start_idx.device, dtype=will_p.dtype)

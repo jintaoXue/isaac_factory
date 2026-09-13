@@ -1,0 +1,6 @@
+{
+  "extends": "FactoryBN_dense_12_2_start5_min8_ep100.json",
+  "save_dir": "libcity/cache/model_cache/dense_i1_12_2_start10_min8_ep100",
+  "event_max_start_windows": 10,
+  "wandb_name": "dense_i1_12_2_start10_min8_ep100"
+}
