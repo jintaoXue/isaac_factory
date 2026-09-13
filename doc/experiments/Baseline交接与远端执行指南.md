@@ -4,33 +4,15 @@
 
 ## 1. 交接状态
 
-**当前最新状态：**vector_gat两次训练、八份冻结诊断和整批独立核验全部完成，训练
-pane472305/诊断pane496576均退出0、无相关Python；服务器979c680、tracked clean。
-正式upcoming=3/145、2/145，对应父near=1/145、2/145；不采用为稳定提升。
-last AP train=0.42392727/0.28651585，validation=0.00816133/0.00865408；两层动态
-排序在全部upcoming目标上都有实际使用，但泛化差距仍然存在。整批1262573 bytes，
-SHA e90919aeaae88f5bb924324bfc7d36451957f028f7dec0c554ba2e9b7f3285ae；独立终态
-核验13191 bytes，SHA 4f5679cb13afedbb8885fa70b1d45ebdaee91fba3fafdc60ee0cc927097a879b。
-六数据全量SHA、28当前文件、22旧joint归档成员及八诊断已复核。详见39.8。
-真实故障计划/起点与训练支持审计及独立复核也已完成（40.1–40.3），diag pane513374
-退出0。验证145个upcoming目标中80个在预测开始至起点窗末出现同工位真实runtime启动；
-22个缺少训练节点×scenario独立起点支持，其中10个也有上述runtime启动。这不是不可预测证明。
-168个train/validation episode中153个重采样计划：66个新旧函数均可还原、69个仅旧函数、
-18个仅现版。区别是生成规则，不是CSV/张量格式；既有冻结数据和28当前模型文件不变。
-独立复核7743 bytes，SHA 17bb7349324fe5747736a89c0d9bc84eac542206808b7cae53bba1643c0c1612。
-不重跑任何已完成训练/诊断，未用test，原优化目标仍未达成。
+**当前最新状态（以下旧“此前”段落均为历史）：**全部已登记训练及最新16份固定权重分层诊断已正常结束并独立核验；两个pane549093/549099均退出0，无相关Python。服务器仍dev_xwt@979c680、tracked clean，28当前模型文件和6数据stat未变，未用test。修复driver后复用了先完成的两份输出，旧失败日志/驱动保留，没有重训。
 
-用户最新质疑主0.5–0.6与baseline约0.01差距，优先核验主正式指标/权重来源（第41节）。
-主文档prefix8 validation up_r=0.633、n_up=98；baseline为145。主文档将远历史前兆头
-列在后续未采用的uphist，不能将当前主源码全部路径当作prefix8实际组件。
-重新只读遍历主仓库仍无dense产物，主HEAD f322dbf；现有n10旧checkpoint不能替代。
-历史状态分类输入审计尚未实现或运行；当前没有新的训练在跑，不能声称已改善。
-新增第42节固定权重分层诊断已本地实现，6 tests/4 subtests通过；待服务器3测试及
-两模型各8份诊断。只读当前B4 joint_onset/B5 vector_gat，保持原device/batch及阈值。
-不得因新诊断而重训或改报警，尚无分层结果。
-42.1更新：服务器3测试通过，两模型首份seed42 best validation输出已生成；driver
-误将结构化误报字典做数字减法，pane545202/545207均退出1。只修复校验，保留并复用
-首两份输出，原诊断源码仍878082e；本地7 tests/6 subtests通过，待服务器单项测试接续。
+**先查去重索引：[Baseline_upcoming排查台账.md](Baseline_upcoming排查台账.md)。** 该表分别记录当前208训练、只读诊断、旧134实验和未解假设；不要重复已完成搜索。完整分层结果见长报告42.2及JSON `schedule_strata_diagnostics_completed_20260913`。
+
+当前B4 joint_onset best upcoming为0/145、1/145，B5 vector_gat best为3/145、2/145，仍无稳定可采用提升。last仅用于诊断：在**没有匹配未来同工位runtime启动**的组，B4 train命中103/296、147/296，对应validation为1/65、2/65；B5 train为189/296、135/296，对应validation均1/65。严重泛化差距不只出现在未来局部故障组。B5有训练节点×scenario起点支持的123个验证目标也仅命中3个；零支持22个不能独自解释。新旧计划兼容类别内也仍有AP差距，生成规则混合不是已证实根因。
+
+整批独立核验baseline_schedule_strata_final_verification20260913.json，22114 bytes，SHA c1837f569cb50023ec8647a473440ca406b96be61b360463f9a174db9c2ce340。诊断源码878082e，修复驱动6a6f5b0；服务器3+1测试、本地7tests/6subtests已通过。原始预测的分数/计数/AP逐份复现，模型权重未变。
+
+**当前解释：泛化差距已确认；过拟合的具体原因和架构因果归属未定。** 历史物理状态编码及episode留一诊断尚未实现/启动，不能说正在训练新候选。主正式prefix8文档up_r=.633但n_up=98，baseline为145；尚缺对应dense原始权重/配置/共同包，不能把当前主源码所有组件当作prefix8实际组件。数据生成规则差异不是张量格式损坏（40–41节）。保持固定208继续开发，目标尚未达成。
 
 此前vector_gat B5 seed42训练及四份冻结诊断均已完成并独立核验，
 diag pane489190退出0。两层实际动态排序在全部595/145个train/validation upcoming

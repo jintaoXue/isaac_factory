@@ -1,4 +1,108 @@
 {
+  "schedule_strata_diagnostics_completed_20260913": {
+    "status": "all_sixteen_completed_and_independently_verified",
+    "runtime_commit": "979c680fb4d1919ae760cdfb0038f69fb7cc6708",
+    "diagnostic_source_commit": "878082e73e17b86951fa86196a9b27fe17a07bd6",
+    "driver_source_commit": "6a6f5b0cb528e06e9d8481337a41428a031360a0",
+    "panes": [
+      {
+        "model": "b4",
+        "pid": 549099,
+        "exit_code": 0
+      },
+      {
+        "model": "b5",
+        "pid": 549093,
+        "exit_code": 0
+      }
+    ],
+    "reused_forward_outputs": 2,
+    "current_model_files_unchanged": 28,
+    "dataset_files_stat_unchanged": 6,
+    "model_training": false,
+    "test_evaluated": false,
+    "goal_met": false,
+    "formal_best_hits": {
+      "b4": [
+        0,
+        1
+      ],
+      "b5": [
+        3,
+        2
+      ],
+      "validation_upcoming_targets": 145
+    },
+    "last_no_matched_future_local_runtime_start": {
+      "train_targets": 296,
+      "validation_targets": 65,
+      "b4_train_hits": [
+        103,
+        147
+      ],
+      "b4_validation_hits": [
+        1,
+        2
+      ],
+      "b5_train_hits": [
+        189,
+        135
+      ],
+      "b5_validation_hits": [
+        1,
+        1
+      ]
+    },
+    "b5_last_validation_support": {
+      "bins": [
+        "0",
+        "1",
+        "2-3",
+        "4-10",
+        ">10"
+      ],
+      "targets": [
+        22,
+        34,
+        32,
+        43,
+        14
+      ],
+      "hits_both_seeds": [
+        0,
+        0,
+        2,
+        1,
+        0
+      ]
+    },
+    "artifacts": [
+      {
+        "file": "baseline_schedule_strata_b4_complete20260913.json",
+        "bytes": 52487,
+        "sha256": "9e2c61aa07590f238b749c8abba229e2a81f55a14127b9928a58e39fb9be5a3a"
+      },
+      {
+        "file": "baseline_schedule_strata_b5_complete20260913.json",
+        "bytes": 52666,
+        "sha256": "205dd05cd6e63c177c7a124dadd1eb9dc909f201d2b478cd58224c6493ec1aca"
+      },
+      {
+        "file": "baseline_schedule_strata_final_verification20260913.json",
+        "bytes": 22114,
+        "sha256": "c1837f569cb50023ec8647a473440ca406b96be61b360463f9a174db9c2ce340"
+      }
+    ],
+    "interpretation": "Severe generalization gap persists without matched future local runtime starts and with nonzero train joint support. Overfitting mechanism and architecture attribution remain unresolved. No future diagnostic metadata enters inference."
+  },
+  "upcoming_no_repeat_ledger_20260913": {
+    "file": "Baseline_upcoming排查台账.md",
+    "current_208_completed_training_directions": 11,
+    "old_134_separate": true,
+    "check_before_new_experiment": true,
+    "next_unimplemented_hypothesis": "Past physical-state encoding and leave-one-training-episode-out support; not a registered model-training candidate",
+    "goal_met": false
+  },
   "schedule_strata_diagnostics_prepared_20260913": {
     "status": "local_implementation_six_tests_four_subtests_passed_not_started_on_server",
     "models": [
