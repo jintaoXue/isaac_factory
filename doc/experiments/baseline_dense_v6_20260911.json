@@ -1,4 +1,19 @@
 {
+  "episode_holdout_plan_server_access_pending_after_readout_completion_20260913": {
+    "status": "completed_readout_and_parent_results_preserved_new_partition_audit_not_sent_UU_terminal_foreground_unavailable",
+    "ready_source_commit": "8bae227417b831704d09532dd9af5de7dab59518",
+    "local_tests_passed": 4,
+    "server_runtime_last_verified": "ee838f59d2bdf2893a35ec00acae1308f9dd0e07",
+    "last_verified_training_pane": "610573|1|0",
+    "last_verified_parent_pane": "654613|1|0",
+    "new_plan_server_tests_sent": false,
+    "new_plan_run_sent": false,
+    "new_neural_training_started": false,
+    "user_terminal_foreground_requested": true,
+    "completed_jobs_restarted": false,
+    "test_evaluated": false,
+    "goal_met": false
+  },
   "episode_holdout_partition_preparation_registered_20260913": {
     "status": "four_local_tests_passed_server_plan_not_generated_no_new_training",
     "source_file": "source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools/prepare_baseline_episode_holdout.py",

@@ -8,6 +8,8 @@
 
 **接续注意：**UU独立Leo SSH已恢复，原任务均正常完成。父补缺源码9862d72只fetch对象运行，服务器4项测试及12份已有父诊断来源核验通过，仅新增B5 last四份，没有重训父模型。B5 last train AP由约.30降至.23，validation仍约.009–.010。详见§45.3及JSON `readout_dropout_full_batch_and_parent_comparison_completed_20260913`。两份独立终态记录为baseline_readout_dropout_final_verification20260913.json、baseline_readout_parent_final_verification20260913.json。当前松散权重为dropout负消融，不能当作已采用最优baseline。
 
+**最新访问状态：**在第45.3节完整收尾之后，UU再次切回远控画面，并出现原生控制管道关闭/窗口变化拒绝。已准备的第46节分组工具8bae227及4项本地测试结果已推送，但服务器检查与分组审计均未发送，没有新训练。已请用户将Leo独立终端置前；恢复后先确认窗口/当前任务，不重复两批已完成工作。
+
 **下一诊断准备（第46节）：**已完成原train内部整episode留出计划工具及4项本地检查，用于区分普遍新episode泛化差与原validation特殊难度。当前只准备分组/缓存计数，服务器计划未生成、没有新训练；不得把旧神经权重的统计留episode结果冒充真正训练留出。正式208分割不改，test不参与。
 
 **先查去重索引：[Baseline_upcoming排查台账.md](Baseline_upcoming排查台账.md)。** 当前208训练、诊断、旧134搜索及未解假设分开记录；禁止重复已完成搜索。四份`baseline_repr_{b4,b5}s42_last_{train,validation}20260913.npz`供后续复用，禁止重复对应forward。
