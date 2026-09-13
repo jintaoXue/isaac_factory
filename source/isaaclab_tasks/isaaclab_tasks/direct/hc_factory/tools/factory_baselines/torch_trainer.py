@@ -11,7 +11,7 @@ import random
 import shutil
 import subprocess
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -36,7 +36,9 @@ from .metrics import (
     hot_grid_metrics,
     select_report_threshold,
     training_cause_majority,
+    choose_report_metrics,
 )
+from . import protocol_20260913 as matched_protocol
 from .b3_lstm import B3Lstm, B3ModelConfig
 from .b4_gcn_gru import B4GcnGru, B4ModelConfig
 from .b5_gat_gru import B5GatGru, B5ModelConfig
@@ -67,8 +69,16 @@ class TorchTrainConfig:
     report_threshold_sweep: tuple[float, ...] = REPORT_THRESHOLD_SWEEP
     checkpoint_min_report_precision: float = 0.80
     checkpoint_min_report_recall: float = 0.70
+    evaluation_protocol: str = "legacy"
+    event_max_start_windows: int = 2
 
     def __post_init__(self) -> None:
+        if self.evaluation_protocol not in {"legacy", matched_protocol.VERSION}:
+            raise ValueError("Unknown evaluation protocol version")
+        if self.evaluation_protocol == matched_protocol.VERSION:
+            matched_protocol.evaluation_contract(self.event_max_start_windows)
+        elif self.event_max_start_windows != 2:
+            raise ValueError("The legacy protocol fixes max_start_windows=2")
         if not self.training_profile.strip():
             raise ValueError("training_profile must not be empty")
         for name in ("batch_size", "max_epochs", "patience", "min_epochs"):
@@ -117,6 +127,8 @@ def _validation_checkpoint_rank(metrics: dict[str, Any]) -> tuple[float, ...]:
     Report F1 remains primary. Hot F1 and lower validation loss only break ties,
     so an all-zero report curve cannot pin the fallback checkpoint to epoch 1.
     """
+    if metrics.get("evaluation_contract", {}).get("version") == matched_protocol.VERSION:
+        return (float(metrics["station_report"]["will15_f1"]),)
     return (
         float(metrics["station_report"]["report_f1"]),
         float(metrics["remain"]["hot_f1"]),
@@ -135,6 +147,12 @@ def _rank_improved(
         if candidate_value < incumbent_value - epsilon:
             return False
     return False
+
+
+def _selection_metrics(metrics: dict[str, Any]) -> tuple[float, float, float]:
+    prefix = metrics.get("evaluation_contract", {}).get("report_primary", "report")
+    report = metrics["station_report"]
+    return tuple(float(report[f"{prefix}_{key}"]) for key in ("f1", "precision", "recall"))
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -410,6 +428,9 @@ def _evaluate_loader(
     occupancy_type_masks: dict[str, torch.Tensor] | None = None,
 ) -> tuple[dict[str, Any], dict[str, np.ndarray], np.ndarray]:
     model.eval()
+    contract = loader.dataset.payload.get("evaluation_contract", EVALUATION_CONTRACT)
+    matched = contract.get("version") == matched_protocol.VERSION
+    report_classes = contract["cause_report_classes"] if matched else None
     event_min_windows = int(loader.dataset.payload["event_min_windows"])
     window_size_s = float(loader.dataset.payload["window_size_s"])
     collected: dict[str, list[np.ndarray]] = {}
@@ -449,6 +470,14 @@ def _evaluate_loader(
                 "event_start_index": outputs["event_start_logit"].argmax(dim=-1),
                 "event_duration_windows": outputs["event_duration"],
             }
+            if matched:
+                allowed = [i for i, name in enumerate(cause_classes or ()) if name in report_classes]
+                if len(allowed) != len(report_classes):
+                    raise ValueError("The dataset does not provide the four matched process causes")
+                allowed_ids = torch.tensor(allowed, device=device, dtype=torch.long)
+                values["cause_predictions"] = allowed_ids[outputs["cause_logits"][:, allowed_ids].argmax(-1)]
+                values["jobs_remaining"] = batch["jobs_remaining"]
+                values["jobs_total"] = batch["jobs_total"]
             for name, value in values.items():
                 collected.setdefault(name, []).append(value.detach().cpu().numpy())
 
@@ -500,6 +529,7 @@ def _evaluate_loader(
         cause_class_count,
         cause_classes=cause_classes,
         cause_majority=cause_majority,
+        report_classes=report_classes,
     )
     type_masks = {
         name: mask.detach().cpu().numpy()
@@ -524,7 +554,24 @@ def _evaluate_loader(
     }
     metrics.update(hot_metrics)
     metrics["remain_len_mae"] = remain_len_mae
-    if report_threshold_sweep:
+    if matched:
+        extra_remain = matched_protocol.remain_metrics(
+            arrays["remain_len"], arrays["target_remain_len"],
+            arrays["jobs_remaining"], arrays["jobs_total"], contract,
+        )
+        metrics["remain"].update(extra_remain)
+        metrics.update(extra_remain)
+        thresholds = [float(event_threshold)] + [
+            float(t) for t in report_threshold_sweep if abs(float(t) - float(event_threshold)) >= 1e-9
+        ]
+        candidates = [matched_protocol.station_metrics(
+            arrays["y_hot_grid"], arrays["event_will_probability"],
+            arrays["event_start_index"], arrays["event_duration_windows"],
+            arrays["remain_mask_grid"], arrays["occ_node_mask_grid"],
+            hist_last_hot=arrays["hist_last_hot_grid"], threshold=t, contract=contract,
+        ) for t in thresholds]
+        report_metrics = choose_report_metrics(candidates, min_precision=min_report_precision, primary="will15")
+    elif report_threshold_sweep:
         report_metrics = select_report_threshold(
             arrays["y_hot_grid"],
             arrays["event_will_probability"],
@@ -594,7 +641,7 @@ def _evaluate_loader(
     metrics.update(occupancy_metrics)
     metrics["loss"] = {name: value / sample_count for name, value in totals.items()}
     metrics["sample_count"] = sample_count
-    add_time_metric_metadata(metrics, window_size_s=window_size_s, sample_count=sample_count)
+    add_time_metric_metadata(metrics, window_size_s=window_size_s, sample_count=sample_count, contract=contract)
     return metrics, arrays, confusion
 
 
@@ -618,7 +665,13 @@ def save_checkpoint(
                 optimizer.state_dict() if optimizer is not None else None
             ),
             "epoch": epoch,
-            "best_validation_report_f1": best_validation_report_f1,
+            "best_validation_report_f1": (
+                metadata.get("selected_report_f1", best_validation_report_f1)
+                if metadata.get("evaluation_contract", {}).get("version") == matched_protocol.VERSION
+                else best_validation_report_f1
+            ),
+            **({"best_validation_primary_f1": best_validation_report_f1}
+               if metadata.get("evaluation_contract", {}).get("version") == matched_protocol.VERSION else {}),
             "model_config": model_config.to_dict(),
             "loss_config": loss_config.to_dict(),
             "train_config": asdict(train_config),
@@ -776,6 +829,8 @@ def train_torch_baseline(
     output_dir = output_dir.resolve()
     train_config = train_config or TorchTrainConfig()
     loss_config = loss_config or MultiTaskLossConfig()
+    if train_config.evaluation_protocol == matched_protocol.VERSION and not output_dir.is_dir():
+        raise ValueError("Matched runs must reuse an existing output directory")
     if warm_start_checkpoint is not None and train_config.evaluate_test:
         raise ValueError("Warm-start tuning must be validation-only; evaluate frozen models separately")
     if warm_start_checkpoint is not None and warm_start_checkpoint.resolve().parent == output_dir:
@@ -784,6 +839,14 @@ def train_torch_baseline(
     _seed_everything(train_config.seed)
     device = _resolve_device(train_config.device)
     payload, manifest = load_shared_dataset(dataset_dir)
+    if train_config.evaluation_protocol == matched_protocol.VERSION:
+        payload, manifest = matched_protocol.protocol_view(payload, manifest, train_config.event_max_start_windows)
+        loss_config = replace(
+            loss_config, near_remain_windows=20, event_partition="history",
+            remain_progress_weight_floor=.25, remain_progress_weight_power=1.5,
+            cause_ignored_ids=tuple(i for i, name in enumerate(manifest["cause_classes"])
+                                    if name not in matched_protocol.CAUSE_CLASSES),
+        )
     if not math.isclose(
         loss_config.prediction_horizon,
         float(manifest["prediction_horizon_s"]),
@@ -804,6 +867,8 @@ def train_torch_baseline(
     }
     model_class, config_class, baseline_id, model_name = _model_spec(model_kind)
     model_config = config_class(**model_values)
+    if train_config.evaluation_protocol == matched_protocol.VERSION and model_config.max_remain_windows != 20:
+        raise ValueError("The matched task needs 20 output grids, without changing the backbone")
     if bool(getattr(model_config, "event_onset_aux", False)) != (loss_config.lambda_event_onset_aux > 0):
         raise ValueError("Onset auxiliary head and positive loss coefficient must be enabled together")
     payload, input_feature_contract = attach_precursor(
@@ -852,6 +917,7 @@ def train_torch_baseline(
     cause_majority = training_cause_majority(
         payload["y_cause"][train_indices].numpy(),
         cause_classes,
+        report_classes=manifest["evaluation_contract"].get("cause_report_classes"),
     )
     pos_weight_value = 1.0
     pos_weight = torch.tensor(pos_weight_value, device=device)
@@ -862,7 +928,7 @@ def train_torch_baseline(
         "dataset_dir": str(dataset_dir),
         "dataset_manifest_sha256": _manifest_hash(manifest_path),
         "dataset_version": manifest["dataset_version"],
-        "evaluation_contract": dict(EVALUATION_CONTRACT),
+        "evaluation_contract": dict(manifest["evaluation_contract"]),
         "dataset_contract": manifest["dataset_contract"],
         "label_version": manifest["label_version"],
         "feature_names": manifest["feature_names"],
@@ -935,9 +1001,7 @@ def train_torch_baseline(
         _write_json(output_dir / "metrics_initial_validation.json", initial_metrics)
         initial_report = initial_metrics["station_report"]
         fallback_rank = _validation_checkpoint_rank(initial_metrics)
-        fallback_score = float(initial_report["report_f1"])
-        fallback_precision = float(initial_report["report_precision"])
-        fallback_recall = float(initial_report["report_recall"])
+        fallback_score, fallback_precision, fallback_recall = _selection_metrics(initial_metrics)
         fallback_hot_f1 = float(initial_metrics["remain"]["hot_f1"])
         fallback_validation_loss = float(initial_metrics["loss"]["total"])
         checkpoint_constraint_met = (
@@ -956,6 +1020,7 @@ def train_torch_baseline(
             "hot_eval_threshold": train_config.hot_eval_threshold,
             "stage_optimizer_steps": 0,
             "cumulative_optimizer_steps": parent_steps,
+            "selected_report_f1": float(initial_report["report_f1"]),
         }
         for filename in initial_files:
             save_checkpoint(
@@ -991,9 +1056,7 @@ def train_torch_baseline(
             occupancy_type_masks=occupancy_type_masks,
         )
         report = validation_metrics["station_report"]
-        validation_score = float(report["report_f1"])
-        validation_precision = float(report["report_precision"])
-        validation_recall = float(report["report_recall"])
+        validation_score, validation_precision, validation_recall = _selection_metrics(validation_metrics)
         validation_upcoming_recall = float(report["report_recall_upcoming"])
         selected_threshold = float(report["report_threshold_used"])
         validation_hot_f1 = float(validation_metrics["remain"]["hot_f1"])
@@ -1018,6 +1081,9 @@ def train_torch_baseline(
                 "validation_report_precision": report["report_precision"],
                 "validation_report_recall": report["report_recall"],
                 "validation_report_recall_upcoming": report["report_recall_upcoming"],
+                "validation_primary_f1": validation_score,
+                "validation_primary_precision": validation_precision,
+                "validation_primary_recall": validation_recall,
                 "validation_event_threshold": selected_threshold,
                 "validation_hot_threshold": train_config.hot_eval_threshold,
                 "validation_event_will_pr_auc": validation_metrics["event_will"][
@@ -1045,6 +1111,7 @@ def train_torch_baseline(
             "hot_eval_threshold": train_config.hot_eval_threshold,
             "stage_optimizer_steps": epoch * len(loaders["train"]),
             "cumulative_optimizer_steps": parent_steps + epoch * len(loaders["train"]),
+            "selected_report_f1": float(report["report_f1"]),
         }
         if fallback_improved:
             fallback_rank = candidate_rank
@@ -1206,14 +1273,18 @@ def train_torch_baseline(
         "trainable_parameter_count": trainable_parameter_count,
         "dataset_contract": manifest["dataset_contract"],
         "dataset_version": manifest["dataset_version"],
-        "evaluation_contract": dict(EVALUATION_CONTRACT),
+        "evaluation_contract": dict(manifest["evaluation_contract"]),
         "label_version": manifest["label_version"],
         "best_epoch": best_epoch,
         "epochs_trained": len(history),
         "dataset_manifest_sha256": metadata["dataset_manifest_sha256"],
-        "best_validation_report_f1": best_score,
-        "best_validation_report_precision": best_precision,
-        "best_validation_report_recall": best_recall,
+        "best_validation_report_f1": float(validation_metrics["station_report"]["report_f1"]),
+        "best_validation_report_precision": float(validation_metrics["station_report"]["report_precision"]),
+        "best_validation_report_recall": float(validation_metrics["station_report"]["report_recall"]),
+        "best_validation_primary_f1": best_score,
+        "best_validation_primary_precision": best_precision,
+        "best_validation_primary_recall": best_recall,
+        "primary_metric": manifest["evaluation_contract"].get("report_primary", "report") + "_f1",
         "best_validation_hot_f1": best_hot_f1,
         "best_validation_total_loss": best_validation_loss,
         "checkpoint_precision_constraint": (
@@ -1247,6 +1318,11 @@ def train_torch_baseline(
             }
         )
     stage_elapsed = float(summary["elapsed_seconds"])
+    if train_config.evaluation_protocol == matched_protocol.VERSION:
+        summary["checkpoint_selection"] = (
+            "constrained_will15_f1_first_improvement" if checkpoint_constraint_met
+            else "fallback_will15_f1_first_improvement"
+        )
     budget = {
         "stage_epochs_trained": len(history),
         "stage_optimizer_steps": len(history) * len(loaders["train"]),
@@ -1293,6 +1369,12 @@ def evaluate_torch_checkpoint(
     actual_hash = _manifest_hash(dataset_dir / "dataset_manifest.json")
     if expected_hash != actual_hash:
         raise ValueError("Checkpoint and dataset manifest hashes do not match")
+    if checkpoint["train_config"].get("evaluation_protocol") == matched_protocol.VERSION:
+        payload, manifest = matched_protocol.protocol_view(
+            payload, manifest, int(checkpoint["train_config"]["event_max_start_windows"]),
+        )
+        if checkpoint["metadata"]["evaluation_contract"] != manifest["evaluation_contract"]:
+            raise ValueError("Checkpoint and task-view evaluation contracts do not match")
     payload, _ = attach_precursor(
         payload, manifest, dataset_dir, checkpoint["model_config"].get("event_precursor", "none"),
         (split_name,), checkpoint["metadata"].get("input_feature_contract"),

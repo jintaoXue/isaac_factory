@@ -366,7 +366,7 @@ class FactoryBaselineTensorDataset(Dataset):
         )
         event_will, event_start, event_duration = node_event_targets(
             y_hot,
-            **event_rule_kwargs(int(self.payload["event_min_windows"])),
+            **event_rule_kwargs(int(self.payload["event_min_windows"]), self.payload.get("evaluation_contract")),
             remain_mask=remain_mask,
             occ_node_mask=sample["occ_node_mask"].numpy(),
             hist_last_hot=sample["hist_last_hot"].numpy(),

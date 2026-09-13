@@ -54,8 +54,16 @@ class MultiTaskLossConfig:
     near_remain_windows: int = 15
     remain_loss_tau: float = 40.0
     prediction_horizon: float = 180.0
+    cause_ignored_ids: tuple[int, ...] = ()
+    event_partition: str = "start"
+    remain_progress_weight_floor: float = 1.0
+    remain_progress_weight_power: float = 1.0
 
     def __post_init__(self) -> None:
+        if self.event_partition not in {"start", "history"}:
+            raise ValueError("event_partition must be start or history")
+        if not 0 <= self.remain_progress_weight_floor <= 1 or not math.isfinite(self.remain_progress_weight_power) or self.remain_progress_weight_power <= 0:
+            raise ValueError("Invalid remaining-time progress weights")
         if not math.isfinite(self.lambda_event_onset_aux) or self.lambda_event_onset_aux < 0:
             raise ValueError("lambda_event_onset_aux must be finite and non-negative")
         if not math.isfinite(self.event_short_hot_fp_multiplier) or self.event_short_hot_fp_multiplier < 1:
@@ -328,8 +336,16 @@ def compute_multitask_loss(
         torch.log1p(outputs["remain_len"]),
         torch.log1p(batch["target_remain_len"].float()),
     )
+    if config.remain_progress_weight_floor < 1.0:
+        remain_error = F.smooth_l1_loss(
+            torch.log1p(outputs["remain_len"]), torch.log1p(batch["target_remain_len"].float()),
+            reduction="none",
+        )
+        progress = (1 - batch["jobs_remaining"].float() / batch["jobs_total"].float().clamp_min(1)).clamp(0, 1)
+        weight = config.remain_progress_weight_floor + (1 - config.remain_progress_weight_floor) * progress.pow(config.remain_progress_weight_power)
+        remain_len = (remain_error * weight).sum() / weight.sum().clamp_min(1e-6)
     valid_cause = batch["y_cause"] >= 0
-    for cause_id in cause_ignore_ids():
+    for cause_id in (config.cause_ignored_ids or cause_ignore_ids()):
         valid_cause = valid_cause & (batch["y_cause"] != int(cause_id))
     cause = (
         F.cross_entropy(
@@ -346,6 +362,9 @@ def compute_multitask_loss(
     # Match the scored event's start, not its historical state, for supervision.
     ongoing = positive_event & (batch["event_start"] == 0)
     upcoming = positive_event & (batch["event_start"] > 0)
+    if config.event_partition == "history":
+        last_hot = batch["hist_last_hot"] > .5
+        ongoing, upcoming = positive_event & last_hot, positive_event & ~last_hot
     event_weight = torch.where(
         event_will_target > 0.5,
         torch.full_like(event_will_target, config.event_will_pos_weight),

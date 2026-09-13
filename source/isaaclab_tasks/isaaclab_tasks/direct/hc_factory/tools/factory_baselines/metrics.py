@@ -194,16 +194,19 @@ def choose_report_metrics(
     candidates: list[dict[str, Any]],
     *,
     min_precision: float = 0.80,
+    primary: str = "report",
 ) -> dict[str, Any]:
     """Choose max report F1, preferring candidates that satisfy precision."""
     if not candidates:
         raise ValueError("report threshold candidates must not be empty")
+    if primary not in {"report", "who", "will15"}:
+        raise ValueError("Unknown primary station metric")
     best = candidates[0]
     for candidate in candidates[1:]:
-        candidate_ok = float(candidate["report_precision"]) + 1.0e-12 >= min_precision
-        best_ok = float(best["report_precision"]) + 1.0e-12 >= min_precision
-        candidate_f1 = float(candidate["report_f1"])
-        best_f1 = float(best["report_f1"])
+        candidate_ok = float(candidate[f"{primary}_precision"]) + 1.0e-12 >= min_precision
+        best_ok = float(best[f"{primary}_precision"]) + 1.0e-12 >= min_precision
+        candidate_f1 = float(candidate[f"{primary}_f1"])
+        best_f1 = float(best[f"{primary}_f1"])
         if candidate_ok and (not best_ok or candidate_f1 > best_f1 + 1.0e-6):
             best = candidate
         elif not candidate_ok and not best_ok and candidate_f1 > best_f1 + 1.0e-6:
@@ -285,12 +288,16 @@ def hot_grid_metrics(
 def training_cause_majority(
     labels: np.ndarray,
     cause_classes: list[str] | tuple[str, ...],
+    report_classes: list[str] | tuple[str, ...] | None = None,
 ) -> int:
     """Return the valid A.3 majority class using training labels only."""
     y = np.asarray(labels, dtype=np.int64)
     valid = y >= 0
-    for cause_id in cause_ignore_ids(cause_classes):
-        valid &= y != int(cause_id)
+    if report_classes is None:
+        for cause_id in cause_ignore_ids(cause_classes):
+            valid &= y != int(cause_id)
+    else:
+        valid &= np.isin(y, [i for i, name in enumerate(cause_classes) if name in report_classes])
     if not valid.any():
         return -1
     counts = np.bincount(y[valid], minlength=len(cause_classes))
@@ -302,6 +309,7 @@ def compute_metrics(
     cause_class_count: int,
     cause_classes: list[str] | tuple[str, ...] | None = None,
     cause_majority: int = -1,
+    report_classes: list[str] | tuple[str, ...] | None = None,
 ) -> tuple[dict[str, Any], np.ndarray]:
     """Compute A.3 process-cause metrics; A.1 is scored as station events."""
     class_names = list(cause_classes or ROOT_CAUSE_CLASSES)
@@ -309,8 +317,11 @@ def compute_metrics(
         raise ValueError("cause_classes must match cause_class_count")
     metrics: dict[str, Any] = {}
     valid_cause = arrays["y_cause"] >= 0
-    for cause_id in cause_ignore_ids(class_names):
-        valid_cause &= arrays["y_cause"] != int(cause_id)
+    if report_classes is None:
+        for cause_id in cause_ignore_ids(class_names):
+            valid_cause &= arrays["y_cause"] != int(cause_id)
+    else:
+        valid_cause &= np.isin(arrays["y_cause"], [i for i, name in enumerate(class_names) if name in report_classes])
     if valid_cause.any():
         labels = arrays["y_cause"][valid_cause].astype(np.int64)
         predictions = arrays["cause_predictions"][valid_cause].astype(np.int64)
@@ -327,7 +338,7 @@ def compute_metrics(
             )
         recalls = []
         for class_id, class_name in enumerate(class_names):
-            if class_name not in CAUSE_REPORT_CLASSES:
+            if class_name not in (CAUSE_REPORT_CLASSES if report_classes is None else report_classes):
                 continue
             support = labels == class_id
             if not support.any():

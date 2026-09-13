@@ -20,16 +20,17 @@ EVALUATION_CONTRACT = {
 }
 
 
-def event_rule_kwargs(min_windows: int) -> dict[str, int]:
+def event_rule_kwargs(min_windows: int, contract: dict | None = None) -> dict[str, int]:
+    contract = EVALUATION_CONTRACT if contract is None else contract
     return {
         "min_windows": int(min_windows),
-        "ongoing_min_windows": EVALUATION_CONTRACT["ongoing_min_windows"],
-        "max_start_windows": EVALUATION_CONTRACT["max_start_windows"],
+        "ongoing_min_windows": contract["ongoing_min_windows"],
+        "max_start_windows": contract["max_start_windows"],
     }
 
 
 def add_time_metric_metadata(
-    metrics: dict, *, window_size_s: float, sample_count: int
+    metrics: dict, *, window_size_s: float, sample_count: int, contract: dict | None = None
 ) -> None:
     """Keep canonical window-valued keys and add explicit units and support.
 
@@ -38,7 +39,7 @@ def add_time_metric_metadata(
     """
     if not np.isfinite(window_size_s) or window_size_s <= 0:
         raise ValueError("window_size_s must be finite and positive")
-    metrics["evaluation_contract"] = dict(EVALUATION_CONTRACT)
+    metrics["evaluation_contract"] = dict(EVALUATION_CONTRACT if contract is None else contract)
     metrics["evaluation_contract"]["window_size_s"] = float(window_size_s)
     report = metrics["station_report"]
     for suffix in ("", "_ongoing", "_upcoming"):
