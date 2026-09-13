@@ -1,4 +1,69 @@
 {
+  "episode_holdout_b4_calibration_bound_completed_20260913": {
+    "status": "all_nine_analytic_bounds_independently_recomputed_decimal50",
+    "source_commit": "01a940005a6ca5eb98d6cbd0b8347e37cba88eae",
+    "model": "b4",
+    "bound": {
+      "file": "baseline_episodeholdout20260913_b4s42_calibration_bound.json",
+      "bytes": 6486,
+      "sha256": "986033e42fd2348e326dfafa7bff659652af1b3db35eb8a4eb9a2e676255dc22"
+    },
+    "tests": {
+      "file": "baseline_episodeholdout20260913_calibration_bound_tests.json",
+      "count": 4,
+      "bytes": 584,
+      "sha256": "9a9c5decfbdce7b77c3a2de5b52940c9030dc93a8f94adc6fb8499285044b42a"
+    },
+    "independent_verification": {
+      "file": "baseline_episodeholdout20260913_b4_calibration_bound_verification.json",
+      "bytes": 1212,
+      "sha256": "e445130ddc155c02a91098294a3a434b9d1ccd4d689d2a2f108dbbe6cc3250e9"
+    },
+    "possible_hits_upper_bound": {
+      "epoch10": {
+        "fit": 178,
+        "heldout": 24,
+        "original_validation": 26
+      },
+      "epoch30": {
+        "fit": 451,
+        "heldout": 25,
+        "original_validation": 22
+      },
+      "epoch60": {
+        "fit": 451,
+        "heldout": 25,
+        "original_validation": 23
+      }
+    },
+    "denominators": {
+      "fit": 451,
+      "heldout": 144,
+      "original_validation": 145
+    },
+    "half_recall_necessary_ap_lower_bound_rounded": {
+      "fit": 0.05900307,
+      "heldout": 0.05177574,
+      "original_validation": 0.06148197
+    },
+    "scope": "Only one global threshold or a monotone calibration preserving ranking, overall reportP>=.80, grant all ongoing/start predictions perfect. Bound is necessary and optimistic, not an achievable threshold frontier and not an architecture upper bound.",
+    "interpretation": "All three frozen B4 checkpoints rule out50% upcoming recall from single-score rescaling alone at overallP>=.80; current unseen ranking is insufficient, not only an unfavorable .70 scale.",
+    "server_tests_passed": true,
+    "threshold_search": false,
+    "model_forward": false,
+    "model_training": false,
+    "test_evaluated": false,
+    "goal_met": false,
+    "b5_observed_epoch": 38,
+    "training_pane": "712854|0|",
+    "analysis_wait_pane": "727985|0|",
+    "pending_b5": [
+      "finish original60epochs and9views",
+      "run already tested/deployed support strata once",
+      "run already tested/deployed analytic bound once"
+    ],
+    "report_section": "46.13"
+  },
   "episode_holdout_probability_scale_bound_registered_20260913": {
     "status": "four_local_tests_passed_server_analytic_bound_pending",
     "source": "bound_holdout_probability_calibration.py",

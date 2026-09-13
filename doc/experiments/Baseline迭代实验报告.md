@@ -4865,3 +4865,22 @@ B4未见正例概率随训练趋近0，但低召回是否仅因阈值尺度不�
 适用范围仅固定同一事件分数的全局阈值/单调重标度；节点特定校准、增加头或特征、重新排序/重训均在范围外。该界不能称为信息或架构上限。使用已固定的整体P≥.80要求，不拿算出的h选择checkpoint、阈值或参数；不变更既有.70诊断报告。
 
 4项本地检查通过，包括3up/2ongoing/2negative的全部210种排序、32种正例起点成功组合与7个阈值逐一验证可行命中不超过界；另查同分、ongoing精度余量、低AP和参数拒绝。当前源码/推导/本地检查完成，服务器检查及实际B4代入待执行。B5实时核验第11轮，原712854/727985仍live，旧任务不重跑。
+
+
+### 46.13 B4单一概率校准不足：不扫描阈值也可排除50%召回
+
+源码01a940005a6ca5eb98d6cbd0b8347e37cba88eae只fetch对象，4项服务器检查通过；用B4完整已核验JSON的真实AP/U/O完成9视图解析界，再以50位Decimal独立枚举所有整数h、重算各h的必要AP下界并核对最大可能h，全部通过。没有扫描预测概率阈值，没有NPZ读取/forward/训练，没有采用新阈值。
+
+| 固定轮次 | fit最多可能命中/451 | heldout最多可能/144 | 原validation最多可能/145 |
+|---|---:|---:|---:|
+| 10 | 178 | 24 | 26 |
+| 30 | 451 | 25 | 22 |
+| 60 | 451 | 25 | 23 |
+
+这是46.12推导的必要、刻意乐观的上界，不是某个可达到的阈值表现。条件为整体report precision≥.80，且仅对同一事件分数作全局阈值或保持排序的单调校准；允许所有O个ongoing和所有起点完美预测，忽略阈值之后全部正例的AP贡献。末轮heldout上界17.36%，原validation15.86%，三个checkpoint均排除50%upcoming召回；不能把这结论扩展到节点特定校准、新头、重新排序或新训练后的架构。
+
+要在两未见集取得至少一半upcoming且P≥.80，按计数得到的必要AP下界分别约.05177574/.06148197；当前末轮只有.00767398/.00789731。因而B4的问题不仅是.70阈值相对概率尺度偏高：目前未见排序本身不足以支撑所需的高召回/精度组合。这个结论补充46.11的过拟合证据，仍不证明具体特征捷径或架构上限，也没有替换正式baseline成绩。
+
+解析文件baseline_episodeholdout20260913_b4s42_calibration_bound.json：6486 bytes，SHA 986033e42fd2348e326dfafa7bff659652af1b3db35eb8a4eb9a2e676255dc22。4检查baseline_episodeholdout20260913_calibration_bound_tests.json：584 bytes，SHA 9a9c5decfbdce7b77c3a2de5b52940c9030dc93a8f94adc6fb8499285044b42a。独立50位复核baseline_episodeholdout20260913_b4_calibration_bound_verification.json：1212 bytes，SHA e445130ddc155c02a91098294a3a434b9d1ccd4d689d2a2f108dbbe6cc3250e9。完整stdout保留episodeholdout20260913_b4_calibration_bound.log。
+
+本次末尾实时核验B5已至38/60轮；原训练712854与bootstrap等待727985均live，运行checkout仍EE。继续等待原B5与18视图统计，不重启或更改运行源码。B5九视图完成后，已部署的analyze_holdout_support_predictions.py（9551920）和bound_holdout_probability_calibration.py（01a9400）各用--model b5执行一次；各自5/4服务器测试已经通过，不重复部署/测试或B4分析。原根因/合理改善目标仍未达成，test未用。
