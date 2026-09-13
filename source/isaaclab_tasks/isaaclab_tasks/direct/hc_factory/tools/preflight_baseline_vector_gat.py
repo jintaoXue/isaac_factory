@@ -2,7 +2,7 @@
 """Verify the registered B5 score ablation on frozen train/validation inputs."""
 
 import argparse
-from dataclasses import replace
+from dataclasses import asdict, replace
 import hashlib
 import json
 from pathlib import Path
@@ -35,6 +35,12 @@ def sha(path):
 def file_stat(path):
     stat = path.stat()
     return dict(size=stat.st_size, mtime_ns=stat.st_mtime_ns)
+
+
+def restore_training_config(values):
+    # JSON records tuples as arrays. Preserve the exact values and ordering;
+    # normalize only this declared tuple field before dataclass comparison.
+    return TorchTrainConfig(**{**values, "report_threshold_sweep": tuple(values["report_threshold_sweep"])})
 
 
 def main():
@@ -115,7 +121,7 @@ def main():
                 assert hashlib.sha256(archive.read(name)).hexdigest() == want
         parent_train, parent_overrides, parent_loss = dense_configuration("B5", "near_precursor", seed, args.device)
         candidate_train, overrides, loss_config = dense_configuration("B5", "vector_gat", seed, args.device)
-        old_train = TorchTrainConfig(**previous["config"]["training"])
+        old_train = restore_training_config(previous["config"]["training"])
         old_train.device = parent_train.device
         assert old_train == parent_train
         assert MultiTaskLossConfig.from_dict(previous["config"]["loss"]) == parent_loss == loss_config
@@ -158,7 +164,7 @@ def main():
             assert gradients[name] > 0, name
         torch.cuda.synchronize(device)
         peak = torch.cuda.max_memory_allocated(device)
-        checks.append(dict(seed=seed,model_config=config.to_dict(),training_config=candidate_train.to_dict(),
+        checks.append(dict(seed=seed,model_config=config.to_dict(),training_config=asdict(candidate_train),
                            loss_config=loss_config.to_dict(),parameter_count=count,additional_parameters=0,
                            initial_weights_and_rng_match=True,validation_initial_logit_max_abs_change=difference,
                            train_batch_loss=loss.item(),gradients_l1=gradients,peak_allocated_bytes=peak))

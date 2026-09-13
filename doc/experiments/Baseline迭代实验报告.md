@@ -4157,3 +4157,23 @@ joint成果，不新建目录、不改主仓库、不用test。服务器真实�
 同权重/参数量/RNG/dropout抽样、有效边/无效节点/排列等变、两层和GRU的事件损失梯度、
 内存checkpoint往返与旧配置默认、两seed单变量配置及B4拒绝。只运行不创建目录的
 定向测试；artifact_reuse仅选test_dense_candidates_are_single_variable_and_leave_scoring_unchanged。
+
+### 39.3 部署、服务器测试与预检配置表示修正
+
+19a4a0ce1c5d7ab24d7e7a40cbb59bdbcb0692d3已部署到空闲BSTAN dev_xwt，旧28模型文件、
+六数据stat和joint完整SHA前后不变。部署记录baseline_vector_gat_deployment20260913.json，
+5206 bytes，SHA 07b1768f9504b38ad20b17bb38fb8cfc5ac121386d7ee5a80443b35d8c481541。
+服务器RTX5090为32607 MiB，当时空闲28696 MiB；两种实际B5均为285982参数。
+
+服务器独立进程8项测试通过，baseline_vector_gat_server_tests20260913.json，452 bytes，
+SHA f5dc5c428f37d14d9d21e0b6aa353b33ecf882fda7799c95979a77ff06fc9fcb。
+真实预检在pane462149执行，完成近窗输入构建后，在旧/当前training dataclass直接相等
+比较处退出1，未开训、未归档模型。实际读回两seed旧配置确认，唯一差异是
+report_threshold_sweep的JSON列表与代码元组表示；JSON序列化后的所有字段完全一致。
+
+本地仅修正预检的反序列化：该字段按原顺序转为tuple，其余值继续严格比较。
+同时修正预检末端将不存在的TorchTrainConfig.to_dict改为dataclasses.asdict；该处尚
+未执行到，不是已发生的第二次预检失败。新增检查证明阈值值或batch大小变化仍会使
+配置比较不等。本地16 tests/22 subtests通过，模型打分代码没有再次改变。
+旧预检日志仍保留；重新使用日志前须核验归档。修正尚待部署、服务器9项测试和真实
+预检接续，不把语法/配置修正当作方法收益，不重跑已完成的训练搜索。

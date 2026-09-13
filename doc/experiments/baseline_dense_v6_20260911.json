@@ -1,4 +1,24 @@
 {
+  "vector_gat_first_preflight_config_fix_20260913": {
+    "status": "server_preflight_failed_config_container_type_local_fix_tested_not_deployed",
+    "server_source_commit": "19a4a0ce1c5d7ab24d7e7a40cbb59bdbcb0692d3",
+    "deployment": {"file": "baseline_vector_gat_deployment20260913.json", "bytes": 5206, "sha256": "07b1768f9504b38ad20b17bb38fb8cfc5ac121386d7ee5a80443b35d8c481541", "old_28_files_and_six_data_stats_unchanged": true},
+    "server_tests": {"file": "baseline_vector_gat_server_tests20260913.json", "passed": 8, "bytes": 452, "sha256": "f5dc5c428f37d14d9d21e0b6aa353b33ecf882fda7799c95979a77ff06fc9fcb"},
+    "first_preflight_pane": 462149,
+    "first_preflight_exit_code": 1,
+    "failure": "Saved JSON list versus dataclass tuple in report_threshold_sweep",
+    "actual_old_and_registered_config_serialized_values_equal_both_seeds": true,
+    "fix": "Restore only the declared threshold tuple field, keeping values and order; serialize training dataclass with asdict",
+    "attention_model_code_changed_by_fix": false,
+    "local_tests_passed": 16,
+    "local_subtests_passed": 22,
+    "failed_preflight_log_still_preserved": true,
+    "actual_B5_parameter_count_both_modes": 285982,
+    "observed_GPU_free_MiB_before_preflight": 28696,
+    "training_launched": false,
+    "test_evaluated": false,
+    "goal_met": false
+  },
   "vector_gat_registered_local_20260913": {
     "status": "implemented_and_local_tested_not_deployed_or_trained",
     "variant": "vector_gat",
@@ -1489,7 +1509,7 @@
     "next_action": "Follow running event_fbeta_launch_20260913; preserve fixed runtime and validation-only protocol",
     "deployed_checkout": "1728ca69bd85e695f6004522ff774a20eaaab8e4"
   },
-  "status": "joint_complete_vector_gat_registered_local_preflight_pending_goal_not_met",
+  "status": "joint_complete_vector_gat_preflight_config_fix_local_server_retry_pending_goal_not_met",
   "history_graph_B4_both_completed_20260913": {
     "status": "two_training_runs_and_eight_diagnostics_completed_verified",
     "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",

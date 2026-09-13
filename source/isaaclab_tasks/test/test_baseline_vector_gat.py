@@ -1,7 +1,8 @@
 """Test query-dependent graph ranking without changing the baseline's capacity."""
 
-from dataclasses import replace
+from dataclasses import asdict, replace
 import io
+import json
 from pathlib import Path
 import sys
 import unittest
@@ -14,6 +15,7 @@ sys.path.insert(0, str(TOOLS))
 from factory_baselines.b5_gat_gru import B5GatGru, B5ModelConfig, DenseGraphAttention
 from factory_baselines.torch_trainer import load_checkpoint
 from train_dense_baseline_control import dense_configuration
+from preflight_baseline_vector_gat import restore_training_config
 
 
 def model_inputs():
@@ -152,6 +154,17 @@ class TestVectorGat(unittest.TestCase):
                 self.assertFalse(new_train.evaluate_test)
         with self.assertRaisesRegex(ValueError, "B5-only"):
             dense_configuration("B4", "vector_gat", 42, "cpu")
+
+    def test_preflight_restores_json_tuple_without_ignoring_changed_values(self):
+        original = dense_configuration("B5", "near_precursor", 42, "cuda:0")[0]
+        saved = json.loads(json.dumps(asdict(original)))
+        self.assertIsInstance(saved["report_threshold_sweep"], list)
+        self.assertEqual(restore_training_config(saved), original)
+        saved["report_threshold_sweep"][0] += .01
+        self.assertNotEqual(restore_training_config(saved), original)
+        saved = json.loads(json.dumps(asdict(original)))
+        saved["batch_size"] += 1
+        self.assertNotEqual(restore_training_config(saved), original)
 
 
 if __name__ == "__main__":
