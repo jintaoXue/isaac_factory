@@ -4177,3 +4177,43 @@ report_threshold_sweep的JSON列表与代码元组表示；JSON序列化后的�
 配置比较不等。本地16 tests/22 subtests通过，模型打分代码没有再次改变。
 旧预检日志仍保留；重新使用日志前须核验归档。修正尚待部署、服务器9项测试和真实
 预检接续，不把语法/配置修正当作方法收益，不重跑已完成的训练搜索。
+
+### 39.4 修正版真实预检通过，B5两seed批次已启动
+
+修正部署979c680fb4d1919ae760cdfb0038f69fb7cc6708，旧28模型文件、六数据stat仍一致。
+baseline_vector_gat_preflight_config_fix_deployment20260913.json，5206 bytes，SHA
+2b1fefdce2372505269d6ab25d1c1cc7744a6c06f78b5b341a56e571460de710。
+服务器独立进程9项测试通过，baseline_vector_gat_config_server_tests20260913.json，
+452 bytes，SHA 8b632bc37cba1467fde34d2c9d3dfdf5449998d86f91d278f805db212f032e37。
+首次失败日志902 bytes，SHA
+1ec87c2e9249af327d0e36fcb16680b6c8a6116ee73d986e27dc301ef1fa0ecc，已通过archive_files
+校验归档为baseline_vector_gat_preflight_guard20260913.zip，791 bytes，SHA
+d6cca4845a4351a84f7283260e6cf93a3ca5edfd203c7f7f95629d32104e9d82；只含该旧日志及manifest。
+旧8项测试报告保持原文件，不覆盖历史产物。未发生模型归档或训练重跑。
+
+修正预检pane468293退出0，真实近窗构建、父对照配置和旧近窗归档六个关键文件核验
+通过。两seed参数均285982，与父对照参数值/名称/RNG相同；初始validation事件logit
+最大改变量为0.255810/0.252112，符合更换打分公式的预期。实际train batch两层source
+注意力参数及GRU、事件头梯度非零且有限，GPU峰值1655.0/1663.18359375 MiB。
+选择在预测前固定：train split前15样本加首个upcoming（offset18），validation前15
+加首个upcoming（offset33、全局sample2012），各16样本，不据分数挑样本。
+
+完整预检baseline_vector_gat_preflight20260913.json，17170 bytes，SHA
+e5f86076c68359f6887f8875507ca256db9199d09ebe12fe1882602aa27de811。六冻结数据全量SHA
+与joint整批导出相同，前后stat一致；原28模型文件前后不变，旧近窗输入契约相同。
+独立回读预检/source/28原文件和真实梯度检查通过，未用test、未宣称upcoming收益。
+
+确认预检与旧训练pane均终态后，在原baseline_dense_v6启动B5 seed42/43串行批次。
+训练源码固定979c680，pane472305、driver Python472308，首组实际Python472349。
+日志vectorgat20260913_train.log；驱动baseline_vector_gat_driver20260913.py，6021 bytes，
+SHA e37bae80c0b5ad34ddaabc3e00ac17a9be652852cae3b045b486040efac88ad7。
+两组各最多60epoch，B4不运行此变体；每组当前joint训练文件在开训前逐成员校验归档
+model_before_vectorgat20260913.zip，原joint control记录保持原文件。完成后写每seed
+training快照及两次训练汇总，冻结诊断另行核验，不能把训练快照当整批诊断完成。
+
+首组已独立观察至epoch4，实际model/training/loss逐项等于预检，near契约相同，
+参数285982、onset/F-beta关闭、test=false。旧joint归档CRC/11成员校验通过，六关键
+文件与joint完整导出相同，旧joint control记录未改；B4两组与B5 seed43原文件不变。
+运行核验baseline_vector_gat_launch20260913.json，1152 bytes，SHA
+a9c0fd383169c53e3e933e3f8554efae136481646aa7555340bfbfa981242e5f。
+训练继续，暂无最终结果；禁止运行中pull、按中间upcoming挑epoch或重复启动现有批次。

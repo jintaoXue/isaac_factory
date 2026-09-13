@@ -4,7 +4,16 @@
 
 ## 1. 交接状态
 
-**当前最新状态：**vector_gat已部署服务器dev_xwt@19a4a0c，8项服务器测试通过。
+**当前最新状态：**B5-only vector_gat修正预检已通过并启动两seed串行训练，服务器固定
+979c680。训练pane472305/driver472308 live，首组seed42实际Python472349，已核验至
+epoch4；实际vector_additive/near、参数285982、onset/F-beta关闭、test=false，旧joint
+归档11成员及六关键文件通过，B4两组和待运行B5 seed43文件不变。日志
+vectorgat20260913_train.log，运行中禁止pull或重启。详见39.4，尚无新候选最终指标。
+预检17170 bytes，SHA e5f86076c68359f6887f8875507ca256db9199d09ebe12fe1882602aa27de811；
+预检pane468293退出0、服务器9项测试通过，GPU峰值约1.62 GiB。失败旧日志已核验归档，
+不重复旧训练/诊断，原目标仍未完成。
+
+此前vector_gat已部署服务器dev_xwt@19a4a0c，8项服务器测试通过。
 首次真实预检pane462149退出1，失败是旧JSON阈值列表与当前tuple直接比较，未开训。
 已确认两seed配置数值完全相同；本地只修正预检表示转换及asdict写出，16 tests/22 subtests
 通过，尚待部署/服务器9项测试/预检接续。重用日志前须核验归档，旧模型未动。详见39.3。
