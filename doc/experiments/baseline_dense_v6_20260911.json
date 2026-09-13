@@ -1,4 +1,79 @@
 {
+  "round_wrap_up_requested_20260913": {
+    "status": "user_requested_wrap_up_pause_proactive_work_goal_not_achieved",
+    "report_section": "51",
+    "confirmed_cross_episode_generalization_failure": true,
+    "precise_root_cause_identified": false,
+    "stable_adoptable_upcoming_improvement": false,
+    "further_training_not_to_start_until_user_resumes": true,
+    "capacity_batch_complete": true,
+    "holdout_batch_complete": true,
+    "factory_start_cache_analysis_complete": true,
+    "baseline_architecture_boundary_preserved": true,
+    "test_evaluated": false,
+    "goal_met": false
+  },
+  "data_quantity54_plan_frozen_sampler_verification_result_unread_20260913": {
+    "status": "four_server_checks_passed_plan_frozen_corrected_cpu_sampler_verification_dispatched_result_not_yet_read",
+    "report_section": "49.2",
+    "source_commit": "8e6d26f997e5c8c34b376fa345ea6da8cc74611b",
+    "runtime_commit": "90a41a5b9c44e625f8c80083a8a950cd50f5eb13",
+    "counts": {
+      "fit": {
+        "episodes": 54,
+        "samples": 9050
+      },
+      "unused_parent_fit": {
+        "episodes": 53,
+        "samples": 9045
+      },
+      "heldout": {
+        "episodes": 31,
+        "samples": 5764
+      },
+      "original_validation": {
+        "episodes": 30,
+        "samples": 5439
+      }
+    },
+    "server_checks_passed": 4,
+    "raw_runs_retained": 21,
+    "plan_artifact": {
+      "file": "baseline_data_quantity54_plan20260913.json",
+      "bytes": 1176014,
+      "sha256": "8950601ac88e2a39c57fe2720f8eec60e314d6a801a95a03041b4ada5a1c532a"
+    },
+    "checks_artifact": {
+      "file": "baseline_data_quantity54_plan_tests20260913.json",
+      "bytes": 933,
+      "sha256": "1b564c9324e77acaf4439271aba0cd139fcd113374f631019d4ae8986a60c1e6"
+    },
+    "independent_verification_file_to_inspect": "baseline_data_quantity54_plan_verification20260913.json",
+    "first_sampler_attempt_missing_torch_due_to_isolated_python": true,
+    "corrected_original_tmux_pythonpath_dispatched": true,
+    "independent_verification_passed": null,
+    "neural_driver_implemented": false,
+    "neural_preflight_complete": false,
+    "neural_training_started": false,
+    "labels_used_for_selection": false,
+    "test_evaluated": false,
+    "goal_met": false
+  },
+  "baseline_architecture_boundary_reaffirmed_20260913": {
+    "report_section": "50",
+    "status": "user_requires_preserving_baseline_comparison_identity",
+    "b4_backbone": "GCN+GRU",
+    "b5_backbone": "GAT+GRU",
+    "main_cluster_embedding_not_to_be_added_to_baselines": true,
+    "raw_observed_state_signals_already_in_baseline": true,
+    "actual_state_equivalence_previously_verified": true,
+    "main_historical_0633_component_attribution_unverified": true,
+    "quantity_diagnostic_changes_architecture": false,
+    "prior_negative_ablations_not_automatically_adopted": true,
+    "main_repository_modified": false,
+    "test_evaluated": false,
+    "goal_met": false
+  },
   "data_quantity54_nested_plan_registered_20260913": {
     "status": "identifier_plan_implementation_four_local_checks_passed_server_pending_training_driver_not_implemented",
     "report_section": "49.1",
