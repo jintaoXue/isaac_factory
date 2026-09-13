@@ -1,4 +1,47 @@
 {
+  "episode_holdout_real_preflight_completed_startup_comparison_fix_20260913": {
+    "status": "real_preflight_passed_first_training_driver_exited_before_optimizer_step_serialized_configuration_comparison_fixed_locally",
+    "preflight_source_commit": "9782fff8d849503f8baac5bf101536c454ac1152",
+    "runtime_commit": "ee838f59d2bdf2893a35ec00acae1308f9dd0e07",
+    "preflight": {
+      "file": "baseline_episodeholdout20260913_preflight.json",
+      "bytes": 237834,
+      "sha256": "f9fce5742c0cfafe68972ba443ad528795e509ae76a5c88f9f5b8dc4d24bf7da"
+    },
+    "preflight_pane": "705965|1|0",
+    "cases": [
+      {
+        "model": "B4",
+        "parameters": 273054,
+        "cuda_peak_bytes": 495000064
+      },
+      {
+        "model": "B5",
+        "parameters": 285982,
+        "cuda_peak_bytes": 457994240
+      }
+    ],
+    "preflight_optimizer_steps": 0,
+    "input_server_tests_passed": 4,
+    "fitting_normalization_sha256": "7fcb11b26e2ebe8486225f1785e41865b67b94968d7cda88c1472e9c77f149d4",
+    "independent_preflight_verification": {
+      "file": "baseline_episodeholdout20260913_preflight_verification.json",
+      "bytes": 456,
+      "sha256": "de6dae22cb143b5f86e9281efc91faec1a1bfc77deaa3fb5b8d092ddda46666d"
+    },
+    "failed_startup_pane": "708379|1|1",
+    "failure": "Saved JSON threshold tuple became a list; direct asdict comparison rejected equal configuration before optimizer construction",
+    "training_progress_files_created": false,
+    "neural_optimizer_steps": 0,
+    "fix": "Compare the complete JSON representation; reuse original completed preflight only with identical scientific policy, normalization and input helper source",
+    "new_local_regression_tests_passed": 2,
+    "fixed_driver_sha256": "dc0742115f6eaac42a791449d73f9dc97129ce0af2fa7e1ba1c12765f9140e9a",
+    "old_driver_and_failed_log_preserved": true,
+    "real_preflight_repeated": false,
+    "server_fix_checks_and_training_resume_started": false,
+    "test_evaluated": false,
+    "goal_met": false
+  },
   "episode_holdout_plan_completed_and_neural_diagnostic_registered_20260913": {
     "status": "partition_independently_verified_inputs_four_local_tests_passed_neural_preflight_not_launched",
     "runtime_commit": "ee838f59d2bdf2893a35ec00acae1308f9dd0e07",

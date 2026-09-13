@@ -4751,3 +4751,14 @@ AP表保留8位小数，精确值在服务器完整JSON；AP不是正式召回�
 新诊断文件只写既有D下专用episodeholdout20260913前缀，旧48当前正式/候选文件保持SHA不变，不覆盖其模型目录。每epoch保存进度，固定checkpoint分别保留；完成权重/已完成诊断按来源复用，部分训练须显式恢复，不能自动从头重启。NPZ内保存完整计分/来源，单独JSON写出中断可恢复，不重复已完成forward。当前代码和本地检查完成，服务器输入检查/真实预检与两次神经训练尚未启动。
 
 判读仍按46节：fit能学到而两类未见集都弱，支持普遍跨episode泛化问题；内部heldout明显较好、原validation弱，支持查原split额外难度；fit也弱则需考虑欠拟合或减少训练支持。比较应保留episode层面的相关性与样本量限制，不因单次阴性诊断宣称架构上限。主prefix8原包缺口继续存在，主仓库和test均不动。
+
+
+### 46.3 真实预检通过；启动前序列化检查修复，不重复预检
+
+输入处理源码9782fff8d849503f8baac5bf101536c454ac1152通过服务器4项防泄漏检查；运行checkout仍EE，只在既有D保存专用源码副本。真实预检pane705965退出0，fit归一化SHA为7fcb11b26e2ebe8486225f1785e41865b67b94968d7cda88c1472e9c77f149d4。B4/B5的完整父near配置、参数273054/285982、真实24/16 fit样本批、多任务损失及梯度均通过，optimizer step=0。预检不表示性能改善。
+
+完整预检baseline_episodeholdout20260913_preflight.json：237834 bytes，SHA f9fce5742c0cfafe68972ba443ad528795e509ae76a5c88f9f5b8dc4d24bf7da；独立核验baseline_episodeholdout20260913_preflight_verification.json：456 bytes，SHA de6dae22cb143b5f86e9281efc91faec1a1bfc77deaa3fb5b8d092ddda46666d。独立复核两case、18,095 fit索引、归一化哈希、4服务器检查来源、48当前文件、6数据stat和预检终态，全部通过。
+
+随后首个训练driver pane708379退出1，位置在构造优化器之前的保存配置比较：asdict(training)仍含阈值元组，预检JSON已经将其保存为列表；数值相同但直接比较不等。没有完成任何神经训练epoch或optimizer step，也没有progress checkpoint，不能把此次退出当作训练崩溃后的重训。原driver、失败日志episodeholdout20260913_train.log及启动记录原地保留。
+
+仅修正驱动：完整配置先转换为同一JSON表示再比较，不忽略任何科学设置；严格锚定原预检来源9782fff及原driver SHA，并要求输入处理源码、归一化、分组和全部科学协议一致后复用原真实预检。两项新增本地回归通过，覆盖真实阈值tuple/list往返兼容和学习率/阈值/损失等改值拒绝，及旧预检复用时拒绝输入源码/seed/分组/归一化/epoch协议变化。**不重复真实CUDA预检**，待服务器同两项检查与原预检真实配置检查通过，再使用新接续driver/日志启动原两次尚未开始的训练。

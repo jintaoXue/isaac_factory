@@ -31,6 +31,9 @@ PLAN_SHA = '459945152e82ae529dd50bcb7b6427951e3b9204f4ea4ef0fdb71b9ac0ab4e2a'
 PLAN_VERIFY_SHA = 'c97523220d5bf711d4b678dd95f3a9eefed4207c91a0014eed8c16e35bb44ca6'
 NEAR_SHA = 'e71c84ded25a2b5fe861b45ecc12e2a0941193043a526654a9d8327a9d7a4b27'
 READOUT_SHA = 'b599500b3dd973393d3a997569692959ae747f7a8eea022d2ad5db417f696c78'
+PREFLIGHT_SOURCE = '9782fff8d849503f8baac5bf101536c454ac1152'
+PREFLIGHT_SHA = 'f9fce5742c0cfafe68972ba443ad528795e509ae76a5c88f9f5b8dc4d24bf7da'
+PREFLIGHT_DRIVER_SHA = 'e3ea0a2a0e5ab5c17cdfc93fe3a9350bb0efb265664393d2e456df029fdad987'
 CHECKPOINT_EPOCHS = (10, 30, 60)
 THRESHOLD = .70
 TAG = 'episodeholdout20260913'
@@ -53,6 +56,28 @@ def configuration(model):
     assert train.max_epochs == 60 and train.event_oversample_factor == 1
     assert train.lr_schedule == 'cosine' and not train.evaluate_test
     return train, overrides, loss
+
+
+def assert_saved_configuration(model_config, train, loss, tested):
+    # Saved JSON converts the threshold-sweep tuple to a list. Compare the full
+    # JSON representation without dropping any scientific configuration field.
+    actual = dict(model_config=model_config, training_config=asdict(train), loss_config=asdict(loss))
+    expected = {k: tested[k] for k in actual}
+    assert json.loads(json.dumps(actual)) == json.loads(json.dumps(expected)), 'Preflight configuration differs'
+
+
+def validate_completed_preflight(preflight, identity, normalization):
+    old = preflight['identity']
+    assert old['source_commit'] == PREFLIGHT_SOURCE
+    assert old['source_sha256']['run_baseline_episode_holdout.py'] == PREFLIGHT_DRIVER_SHA
+    assert old['source_sha256']['baseline_episode_holdout_inputs.py'] == identity['source_sha256']['baseline_episode_holdout_inputs.py']
+    # Only the startup comparison/provenance handling changed. Every scientific
+    # field, runtime source, partition and fitted preprocessing must still match.
+    ignored = {'source_commit', 'source_sha256'}
+    assert {k: v for k, v in old.items() if k not in ignored} == {k: v for k, v in identity.items() if k not in ignored}
+    assert preflight['normalization'] == normalization
+    assert preflight['status'] == 'two_models_real_fitting_batch_preflight_passed_no_optimizer_steps'
+    assert not preflight['test_evaluated']
 
 
 def make_model(model, payload, manifest):
@@ -211,14 +236,16 @@ def main():
             identity=identity_common, normalization=norm, counts=counts, cases=cases, formal_weights_unchanged=True, test_evaluated=False))
         print('HOLDOUT_PREFLIGHT_COMPLETE', preflight_path.stat().st_size, sha(preflight_path), flush=True)
         return
-    preflight = json.loads(preflight_path.read_text()); assert preflight['identity'] == identity_common and preflight['normalization'] == norm
+    assert sha(preflight_path) == PREFLIGHT_SHA
+    preflight = json.loads(preflight_path.read_text())
+    validate_completed_preflight(preflight, identity_common, norm)
     all_results = []
     for name in ('b4', 'b5'):
         guard()
         model, config, train, loss = make_model(name, payload, manifest)
         identity = dict(identity_common, model=name, model_config=config.to_dict(), training_config=asdict(train), loss_config=asdict(loss), preflight_sha256=sha(preflight_path))
         tested = next(c for c in preflight['cases'] if c['model'] == name)
-        assert config.to_dict() == tested['model_config'] and asdict(train) == tested['training_config'] and asdict(loss) == tested['loss_config']
+        assert_saved_configuration(config.to_dict(), train, loss, tested)
         last_path = d / f'baseline_{TAG}_{name}s42_progress.pt'
         summary_path = d / f'baseline_{TAG}_{name}s42_complete.json'
         if summary_path.exists():

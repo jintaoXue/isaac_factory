@@ -8,7 +8,7 @@
 
 **接续注意：**UU独立Leo SSH已恢复，原任务均正常完成。父补缺源码9862d72只fetch对象运行，服务器4项测试及12份已有父诊断来源核验通过，仅新增B5 last四份，没有重训父模型。B5 last train AP由约.30降至.23，validation仍约.009–.010。详见§45.3及JSON `readout_dropout_full_batch_and_parent_comparison_completed_20260913`。两份独立终态记录为baseline_readout_dropout_final_verification20260913.json、baseline_readout_parent_final_verification20260913.json。当前松散权重为dropout负消融，不能当作已采用最优baseline。
 
-**最新接续（46.1–46.2）：**UU已恢复并完成分组审计/独立核验；107 fit / 31 heldout / 原30 validation，upcoming分别451/144/145。原train内部按固定标识哈希留出，旧B4缓存计数复用，4项服务器检查通过。已准备B4/B5各seed42真正诊断训练：父near配置、固定60轮、事后看10/30/60，阈值.70固定，不用两个未见集早停或选模。归一化仅fit，4项新增本地防泄漏检查通过；服务器输入检查/真实CUDA预检和新训练尚未启动。源文件run_baseline_episode_holdout.py、baseline_episode_holdout_inputs.py，详见第46节。新权重只写既有D的专用前缀，不覆盖当前模型；原目标未达成。
+**最新接续（46.3）：**分组已核验为107 fit/31 heldout/原30 validation，upcoming 451/144/145。输入处理4项服务器检查及真实两模型CUDA预检均通过（pane705965 exit0）；预检完整JSON SHA f9fce5742c0cfafe68972ba443ad528795e509ae76a5c88f9f5b8dc4d24bf7da。首训练driver708379在优化器构造前因JSON tuple/list直接比较退出1，没有epoch/optimizer step/progress文件。已本地修正完整配置表示比较及旧预检来源复用门，两项新回归通过；待服务器检查后接续原两次尚未开始的训练，不重复CUDA预检。原driver/失败日志保持，服务器runtime仍ee838f5，禁止pull。固定两模型seed42/60轮/10、30、60事后诊断/.70阈值协议不变，不覆盖正式模型、不用test。
 
 **先查去重索引：[Baseline_upcoming排查台账.md](Baseline_upcoming排查台账.md)。** 当前208训练、诊断、旧134搜索及未解假设分开记录；禁止重复已完成搜索。四份`baseline_repr_{b4,b5}s42_last_{train,validation}20260913.npz`供后续复用，禁止重复对应forward。
 
