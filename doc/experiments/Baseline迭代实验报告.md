@@ -4974,3 +4974,16 @@ B5末轮召回fit60.75%、heldout4.86%、原validation2.76%。正例概率中位
 - baseline_gru_capacity_b4s42_training_verification20260913.json：3377 bytes，SHA 892b5f25a81385d0c5810e580e39d7120f77e6ee195efdec9ebc8d6e537e84c1。
 
 原完整目标仍未完成；已确认泛化失败模式，当前容量候选尚无可采用的改善。test未用，主仓库未改。
+
+
+## 48. 全工厂已记录未来扰动起点：只读关联范围补缺
+
+### 48.1 登记与边界（尚未服务器执行）
+
+第40/42节只按目标同资源关联未来runtime START；第46.7节已明确不能据此排除其他资源的未来启动。本节只补这个范围，不重复旧生成规则重建、同资源审计或模型推理。复用既有已核验cohort中的runtime_events及baseline_upcoming_schedule_support20260913.json的740个train/validation upcoming窗口目标（595/145，独立起点299/73），沿用预测起点至onset窗末的半开区间，唯一扩展为所有资源。
+
+预先固定四组：仅同资源、仅其他资源、同资源及其他资源均有、全工厂均无该类已记录启动。另分onset窗开始前/仅onset窗内启动，记录预测边界前已经活跃的事件。起点恰在预测边界计未来，恰在onset窗末排除。按原train/validation与既有107-fit/31-heldout/30-original_validation分别计数；不修改分割/输入/标签/阈值，不引入任何未来计划。
+
+范围只含已审计的machine_failure/human_unavailable/transport_delay/material_shortage四类runtime事件，不能把“没有这四类新启动”说成排除了质量hold或所有外部冲击。时间伴随不是因果或不可预测性证明；同一起点在两次预测边界可跨分组，窗口数可相加而各组独立起点数可能重叠。若出现其他资源only组，说明旧“无局部未来启动”组不能直接代表“无全厂未来启动”；随后可复用已经完成的真实神经留出缓存分析这些目标，无需重新forward。
+
+新增audit_factorywide_upcoming_starts.py及4本地测试通过，覆盖半开边界、已活跃状态、同资源旧语义完全保持、同一起点跨组和非法记录拒绝。只读JSON、不重读原CSV、不读checkpoint、不训练；所有旧同资源命中IDs需逐条回归，当前14运行源码/6数据stat前后保护。服务器仍固定90a41a5、原容量批次783323运行；本脚本通过Git对象单独执行，禁止pull运行checkout。当前尚无全工厂扩展计数或模型分组新结论，原目标未完成。

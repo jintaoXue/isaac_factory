@@ -1,4 +1,21 @@
 {
+  "factorywide_runtime_start_audit_registered_20260913": {
+    "status": "local_implementation_four_tests_passed_server_pending",
+    "report_section": "48.1",
+    "runtime_must_remain": "90a41a5b9c44e625f8c80083a8a950cd50f5eb13",
+    "existing_training_pane_pid": 783323,
+    "target_counts": {
+      "train": 595,
+      "validation": 145
+    },
+    "only_scope_extension": "same_resource_to_all_resources_of_four_audited_runtime_types",
+    "fixed_interval": "first_future_time_inclusive_to_onset_window_end_exclusive",
+    "raw_csv_reread": false,
+    "model_forward": false,
+    "model_training": false,
+    "test_evaluated": false,
+    "goal_met": false
+  },
   "gru_capacity32_b4s42_training_complete_b4s43_running_20260913": {
     "status": "first_training_independently_verified_second_training_live_no_candidate_diagnostics_yet",
     "report_section": "47.5",
