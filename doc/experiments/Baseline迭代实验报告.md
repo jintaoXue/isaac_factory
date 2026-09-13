@@ -4976,6 +4976,23 @@ B5末轮召回fit60.75%、heldout4.86%、原validation2.76%。正例概率中位
 原完整目标仍未完成；已确认泛化失败模式，当前容量候选尚无可采用的改善。test未用，主仓库未改。
 
 
+### 47.6 三组训练已核验，第四组继续；纯缓存配对已接续等待
+
+B4 seed43已完成best6/total16，P/R/F1=.8002081165452654/.7022831050228311/.7480544747081713，upcoming0/145（父near2/145）。B5 seed42已完成best4/total24，P/R/F1=.8473019517795637/.673972602739726/.7507629704984742，upcoming0/145（父near1/145）。两份训练快照、各自12当前文件、11旧训练归档成员、原配置协议、14运行源码及6数据stat均已独立核验。B5 seed42中间epoch18曾命中3/145，但原整体F1选择得到best4，不把中间较高upcoming当作正式成绩或据此改选择协议。
+
+与47.5合并，前三组正式命中均0/145，尚无容量收益；不能据此推断全部两模型两seed或架构上限。B5 seed43最近只读日志到epoch34，原训练pane783323仍live。原driver会在四训练结束后完成16冻结诊断；未手动启动重复诊断，train/validation AP的完整配对结论仍待整批结束。
+
+复用已正常完成48.4缓存分析的diag pane，启动仅等待原783323正常退出、确认四训练及16诊断完整JSON后执行一次纯缓存配对的等待器，当前pane840337 live。独立核对/proc实际命令包含launch保存的完整waiter源码，源码SHA匹配，日志明确等待原783323；不能另开比较或重训。比较固定源码182ab933bb0a1be0ee25522811bff2d658fedc03，原runtime仍90a41a5b9c44e625f8c80083a8a950cd50f5eb13，禁止pull。若原批失败或换pane，等待器报错且不会自行重启训练；最多等待六小时。
+
+- baseline_gru_capacity_b4s43_training20260913.json：31509 bytes，SHA ed364851f627740a63ea27d19f75afc1afb30a3871f0acd6c38dab1516a5821f。
+- baseline_gru_capacity_b4s43_training_verification20260913.json：3382 bytes，SHA 8321b24b973d0c93d01b7ed3483a9a208ae09886b8de02b409ae76c50076e3ca。
+- baseline_gru_capacity_b5s42_training20260913.json：31565 bytes，SHA b152f77309a72ce566e6dc5730f86713394278f49ba6875b96682b58e07b0019。
+- baseline_gru_capacity_b5s42_training_verification20260913.json：3371 bytes，SHA 706a8cfacd395ab3b665fd0b19fd644f6fdd564e0c5f3911368ebeac4bc34780。
+- baseline_gru_capacity_comparison_wait_launch20260913.json：3095 bytes，SHA ab399886b06eb6798373f243d306c9eb14ae2be1bd9098dac2707196eceb318f。
+
+日志grucapacity20260913_parent_comparison.log；预定产物baseline_gru_capacity_parent_comparison20260913.json及baseline_gru_capacity_comparison_wait_complete20260913.json尚未完成，后续须在实际终态独立验证。没有新模型训练/forward由此等待器启动，test未用，主仓库未改，原根因/合理改善目标未完成。
+
+
 ## 48. 全工厂已记录未来扰动起点：只读关联范围补缺
 
 ### 48.1 登记与边界（尚未服务器执行）
@@ -5014,3 +5031,31 @@ B5末轮召回fit60.75%、heldout4.86%、原validation2.76%。正例概率中位
 这批是原128宽度、107-fit诊断模型的缓存，与正在运行的原138训练GRU32候选不同，不能混写为新容量成绩。保持全部固定轮次和视图，不选表现好的一组或一轮。目的：检验有无其他资源未来启动是否足以解释已有泛化差距；不是因果识别或信息上限证明。
 
 新增analyze_holdout_factory_starts.py、4本地检查通过：完整/重复身份保护、float32阈值边界、canonical整数起点与hot覆盖、同一起点两个anchor和空组/时间边界。服务器检查及一次缓存分析待执行，通过Git对象复用现有空闲diag pane，不pull或影响原容量训练783323；test不用，原目标未完成。
+
+
+### 48.4 全18缓存分析及独立核验完成：无四类新启动组仍有严重泛化差距
+
+源码eb84d74a39a85b6685eb9336811299ca7764406e只fetch Git对象，4服务器检查通过后运行已登记分析一次。原diag pane824457 dead/exit0。独立复核全部18份缓存、4440条upcoming预测、身份与原记录逐目标匹配、float32阈值/canonical整数起点/hot覆盖、四组及已活跃子组的计数/概率分位数/去重起点，全部一致。40个不可变来源SHA、14运行源码与6数据stat保持；没有新forward、训练、阈值或轮次选择。
+
+下表为预先固定末轮60的描述，全部10/30/60轮仍完整保存，不用末轮结果替换原正式baseline。这里是第46节107-fit、GRU128诊断权重，不能混写为第47节138-train、GRU32候选结果。
+
+| 无全厂四类已记录新启动的视图 | 目标数 / 去重起点 | B4命中 | B5命中 |
+|---|---:|---:|---:|
+| fit | 179 / 92 | 168/179（93.85%） | 149/179（83.24%） |
+| 真正heldout | 58 / 30 | 0/58 | 3/58（5.17%） |
+| 原validation | 43 / 24 | 3/43（6.98%） | 2/43（4.65%） |
+
+上述各模型三视图起点漏报都为0。去重起点至少一次命中数，B4为92/0/2，B5为85/2/2，分母分别92/30/24。同一起点跨预测边界可属于不同组，不能把分组起点数机械相加当独立事件总数。
+
+进一步要求预测边界前也没有这四类扰动正在活跃：B4 fit85/90、heldout0/32、原validation2/17；B5 fit72/90、heldout0/32、原validation0/17。无新启动但已有活跃的余组分别为B4 83/89、0/26、1/26，B5 77/89、3/26、2/26；两子组相加复现上表。
+
+这补强了“跨episode泛化差距并非完全由已记录未来扰动的新启动造成”的结论；并未排除quality hold等未覆盖机制、细粒度历史分布差异或未观测前因，也不证明历史完整可预测或某个架构已达到上限。按已知正例事后分组，不能在没有对应负例总体的情况下声称分组AP/精度。当前仍没有稳定可采用的优化方案，容量原批继续；不因为该负结果自动追加新训练。
+
+术语澄清：此前文中“独立起点”应理解为按episode/resource/onset去重后的起点，**不是统计独立样本**。107-fit的451重叠窗口目标对应226去重起点，仍聚集于107 episodes、21 raw runs；同episode/同run仍相关。有效独立正例不足是合理假设，当前计数与泛化差距不能单独证明增加数据必然有效，更不能只凭训练召回高排除架构对泛化的限制。
+
+- baseline_episodeholdout20260913_factory_start_tests.json：647 bytes，SHA 59b1f8e297fa42a598291f71546234be6ccfe74fedca828106f1432d6383dec7。
+- baseline_episodeholdout20260913_factory_start_launch.json：543 bytes，SHA 1552328d63206c2af73d2dd1c76a80adf21ebc6fd75dedbc17507d517edbc4df。
+- baseline_episodeholdout20260913_factory_start_predictions.json：2358931 bytes，SHA fe37c05495c9bd07a2e88d5ddba0c961c11db799e724c2a29904bae9b4a3f772。
+- baseline_episodeholdout20260913_factory_start_verification.json：8663 bytes，SHA c327a775a057c77d5feb50a550c328cba16e0a3ce5b95ec244033a949bfb9fe9。
+
+完整日志episodeholdout20260913_factory_start_predictions.log。全部18缓存分析和独立复核已完成，禁止重跑；空闲diag已按47.6复用于等待原容量批完成后的纯缓存配对。运行checkout仍90a41a5，未用test、未改主仓库，原目标未完成。
