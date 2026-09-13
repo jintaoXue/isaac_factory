@@ -1,4 +1,202 @@
 {
+  "episode_holdout_full_batch_and_followup_analyses_completed_20260913": {
+    "status": "two_models_eighteen_views_bootstrap_support_strata_and_calibration_bounds_verified",
+    "training_source": "ecc39e81c8f14483eaa50d90beea9743f9ac485c",
+    "runtime": "ee838f59d2bdf2893a35ec00acae1308f9dd0e07",
+    "artifacts": {
+      "b5_complete": {
+        "file": "baseline_episodeholdout20260913_b5s42_complete.json",
+        "bytes": 1838365,
+        "sha256": "fa89dd945e0fa6c3b8f751a6bbd7e612b133d32bb9b876c34b1a3cc98a8c021d"
+      },
+      "full": {
+        "file": "baseline_episodeholdout20260913_complete.json",
+        "bytes": 4422978,
+        "sha256": "acd1a6dc11ba2b204c0c2871c6adb998229e59ae379c19f72cf4802d6e099713"
+      },
+      "bootstrap": {
+        "file": "baseline_episodeholdout20260913_episode_analysis.json",
+        "bytes": 264129,
+        "sha256": "3a3279cebe56193bb59cdf217a35de225a273e54dbf91e43704cf7759c6924fa"
+      },
+      "bootstrap_verification": {
+        "file": "baseline_episodeholdout20260913_analysis_verification.json",
+        "bytes": 562,
+        "sha256": "614845a114051ebfc579689d470654f215e6546a044cc5c958030852cecae0ea"
+      },
+      "b5_support": {
+        "file": "baseline_episodeholdout20260913_b5s42_support_strata.json",
+        "bytes": 7716,
+        "sha256": "ddb521f9f15b62d2b5d7243d84887517e7eb45b5a82b1a13852d86833671f9f5"
+      },
+      "b5_bound": {
+        "file": "baseline_episodeholdout20260913_b5s42_calibration_bound.json",
+        "bytes": 6475,
+        "sha256": "8b8d96f4435d63c78dbd876ef8119c07d6db92d652746f5e5f0686e48e2af8fc"
+      },
+      "final_verification": {
+        "file": "baseline_episodeholdout20260913_final_verification.json",
+        "bytes": 6740,
+        "sha256": "0071a30c1af9e8d557853270a62ba868d60c18f7f8804a0de3ff6042fb2a5707"
+      }
+    },
+    "b5_rounded_metrics": [
+      {
+        "epoch": 10,
+        "ap": [
+          0.019515446,
+          0.0071893368,
+          0.0082614642
+        ],
+        "hits": [
+          4,
+          0,
+          2
+        ],
+        "q50": [
+          0.01802022569,
+          0.007200327702,
+          0.00796619989
+        ]
+      },
+      {
+        "epoch": 30,
+        "ap": [
+          0.4048642061,
+          0.0088962632,
+          0.0128235672
+        ],
+        "hits": [
+          158,
+          2,
+          9
+        ],
+        "q50": [
+          0.4187188745,
+          0.00167346641,
+          0.0007923322264
+        ]
+      },
+      {
+        "epoch": 60,
+        "ap": [
+          0.6578702526,
+          0.0094881962,
+          0.0111405635
+        ],
+        "hits": [
+          274,
+          7,
+          4
+        ],
+        "q50": [
+          0.83138448,
+          0.0002050548548,
+          8.760837227e-05
+        ]
+      }
+    ],
+    "view_order": [
+      "fit",
+      "heldout",
+      "original_validation"
+    ],
+    "upcoming_denominators": [
+      451,
+      144,
+      145
+    ],
+    "optimizer_steps": {
+      "b4": 45240,
+      "b5": 67860
+    },
+    "b5_support_hits": {
+      "heldout": {
+        "zero_support_targets": 26,
+        "positive_support_targets": 118,
+        "zero_hits_epochs10_30_60": [
+          0,
+          1,
+          2
+        ],
+        "positive_hits_epochs10_30_60": [
+          0,
+          1,
+          5
+        ]
+      },
+      "original_validation": {
+        "zero_support_targets": 30,
+        "positive_support_targets": 115,
+        "zero_hits_epochs10_30_60": [
+          0,
+          0,
+          0
+        ],
+        "positive_hits_epochs10_30_60": [
+          2,
+          9,
+          4
+        ]
+      }
+    },
+    "b5_calibration_bound_hits_epochs10_30_60": {
+      "heldout": [
+        24,
+        27,
+        28
+      ],
+      "original_validation": [
+        24,
+        30,
+        28
+      ]
+    },
+    "b5_bound_decimal50_recomputed": true,
+    "all18_timing_misses": 0,
+    "who_and_report_upcoming_hits_verified_equal": true,
+    "bootstrap_replicates": 512,
+    "epoch60_ap_difference_intervals_rounded": {
+      "b4_fit_minus_heldout": [
+        0.902598,
+        0.943781
+      ],
+      "b5_fit_minus_heldout": [
+        0.612845,
+        0.681642
+      ],
+      "b4_heldout_minus_original_validation": [
+        -0.00287,
+        0.002593
+      ],
+      "b5_heldout_minus_original_validation": [
+        -0.004431,
+        0.00117
+      ]
+    },
+    "bootstrap_limit": "Conditional on21 fixed raw runs and one fitted seed per model;15 singleton runs in each unseen view; not new-run/seed uncertainty.",
+    "training_terminal": {
+      "pid": 712854,
+      "pane_dead": true,
+      "exit_code": 0,
+      "source": "tmux"
+    },
+    "analysis_terminal": {
+      "pid": 727985,
+      "pane_dead": true,
+      "tmux_exit_code": null,
+      "proc_state": "Z",
+      "proc_exit_code": 0,
+      "source": "Linux /proc/<pid>/stat field52 confirms normal exit while tmux has not reaped it"
+    },
+    "formal_files_unchanged": 48,
+    "dataset_stats_unchanged": 6,
+    "runtime_sources_unchanged": 12,
+    "next_direction": "Review prior capacity settings and register a single GRU capacity control that preserves GCN/GAT+GRU and shared input. No new candidate is registered or started yet.",
+    "test_evaluated": false,
+    "goal_met": false,
+    "report_section": "46.14"
+  },
   "episode_holdout_b4_calibration_bound_completed_20260913": {
     "status": "all_nine_analytic_bounds_independently_recomputed_decimal50",
     "source_commit": "01a940005a6ca5eb98d6cbd0b8347e37cba88eae",

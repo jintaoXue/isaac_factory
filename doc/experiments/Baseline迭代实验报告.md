@@ -4884,3 +4884,34 @@ B4未见正例概率随训练趋近0，但低召回是否仅因阈值尺度不�
 解析文件baseline_episodeholdout20260913_b4s42_calibration_bound.json：6486 bytes，SHA 986033e42fd2348e326dfafa7bff659652af1b3db35eb8a4eb9a2e676255dc22。4检查baseline_episodeholdout20260913_calibration_bound_tests.json：584 bytes，SHA 9a9c5decfbdce7b77c3a2de5b52940c9030dc93a8f94adc6fb8499285044b42a。独立50位复核baseline_episodeholdout20260913_b4_calibration_bound_verification.json：1212 bytes，SHA e445130ddc155c02a91098294a3a434b9d1ccd4d689d2a2f108dbbe6cc3250e9。完整stdout保留episodeholdout20260913_b4_calibration_bound.log。
 
 本次末尾实时核验B5已至38/60轮；原训练712854与bootstrap等待727985均live，运行checkout仍EE。继续等待原B5与18视图统计，不重启或更改运行源码。B5九视图完成后，已部署的analyze_holdout_support_predictions.py（9551920）和bound_holdout_probability_calibration.py（01a9400）各用--model b5执行一次；各自5/4服务器测试已经通过，不重复部署/测试或B4分析。原根因/合理改善目标仍未达成，test未用。
+
+
+### 46.14 两模型整批完成：真正未见episode的泛化差距在B5重复
+
+B5固定60轮/67860次更新及9视图完成；原等待器随后自动完成两模型18视图的512次episode统计。复用已部署9551920/01a9400及已通过的5/4服务器测试，仅新增B5支持分组与解析校准界，没有重复B4分析或模型forward。最终独立验证两模型60条history/更新数、18JSON+NPZ、6固定权重及两progress、完整汇总与两模型汇总一致、全部分组/统计点估计回归canonical，B5九个解析界用50位Decimal重算；48原模型/6数据stat/12源码保持。
+
+| B5固定轮次 | fit AP | heldout AP | 原validation AP | fit命中/451 | heldout/144 | 原validation/145 |
+|---|---:|---:|---:|---:|---:|---:|
+| 10 | .0195154460 | .0071893368 | .0082614642 | 4 | 0 | 2 |
+| 30 | .4048642061 | .0088962632 | .0128235672 | 158 | 2 | 9 |
+| 60 | .6578702526 | .0094881962 | .0111405635 | 274 | 7 | 4 |
+
+B5末轮召回fit60.75%、heldout4.86%、原validation2.76%。正例概率中位数fit约.83138，对两个未见集约.00020505/.00008761。支持分组heldout零支持命中10/30/60轮0/1/2（各26），有支持0/1/5（各118）；原validation零支持均0（各30），有支持2/9/4（各115）。末轮有支持仍仅4.24%/3.48%。B5全局阈值/保持排序的单调校准在整体P≥.80下的乐观命中界，heldout24/27/28（各144）、原validation24/30/28（各145），三轮都排除50%upcoming召回；界不表示可达到，也不是架构界。
+
+全部18视图upcoming timing_misses=0，独立逐项验证report_recall_upcoming×U==n_matched_who_upcoming，故本批两种命中计数实际相同。一般情况下who命中不扣起点错误，不能将这个字段无条件当作report TP；本批结论依赖已核验零起点漏报。旧缓存分析中与who计数比对的保护断言在本批均通过，没有漏算起点错误；未来若有非零timing miss，必须改用report口径再接续，不能直接沿用这一等价。
+
+512次固定run内episode重采样的末轮AP差值95%区间：B4 fit-heldout [.902598,.943781]，B5 [.612845,.681642]；heldout-original_validation分别[-.002870,.002593]、[-.004431,.001170]。这与巨大的拟合/泛化差距、一致较弱的两未见排序相符。区间仍只条件于21个固定run、当前分组和每模型单个seed，两未见集各15 singleton run，不当作跨新run/seed因果证据。全部三轮点估计与区间保存在完整统计中，没有据区间选轮次。
+
+整批结论：两个不同图骨干都能显著提高训练upcoming拟合，但对真正排除训练/归一化的episode迁移不足；原validation特殊难度、零类别支持、起点解码和单一概率尺度均不足以单独解释。已确认泛化失败/过拟合模式，还不能锁定具体捷径、缺失组件或架构上限。保持208正式数据/分割及对比身份；107-fit仅诊断，不替换正式baseline。下一步先核对是否查过容量设置，再登记保持GCN/GAT+GRU结构的单项容量控制，检验限制记忆容量是否改善泛化；当前未登记/启动新的训练。
+
+训练pane712854 dead且tmux exit0。统计pane727985 dead但tmux exit字段为空，实际/proc/727985/stat显示状态Z且第52字段exit_code=0，独立确认Python正常结束、等待tmux回收；不能仅据空字段称任务live、失败或重启。最终记录保留这一实际状态，两任务都不再执行训练/分析，runtime仍EE。
+
+- baseline_episodeholdout20260913_b5s42_complete.json：1838365 bytes，SHA fa89dd945e0fa6c3b8f751a6bbd7e612b133d32bb9b876c34b1a3cc98a8c021d。
+- baseline_episodeholdout20260913_complete.json：4422978 bytes，SHA acd1a6dc11ba2b204c0c2871c6adb998229e59ae379c19f72cf4802d6e099713。
+- baseline_episodeholdout20260913_episode_analysis.json：264129 bytes，SHA 3a3279cebe56193bb59cdf217a35de225a273e54dbf91e43704cf7759c6924fa。
+- baseline_episodeholdout20260913_analysis_verification.json：562 bytes，SHA 614845a114051ebfc579689d470654f215e6546a044cc5c958030852cecae0ea。
+- baseline_episodeholdout20260913_b5s42_support_strata.json：7716 bytes，SHA ddb521f9f15b62d2b5d7243d84887517e7eb45b5a82b1a13852d86833671f9f5。
+- baseline_episodeholdout20260913_b5s42_calibration_bound.json：6475 bytes，SHA 8b8d96f4435d63c78dbd876ef8119c07d6db92d652746f5e5f0686e48e2af8fc。
+- baseline_episodeholdout20260913_final_verification.json：6740 bytes，SHA 0071a30c1af9e8d557853270a62ba868d60c18f7f8804a0de3ff6042fb2a5707。
+
+所有数值为读取时的精简显示舍入值，完整精度/来源在server JSON。最终独立记录status=two_models_eighteen_views_bootstrap_support_strata_and_calibration_bounds_verified；未用test，原完整根因/改善目标尚未达成。
