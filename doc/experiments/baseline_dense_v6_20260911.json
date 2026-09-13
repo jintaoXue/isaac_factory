@@ -1,4 +1,29 @@
 {
+  "event_representation_diagnostic_registered_20260913": {
+    "status": "local_four_tests_passed_server_not_started",
+    "models": [
+      "b4_joint_onset",
+      "b5_vector_gat"
+    ],
+    "seed": 42,
+    "checkpoint": "last",
+    "splits": [
+      "train",
+      "validation"
+    ],
+    "new_forward_exports": 4,
+    "representations": [
+      "raw_summary_84",
+      "backbone_128",
+      "event_input_128"
+    ],
+    "save_for_reuse": true,
+    "original_scores_counts_AP_must_reproduce": true,
+    "followup_analysis": "Fixed training-standardized class-centroid projection and same-node nearest-positive/negative distances; no threshold selection. Excluding diagnostic reference episodes does not untrain neural weights.",
+    "model_training": false,
+    "test_evaluated": false,
+    "goal_met": false
+  },
   "state_transfer_diagnostic_completed_20260913": {
     "status": "completed_and_independently_verified",
     "source_commit": "78be1c33c7da3965698e129125755a8bedaf6a0f",

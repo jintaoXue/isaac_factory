@@ -4555,3 +4555,17 @@ B5 last按计划兼容性分组的upcoming-vs-negative AP（屏幕输出保留5�
 产物baseline_upcoming_state_transfer20260913.json：16094 bytes，SHA c94d9eef888e0520de75d46d70b1e1f718eb1e2479dbd916f8279cbbede74f5d。独立终态baseline_upcoming_state_transfer_verification20260913.json：1125 bytes，SHA 577a428471369a3af14e64aec2184865eb07186627447b7829d552ff5f1121cf。独立检查24项结果/原与反变换一致性、源码/驱动/服务器测试/日志来源、28当前模型SHA、6数据stat、pane终态与相关进程消失全部通过。服务器仍979c680、dev_xwt、tracked clean，主仓库未改、test未评，原目标未达成。
 
 本轮终态核验前UU前景切到远控屏，窗口检查在粘贴前拒绝操作；通过UU主窗口重新打开Leo独立终端，同一SSH仍在，随后执行原本未发送的核验。没有因此重跑任何实验。
+
+## 44. 冻结编码器与报警头表示：新诊断登记
+
+43节粗状态探针没有解释神经模型的大幅泛化差距。先区分“原输入的可迁移信号在编码器中丢失”与“事件头未能利用已有表示”，不登记新的架构/超参数训练。首轮只取当前B4 joint_onset与B5 vector_gat各seed42 last，分别train/validation，共4次新的表示观察；若没有明确机制信号，不自动扩到其他权重。两者为不同负消融，不能解释为骨干单因素比较。
+
+此前分层JSON没有保存中间向量，无法从现有概率逆推出表示。新增export_frozen_event_representations.py通过只读pre-hook取得实际event_will_head输入，同时保存模型已有node_hidden输出；并从实际归一化X在CPU计算21通道的末帧、30帧均值、总体标准差、末减首，形成固定84维原输入摘要。神经表示各128维，保留所有有效目标节点及sample_index/node_index，包含ongoing但后续upcoming-vs-negative分析排除ongoing。标签仅标注行，不进入表示。
+
+保留原B4 CPU batch32、B5 CUDA batch16、2线程、保存阈值、epoch和权重。每次必须复现上一项冻结诊断的canonical分数/结构化计数及AP，核对28模型文件/6数据stat；原报告与模型不修改。中间向量、逐行预测及完整来源/canonical记录一并写入既有D的新NPZ；另写小JSON索引。若摘要写出中断，可以从NPZ内嵌记录恢复，不能重复已完成forward。运行checkout仍979c680，不pull。
+
+后续分析固定为三个视图（原输入摘要、骨干表示、事件头输入）：用训练拟合的标准化类中心差得到诊断分数，比较train原样本/排除整个episode的类中心/原validation；另在相同物理工位上观察upcoming的最近训练正例/负例，训练查询排除整个本episode。该排除仅作用于诊断参考样本，神经权重本身曾见过训练episode，不能称作神经网络留episode重训或无泄漏交叉验证。验证标签仅用于计分，不选择阈值、模型或表示。
+
+解释规则：若原输入统计能迁移而骨干不能，优先查编码阶段；若骨干可迁移而事件头输入/正式概率不能，优先查后续投影/报警头；若各简单视图都弱，只能缩小具体探针解释范围，不能证明完整30帧信号不可预测或架构上限。诊断不自动转成正式报警政策。
+
+本地4项无目录测试通过：真实B4 joint/B5 vector模型的全部输出及RNG逐值不变，hook移除；行身份/有效mask/三种标签准确且改变标签不改变三个表示或原预测；canonical校验覆盖结构化计数并拒绝改变AP。待服务器同4项内存测试后在既有两会话各运行两份表示导出，不新建目录，不用test。
