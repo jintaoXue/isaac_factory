@@ -4,6 +4,12 @@
 
 ## 1. 交接状态
 
+**52.5 当前状态：B4 Start≤5 已训练/评估完成，队列停在结果登记校验；尚未恢复。** 原pane993123已核验dead/exit1，B4总41轮、validation选epoch1，阈值0.5，无轮次同时满足P≥.8/R≥.7。保存结果will15 F1 train=.6917637271、validation=.6642664266；upcoming who/strict train=105/98（分母1753），validation=32/32（分母431）。验证399个漏报全部在工位报警步骤，已报警者无额外起点超差。此best的训练upcoming也低，不能套用旧107-fit末轮训练60%以上的结论；不把整体F1等同upcoming召回，不与旧145分母直接比较。
+
+停止原因已定位为新队列的产物校验：实际报告在模型协议字典上合法增加window_size_s=60，而runner用未扩展字典做全等比较；train/validation支持数及其余协议字段均一致，模型训练与最终导出本身完成。源码修复仅限编排与纯产物核验，不改训练器、模型、任务或阈值。31项本地检查通过，含真实add_time_metric_metadata三档回归；窄恢复入口先独立核验全部B4产物，再保留旧失败记录并接续剩余五项，禁止重训B4或重复真实208预检。服务器runtime继续固定6289761，只fetch新编排Git对象；恢复尚待服务器检查与执行。
+
+732b98c旧独立核验器14项服务器内存检查已通过，产物baseline_matched_result_verifier_tests_direct20260913.json。此前将测试放入D交给pytest收集触发IsaacLab包初始化缺pxr，14项均setup error而非测试主体失败；错误产物保留，不重复该收集方式、不安装依赖。恢复后以新独立核验及实际新pane为准，下方live进度均为历史。
+
 **52.4接续：**已实际复核原pane993123及ps命令仍live，B4 Start5到10轮，source仍6289761，无完成阶段或整批结果。新增verify_baseline_matched_results.py纯产物核验入口，14本地检查通过；待服务器以固定Git对象加载测试/执行，不pull运行checkout。每阶段完成后仅核验一次：记录/归档/权重头一致性、重建will15选模及累计更新、工位概率漏报与起点超差拆分、预测CSV覆盖固定train/val各一次、原因四类与全局remain MAE独立重算。不会forward、训练或选新参数；分段加权误差只核对已有统计，不误称从CSV独立重算（CSV不含progress）。原CSV的event_will_any仍是旧源包元数据，不作为新任务真值。
 
 **当前权威进度（52.3）：新三档已正式开训。**服务器dev_xwt固定6289761c11d09e3570899b89858486b29e9f4c83；33服务器检查及两份真实父权重加载检查通过，6阶段计划已登记。复用baseline_dense_v6:0.0，pane993123 live；独立核验B4 Start≤5 seed42已完成4轮，实际training/loss配置与登记逐项一致，input_contract与预检一致。旧GRU32首组11文件归档验证通过，164个受保护文件以原stat或归档成员核验；主仓库只读确认仍7b2ab39。运行中禁止pull、重启或重复本队列。B4s5→B5s5→B4s10→B5s10→B4s15→B5s15由原队列串行接续。当前没有完成的新任务成绩，原低召回根因仍未解决。

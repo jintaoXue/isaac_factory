@@ -5201,3 +5201,13 @@ validation按will15 F1及P≥.8/R≥.7选模、按参考阈值流程选阈值；
 新范围较宽，诊断分开计数：score_misses = n_true_upcoming - n_matched_who_upcoming；start_tolerance_misses = n_matched_who_upcoming - n_matched_report_upcoming。二者合计为严格upcoming漏报，用于区分工位事件识别不足与起点定位不足。结果仍是选定best下的描述，不能据单seed/课程式训练做架构单因素归因。训练/验证及各起点段并列，不能将整体will15 F1当成upcoming recall。
 
 范围限制：没有再次从原序列重建工位真值或重复神经推理，原协议/真实计数预检复用；加权remain分段只检查主字段及支持总数，因为现有CSV没有progress，不声称逐样本独立重算。CSV自源包复制的event_will_any是旧标签元数据，不用于新三档事件评分。每组新核验文件baseline_matched_{b4,b5}_start{5,10,15}_verification20260913.json；已有文件拒绝覆盖，后续复用已完成核验，不重复旧实验。
+
+
+### 52.5 首组完成及编排协议字段恢复
+
+**52.5 当前状态：B4 Start≤5 已训练/评估完成，队列停在结果登记校验；尚未恢复。** 原pane993123已核验dead/exit1，B4总41轮、validation选epoch1，阈值0.5，无轮次同时满足P≥.8/R≥.7。保存结果will15 F1 train=.6917637271、validation=.6642664266；upcoming who/strict train=105/98（分母1753），validation=32/32（分母431）。验证399个漏报全部在工位报警步骤，已报警者无额外起点超差。此best的训练upcoming也低，不能套用旧107-fit末轮训练60%以上的结论；不把整体F1等同upcoming召回，不与旧145分母直接比较。
+
+停止原因已定位为新队列的产物校验：实际报告在模型协议字典上合法增加window_size_s=60，而runner用未扩展字典做全等比较；train/validation支持数及其余协议字段均一致，模型训练与最终导出本身完成。源码修复仅限编排与纯产物核验，不改训练器、模型、任务或阈值。31项本地检查通过，含真实add_time_metric_metadata三档回归；窄恢复入口先独立核验全部B4产物，再保留旧失败记录并接续剩余五项，禁止重训B4或重复真实208预检。服务器runtime继续固定6289761，只fetch新编排Git对象；恢复尚待服务器检查与执行。
+
+732b98c旧独立核验器14项服务器内存检查已通过，产物baseline_matched_result_verifier_tests_direct20260913.json。此前将测试放入D交给pytest收集触发IsaacLab包初始化缺pxr，14项均setup error而非测试主体失败；错误产物保留，不重复该收集方式、不安装依赖。恢复后以新独立核验及实际新pane为准，下方live进度均为历史。
+

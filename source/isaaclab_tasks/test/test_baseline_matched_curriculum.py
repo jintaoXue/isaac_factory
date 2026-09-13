@@ -13,7 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isaaclab_tasks/dir
 from factory_baselines import protocol_20260913 as protocol
 from factory_baselines.matched_warm_start import HORIZON_KEYS, validate_parent
 from factory_baselines.torch_trainer import _model_spec, _event_sampling_weights
-from train_baseline_matched_curriculum import configuration
+from train_baseline_matched_curriculum import configuration, validate_final_metrics
+from factory_baselines.evaluation import add_time_metric_metadata
 
 
 def parent_fixture(model="B4", cap=5, selected=1):
@@ -123,3 +124,30 @@ def test_frozen_six_job_configuration_and_cold_start_zero_sampling():
                 "event_start": torch.tensor([start]), "hist_last_hot": torch.zeros(1)}
                for will, start in ((1., 0), (1., 12), (0., -1))]
     assert _event_sampling_weights(samples, training).tolist() == [4., 4., 1.]
+
+
+@pytest.mark.parametrize("cap", [5, 10, 15])
+def test_export_guard_accepts_actual_report_metadata_and_rejects_changed_task(cap):
+    counts = {"samples": 4, "ongoing": 2, "upcoming": 1}
+    plan = {"preflight_label_counts": {str(cap): {s: counts for s in ("train", "validation")}}}
+    metrics = {}
+    for split in ("train", "validation"):
+        report = {"n_true_upcoming": 1, "n_true_ongoing": 2}
+        for suffix in ("", "_ongoing", "_upcoming"):
+            report.update({"n_matched_who" + suffix: 0, "start_mae" + suffix: 0., "dur_mae" + suffix: 0.})
+        values = {"sample_count": 4, "station_report": report, "remain": {"remain_len_mae": 1.}}
+        add_time_metric_metadata(values, window_size_s=60., sample_count=4,
+                                 contract=protocol.evaluation_contract(cap))
+        metrics[split] = values
+    validate_final_metrics(metrics, cap, plan)
+    for field, wrong in (("window_size_s", 30.), ("reference_commit", "wrong"), ("max_start_windows", 2)):
+        changed = json.loads(json.dumps(metrics))
+        changed["validation"]["evaluation_contract"][field] = wrong
+        with pytest.raises(ValueError):
+            validate_final_metrics(changed, cap, plan)
+    changed = json.loads(json.dumps(metrics))
+    changed["validation"]["station_report"]["n_true_upcoming"] = 2
+    with pytest.raises(ValueError):
+        validate_final_metrics(changed, cap, plan)
+    with pytest.raises(ValueError):
+        validate_final_metrics({**metrics, "test": metrics["validation"]}, cap, plan)

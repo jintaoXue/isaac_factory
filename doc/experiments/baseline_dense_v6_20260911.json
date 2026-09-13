@@ -1,4 +1,63 @@
 {
+  "matched_first_stage_guard_recovery_registered_20260913": {
+    "status": "first_stage_export_completed_queue_failed_recovery_not_yet_run",
+    "runtime_commit": "6289761c11d09e3570899b89858486b29e9f4c83",
+    "failed_pane_pid": 993123,
+    "pane_dead": true,
+    "pane_exit": 1,
+    "completed_training": [
+      "B4",
+      5,
+      42
+    ],
+    "epochs_trained": 41,
+    "selected_epoch": 1,
+    "threshold": 0.5,
+    "checkpoint_constraint_met": false,
+    "scores": {
+      "train": {
+        "will15_f1": 0.6917637271214643,
+        "upcoming_true": 1753,
+        "who_hits": 105,
+        "strict_hits": 98
+      },
+      "validation": {
+        "will15_f1": 0.6642664266426642,
+        "upcoming_true": 431,
+        "who_hits": 32,
+        "strict_hits": 32
+      }
+    },
+    "failure": "post-export contract equality omitted report window_size_s=60",
+    "core_training_changed": false,
+    "planned_resume_tasks": [
+      [
+        "B5",
+        5
+      ],
+      [
+        "B4",
+        10
+      ],
+      [
+        "B5",
+        10
+      ],
+      [
+        "B4",
+        15
+      ],
+      [
+        "B5",
+        15
+      ]
+    ],
+    "local_checks": 31,
+    "prior_verifier_server_direct_checks": 14,
+    "test_evaluated": false,
+    "first_stage_retraining_allowed": false,
+    "recovery_server_execution": "pending"
+  },
   "matched_results_verification_registered_20260913": {
     "status": "registered_local_checks_passed_server_not_yet_run",
     "runtime_commit": "6289761c11d09e3570899b89858486b29e9f4c83",

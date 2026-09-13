@@ -6,9 +6,11 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict, replace
 import gc
+import hashlib
 import json
 from pathlib import Path
 import subprocess
+import zipfile
 
 import torch
 
@@ -25,6 +27,9 @@ PLAN = "baseline_matched_protocol_training20260913_plan.json"
 RESULT = "baseline_matched_protocol_training20260913_results.json"
 PREFLIGHT_SHA = "532d3b715d95106d54ba1fae01dc8bbc0e5d6995cfdda4ff2be2216b51281904"
 FILES = [*TRAINING_FILES, "initial.pt"]
+RECOVERY = "baseline_matched_first_stage_recovery20260913.json"
+RECOVERY_PROPOSAL = "baseline_matched_b4_start5_recovered_record20260913.json"
+FIRST_VERIFICATION = "baseline_matched_b4_start5_verification20260913.json"
 
 
 def configuration(model, max_start, device="cuda:0"):
@@ -144,17 +149,116 @@ def prepare(dataset, source_commit, device):
     return plan
 
 
-def run(dataset, source_commit, device):
+def validate_final_metrics(metrics, cap, plan):
+    if set(metrics) != {"train", "validation"}:
+        raise ValueError("Unexpected evaluated splits")
+    # Evaluation artifacts add the actual grid duration to the model contract.
+    report_contract = {**protocol.evaluation_contract(cap), "window_size_s": 60.}
+    for split, values in metrics.items():
+        counts = plan["preflight_label_counts"][str(cap)][split]
+        if (values["sample_count"] != counts["samples"]
+                or values["station_report"]["n_true_upcoming"] != counts["upcoming"]
+                or values["station_report"]["n_true_ongoing"] != counts["ongoing"]
+                or values["evaluation_contract"] != report_contract):
+            raise ValueError(f"Final {split} evaluation differs from the registered task/support")
+
+
+def check_first_stage_preservation(dataset, plan):
+    """Old first-stage files are in their verified archive; all others stay put."""
+    first = plan["tasks"][0]
+    prefix = str(Path(first["output_dir"]).relative_to(dataset)) + "/"
+    with zipfile.ZipFile(first["archive"]) as archive:
+        manifest = json.loads(archive.read("archive_manifest.json"))
+        for name, expected in manifest.items():
+            with archive.open(name) as stream:
+                if hashlib.file_digest(stream, "sha256").hexdigest() != expected:
+                    raise ValueError("Prior model archive changed")
+        for name, stat in plan["protected_files_stat_before_training"].items():
+            if name.startswith(prefix) and name[len(prefix):] in manifest:
+                if archive.getinfo(name[len(prefix):]).file_size != stat[0]:
+                    raise ValueError("Prior archived file size changed")
+            else:
+                check_stats(dataset, {name: stat})
+
+
+def recover_first_stage(dataset, source_commit, driver_commit):
+    """Repair the known post-export metadata guard failure without retraining."""
+    from verify_baseline_matched_results import verify_stage, RELATIVE, digest
+    plan_path = dataset / PLAN
+    plan = json.loads(plan_path.read_text())
+    if (plan["status"] != "failed" or plan.get("failed_stage") != ["B4", 5]
+            or plan["source_commit"] != source_commit or (dataset / RESULT).exists()):
+        raise ValueError("This recovery only applies to the first completed export")
+    state = subprocess.check_output(["tmux", "display-message", "-p", "-t", "baseline_dense_v6:0.0",
+                                     "#{pane_pid} #{pane_dead} #{pane_dead_status}"], text=True).strip()
+    if state != "993123 1 1":
+        raise ValueError("The original failed queue must be terminal before recovery")
+    first = plan["tasks"][0]
+    record_path, directory = Path(first["record"]), Path(first["output_dir"])
+    failed = json.loads(record_path.read_text())
+    if failed["status"] != "failed" or failed.get("error") != "Final evaluation disagrees with the registered task/support":
+        raise ValueError("Unexpected failure; do not treat incomplete training as a complete export")
+    summary = json.loads((directory / "run_summary.json").read_text())
+    metrics = json.loads((directory / "metrics.json").read_text())
+    config = json.loads((directory / "config.json").read_text())
+    if (summary["status"] != "validation_completed" or config["training"] != first["training"]
+            or config["loss"] != first["loss"] or config["metadata"]["git_commit"] != source_commit):
+        raise ValueError("Saved run is incomplete or differs from the registration")
+    validate_final_metrics(metrics, 5, plan)
+    check_first_stage_preservation(dataset, plan)
+    for task in plan["tasks"][1:]:
+        if Path(task["record"]).exists() or Path(task["archive"]).exists():
+            raise ValueError("A later stage already started; this narrow recovery cannot be used")
+    proposed = {**failed, "status": "validation_completed", "summary": summary, "metrics": metrics,
+                "artifact_sha256": {name: sha(directory / name) for name in FILES if (directory / name).exists()},
+                "recovery_driver_commit": driver_commit, "recovered_guard_error": failed["error"]}
+    del proposed["error"]
+    backup = {"status": "failed_record_preserved", "failed_plan": plan, "failed_record": failed,
+              "failed_log_sha256": sha(dataset / "baseline_matched_protocol_training20260913.log"),
+              "reason": "Reports add window_size_s=60 to the model evaluation contract",
+              "driver_source_commit": driver_commit, "training_repeated": False}
+    write_json(dataset / RECOVERY, backup, exclusive=True)
+    write_json(dataset / RECOVERY_PROPOSAL, proposed, exclusive=True)
+    proof = verify_stage(dataset, plan, "B4", 5, driver_commit, record_override=dataset / RECOVERY_PROPOSAL)
+    proof["verification_source_sha256"] = digest(subprocess.check_output(["git", "show", driver_commit + ":" + RELATIVE]))
+    write_json(dataset / FIRST_VERIFICATION, proof, exclusive=True)
+    # Only the failed bookkeeping record changes; every trained/evaluated file stays fixed.
+    record_path.write_bytes((dataset / RECOVERY_PROPOSAL).read_bytes())
+    print("FIRST_STAGE_RECOVERED_WITHOUT_RETRAINING", sha(record_path), sha(dataset / FIRST_VERIFICATION), flush=True)
+
+
+def run(dataset, source_commit, device, *, resume=False, driver_commit=None):
+    driver_commit = driver_commit or source_commit
     plan = json.loads((dataset / PLAN).read_text())
-    if plan["status"] != "registered" or plan["source_commit"] != source_commit or (dataset / RESULT).exists():
+    if plan["source_commit"] != source_commit or (dataset / RESULT).exists():
         raise ValueError("This queue has already started or changed; inspect it instead of restarting")
-    check_stats(dataset, plan["protected_files_stat_before_training"])
+    completed = []
+    if resume:
+        if plan["status"] != "failed" or plan.get("failed_stage") != ["B4", 5]:
+            raise ValueError("Resume requires the known recovered first-stage failure")
+        proof = json.loads((dataset / FIRST_VERIFICATION).read_text())
+        first_record = Path(plan["tasks"][0]["record"])
+        if (proof["status"] != "completed_stage_verified" or proof["record_sha256"] != sha(first_record)
+                or proof["runtime_commit"] != source_commit or proof["verification_source_commit"] != driver_commit):
+            raise ValueError("The completed first stage lacks a matching independent verification")
+        completed = [json.loads(first_record.read_text())]
+        if completed[0]["status"] != "validation_completed":
+            raise ValueError("First stage must be complete; never repeat its training")
+        for name, expected in completed[0]["artifact_sha256"].items():
+            if sha(Path(plan["tasks"][0]["output_dir"]) / name) != expected:
+                raise ValueError("Verified first-stage artifact changed")
+        check_first_stage_preservation(dataset, plan)
+        plan["resume_driver_source_commit"] = driver_commit
+        plan["reused_completed_tasks"] = [["B4", 5]]
+    else:
+        if plan["status"] != "registered":
+            raise ValueError("This queue already started; do not restart it")
+        check_stats(dataset, plan["protected_files_stat_before_training"])
     source_stats = {name: stat for name, stat in plan["protected_files_stat_before_training"].items()
                     if not name.startswith("models/")}
     plan["status"] = "running"
     write_json(dataset / PLAN, plan)
-    completed = []
-    for task in plan["tasks"]:
+    for task in plan["tasks"][len(completed):]:
         runtime(dataset, source_commit)
         check_stats(dataset, source_stats)
         model, cap = task["model"], task["max_start"]
@@ -175,7 +279,7 @@ def run(dataset, source_commit, device):
                 raise ValueError("Previous stage selected checkpoint changed")
             parent = archive
         record = {"status": "starting", "model": model, "max_start": cap, "source_commit": source_commit,
-                  "parent_archive": str(parent), "test_evaluated": False}
+                  "parent_archive": str(parent), "test_evaluated": False, "driver_source_commit": driver_commit}
         write_json(record_path, record, exclusive=True)
         try:
             archive_files(directory, FILES, archive.name)
@@ -190,13 +294,7 @@ def run(dataset, source_commit, device):
             metrics = json.loads((directory / "metrics.json").read_text())
             if set(metrics) != {"train", "validation"} or summary["status"] != "validation_completed":
                 raise ValueError("Unexpected evaluated splits or incomplete run")
-            for split, values in metrics.items():
-                counts = plan["preflight_label_counts"][str(cap)][split]
-                if (values["sample_count"] != counts["samples"]
-                        or values["station_report"]["n_true_upcoming"] != counts["upcoming"]
-                        or values["station_report"]["n_true_ongoing"] != counts["ongoing"]
-                        or values["evaluation_contract"] != protocol.evaluation_contract(cap)):
-                    raise ValueError("Final evaluation disagrees with the registered task/support")
+            validate_final_metrics(metrics, cap, plan)
             record.update(status="validation_completed", summary=summary, metrics=metrics,
                           artifact_sha256={name: sha(directory / name) for name in FILES if (directory / name).exists()})
             write_json(record_path, record)
@@ -224,9 +322,15 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_dir", type=Path, required=True)
     parser.add_argument("--source_commit", required=True)
     parser.add_argument("--device", default="cuda:0")
-    parser.add_argument("--mode", choices=("prepare", "run"), required=True)
+    parser.add_argument("--driver_commit")
+    parser.add_argument("--mode", choices=("prepare", "run", "recover", "resume"), required=True)
     args = parser.parse_args()
     torch.set_num_threads(2)
     dataset = args.dataset_dir.resolve()
     runtime(dataset, args.source_commit)
-    (prepare if args.mode == "prepare" else run)(dataset, args.source_commit, args.device)
+    if args.mode == "prepare":
+        prepare(dataset, args.source_commit, args.device)
+    elif args.mode == "recover":
+        recover_first_stage(dataset, args.source_commit, args.driver_commit or args.source_commit)
+    else:
+        run(dataset, args.source_commit, args.device, resume=args.mode == "resume", driver_commit=args.driver_commit)

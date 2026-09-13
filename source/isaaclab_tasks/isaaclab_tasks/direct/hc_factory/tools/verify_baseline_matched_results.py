@@ -187,16 +187,19 @@ def artifact_snapshot(directory, next_archive, expected):
     return contents, origin
 
 
-def verify_stage(dataset, plan, model, cap, source_commit):
+def verify_stage(dataset, plan, model, cap, source_commit, *, record_override=None):
     import torch
     task = next(t for t in plan["tasks"] if (t["model"], t["max_start"]) == (model, cap))
-    record_path = Path(task["record"])
+    record_path = Path(task["record"] if record_override is None else record_override)
+    if record_override is not None and record_path.resolve().parent != dataset.resolve():
+        raise ValueError("Recovery proposal must be in the existing benchmark directory")
     if not record_path.exists():
         raise SnapshotNotReady("The requested stage has not started")
     raw_record = record_path.read_bytes(); record = json.loads(raw_record)
     if record["status"] != "validation_completed":
         raise SnapshotNotReady("The requested stage has not completed")
-    if record["source_commit"] != RUNTIME or record["test_evaluated"]:
+    if (record["source_commit"] != RUNTIME or record["test_evaluated"]
+            or (record["model"], record["max_start"]) != (model, cap)):
         raise ValueError("Unexpected stage source or test evaluation")
     directory = Path(task["output_dir"])
     next_archive = directory / f"model_before_matched20260913_s{5 + cap}.zip" if cap < 15 else None
@@ -266,7 +269,8 @@ def verify_stage(dataset, plan, model, cap, source_commit):
     classes = json.loads((dataset / "dataset_manifest.json").read_text())["cause_classes"]
     scores = {}
     for split, measured in metrics.items():
-        if measured != json.loads(files[f"metrics_{split}.json"]) or measured["evaluation_contract"] != contract:
+        if (measured != json.loads(files[f"metrics_{split}.json"])
+                or measured["evaluation_contract"] != {**contract, "window_size_s": 60.}):
             raise ValueError("Per-split metrics or contract disagree")
         expected = plan["preflight_label_counts"][str(cap)][split]
         if measured["sample_count"] != expected["samples"]:
