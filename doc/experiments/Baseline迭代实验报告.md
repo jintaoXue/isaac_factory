@@ -3996,3 +3996,110 @@ _combine_will_logit、_event_span_loss、_apply_occupancy_union、predict及back
 5. 主配方还有续训、focal、事件窗采样及不同损失归一化；当前joint仅隔离组合训练机制，
    不等于完整复制主模型配方。组件间相互作用仍未识别。现有最直接证据是概率排序与
    泛化不足；把它进一步解释成某个架构组件缺失，需要新的受控证据，不能由架构图推定。
+
+### 38.10 复用现有B4诊断：验证误报主要不是短热事件
+
+只读两份已核验SHA的完整B4 joint汇总，提取已有概率分位数与误报分解；没有重新
+forward或增加阈值搜索。下表为validation，各数均为窗口-工位统计，不能当作独立事件数。
+
+| B4 joint validation | s42 best | s43 best | s42 last | s43 last |
+|---|---:|---:|---:|---:|
+| 保存阈值 | 0.65 | 0.70 | 0.90 | 0.90 |
+| Upcoming事件概率中位数 | 0.0394 | 0.1047 | 0.0417 | 0.0033 |
+| 全部误报 | 127 | 137 | 140 | 138 |
+| 可观测未来没有hot的负例误报 | 117 | 127 | 136 | 132 |
+| 有hot但不满足事件规则的负例误报 | 10 | 10 | 4 | 6 |
+| 短观测区间误报／真实事件起点错报 | 0/0 | 0/0 | 0/0 | 0/0 |
+
+“没有hot”组要求可观测未来至少8窗，且这些有效未来窗全部无hot；不是把未观测未来
+当作负例。四份验证的起点容差内比例都是1.0，八份train/validation也全部为1.0。
+这里所有upcoming真值起点只在1、2窗，而评分容差为3窗，因此该结果不能被解释成
+准确预报起点的强证据，但足以说明当前评分下的漏报不由缺少起点组件直接造成。
+
+Best验证误报的117/127、127/137（约92%）来自上述完全无hot的负例。不能据此继续
+把本轮主要问题解释成“没有持续时长组件，所以把短热误报成长热”；现有误报构成不支持
+这个解释。末轮train的upcoming概率中位数0.5604/0.8014，validation降至0.0417/0.0033，
+与AP差距一致，表明当前分数对新episode的提前事件缺乏稳定区分能力。
+这是对直接失败环节的定位，仍不是某个骨干组件导致泛化差距的因果证明。
+
+已有events_vs_short_hot_negative AUC混合ongoing/upcoming正例，不能当作upcoming专属
+判别指标；此处不由它推导upcoming已能区分短热负例，也不重跑旧134包相关搜索。
+
+### 38.11 四次训练完成，B5首组诊断完成、末组接续
+
+B5 seed43也已正常结束：best5/total25，参数302623，保存阈值0.65，P/R/F1为
+0.8205405405405405/0.6931506849315069/0.7514851485148515，upcoming=2/145。
+原Python424214消失，快照baseline_dense_joint_onset_b5s43_training20260913.json，
+33010 bytes，SHA 91360e2e5d93bf2e814f19b8e2c3bf21d0f6de4bda474bf23718cf3a4816a1c5。
+其当前七文件和旧F-beta归档11成员独立核验通过。
+
+训练pane400178退出0，driver400181及四个实际训练Python均已消失。整批训练汇总
+baseline_dense_joint_onset_training20260913.json，8598 bytes，SHA
+083daffcbd73ed25a0683a15504303075c9616e35c8bca04bb3cbf0707795480。
+四快照、全部28个当前文件、四旧归档CRC及44成员、固定运行源码7ff759d独立重验通过。
+B5两seed平均P/R/F1/upcoming R为0.8252590845879436/0.6853881278538814/
+0.7487943590739166/0.017241379310344827。四组命中0/1/3/2，onset_aux父对照0/3/5/2；
+联合训练本身没有稳定改善。训练汇总仍标diagnostics_completed=false，不把它当整批收尾。
+
+B5 seed42四份冻结诊断正常结束，pane430931退出0，最后实际Python433547消失，
+完整汇总baseline_joint_onset_b5s42_diagnostics20260913.json，605413 bytes，SHA
+75c3c3992660e53cdecef7df18057e8d04304a10d5849d59f0b4c66e0c371a44。
+独立核验原JSON/内嵌结果/四份SHA、权重及source、正式best validation canonical分数
+计数均通过。按best train、best validation、last train、last validation顺序：
+
+| B5 s42 joint诊断 | Best train | Best validation | Last train | Last validation |
+|---|---:|---:|---:|---:|
+| 保存阈值 | 0.65 | 0.65 | 0.80 | 0.80 |
+| Upcoming AP | 0.028816 | 0.010862 | 0.639215 | 0.010652 |
+| Upcoming命中 | 24/595 | 3/145 | 380/595 | 8/145 |
+| 同权重onset新增upcoming命中 | 16 | 1 | 325 | 7 |
+| 同权重onset新增误报 | 18 | 5 | 186 | 61 |
+
+四份upcoming timing misses均0；AP为六位小数。训练可拟合而验证弱的现象在B5再次出现，
+不按last挑权重、不降阈值挽救指标，不由单轮负结果认定整个GAT-GRU家族到顶。
+
+确认该组diag退出0及汇总SHA后，接续B5 seed43四份冻结诊断至pane439500，驱动
+baseline_joint_onset_b5s43_diagnose20260913.py，6015 bytes，SHA
+7d7fdbe3ad32038a82cd2ba9ee12266cd66b857ac48a46d031ffaa202846d2f8；日志
+jointonset20260913_b5s43_diagnose.log。最近已完成last validation（AP
+0.011509053184269421，onset新增upcoming命中3、新增误报45），正在last train。
+末组完整汇总和整批16份诊断收尾尚未核验，不能重复前三份推理。
+
+期间UU独立终端窗口从窗口列表消失，通过UU主窗口Leo设备卡的“终端”入口恢复，
+同一SSH会话与工作目录仍在。先前整批只读核验命令未送入终端，恢复后已实际执行并
+确认通过；没有重启训练/诊断，也没有改用本地直连SSH。
+
+### 38.12 Joint整批训练与16份冻结诊断收尾完成
+
+末组B5 seed43四份诊断已正常结束，pane439500退出0。完整汇总
+baseline_joint_onset_b5s43_diagnostics20260913.json，605467 bytes，SHA
+463293f2cef300f6e1705b6994246e403260f004f3e8df590782169dfa0cefa9。
+按best train、best validation、last train、last validation顺序：
+
+| B5 s43 joint诊断 | Best train | Best validation | Last train | Last validation |
+|---|---:|---:|---:|---:|
+| 保存阈值 | 0.65 | 0.65 | 0.90 | 0.90 |
+| Upcoming AP | 0.021170 | 0.011654 | 0.598038 | 0.011509 |
+| Upcoming命中 | 19/595 | 2/145 | 313/595 | 4/145 |
+| 同权重onset新增upcoming命中 | 17 | 0 | 243 | 3 |
+| 同权重onset新增误报 | 26 | 7 | 71 | 45 |
+
+最终整批校验确认训练pane400178、诊断pane439500均退出0，未发现带本批variant/
+diagnostic source标记的Python；服务器HEAD保持7ff759d且tracked clean。
+四份训练快照、28个当前文件、四旧归档CRC及44成员、四诊断汇总/16原文件与其内嵌
+JSON、诊断源码/权重/epoch/分组/样本数逐项一致。四份best validation canonical
+非MAE分数和计数复现通过、保存阈值相同。五个冻结数据文件及episodes.npz共六文件
+全量SHA与F-beta完整导出相同，执行前后stat相同，运行源码前后不变。
+
+完整导出baseline_dense_joint_onset_metrics_20260913.json，2836774 bytes，SHA
+c35d4d46a2a45d40f48381662278ea1655c0a1e0a02b8ec053a7018767dcae19。
+写入后JSON回读等值，并独立核对该SHA转录、4次训练/16份诊断/6数据哈希项计数。
+该完整导出包含四组训练快照和四组原诊断，并标diagnostics_completed=true；早期训练
+快照的false保持其历史状态，不修改旧产物。不评test、不动主仓库、不新建目录。
+
+正式upcoming命中0/1/3/2，相对onset_aux父对照0/3/5/2没有稳定收益，不采用本候选
+作为upcoming提升方案。四颗last的train AP为0.234417/0.383150/0.639215/0.598038，
+validation为0.014917/0.019378/0.010652/0.011509。由此可以定位当前失败在事件分数的
+泛化，而不能进一步认定某一缺失组件或整个骨干上限。主参考的反复时空交互、位置/
+模式编码及训练配方相互作用仍未受控隔离，正式主checkpoint和同包对照仍有材料缺口。
+当前全部进程已结束，下一训练尚未预注册；不重复本轮或旧搜索，原目标仍未完成。
