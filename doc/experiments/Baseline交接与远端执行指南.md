@@ -28,6 +28,9 @@ SHA e90919aeaae88f5bb924324bfc7d36451957f028f7dec0c554ba2e9b7f3285ae；独立终
 新增第42节固定权重分层诊断已本地实现，6 tests/4 subtests通过；待服务器3测试及
 两模型各8份诊断。只读当前B4 joint_onset/B5 vector_gat，保持原device/batch及阈值。
 不得因新诊断而重训或改报警，尚无分层结果。
+42.1更新：服务器3测试通过，两模型首份seed42 best validation输出已生成；driver
+误将结构化误报字典做数字减法，pane545202/545207均退出1。只修复校验，保留并复用
+首两份输出，原诊断源码仍878082e；本地7 tests/6 subtests通过，待服务器单项测试接续。
 
 此前vector_gat B5 seed42训练及四份冻结诊断均已完成并独立核验，
 diag pane489190退出0。两层实际动态排序在全部595/145个train/validation upcoming

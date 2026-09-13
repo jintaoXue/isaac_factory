@@ -21,13 +21,27 @@ def sha(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def verify_canonical(actual, expected):
+    """Include structured false-alarm counts; keep continuous timing MAE out of this check."""
+    keys = [key for key in expected if key.startswith(("n_", "who_", "report_")) and key != "report_threshold_used"]
+    assert keys
+    for key in keys:
+        if isinstance(expected[key], (int, float)):
+            assert abs(actual[key] - expected[key]) < 1e-10, (key, actual[key], expected[key])
+        else:
+            assert actual[key] == expected[key], (key, actual[key], expected[key])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source_commit", required=True)
+    parser.add_argument("--driver_commit", required=True)
     parser.add_argument("--model", choices=("b4", "b5"), required=True)
     args = parser.parse_args()
     repo = Path.cwd()
     assert repo == Path("/home/sci/work/BSTAN_isaac_factory")
+    driver_source = subprocess.check_output(["git", "show", args.driver_commit + ":source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools/run_frozen_upcoming_strata.py"])
+    assert Path(__file__).read_bytes() == driver_source
     d = repo / "source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset/experiments/factory_pdformer_134_v3"
     output = d / f"baseline_schedule_strata_{args.model}_complete20260913.json"
     assert d.is_dir() and not output.exists()
@@ -48,6 +62,11 @@ def main():
     tests = json.loads(test_path.read_text())
     assert tests["source_commit"] == args.source_commit and tests["diagnostic_source_sha256"] == source_hash
     assert tests["tests_passed"] == 3 and not tests["test_evaluated"]
+    driver_tests_path = d / "baseline_schedule_strata_resume_server_tests20260913.json"
+    driver_tests = json.loads(driver_tests_path.read_text())
+    assert driver_tests["driver_source_commit"] == args.driver_commit
+    assert driver_tests["driver_source_sha256"] == hashlib.sha256(driver_source).hexdigest()
+    assert driver_tests["tests_passed"] == 1 and not driver_tests["test_evaluated"]
 
     def guard():
         assert subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() == RUNTIME
@@ -75,6 +94,7 @@ def main():
             path = d / f"baseline_schedule_strata_{args.model}s{run['seed']}_{checkpoint}_{split}20260913.json"
             # Match each completed diagnostic's device and batch size for numerical comparability.
             device, batch = ("cpu", 32) if args.model == "b4" else ("cuda:0", 16)
+            reused = path.exists()
             if not path.exists():
                 print("START_STRATA", args.model, run["seed"], checkpoint, split, device, batch, flush=True)
                 subprocess.run([sys.executable, "-B", "-", "--dataset_dir", str(d), "--checkpoint", str(out / (checkpoint + ".pt")),
@@ -87,10 +107,7 @@ def main():
             assert not report["test_evaluated"]
             actual = next(row for row in report["thresholds"] if row["threshold"] == threshold)
             expected = next(row for row in reference["thresholds"] if row["threshold"] == threshold)
-            score_keys = [key for key in expected if key.startswith(("n_", "who_", "report_")) and key != "report_threshold_used"]
-            assert score_keys
-            for key in score_keys:
-                assert abs(actual[key] - expected[key]) < 1e-10, (key, actual[key], expected[key])
+            verify_canonical(actual, expected)
             for name in ("ongoing", "upcoming", "negative"):
                 assert report["groups"][name]["count"] == reference["groups"][name]["count"]
             old_ap = reference["ranking"]["upcoming_vs_negative"]["tie_aware_average_precision"]
@@ -101,6 +118,7 @@ def main():
             assert strata["summary"]["unique_onsets"] == (299 if split == "train" else 73)
             guard()
             results.append(dict(seed=run["seed"], checkpoint=checkpoint, split=split, file=path.name, file_sha256=sha(path),
+                reused_existing_output=reused,
                 original_file=original["file"], original_file_sha256=original["file_sha256"], original_scores_counts_and_AP_reproduced=True,
                 checkpoint_file_sha256=report["checkpoint_file_sha256"], saved_threshold=threshold,
                 overall_upcoming_AP=new_ap, summary=strata["summary"], groups=strata["groups"],
@@ -109,7 +127,9 @@ def main():
     guard()
     record = dict(status="eight_frozen_schedule_strata_diagnostics_completed_and_verified", model=args.model,
         source_commit=args.source_commit, diagnostic_source_sha256=source_hash, runtime_source_commit=RUNTIME,
+        driver_source_commit=args.driver_commit, driver_source_sha256=hashlib.sha256(driver_source).hexdigest(),
         references_sha256=REFERENCES, server_tests_sha256=sha(test_path), runs=results,
+        driver_tests_sha256=sha(driver_tests_path),
         current_model_files_unchanged=28, dataset_files_stat_unchanged=6,
         model_training=False, test_evaluated=False, main_repository_modified=False, goal_met=False)
     with output.open("x") as stream:

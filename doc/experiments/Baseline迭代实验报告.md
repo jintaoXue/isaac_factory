@@ -4478,3 +4478,17 @@ B5 vector_gat的best/last，两seed各自train/validation，共16份新诊断；
 保存阈值、权重/epoch/样本身份、canonical分数/计数和upcoming AP。
 服务器保持979c680；新代码拟以固定Git对象stdin执行，不pull。新结果只写既有D目录，
 严格校验后才能复用，绝不重启训练。当前本地实现完成，尚待服务器3测试与实际运行。
+
+### 42.1 服务器首两份输出已生成，修复结构化计数校验
+
+诊断源码878082e73e17b86951fa86196a9b27fe17a07bd6通过服务器3项测试；新代码只
+fetch Git对象，运行checkout仍979c680。既有diag/v6两pane分别545202/545207启动
+B5/B4固定权重诊断，均已生成seed42 best validation的新分层JSON。随后driver对
+report_false_alarm_breakdown字典做减法，两个pane均退出1；没有模型训练，也未改权重。
+这两份已完成forward的输出必须保留并校验复用，不能重复推理。
+
+本地仅修复driver：scalar计数/分数按原容差比较，结构化误报分类按字典比较，仍排除
+连续MAE并单独核对保存阈值。加入driver自身Git身份和额外服务器测试门；原诊断源码
+保持878082e，旧3测试记录不改。新增1项回归检查（含2子测试）通过，连同前述检查
+本地7 tests/6 subtests。待服务器单项测试后以新resume驱动/日志接续，旧失败驱动/日志
+原地保留，不创建目录，不修改已有输出或模型；尚无整批分层结论。

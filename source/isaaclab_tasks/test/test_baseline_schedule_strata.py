@@ -8,6 +8,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isaaclab_tasks/direct/hc_factory/tools"))
 from diagnose_baseline_events import summarize_schedule_strata
+from run_frozen_upcoming_strata import verify_canonical
 
 
 def fixture():
@@ -33,6 +34,15 @@ def fixture():
 
 
 class TestScheduleStrata(unittest.TestCase):
+    def test_canonical_comparison_preserves_structured_counts_and_excludes_continuous_mae(self):
+        expected = dict(report_f1=.7, n_true_upcoming=145, report_false_alarm_breakdown={"no_future_hot": 19},
+                        start_mae=.123, report_threshold_used=.55)
+        actual = {**expected, "start_mae": .123001, "report_threshold_used": .65}
+        verify_canonical(actual, expected)  # Threshold identity is checked separately by the driver.
+        for key, changed in (("report_f1", .71), ("report_false_alarm_breakdown", {"no_future_hot": 20})):
+            with self.subTest(key=key), self.assertRaises(AssertionError):
+                verify_canonical({**actual, key: changed}, expected)
+
     def test_shuffled_sample_identity_threshold_and_timing(self):
         result = summarize_schedule_strata(*fixture(), "validation", .5)
         summary = result["summary"]
