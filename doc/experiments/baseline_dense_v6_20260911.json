@@ -1,4 +1,41 @@
 {
+  "episode_holdout_episode_bootstrap_registered_20260913": {
+    "status": "local_four_tests_passed_server_execution_pending",
+    "observed_training": {
+      "model": "b4",
+      "epoch": 25,
+      "pane_pid": 712854,
+      "pane_dead": false
+    },
+    "analysis_source": "analyze_baseline_episode_holdout.py",
+    "replicates": 512,
+    "view_seeds": {
+      "fit": 20260913,
+      "heldout": 20260914,
+      "original_validation": 20260915
+    },
+    "method": "Whole episodes resampled within each raw run and view; fixed run counts; same draws across models and checkpoints; conditional single-seed percentile 95% intervals. Undefined no-positive draws excluded and counted.",
+    "checkpoints": [
+      10,
+      30,
+      60
+    ],
+    "threshold": 0.7,
+    "contrasts": [
+      "fit_minus_heldout",
+      "heldout_minus_original_validation"
+    ],
+    "metrics": [
+      "upcoming_vs_negative_tie_aware_AP",
+      "upcoming_station_start_tolerance3_recall"
+    ],
+    "requires_completed_views": 18,
+    "cache_forward_repeated": false,
+    "test_evaluated": false,
+    "checkpoint_selection": false,
+    "goal_met": false,
+    "report_section": "46.5"
+  },
   "episode_holdout_neural_training_started_verified_20260913": {
     "status": "actual_fit_only_B4_training_verified_B5_and_eighteen_frozen_views_pending",
     "source_commit": "ecc39e81c8f14483eaa50d90beea9743f9ac485c",
