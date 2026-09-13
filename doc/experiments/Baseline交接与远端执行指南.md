@@ -12,7 +12,7 @@
 
 四表示独立核验`baseline_repr_exports_verification20260913.json`：3320 bytes，SHA d9971652a72fc24eb6388482e9c28382fcab226b2d0e76f8f7bd96f269e35f3d。两项缓存分析独立核验`baseline_repr_transfer_verification20260913.json`：14544 bytes，SHA f02a22360b1a89f7356fec2e9a42c334412ff0d548ab9a20a397364bfc0bed6f。导出源码d79a093、分析源码f0090c7，分别本地/服务器各4测试通过；分析没有模型forward或训练。
 
-**下一项尚未实施的假设（44.4）：共享时序表示的训练正则化。** 实际checkpoint均单层GRU128、gru.dropout=0，现有p=.2在空间/输入处，读出路径没有额外dropout。已有AdamW/早停仍有效，不能称整个网络无正则，也未证明这是根因。尚未实现或登记具体训练配置，不能声称有新训练在跑。若继续，先明确单项父对照、参数/评估不变与真实数据预检；不自动重跑旧加权、onset或图层变体。
+**第45节已实现并登记、尚未部署/开训：共享时序读出dropout。** 实际checkpoint均单层GRU128、gru.dropout=0，现有p=.2在空间/输入处，读出路径没有额外dropout。已有AdamW/早停仍有效，不能称整个网络无正则，也未证明这是根因。readout_dropout=.2，以共同near为父对照，B4/B5各seed42/43、原max60预算；只加训练时共享读出dropout，无新参数，推理恒等，默认0兼容旧权重。新4项加回归共20检查/22子检查通过；待部署、服务器测试与四组真实批预检。标签readoutdrop20260913，不重跑父near或旧候选，不用test。
 
 当前正式B4 joint_onset best upcoming仍0/145、1/145，B5 vector_gat best仍3/145、2/145，尚无稳定可采用提升。last仅用于诊断，两者为不同负消融，不能当作骨干单因素比较。主prefix8文档.633的n_up=98，baseline=145；对应dense权重/原始配置/共同包仍缺，不能把当前主源码组件全部当作prefix8实际组件。保持固定208开发，原目标仍未达成。
 

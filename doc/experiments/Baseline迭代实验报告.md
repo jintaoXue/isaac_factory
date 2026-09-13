@@ -4634,3 +4634,19 @@ B4分析baseline_repr_transfer_b4s42_last20260913.json：1744090 bytes，SHA 9eb
 记录baseline_temporal_regularization_audit20260913.json：3008 bytes，SHA 4772ba27cc5b36a43d4126a213f20176838d0524a91a36811e9715b9dec9acdf。实际权重SHA与44.1缓存来源一致，未执行模型forward。这里不能称整个网络没有正则：已有空间/输入dropout、AdamW权重衰减和早停仍有效；也没有据此断言缺少时序dropout就是根因，更未假设主prefix8用了某种dropout。
 
 已查台账和长报告：旧规模/加大正则搜索指B3；当前208列出的B4/B5变体保持原dropout，尚无GRU读出dropout单项控制。下一项有证据支持的候选是假设“对共享时序表示施加训练时dropout可抑制当前表示层的过拟合”，需保持骨干类型、历史信息、参数量、推理评分和父对照一致，只改训练正则。**尚未实现、未登记具体训练配置、未开训。** 不能把本节当作新训练已经启动或指标已经改善。
+
+## 45. 共享时序读出dropout单项对照登记
+
+44节把泛化差距进一步定位到骨干表示。新增readout_dropout候选，以B4/B5共同near_precursor为父对照；这是针对表示过拟合的单项训练正则实验，不把主源码的某组件缺失当作既定根因。固定p=.2，不扫描概率；在GRU历史汇聚后、所有任务头之前施加一次共享表示dropout，推理时恒等，不修改GRU层数/隐藏维数/图结构/识别头，也不增加参数。
+
+B4/B5各seed42/43，从头初始化。保持near的30×38×27输入及23维近窗摘要、同一数据/split/损失/均匀抽样/优化器和学习率/早停/阈值与正式选模。B4 batch24、lr3e-4、min10/patience10；B5 batch16、lr1.5e-4、min15/patience20；均max60、AdamW weight_decay=.01。Onset、F-beta、history_graph与vector_gat均关闭，B5恢复父对照scalar_additive。不同于当前留存的B4 joint/B5 vector负消融，必须对照已完成near结果2/2/1/2（各145）。
+
+配置默认readout_dropout=0，确保旧checkpoint缺字段时继续按原路径运行。新模块无参数，构造不消耗RNG；p=0的train/eval输出及RNG与979c680旧模型源码逐值相同。p=.2初始所有eval输出与父对照相同，训练时增加dropout随机抽样并影响后续RNG流，这是该训练干预的一部分，不声称训练轨迹仍完全一致。所有头共享被正则化的历史表示；既有near投影保留，不能称对网络每条支路都加了dropout。
+
+本地20项检查/22子检查通过：新4项涵盖旧源码/权重schema兼容、两seed参数/初始化/eval相同、真实训练mask与梯度、配置仅改p及非法值拒绝；另包括两模型无目录配置检查和既有history_graph/vector默认路径回归。未运行创建tmp_path目录的整份artifact_reuse。
+
+准备preflight_baseline_readout_dropout.py：部署后先核验目前28模型SHA/6数据stat、near完整产物和各原archive；从train/validation按首次upcoming（不看预测）取真实24/16样本批。四组须通过同父配置、参数/初始化、初始eval逐值相同、训练mask比例/全损失有限/骨干梯度和GPU内存检查，结果只写既有D的新JSON。部署前再次核验没有旧进程；训练前旧文件经archive_manifest与原文件SHA复核归档，沿用原目录，不新建/删除目录。
+
+拟定唯一标签readoutdrop20260913，尚未部署、未运行服务器测试/真实预检、未开训。完成后按正式best验证命中及整体P/R/F1判定收益，并用best/last train/validation诊断检查泛化差距；无稳定多seed提升不采用，不因单个seed结果自动扩展概率搜索，不用test。原目标仍未达成。
+
+执行器 `run_baseline_readout_dropout.py` 固定四组训练后接续16份best/last、train/validation诊断。训练前检查所有目的文件与旧权重，沿用原归档校验流程，逐组保存训练快照；诊断中断只允许`--phase diagnose`复用已核验输出，不隐式重训。尚未在服务器启动。

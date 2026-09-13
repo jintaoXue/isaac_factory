@@ -29,6 +29,7 @@ class B4ModelConfig:
     node_embedding: int = 0
     temporal_readout: str = "last"
     history_graph_refine: bool = False
+    readout_dropout: float = 0.0
     prediction_horizon: float = 180.0
     max_remain_windows: int = 15
     num_causes: int = 10
@@ -50,6 +51,8 @@ class B4ModelConfig:
             raise ValueError("global_dim must be non-negative")
         if self.node_embedding < 0:
             raise ValueError("node_embedding must be non-negative")
+        if not 0.0 <= self.readout_dropout < 1.0:
+            raise ValueError("readout_dropout must be in [0, 1)")
         if self.temporal_readout not in {"last", "last_mean", "last_attention"}:
             raise ValueError("temporal_readout must be last, last_mean or last_attention")
         if self.event_head not in {"binary", "three_class"}:
@@ -150,6 +153,7 @@ class B4GcnGru(nn.Module):
                     DenseGraphConvolution(config.gru_hidden, config.gcn_hidden),
                     config.gcn_hidden, config.gru_hidden,
                 )
+        self.readout_dropout = nn.Dropout(config.readout_dropout)
 
     def forward(
         self,
@@ -204,6 +208,9 @@ class B4GcnGru(nn.Module):
         )
         if self.history_graph is not None:
             node_hidden = self.history_graph(node_hidden, adjacency, node_mask)
+        # One shared training mask regularizes the history representation used
+        # by every task head. p=0 preserves old checkpoints and their RNG path.
+        node_hidden = self.readout_dropout(node_hidden)
         return self.heads(
             node_hidden,
             node_mask,

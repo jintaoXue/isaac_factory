@@ -194,6 +194,9 @@ def test_dense_candidates_are_single_variable_and_leave_scoring_unchanged(model)
     joint = configurations["joint_onset"]
     assert joint[0] == onset[0] and joint[2] == onset[2]
     assert joint[1] == {**onset[1], "event_onset_joint": True}
+    readout = configurations["readout_dropout"]
+    assert readout[0] == near[0] and readout[2] == near[2]
+    assert readout[1] == {**near[1], "readout_dropout": .2}
     if model == "B5":
         vector = configurations["vector_gat"]
         assert vector[0] == near[0] and vector[2] == near[2]

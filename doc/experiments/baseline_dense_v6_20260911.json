@@ -1,4 +1,29 @@
 {
+  "readout_dropout_candidate_registered_20260913": {
+    "status": "local_twenty_tests_twenty_two_subtests_passed_not_deployed_or_trained",
+    "variant": "readout_dropout",
+    "archive_tag": "readoutdrop20260913",
+    "parent": "near_precursor",
+    "models": [
+      "B4",
+      "B5"
+    ],
+    "seeds": [
+      42,
+      43
+    ],
+    "probability": 0.2,
+    "default_probability": 0.0,
+    "placement": "shared_history_readout_before_all_task_heads",
+    "additional_parameters": 0,
+    "initial_eval_predictions_equal_to_parent": true,
+    "default_zero_old_source_outputs_and_rng_equal": true,
+    "additional_training_dropout_rng": true,
+    "max_epochs": 60,
+    "repeat_parent_training": false,
+    "test_evaluated": false,
+    "goal_met": false
+  },
   "representation_transfer_analysis_completed_20260913": {
     "status": "two_cached_analyses_completed_and_independently_checked",
     "source_commit": "f0090c797d71281c945726e103e39a64537ca6df",
