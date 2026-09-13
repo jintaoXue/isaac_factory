@@ -4807,3 +4807,20 @@ AP表保留8位小数，精确值在服务器完整JSON；AP不是正式召回�
 第40/42节支持统计使用全部138原train，不能直接代表本轮107-fit对两个未见集的支持。新增audit_episode_holdout_support.py只读固定plan与已有dense_event_support20260912.json（SHA 56d2dc07169d12e420ed1d2877bcf3290d2cd53d0abdd317ea6581845b32cd93），按fit的独立upcoming起点统计node/scenario/node×scenario支持，分别描述heldout与原validation中支持数≤0/1/2/3/5/10的独立起点及窗口目标数量。这是本轮新分组的计数，不重复原完整138的已完成模型诊断；不读概率、不forward、不训练，不更改分组或模型。
 
 复用旧summarize_support_cells实现，但供给训练计数的只能是107 fit episode，两个未见集分别只用于描述目标。4本地检查通过：heldout不能充当fit正例；独立起点和两个重叠窗口不混计；节点支持与节点×scenario支持区分；另一未见集标签不影响本视图支持；拒绝跨视图、缺失coverage及test。相同工位/场景有正例支持也不等于历史特征匹配或可预测，不能把低支持计数当作根因证明。当前登记与本地检查完成，服务器计数待执行；原训练712854/统计等待727985不变。
+
+
+### 46.9 107-fit支持审计完成：两未见集零联合支持比例接近
+
+源码42735664e8e2c36482021fc3b2e1f8e7e3555a99只fetch对象，运行checkout仍EE；4服务器检查通过。复用固定plan及旧独立起点记录完成新107-fit计数，再用独立Counter重新计算两视图×三支持层级×六计数上限，逐项匹配。原训练712854/统计等待727985均live，B4当时第51/60轮；没有新增神经训练或forward。
+
+| 视图 | episode | 独立upcoming起点 | 窗口目标 | 同node×scenario零fit正例：起点/窗口 | 有联合支持窗口 |
+|---|---:|---:|---:|---:|---:|
+| fit | 107 | 226 | 451 | N/A | N/A |
+| heldout | 31 | 73 | 144 | 13 / 26 | 118 |
+| 原validation | 30 | 73 | 145 | 15 / 30 | 115 |
+
+两个未见集单独node和单独scenario的零正例支持都是0。joint零支持比例26/144=18.06%、30/145=20.69%，没有明显的validation单侧类别缺失。原138-train时validation零joint支持22/145，本轮排除31 episode后成为30/145，不能继续套用旧22计数。有训练joint支持的窗口分别118和115；支持数≤0/1/2/3/5/10的窗口数分别为heldout[26,58,93,107,115,138]、validation[30,64,90,99,111,141]，说明大多数目标的同类独立起点支持仍稀疏。这是描述，不是根因或可预测性证明，也不是按结果重选分组的理由。
+
+审计baseline_episodeholdout20260913_fitting_support.json：56707 bytes，SHA 97b05d4f2a6f224a61865cc0aaa83772f6deee544274639f01bfd99e3cf52be4。四测试baseline_episodeholdout20260913_fitting_support_tests.json：580 bytes，SHA 9112783a053fd97c8ad87e79281dc73b65d33d69fe65fdae354b8c4cd61b4cfb。独立核验baseline_episodeholdout20260913_fitting_support_verification.json：598 bytes，SHA b665482580473af0fd76aa89e5eecd0a7a48ab54425f94c7b54f156eda31c2c4。完整stdout保留episodeholdout20260913_fitting_support_run.log。
+
+后续须先读三个预定轮次的神经诊断。若两个未见集都差，可复用本轮NPZ按零/正joint支持分组检查漏报是否仍在有支持目标中普遍存在；此时不是重做旧138-train权重的42节诊断，而是新107-fit神经权重的支持解释。当前还没有本轮未见分数，不认定模型架构限制或根因已找到。

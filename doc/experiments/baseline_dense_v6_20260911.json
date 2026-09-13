@@ -1,4 +1,91 @@
 {
+  "episode_holdout_fitting_support_completed_20260913": {
+    "status": "fitting_support_counts_independently_recomputed",
+    "source_commit": "42735664e8e2c36482021fc3b2e1f8e7e3555a99",
+    "audit": {
+      "file": "baseline_episodeholdout20260913_fitting_support.json",
+      "bytes": 56707,
+      "sha256": "97b05d4f2a6f224a61865cc0aaa83772f6deee544274639f01bfd99e3cf52be4"
+    },
+    "server_tests": {
+      "file": "baseline_episodeholdout20260913_fitting_support_tests.json",
+      "count": 4,
+      "bytes": 580,
+      "sha256": "9112783a053fd97c8ad87e79281dc73b65d33d69fe65fdae354b8c4cd61b4cfb"
+    },
+    "independent_verification": {
+      "file": "baseline_episodeholdout20260913_fitting_support_verification.json",
+      "bytes": 598,
+      "sha256": "b665482580473af0fd76aa89e5eecd0a7a48ab54425f94c7b54f156eda31c2c4"
+    },
+    "counts": {
+      "fit": {
+        "episodes": 107,
+        "unique_upcoming_onsets": 226,
+        "window_targets": 451
+      },
+      "heldout": {
+        "episodes": 31,
+        "unique_upcoming_onsets": 73,
+        "window_targets": 144
+      },
+      "original_validation": {
+        "episodes": 30,
+        "unique_upcoming_onsets": 73,
+        "window_targets": 145
+      }
+    },
+    "zero_fitting_support": {
+      "heldout": {
+        "node": 0,
+        "scenario": 0,
+        "node_scenario": {
+          "unique_onsets": 13,
+          "window_targets": 26
+        },
+        "positive_joint_support_window_targets": 118
+      },
+      "original_validation": {
+        "node": 0,
+        "scenario": 0,
+        "node_scenario": {
+          "unique_onsets": 15,
+          "window_targets": 30
+        },
+        "positive_joint_support_window_targets": 115
+      }
+    },
+    "joint_support_cumulative_window_targets_at_most_0_1_2_3_5_10": {
+      "heldout": [
+        26,
+        58,
+        93,
+        107,
+        115,
+        138
+      ],
+      "original_validation": [
+        30,
+        64,
+        90,
+        99,
+        111,
+        141
+      ]
+    },
+    "interpretation": "No unseen node/scenario individually. Joint zero support is18.06% vs20.69%, broadly similar rather than a validation-only category absence. Support counts do not establish matched features or predictability. After cached results arrive, compare0 versus positive joint support before attributing poor unseen recall only to unsupported categories.",
+    "training_observed": {
+      "pane": "712854|0|",
+      "model": "b4",
+      "epoch": 51
+    },
+    "analysis_wait_pane": "727985|0|",
+    "model_training": false,
+    "model_forward": false,
+    "test_evaluated": false,
+    "goal_met": false,
+    "report_section": "46.9"
+  },
   "episode_holdout_fitting_support_registered_20260913": {
     "status": "local_four_tests_passed_server_audit_pending",
     "source": "audit_episode_holdout_support.py",

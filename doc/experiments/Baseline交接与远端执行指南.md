@@ -4,9 +4,9 @@
 
 ## 1. 交接状态
 
-**当前最新状态（以下旧“此前”段落均为历史）：**第46节真正神经episode留出诊断正在运行：107 fit/31 heldout/原30 validation；B4 seed42日志已核验至39/60轮，B5随后串行。原训练pane712854 live，日志episodeholdout20260913_train_resume.log；预先保存10/30/60权重并计分共18视图。新增纯缓存episode统计已通过服务器4测试，diag pane727985 live，正在等原训练/18视图全部正常结束后自动统计；日志episodeholdout20260913_episode_analysis.log。独立等待核验695 bytes，SHA 07edec499c6cee79cfbe88f766e6f32e7acb4ea1641c6f44903d3704f4e2f45c。运行checkout仍EE，分析源码d4a92c1仅fetch对象；禁止pull、重启或并发本批任务。尚无本轮未见集指标，原目标未达成。
+**当前最新状态（以下旧“此前”段落均为历史）：**第46节真正神经episode留出诊断正在运行：107 fit/31 heldout/原30 validation；B4 seed42日志已核验至51/60轮，B5随后串行。原训练pane712854 live，日志episodeholdout20260913_train_resume.log；预先保存10/30/60权重并计分共18视图。新增纯缓存episode统计已通过服务器4测试，diag pane727985 live，正在等原训练/18视图全部正常结束后自动统计；日志episodeholdout20260913_episode_analysis.log。独立等待核验695 bytes，SHA 07edec499c6cee79cfbe88f766e6f32e7acb4ea1641c6f44903d3704f4e2f45c。运行checkout仍EE，分析源码d4a92c1仅fetch对象；禁止pull、重启或并发本批任务。尚无本轮未见集指标，原目标未达成。
 
-**新增计数（46.8）：**107-fit的node/scenario/node×scenario正例支持审计已登记，复用旧独立起点记录、不读概率或forward；旧138-train计数不能直接用于本轮。4本地检查通过，服务器待执行，原训练/统计等待仍保留。
+**107-fit支持计数已完成（46.9）：**源码4273566通过4服务器测试及独立重计数，不forward或训练。fit有226独立起点/451窗口目标；两未见集各73独立起点。heldout和原validation的同工位×同scenario零正例支持分别26/144与30/145，剩118/115个有联合支持目标；单独node/scenario零支持均0。原validation没有明显更高的类别零支持比例，不能据计数证明可预测。审计及核验产物已在D，详见JSON最新key；原712854/727985仍live。
 
 **统计边界（46.7）：**实际三个视图均21个raw run，heldout/原validation各有15个run仅1个episode；当前512次批次内episode重采样固定这些单例，区间只作条件性描述，不代表换raw run或训练seed的误差。原validation为run内随机分组；旧未来故障join仅匹配同工位，不等于排除所有外部未来启动。当前仍等原712854/727985两live进程，无新未见集分数。
 
