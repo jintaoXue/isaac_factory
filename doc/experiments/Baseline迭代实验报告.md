@@ -4833,3 +4833,24 @@ AP表保留8位小数，精确值在服务器完整JSON；AP不是正式召回�
 所有支持键必须从107-fit的完整独立起点重建，不能直接用46.9仅含query正例的coverage cell列表去划分negative，否则“query只有负例、fit有正例”的cell会被错分为零支持。本地代码审阅时即修正此未部署的分析路径，并加入明确反例测试。5本地测试通过：样本/节点身份正确、排除ongoing和无效节点；概率与起点漏报分解；query标签不改fit支持；空正例分组为未定义；完整fit cell包含负query类别且不借用heldout正例。已有46.9计数未用这种负例划分，不受影响。
 
 需要真实模型缓存出现后校验NPZ与JSON/完成汇总、固定split与源SHA，且分组总目标/命中/负例须复现canonical，零支持目标须复现26/30。当前源码/本地检查完成，服务器测试与分组执行尚待完成。
+
+
+### 46.11 B4完整诊断：真实未见episode同样低，训练拟合升至AP .931
+
+原训练712854完成B4固定60轮/45240次optimizer更新，随后完成预定10/30/60权重的全部9视图，已自动接续B5。分析源码9551920bfe8994a64a481002df781291632dfd5a通过5服务器测试后，只读B4六个未见缓存完成支持分组，没有重复forward。独立复核B4完整60条history/更新数、9JSON+NPZ/三固定权重/progress来源、计划完整覆盖、分组汇总回归canonical和26/30零支持目标均通过；48原模型文件、6数据stat、12运行源码保持。
+
+| 固定轮次 | fit AP | heldout AP | 原validation AP | fit命中/451 | heldout/144 | 原validation/145 |
+|---|---:|---:|---:|---:|---:|---:|
+| 10 | .0385378219 | .0071823703 | .0096086259 | 20 | 1 | 2 |
+| 30 | .6773719248 | .0072721763 | .0070589213 | 289 | 7 | 4 |
+| 60 | .9311272255 | .0076739832 | .0078973105 | 402 | 7 | 7 |
+
+第60轮fit recall=89.14%，两个未见集分别4.86%/4.83%。随着训练继续，fit正例概率中位数从.0320→.8361→.9700；heldout从.00656→.0001068→约4.5e-7，原validation从.00832→.0000306→约1.2e-7。排序没有同步改善，模型对未见upcoming的否定却越来越强。以上显示用真正训练排除的episode仍有严重泛化差距，不再只是旧冻结表示探针的“排除参考episode”。三个checkpoint都报告，不选择最有利轮次，也不把固定60轮诊断成绩替换正式208基线。
+
+九视图所有upcoming timing miss为0，遗漏均在固定.70事件概率阈值；第60轮fit49漏报，heldout137，原validation138。支持分组进一步限制解释：无joint支持组26/30个目标在三个轮次均0命中；有支持组heldout为1/118→7/118→7/118，原validation为2/115→4/115→7/115，末轮分别5.93%/6.09%。有支持组末轮AP分别.01068068/.01120561。因此原validation特殊难度或零node×scenario正例支持不能单独解释本次B4的低召回。正类别支持不等于匹配历史前兆，不能据此排除更细粒度分布差异。
+
+当前可确认的是B4强烈的跨episode泛化失败/过拟合模式，而非完全没有表达upcoming的能力，也不是起点解码使大量已报事件失配。尚不能把它等同为“具体记住了某个episode字段”的因果证据，不能认定某个组件缺失、输入信息上限或所有B4架构的上限。早期10轮的两未见排序也弱，单凭缩短训练不能宣称足以修复。主prefix8匹配原包缺口仍限制.633的架构比较。
+
+B4完整baseline_episodeholdout20260913_b4s42_complete.json：1837618 bytes，SHA 77c45d0250c7ac44c63c224266d2143613f9e8d57d7a9a94e1e60d2ec858b0d5。支持分组baseline_episodeholdout20260913_b4s42_support_strata.json：7708 bytes，SHA 369324c208cc9d6613af2e8c8e87ea4a3e72b50b44e4eb5cdb58807051e5ae93。5服务器检查baseline_episodeholdout20260913_support_strata_tests.json：669 bytes，SHA fb6a895f99fc11a03b171570ff3675d2f3a378b96165ec54115f2078215dc74a。独立终态baseline_episodeholdout20260913_b4_complete_verification.json：7494 bytes，SHA 008d408c3e7771e14ab75cdefcf248e3f8e6da5ea215de9095f1c37f2f6870c5。上表/分位数是屏幕精简显示的舍入值，完整精度保存在上述server JSON。
+
+核验时B5已到第3/60轮，原712854与自动bootstrap等待727985均live，运行checkout仍EE。继续等待B5原60轮+9视图，之后执行已部署且5检查已通过的analyze_holdout_support_predictions.py --source_commit 9551920bfe8994a64a481002df781291632dfd5a --model b5一次；B5支持分组没有另外挂等待器，需要接续时确认完成后运行。全18视图episode bootstrap仍由原727985自动接续，不手动再开。B4所有训练/诊断/分组均完成禁止重跑，test未用，原目标仍未达到。

@@ -1,4 +1,129 @@
 {
+  "episode_holdout_b4_complete_and_support_strata_verified_20260913": {
+    "status": "b4_fixed_training_nine_views_and_six_cached_support_strata_verified",
+    "training_source": "ecc39e81c8f14483eaa50d90beea9743f9ac485c",
+    "strata_source": "9551920bfe8994a64a481002df781291632dfd5a",
+    "complete": {
+      "file": "baseline_episodeholdout20260913_b4s42_complete.json",
+      "bytes": 1837618,
+      "sha256": "77c45d0250c7ac44c63c224266d2143613f9e8d57d7a9a94e1e60d2ec858b0d5"
+    },
+    "strata": {
+      "file": "baseline_episodeholdout20260913_b4s42_support_strata.json",
+      "bytes": 7708,
+      "sha256": "369324c208cc9d6613af2e8c8e87ea4a3e72b50b44e4eb5cdb58807051e5ae93"
+    },
+    "independent_verification": {
+      "file": "baseline_episodeholdout20260913_b4_complete_verification.json",
+      "bytes": 7494,
+      "sha256": "008d408c3e7771e14ab75cdefcf248e3f8e6da5ea215de9095f1c37f2f6870c5"
+    },
+    "server_tests": {
+      "file": "baseline_episodeholdout20260913_support_strata_tests.json",
+      "count": 5,
+      "bytes": 669,
+      "sha256": "fb6a895f99fc11a03b171570ff3675d2f3a378b96165ec54115f2078215dc74a"
+    },
+    "epochs": 60,
+    "optimizer_steps": 45240,
+    "rounded_metrics": [
+      {
+        "epoch": 10,
+        "fit_ap": 0.0385378219,
+        "heldout_ap": 0.0071823703,
+        "original_validation_ap": 0.0096086259,
+        "hits": [
+          20,
+          1,
+          2
+        ],
+        "upcoming": [
+          451,
+          144,
+          145
+        ],
+        "median_probability": [
+          0.0320053,
+          0.00655955,
+          0.00831573
+        ]
+      },
+      {
+        "epoch": 30,
+        "fit_ap": 0.6773719248,
+        "heldout_ap": 0.0072721763,
+        "original_validation_ap": 0.0070589213,
+        "hits": [
+          289,
+          7,
+          4
+        ],
+        "upcoming": [
+          451,
+          144,
+          145
+        ],
+        "median_probability": [
+          0.83606386,
+          0.00010683,
+          3.064e-05
+        ]
+      },
+      {
+        "epoch": 60,
+        "fit_ap": 0.9311272255,
+        "heldout_ap": 0.0076739832,
+        "original_validation_ap": 0.0078973105,
+        "hits": [
+          402,
+          7,
+          7
+        ],
+        "upcoming": [
+          451,
+          144,
+          145
+        ],
+        "median_probability": [
+          0.96996015,
+          4.5e-07,
+          1.2e-07
+        ]
+      }
+    ],
+    "exact_values_location": "server complete and independent verification JSON; display AP rounded10 decimals and medians8 decimals",
+    "positive_support_hits": {
+      "heldout": {
+        "upcoming": 118,
+        "epoch10": 1,
+        "epoch30": 7,
+        "epoch60": 7
+      },
+      "original_validation": {
+        "upcoming": 115,
+        "epoch10": 2,
+        "epoch30": 4,
+        "epoch60": 7
+      }
+    },
+    "zero_support_hits_at_all_epochs": 0,
+    "upcoming_timing_misses_all_nine_views": 0,
+    "interpretation": "Strong fitting improvement with persistently weak performance on both genuinely unseen episode views, including positive joint support. This is B4 cross-episode generalization failure, not validation-only difficulty or solely absent categorical positives. Misses arise at fixed probability threshold rather than start tolerance. Does not prove exact shortcut mechanism or architectural upper bound.",
+    "formal_files_unchanged": 48,
+    "dataset_stats_unchanged": 6,
+    "runtime_sources_unchanged": 12,
+    "training_pane": "712854|0|",
+    "analysis_wait_pane": "727985|0|",
+    "b5_last_observed_epoch": 3,
+    "pending": [
+      "B5 original60epochs and9views",
+      "B5 support strata using already deployed9551920 source and already passed5server tests",
+      "full18view episode bootstrap already waiting in727985"
+    ],
+    "test_evaluated": false,
+    "goal_met": false,
+    "report_section": "46.11"
+  },
   "episode_holdout_support_prediction_strata_registered_20260913": {
     "status": "five_local_tests_passed_pending_complete_model_caches",
     "source": "analyze_holdout_support_predictions.py",
