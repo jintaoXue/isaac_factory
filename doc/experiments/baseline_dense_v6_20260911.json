@@ -1,4 +1,29 @@
 {
+  "state_transfer_diagnostic_registered_20260913": {
+    "status": "local_four_tests_passed_server_not_started",
+    "file": "diagnose_upcoming_state_transfer.py",
+    "views": [
+      "node",
+      "state",
+      "node_state",
+      "node_state_transition"
+    ],
+    "representations": [
+      "inverted_baseline_X",
+      "raw_bundle_reference"
+    ],
+    "evaluations": [
+      "train_in_sample",
+      "train_leave_episode_out",
+      "validation_train_only"
+    ],
+    "pseudo_observation_count": 1,
+    "exclude_whole_episode_including_prior": true,
+    "model_training": false,
+    "diagnostic_statistical_fit": true,
+    "test_evaluated": false,
+    "goal_met": false
+  },
   "schedule_strata_diagnostics_completed_20260913": {
     "status": "all_sixteen_completed_and_independently_verified",
     "runtime_commit": "979c680fb4d1919ae760cdfb0038f69fb7cc6708",
