@@ -1,4 +1,149 @@
 {
+  "data_quantity54_nested_plan_registered_20260913": {
+    "status": "identifier_plan_implementation_four_local_checks_passed_server_pending_training_driver_not_implemented",
+    "report_section": "49.1",
+    "salt": "baseline_data_quantity54_20260913_v1",
+    "parent_fit_episodes": 107,
+    "retained_fit_episodes": 54,
+    "unused_parent_fit_episodes": 53,
+    "evaluation_episodes": {
+      "heldout": 31,
+      "original_validation": 30
+    },
+    "fixed_reference_intervals": 60,
+    "sample_presentations_per_interval": 18095,
+    "optimizer_updates": {
+      "b4": 45240,
+      "b5": 67860
+    },
+    "checkpoint_reference_intervals": [
+      10,
+      30,
+      60
+    ],
+    "models": [
+      "B4",
+      "B5"
+    ],
+    "seed": 42,
+    "gru_hidden": 128,
+    "variant": "near_precursor",
+    "threshold": 0.7,
+    "refit_normalization_on_retained_only": true,
+    "do_not_repeat_parent_107_training_or_forward": true,
+    "server_plan_pending": true,
+    "neural_driver_implemented": false,
+    "model_training": false,
+    "model_forward": false,
+    "test_evaluated": false,
+    "goal_met": false
+  },
+  "gru_capacity32_full_batch_completed_verified_20260913": {
+    "status": "four_training_sixteen_diagnostics_and_matched_parent_comparison_independently_verified",
+    "report_section": "47.7",
+    "runtime_commit": "90a41a5b9c44e625f8c80083a8a950cd50f5eb13",
+    "verification_source_commit": "9eb41da85eef1e23a45f7039478a5480028d5c0f",
+    "pane_exit_states": {
+      "training": "783323|1|0",
+      "comparison": "840337|1|0"
+    },
+    "model_seed_order": [
+      "b4s42",
+      "b4s43",
+      "b5s42",
+      "b5s43"
+    ],
+    "formal_upcoming_hits": [
+      0,
+      0,
+      0,
+      3
+    ],
+    "parent_near_hits": [
+      2,
+      2,
+      1,
+      2
+    ],
+    "upcoming_true_each": 145,
+    "best_epochs": [
+      6,
+      6,
+      4,
+      27
+    ],
+    "epochs_trained": [
+      16,
+      16,
+      24,
+      47
+    ],
+    "parent_last_epochs": [
+      12,
+      15,
+      26,
+      25
+    ],
+    "last_train_AP_parent": [
+      0.08213004,
+      0.17993384,
+      0.30190383,
+      0.30942241
+    ],
+    "last_train_AP_candidate": [
+      0.03286623,
+      0.02433937,
+      0.03799636,
+      0.05748819
+    ],
+    "last_validation_AP_parent": [
+      0.00954082,
+      0.00947917,
+      0.00912045,
+      0.00863192
+    ],
+    "last_validation_AP_candidate": [
+      0.00849409,
+      0.00991731,
+      0.00930803,
+      0.00898416
+    ],
+    "displayed_AP_values_rounded": true,
+    "same_actual_optimizer_budget": false,
+    "current_model_files_verified": 48,
+    "old_archive_members_verified": 44,
+    "parent_archives_verified": 4,
+    "runtime_source_files_verified": 14,
+    "dataset_stat_verified": 6,
+    "no_stable_improvement": true,
+    "adopted_as_final_baseline": false,
+    "all_registered_capacity_work_completed": true,
+    "test_evaluated": false,
+    "main_repository_modified": false,
+    "goal_met": false,
+    "artifacts": {
+      "batch": {
+        "file": "baseline_dense_gru_capacity_metrics_20260913.json",
+        "bytes": 2379459,
+        "sha256": "5fe983e0b0e0031afcaf58b92bc85d12a750bf4ce4cb5a67845f81f0bbc15011"
+      },
+      "comparison": {
+        "file": "baseline_gru_capacity_parent_comparison20260913.json",
+        "bytes": 27620,
+        "sha256": "f1e7ed4904a03ad38d2dd44ed8f558e94e03e074894c83fd4c1f407c3be2e791"
+      },
+      "wait_complete": {
+        "file": "baseline_gru_capacity_comparison_wait_complete20260913.json",
+        "bytes": 540,
+        "sha256": "08c40413abde5fea1a232cf892f1586694f25bf7f904e6c2bbbb3c9eb918e3b2"
+      },
+      "independent_verification": {
+        "file": "baseline_gru_capacity_final_verification20260913.json",
+        "bytes": 36732,
+        "sha256": "c600344f63566090541ae8c788f2055d48eb0ffc64aa2663a553175fcbdffbb6"
+      }
+    }
+  },
   "factorywide_start_holdout_cache_analysis_completed_verified_20260913": {
     "status": "eighteen_existing_caches_4440_predictions_independently_verified",
     "report_section": "48.4",
