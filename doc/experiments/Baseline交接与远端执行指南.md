@@ -4,6 +4,8 @@
 
 ## 1. 交接状态
 
+**52.4接续：**已实际复核原pane993123及ps命令仍live，B4 Start5到10轮，source仍6289761，无完成阶段或整批结果。新增verify_baseline_matched_results.py纯产物核验入口，14本地检查通过；待服务器以固定Git对象加载测试/执行，不pull运行checkout。每阶段完成后仅核验一次：记录/归档/权重头一致性、重建will15选模及累计更新、工位概率漏报与起点超差拆分、预测CSV覆盖固定train/val各一次、原因四类与全局remain MAE独立重算。不会forward、训练或选新参数；分段加权误差只核对已有统计，不误称从CSV独立重算（CSV不含progress）。原CSV的event_will_any仍是旧源包元数据，不作为新任务真值。
+
 **当前权威进度（52.3）：新三档已正式开训。**服务器dev_xwt固定6289761c11d09e3570899b89858486b29e9f4c83；33服务器检查及两份真实父权重加载检查通过，6阶段计划已登记。复用baseline_dense_v6:0.0，pane993123 live；独立核验B4 Start≤5 seed42已完成4轮，实际training/loss配置与登记逐项一致，input_contract与预检一致。旧GRU32首组11文件归档验证通过，164个受保护文件以原stat或归档成员核验；主仓库只读确认仍7b2ab39。运行中禁止pull、重启或重复本队列。B4s5→B5s5→B4s10→B5s10→B4s15→B5s15由原队列串行接续。当前没有完成的新任务成绩，原低召回根因仍未解决。
 
 日志baseline_matched_protocol_training20260913.log；登记baseline_matched_protocol_training20260913_plan.json；最终结果baseline_matched_protocol_training20260913_results.json尚待生成。启动独立核验baseline_matched_protocol_training20260913_start_verification.json，SHA abbf905a7b00e03914d9eac8b5b3e7de1cfc3eca428c8c112df99f74584d846e。只在本地更新进度文档，不让运行checkout随文档commit移动。下方“待部署/待启动”均为之前阶段的登记状态。

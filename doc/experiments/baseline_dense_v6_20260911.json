@@ -1,4 +1,39 @@
 {
+  "matched_results_verification_registered_20260913": {
+    "status": "registered_local_checks_passed_server_not_yet_run",
+    "runtime_commit": "6289761c11d09e3570899b89858486b29e9f4c83",
+    "runtime_pane_pid": 993123,
+    "runtime_verified_live": true,
+    "current_observed_stage": [
+      "B4",
+      5,
+      42
+    ],
+    "current_observed_epoch": 10,
+    "verifier": "verify_baseline_matched_results.py",
+    "local_checks": 14,
+    "server_checks": null,
+    "new_forward": false,
+    "new_training": false,
+    "test_evaluated": false,
+    "selection_reconstructed_from_history": true,
+    "upcoming_miss_partition": [
+      "true_minus_who_hits",
+      "who_hits_minus_strict_hits"
+    ],
+    "prediction_rows_check": "exact original train/validation split indices once",
+    "independent_csv_recomputation": [
+      "four_supported_cause_confusion_and_macro_recall",
+      "unweighted_global_remaining_time_MAE"
+    ],
+    "scope_limits": [
+      "station labels and scores reuse saved metrics and original preflight",
+      "weighted phase remaining-time errors not recomputed from CSV without progress",
+      "source CSV event_will_any is legacy metadata, not new-task ground truth"
+    ],
+    "do_not_pull_running_checkout": true,
+    "old_experiments_repeated": false
+  },
   "matched_curriculum208_20260913_training_started": {
     "status": "training_live_first_task_epoch4_verified",
     "runtime_commit": "6289761c11d09e3570899b89858486b29e9f4c83",

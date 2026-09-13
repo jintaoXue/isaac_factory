@@ -5188,3 +5188,16 @@ validation按will15 F1及P≥.8/R≥.7选模、按参考阈值流程选阈值；
 复用原baseline_dense_v6:0.0启动，pane993123 live。独立核验B4 Start≤5 seed42已完成4个训练轮次，无Traceback。实际training/loss字典与登记逐项相同，GRU128/20格输出及输入contract正确，原GRU32的11个松散文件已校验归档；164个受保护文件以未改stat或归档成员验证，主仓库只读HEAD仍7b2ab39。没有评test或修改主仓库。
 
 日志baseline_matched_protocol_training20260913.log，启动核验baseline_matched_protocol_training20260913_start_verification.json，SHA abbf905a7b00e03914d9eac8b5b3e7de1cfc3eca428c8c112df99f74584d846e。此为早期运行状态，不是正式新任务完成结果，不据早期召回决定换配置。五个后继阶段由原队列接续；完成后检查各档独立JSON和整批baseline_matched_protocol_training20260913_results.json。运行checkout固定6289761，后续本地进度文档提交不得在训练中pull到服务器。原泛化根因与稳定改进目标仍未达到。
+
+
+### 52.4 独立完成核验登记；原训练持续运行
+
+原pane993123与实际ps命令已再次只读确认live，运行8分54秒时B4 Start5完成10轮，source仍6289761。早期训练损失下降而验证尚未同步改善，只作运行观察，不据此调整配置或宣告新任务终态。
+
+新增verify_baseline_matched_results.py只读取完成阶段的记录、模型ZIP/松散文件、checkpoint头、history、metrics和预测CSV，不实例化模型、不forward、不训练、不读取test样本。当前本地14项独立检查通过，服务器尚待执行。通过固定Git对象在原runtime旁加载，不在训练中pull；未完成或归档过渡状态返回not-ready，不能当训练失败并重启。
+
+验证范围包括：固定源码/manifest/seed与配置；best/last SHA、epoch、累计更新、有限权重；逐history重建P≥.8/R≥.7约束下首个F1改善选模；报告P/R/F1与整数计数一致；严格@1/2/3命中嵌套；upcoming按0–5、6–10、>10起点分组；每个split预测CSV恰好覆盖原始索引一次；四类原因混淆与宏召回、全局无权remain MAE从预测行独立重算。
+
+新范围较宽，诊断分开计数：score_misses = n_true_upcoming - n_matched_who_upcoming；start_tolerance_misses = n_matched_who_upcoming - n_matched_report_upcoming。二者合计为严格upcoming漏报，用于区分工位事件识别不足与起点定位不足。结果仍是选定best下的描述，不能据单seed/课程式训练做架构单因素归因。训练/验证及各起点段并列，不能将整体will15 F1当成upcoming recall。
+
+范围限制：没有再次从原序列重建工位真值或重复神经推理，原协议/真实计数预检复用；加权remain分段只检查主字段及支持总数，因为现有CSV没有progress，不声称逐样本独立重算。CSV自源包复制的event_will_any是旧标签元数据，不用于新三档事件评分。每组新核验文件baseline_matched_{b4,b5}_start{5,10,15}_verification20260913.json；已有文件拒绝覆盖，后续复用已完成核验，不重复旧实验。
