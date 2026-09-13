@@ -814,6 +814,128 @@ def summarize_history_graph(arrays: dict[str, np.ndarray], output_weight_l2: flo
                       "no predictions, thresholds or checkpoint selection are changed.")
 
 
+@torch.no_grad()
+def shared_neighbor_top_reversals(attention: torch.Tensor, edges: torch.Tensor,
+                                  batch_size: int, steps: int) -> dict:
+    """Count strict changes of the top common neighbor between query pairs.
+
+    Read actual pre-dropout softmax weights. Chunk query pairs to avoid keeping
+    the full time/query/query/neighbor/head grid in memory. Ties and differences
+    at most 1e-7 are unresolved; masked neighbors never enter a comparison.
+    """
+    if (attention.ndim != 4 or edges.shape != attention.shape[:3]
+            or attention.shape[1] != attention.shape[2]
+            or attention.shape[0] != batch_size * steps):
+        raise ValueError("Invalid attention/edge/history grid")
+    if edges.dtype != torch.bool or not torch.isfinite(attention).all():
+        raise ValueError("Invalid attention observation")
+    rows, nodes, _, heads = attention.shape
+    if ((attention < 0).any() or (attention > 1).any()
+            or not torch.allclose(attention.sum(2)[edges.any(2)],
+                                  torch.ones_like(attention.sum(2)[edges.any(2)]), atol=1e-6)):
+        raise ValueError("Invalid attention probability distribution")
+    pairs = torch.triu_indices(nodes, nodes, 1, device=attention.device)
+    eligible_query = torch.zeros(rows, nodes, heads, dtype=torch.long, device=attention.device)
+    reversed_query = torch.zeros_like(eligible_query)
+    eligible_pair = torch.zeros(rows, heads, dtype=torch.long, device=attention.device)
+    reversed_pair = torch.zeros_like(eligible_pair)
+    for offset in range(0, pairs.shape[1], 32):
+        left, right = pairs[:, offset:offset + 32]
+        common = edges[:, left] & edges[:, right]
+        eligible = (common.sum(2) >= 2).unsqueeze(-1).expand(-1, -1, heads)
+        a = attention[:, left].masked_fill(~common.unsqueeze(-1), -1.)
+        b = attention[:, right].masked_fill(~common.unsqueeze(-1), -1.)
+        a_top, a_index = a.max(2, keepdim=True)
+        b_top, b_index = b.max(2, keepdim=True)
+        # A strict cross-preference establishes a real ordering reversal even
+        # if there are additional tied top neighbors within either query.
+        reversed_order = eligible & ((a_top - a.gather(2, b_index)).squeeze(2) > 1e-7)
+        reversed_order &= ((b_top - b.gather(2, a_index)).squeeze(2) > 1e-7)
+        for index in (left, right):
+            eligible_query.index_add_(1, index, eligible.long())
+            reversed_query.index_add_(1, index, reversed_order.long())
+        eligible_pair += eligible.sum(1)
+        reversed_pair += reversed_order.sum(1)
+    return dict(
+        query_eligible=eligible_query.reshape(batch_size, steps, nodes, heads).sum((1, 3)),
+        query_reversed=reversed_query.reshape(batch_size, steps, nodes, heads).sum((1, 3)),
+        pair_eligible_by_head=eligible_pair.reshape(batch_size, steps, heads).sum(1),
+        pair_reversed_by_head=reversed_pair.reshape(batch_size, steps, heads).sum(1),
+    )
+
+
+@torch.no_grad()
+def predict_with_gat_ranking_observation(model: torch.nn.Module, inputs: dict) -> tuple[dict, dict]:
+    """Observe both original GAT forwards; do not recompute or replace attention."""
+    from factory_baselines.b5_gat_gru import DenseGraphAttention
+    layers = {name: getattr(model, name, None) for name in ("gat1", "gat2")}
+    if model.training or any(not isinstance(layer, DenseGraphAttention) for layer in layers.values()):
+        raise ValueError("GAT ranking observation requires a B5 model in eval mode")
+    batch_size, steps = inputs["x"].shape[:2]
+    observed, captured, handles = {}, {}, []
+
+    def capture_weights(name):
+        def hook(module, args, output):
+            if name in captured:
+                raise ValueError("Expected one attention invocation per GAT layer")
+            captured[name] = args[0].detach()
+        return hook
+
+    def capture_layer(name):
+        def hook(module, args, output):
+            _, adjacency, mask = args
+            edges = adjacency.bool() & mask.bool()[:, :, None] & mask.bool()[:, None, :]
+            stats = shared_neighbor_top_reversals(captured[name], edges, batch_size, steps)
+            observed.update({name + "_" + key: value for key, value in stats.items()})
+        return hook
+
+    try:
+        for name, layer in layers.items():
+            handles.append(layer.dropout.register_forward_hook(capture_weights(name)))
+            handles.append(layer.register_forward_hook(capture_layer(name)))
+        result = model(**inputs)
+        if set(captured) != set(layers):
+            raise ValueError("Expected both original GAT layers to run")
+    finally:
+        for handle in handles:
+            handle.remove()
+    return result, observed
+
+
+def summarize_gat_ranking(arrays: dict[str, np.ndarray], score_mode: str) -> dict:
+    valid = arrays["occ_node_mask"] > .5
+    positive = (arrays["event_will"] > .5) & valid
+    groups = dict(upcoming=positive & (arrays["event_start"] > 0),
+                  ongoing=positive & (arrays["event_start"] == 0), negative=valid & ~positive)
+    layers = {}
+    for name in ("gat1", "gat2"):
+        eligible, reversed_order = (arrays[name + "_query_" + key] for key in ("eligible", "reversed"))
+        pe, pr = (arrays[name + "_pair_" + key + "_by_head"] for key in ("eligible", "reversed"))
+        if eligible.shape != valid.shape or reversed_order.shape != valid.shape or pe.shape != pr.shape:
+            raise ValueError("Invalid GAT ranking summary grid")
+        for e, r in ((eligible, reversed_order), (pe, pr)):
+            if (not np.isfinite(e).all() or not np.isfinite(r).all()
+                    or (r < 0).any() or (e < r).any() or (e != np.floor(e)).any()
+                    or (r != np.floor(r)).any()):
+                raise ValueError("Invalid GAT ranking counts")
+        if not np.array_equal(eligible.sum(1), 2 * pe.sum(1)) or not np.array_equal(reversed_order.sum(1), 2 * pr.sum(1)):
+            raise ValueError("Query incidence must count both endpoints of each pair")
+        rows = {}
+        for group_name, mask in groups.items():
+            e, r = int(eligible[mask].sum()), int(reversed_order[mask].sum())
+            rows[group_name] = dict(count=int(mask.sum()),
+                nodes_with_eligible_pair=int((eligible[mask] > 0).sum()),
+                nodes_with_any_strict_reversal=int((reversed_order[mask] > 0).sum()),
+                eligible_query_pair_time_head_incidence=e,
+                strict_reversal_query_pair_time_head_incidence=r,
+                reversal_fraction=r / e if e else None)
+        layers[name] = dict(groups=rows, eligible_pair_time_by_head=pe.sum(0).tolist(),
+                            strict_reversal_pair_time_by_head=pr.sum(0).tolist())
+    return dict(version="factory_frozen_gat_common_neighbor_top_v1", score_mode=score_mode,
+        absolute_attention_difference_tolerance=1e-7, layers=layers,
+        scope="Both actual GAT layers, all input history frames, heads and unordered query pairs. Compare only shared valid neighbors, requiring at least two. A reversal requires strict cross-preference between the two top choices. Counts demonstrate query-dependent ranking use, not causal importance or a recall benefit. Zero does not exclude changes among lower-ranked neighbors or differences below tolerance. Labels only stratify target-node statistics; no prediction, threshold or checkpoint changes.")
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset_dir", type=Path, required=True)
@@ -830,6 +952,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     observation = parser.add_mutually_exclusive_group()
     observation.add_argument("--inspect_temporal_attention", action="store_true", help="Observe frozen temporal pooling weights and representation changes without changing predictions")
     observation.add_argument("--inspect_history_graph", action="store_true", help="Observe applied post-GRU graph residuals without changing predictions")
+    observation.add_argument("--inspect_gat_ranking", action="store_true", help="Observe strict top-choice reversals over common neighbors in both original B5 GAT layers")
     parser.add_argument("--source_commit", help="Pinned diagnostic Git source when executing this file via stdin")
     parser.add_argument("--thresholds", type=float, nargs="+", default=[
         0.20, 0.30, 0.40, 0.50, 0.55, 0.60, 0.68, 0.75, 0.80, 0.85, 0.90, 0.95,
@@ -891,6 +1014,8 @@ def main() -> None:
                 result, observed = predict_with_temporal_observation(model, inputs)
             elif args.inspect_history_graph:
                 result, observed = predict_with_history_graph_observation(model, inputs)
+            elif args.inspect_gat_ranking:
+                result, observed = predict_with_gat_ranking_observation(model, inputs)
             else:
                 result = model(**inputs)
             values = {key: batch[key] for key in (
@@ -927,6 +1052,8 @@ def main() -> None:
         report["history_graph_observation"] = summarize_history_graph(
             arrays, float(model.history_graph.output.weight.norm().item()),
         )
+    if args.inspect_gat_ranking:
+        report["gat_ranking_observation"] = summarize_gat_ranking(arrays, model.config.gat_score_mode)
     if args.compare_hot_head:
         report["prediction_head_comparison"] = summarize_prediction_heads(arrays, chosen_threshold)
     if args.compare_onset_report:
