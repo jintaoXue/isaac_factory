@@ -1,4 +1,131 @@
 {
+  "episode_holdout_partition_preparation_registered_20260913": {
+    "status": "four_local_tests_passed_server_plan_not_generated_no_new_training",
+    "source_file": "source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/tools/prepare_baseline_episode_holdout.py",
+    "source_sha256": "f3a299262683863d10d6dcff63ebef1c35b855d975fe0a74a0e98d0fbd4d2d3c",
+    "hypotheses": [
+      "Poor generalization on any unseen episode from the same original training raw runs",
+      "Original validation is specifically harder than an internal unseen-episode holdout"
+    ],
+    "selection": "Within each original training raw run: fixed identifier hash with salt baseline_episode_holdout20260913_v1; hold out nearest-integer one fifth, retaining at least one episode on each side; no labels or scores used",
+    "original_training_episode_count": 138,
+    "original_validation_episode_count": 30,
+    "original_frozen_split_modified": false,
+    "existing_B4_identity_label_caches_reused": true,
+    "model_forward": false,
+    "model_training": false,
+    "local_tests_passed": 4,
+    "test_evaluated": false,
+    "goal_met": false,
+    "next_requirements": [
+      "Verify actual partition counts using existing cached labels without model forward",
+      "Refit normalization only on retained fitting episodes before any fresh diagnostic neural training",
+      "Do not use existing frozen neural weights as an unseen-episode control; those weights saw the original training episodes",
+      "Register the exact diagnostic training protocol after partition audit; do not change formal 208 split or replace formal baseline scores"
+    ]
+  },
+  "readout_dropout_full_batch_and_parent_comparison_completed_20260913": {
+    "status": "four_training_runs_sixteen_candidate_views_and_matched_parent_comparison_independently_verified",
+    "runtime_commit": "ee838f59d2bdf2893a35ec00acae1308f9dd0e07",
+    "training_pane": "610573|1|0",
+    "parent_diagnostic_pane": "654613|1|0",
+    "runs": [
+      {
+        "model": "B4",
+        "seed": 42,
+        "best_epoch": 4,
+        "epochs_trained": 14,
+        "upcoming_hits": 0,
+        "parent_near_hits": 2,
+        "upcoming_targets": 145,
+        "last_train_AP": 0.06148423,
+        "last_validation_AP": 0.00901112,
+        "parent_last_train_AP": 0.08213004,
+        "parent_last_validation_AP": 0.00954082
+      },
+      {
+        "model": "B4",
+        "seed": 43,
+        "best_epoch": 7,
+        "epochs_trained": 17,
+        "upcoming_hits": 3,
+        "parent_near_hits": 2,
+        "upcoming_targets": 145,
+        "last_train_AP": 0.19555878,
+        "last_validation_AP": 0.00963293,
+        "parent_last_train_AP": 0.17993384,
+        "parent_last_validation_AP": 0.00947917
+      },
+      {
+        "model": "B5",
+        "seed": 42,
+        "best_epoch": 6,
+        "epochs_trained": 26,
+        "upcoming_hits": 2,
+        "parent_near_hits": 1,
+        "upcoming_targets": 145,
+        "last_train_AP": 0.2250223,
+        "last_validation_AP": 0.00947672,
+        "parent_last_train_AP": 0.30190383,
+        "parent_last_validation_AP": 0.00912045
+      },
+      {
+        "model": "B5",
+        "seed": 43,
+        "best_epoch": 5,
+        "epochs_trained": 25,
+        "upcoming_hits": 2,
+        "parent_near_hits": 2,
+        "upcoming_targets": 145,
+        "last_train_AP": 0.22969678,
+        "last_validation_AP": 0.00995029,
+        "parent_last_train_AP": 0.30942241,
+        "parent_last_validation_AP": 0.00863192
+      }
+    ],
+    "AP_values_rounded_to_decimals": 8,
+    "full_result": {
+      "file": "baseline_dense_readout_dropout_metrics_20260913.json",
+      "bytes": 2380302,
+      "sha256": "b599500b3dd973393d3a997569692959ae747f7a8eea022d2ad5db417f696c78"
+    },
+    "independent_verification": {
+      "file": "baseline_readout_dropout_final_verification20260913.json",
+      "bytes": 17594,
+      "sha256": "047740668c40a253e45c30827b9a40ff6a52fa498dc1dec75a99d8725b1166a7"
+    },
+    "parent_comparison": {
+      "file": "baseline_readout_dropout_parent_comparison20260913.json",
+      "bytes": 1288372,
+      "sha256": "73dbbb0f81f43ac9422e1fb914247113a4936a9983694ea96648a291127b459c"
+    },
+    "parent_independent_verification": {
+      "file": "baseline_readout_parent_final_verification20260913.json",
+      "bytes": 694,
+      "sha256": "b44d551ad06ac86bdc228173a9a7d47f35baf670ff4e5fc251e43edb2d5c3e8f"
+    },
+    "parent_server_tests": {
+      "file": "baseline_readout_parent_server_tests20260913.json",
+      "bytes": 4053,
+      "sha256": "172beaaba88a2cee09e8781ba73022784a3c9974b4839632b91b63281ad2de59",
+      "tests_passed": 4,
+      "old_views_verified": 12
+    },
+    "parent_driver_source_commit": "9862d72ec778dd17fdc06429954b52439863baa2",
+    "parent_driver_source_sha256": "1a9bb51118dbade8f5e0e22f900fd50c133cdfa5f77a20f07f2831ec0d5e6b44",
+    "candidate_diagnostics": 16,
+    "parent_old_views_reused": 12,
+    "parent_missing_views_filled": 4,
+    "current_model_files_verified": 48,
+    "dataset_stats_unchanged": 6,
+    "parent_training_repeated": false,
+    "stable_improvement": false,
+    "adopted": false,
+    "test_evaluated": false,
+    "goal_met": false,
+    "interpretation": "Readout dropout did not materially improve upcoming recall. B5 last train AP decreased from about .30 to .23, while validation stayed about .009-.010. This intervention does not identify the unique overfitting cause or establish an architecture ceiling.",
+    "access_recovery": "UU native window Raise before Window menu; raise the main window again before opening the Leo terminal. Both jobs finished normally; UI failures did not restart jobs."
+  },
   "readout_remote_terminal_unavailable_after_unlock_20260913": {
     "status": "mac_unlocked_but_independent_UU_terminal_unavailable_after_three_resumed_turns",
     "manual_terminal_open_requested": true,
