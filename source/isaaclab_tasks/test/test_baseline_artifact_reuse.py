@@ -109,6 +109,10 @@ def test_extension_keeps_old_test_and_validation_membership():
 @pytest.mark.parametrize("model,batch_size", [("B4", 24), ("B5", 16)])
 @pytest.mark.parametrize("variant", control.DENSE_VARIANTS)
 def test_control_archives_stale_test_and_starts_fresh_validation_only(tmp_path, monkeypatch, model, batch_size, variant):
+    if variant == "vector_gat" and model == "B4":
+        with pytest.raises(ValueError, match="B5-only"):
+            control.dense_configuration(model, variant, 42, "cpu")
+        return
     repo = tmp_path / "BSTAN_isaac_factory"
     dataset, output = repo / "dataset", repo / "models"
     dataset.mkdir(parents=True)
@@ -162,6 +166,10 @@ def test_control_archives_stale_test_and_starts_fresh_validation_only(tmp_path, 
 def test_dense_candidates_are_single_variable_and_leave_scoring_unchanged(model):
     configurations = {}
     for variant in control.DENSE_VARIANTS:
+        if variant == "vector_gat" and model == "B4":
+            with pytest.raises(ValueError, match="B5-only"):
+                control.dense_configuration(model, variant, 42, "cpu")
+            continue
         training, overrides, loss = control.dense_configuration(model, variant, 42, "cpu")
         training_values = asdict(training)
         training_values.pop("training_profile")
@@ -186,5 +194,9 @@ def test_dense_candidates_are_single_variable_and_leave_scoring_unchanged(model)
     joint = configurations["joint_onset"]
     assert joint[0] == onset[0] and joint[2] == onset[2]
     assert joint[1] == {**onset[1], "event_onset_joint": True}
+    if model == "B5":
+        vector = configurations["vector_gat"]
+        assert vector[0] == near[0] and vector[2] == near[2]
+        assert vector[1] == {**near[1], "gat_score_mode": "vector_additive"}
     with pytest.raises(ValueError, match="registered dense variant"):
         control.dense_configuration(model, "unknown", 42, "cpu")

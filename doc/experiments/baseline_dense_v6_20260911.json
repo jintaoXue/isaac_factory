@@ -1,4 +1,41 @@
 {
+  "vector_gat_registered_local_20260913": {
+    "status": "implemented_and_local_tested_not_deployed_or_trained",
+    "variant": "vector_gat",
+    "archive_tag": "vectorgat20260913",
+    "models": ["B5"],
+    "seeds": [42, 43],
+    "parent_control": "near_precursor",
+    "parent_upcoming_hits": [1, 2],
+    "validation_upcoming_targets_per_seed": 145,
+    "mechanism": "move_leaky_relu_before_channel_reduction_in_both_GAT_attention_layers",
+    "model_config_change": {"gat_score_mode": "vector_additive"},
+    "additional_parameters": 0,
+    "initial_weights_parameter_names_rng_and_dropout_draws_unchanged": true,
+    "initial_predictions_expected_to_differ": true,
+    "old_checkpoint_scalar_default_and_outputs_preserved": true,
+    "reference_paper": "https://arxiv.org/abs/2105.14491",
+    "scope": "Factorized dynamic score ablation; not unrestricted GATv2 and not a demonstrated cause of factory recall failure",
+    "minimal_actual_layer_test": {
+      "queries": [[-2, 0], [0, -3]],
+      "common_neighbor_features": [[1, 0], [0, 2]],
+      "scalar_preferred_neighbor_one_based": [2, 2],
+      "vector_preferred_neighbor_one_based": [2, 1]
+    },
+    "unchanged": ["near_30_window_input_contract", "graph_edges", "GRU_and_readout", "task_heads", "losses", "uniform_sampling", "optimizer_and_budget", "decoder", "threshold_and_checkpoint_selection"],
+    "batch_size": 16,
+    "learning_rate": 0.00015,
+    "weight_decay": 0.01,
+    "max_epochs": 60,
+    "min_epochs": 15,
+    "patience": 20,
+    "B4_rejected_before_training_or_archival": true,
+    "local_tests": {"passed": 15, "subtests_passed": 22, "temporary_directory_tests_not_run": true},
+    "server_preflight_pending": ["real_208_input_contract", "same_initial_parameters_rng_count", "finite_real_batch_forward_backward", "GPU_memory", "old_results_unchanged"],
+    "test_evaluated": false,
+    "main_repository_modified": false,
+    "goal_met": false
+  },
   "joint_onset_full_batch_completed_20260913": {
     "status": "four_training_and_sixteen_diagnostics_completed_full_verification_passed",
     "training_source_commit": "7ff759dd722c8b12b730be5a3714672796655ddf",
@@ -1452,7 +1489,7 @@
     "next_action": "Follow running event_fbeta_launch_20260913; preserve fixed runtime and validation-only protocol",
     "deployed_checkout": "1728ca69bd85e695f6004522ff774a20eaaab8e4"
   },
-  "status": "joint_onset_full_batch_complete_verified_no_stable_upcoming_gain_component_attribution_unresolved_goal_not_met",
+  "status": "joint_complete_vector_gat_registered_local_preflight_pending_goal_not_met",
   "history_graph_B4_both_completed_20260913": {
     "status": "two_training_runs_and_eight_diagnostics_completed_verified",
     "training_source_commit": "371afb69d29118a3c42b3274a65e5b07509c1032",

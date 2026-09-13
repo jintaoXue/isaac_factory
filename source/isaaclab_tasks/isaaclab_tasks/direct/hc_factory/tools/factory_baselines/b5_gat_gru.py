@@ -33,8 +33,11 @@ class B5ModelConfig:
     prediction_horizon: float = 180.0
     max_remain_windows: int = 15
     num_causes: int = 10
+    gat_score_mode: str = "scalar_additive"
 
     def __post_init__(self) -> None:
+        if self.gat_score_mode not in {"scalar_additive", "vector_additive"}:
+            raise ValueError("Unknown GAT score mode")
         if self.gat_hidden % self.gat_heads != 0:
             raise ValueError("gat_hidden must be divisible by gat_heads")
         for name in (
@@ -81,8 +84,12 @@ class DenseGraphAttention(nn.Module):
         num_heads: int,
         concat: bool,
         dropout: float,
+        score_mode: str = "scalar_additive",
     ) -> None:
         super().__init__()
+        if score_mode not in {"scalar_additive", "vector_additive"}:
+            raise ValueError("Unknown GAT score mode")
+        self.score_mode = score_mode
         self.head_dim = head_dim
         self.num_heads = num_heads
         self.concat = concat
@@ -110,12 +117,24 @@ class DenseGraphAttention(nn.Module):
         projected = self.projection(x).view(
             batch_size, node_count, self.num_heads, self.head_dim
         )
-        source_scores = (projected * self.attention_source).sum(dim=-1)
-        target_scores = (projected * self.attention_target).sum(dim=-1)
-        logits = F.leaky_relu(
-            source_scores[:, :, None, :] + target_scores[:, None, :, :],
-            negative_slope=0.2,
-        )
+        if self.score_mode == "scalar_additive":
+            source_scores = (projected * self.attention_source).sum(dim=-1)
+            target_scores = (projected * self.attention_target).sum(dim=-1)
+            logits = F.leaky_relu(
+                source_scores[:, :, None, :] + target_scores[:, None, :, :],
+                negative_slope=0.2,
+            )
+        else:
+            # Move the nonlinearity before channel reduction. Unlike scalar
+            # additive GAT, a query can change the ordering of shared neighbors.
+            # Reuse exactly the old parameters: this is a factorized dynamic
+            # score ablation, not a claim to implement unrestricted GATv2.
+            source_vectors = projected * self.attention_source
+            target_vectors = projected * self.attention_target
+            logits = F.leaky_relu(
+                source_vectors[:, :, None] + target_vectors[:, None, :],
+                negative_slope=0.2,
+            ).sum(dim=-1)
         valid_edges = (
             adjacency.bool()[:, :, :, None]
             & node_mask.bool()[:, :, None, None]
@@ -149,6 +168,7 @@ class B5GatGru(nn.Module):
             config.gat_heads,
             concat=True,
             dropout=config.dropout,
+            score_mode=config.gat_score_mode,
         )
         self.gat2 = DenseGraphAttention(
             config.gat_hidden,
@@ -156,6 +176,7 @@ class B5GatGru(nn.Module):
             config.gat_heads,
             concat=False,
             dropout=config.dropout,
+            score_mode=config.gat_score_mode,
         )
         self.gat1_norm = nn.LayerNorm(config.gat_hidden)
         self.gat2_norm = nn.LayerNorm(config.gat_hidden)
@@ -206,7 +227,8 @@ class B5GatGru(nn.Module):
             with torch.random.fork_rng(devices=[]):
                 self.history_graph = HistoryGraphRefinement(
                     DenseGraphAttention(config.gru_hidden, first_head_dim,
-                                        config.gat_heads, concat=True, dropout=0.0),
+                                        config.gat_heads, concat=True, dropout=0.0,
+                                        score_mode=config.gat_score_mode),
                     config.gat_hidden, config.gru_hidden,
                 )
 

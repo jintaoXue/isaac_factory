@@ -14,7 +14,7 @@ from factory_baselines.dataset import load_shared_dataset
 from factory_bn_shared.bundle import file_hash
 
 
-DENSE_VARIANTS = ("history_control", "graph_context", "upcoming_weighted", "three_class", "near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta", "joint_onset")
+DENSE_VARIANTS = ("history_control", "graph_context", "upcoming_weighted", "three_class", "near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta", "joint_onset", "vector_gat")
 
 
 def dense_configuration(model: str, variant: str, seed: int, device: str) -> tuple:
@@ -22,6 +22,8 @@ def dense_configuration(model: str, variant: str, seed: int, device: str) -> tup
         raise ValueError("Expected B4 or B5")
     if variant not in DENSE_VARIANTS:
         raise ValueError("Expected a registered dense variant")
+    if variant == "vector_gat" and model != "B5":
+        raise ValueError("vector_gat is a B5-only structural control")
     b4 = model == "B4"
     training = TorchTrainConfig(
         training_profile=f"dense_{variant}_v2", evaluate_test=False,
@@ -34,7 +36,7 @@ def dense_configuration(model: str, variant: str, seed: int, device: str) -> tup
                      temporal_readout="last_mean", node_embedding=0,
                      event_context=variant == "graph_context",
                      event_head="three_class" if variant == "three_class" else "binary")
-    if variant in {"near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta", "joint_onset"}:
+    if variant in {"near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta", "joint_onset", "vector_gat"}:
         overrides["event_precursor"] = "near_far" if variant == "far_precursor" else "near"
     if variant == "temporal_attention":
         overrides["temporal_readout"] = "last_attention"
@@ -44,6 +46,8 @@ def dense_configuration(model: str, variant: str, seed: int, device: str) -> tup
         overrides["event_onset_joint"] = True
     if variant == "history_graph_refine":
         overrides["history_graph_refine"] = True
+    if variant == "vector_gat":
+        overrides["gat_score_mode"] = "vector_additive"
     overrides.update({"gcn_hidden": 64} if b4 else {"gat_hidden": 64, "gat_heads": 4})
     loss = MultiTaskLossConfig(
         event_will_upcoming_pos_weight=12.0 if variant == "upcoming_weighted" else 4.0,
@@ -109,7 +113,7 @@ def run_control(model: str, dataset_dir: Path, output_dir: Path, archive_tag: st
         "event_head": overrides["event_head"],
         "temporal_readout": overrides["temporal_readout"],
         "parent_control": ("onset_aux" if variant == "joint_onset" else "near_precursor"
-                           if variant in {"far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta"} else None),
+                           if variant in {"far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta", "vector_gat"} else None),
         "event_soft_fbeta": {
             "enabled": variant == "event_fbeta",
             "inside_event_loss_weight": loss_config.event_fbeta_weight,
@@ -140,6 +144,18 @@ def run_control(model: str, dataset_dir: Path, output_dir: Path, archive_tag: st
             "score_used_in_main_event_loss": True,
             "legacy_hist_last_hot_added_to_model_input": False,
             "original_labels_decoder_threshold_selection_unchanged": True,
+        }
+    if variant == "vector_gat":
+        record["graph_attention_score"] = {
+            "mode": "vector_additive",
+            "formula": "sum_channels(leaky_relu(a_source_times_Wx_i_plus_a_target_times_Wx_j))",
+            "parent_formula": "leaky_relu(sum_channels(a_source_times_Wx_i)_plus_sum_channels(a_target_times_Wx_j))",
+            "additional_parameters": 0,
+            "initial_weights_and_rng_match_parent": True,
+            "initial_predictions_expected_to_differ": True,
+            "scope": "factorized_dynamic_score_ablation_not_unrestricted_GATv2",
+            "reference": "https://arxiv.org/abs/2105.14491",
+            "original_input_loss_sampler_decoder_threshold_selection_unchanged": True,
         }
     record_path.write_text(json.dumps(record, indent=2) + "\n")
     try:
