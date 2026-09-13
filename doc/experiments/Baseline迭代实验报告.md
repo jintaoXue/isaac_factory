@@ -5179,3 +5179,12 @@ B5 seed43训练快照SHA 6f776fb0e6ead4e776738a9502d78afbbab2c549a35b992a3bef58c
 validation按will15 F1及P≥.8/R≥.7选模、按参考阈值流程选阈值；同时保存严格report F1@1/@2/@3、who/strict upcoming及原因四类、剩余时间分段/加权和全局MAE。选定best后全部train窗口各评一次，使用冻结validation阈值，不用训练过采样器复评、不用test。
 
 入口train_baseline_matched_curriculum.py的prepare只登记与检查旧权重，不forward/训练；run复用两个seed42目录，每档先验证归档再移除当前松散产物。每档保存独立JSON，后续归档保留全部模型/指标，整批结果baseline_matched_protocol_training20260913_results.json。旧seed43和已有诊断不动。本地33定向检查通过，包含真实B4/B5权重迁移、连续阶段累计预算与损坏/错来源拒绝、原协议回归。服务器prepare、父权重实际加载和正式开训仍待执行；此刻没有新召回结果。
+
+
+### 52.3 服务器登记及首组实际开训已核验
+
+服务器dev_xwt已FF至6289761c11d09e3570899b89858486b29e9f4c83，33项定向检查全部通过。prepare已实际读取两份父ZIP并验证配置/来源/历史/预算/选中指标及所有归档成员SHA；B4复制45、B5复制49个张量，仅各3个15→20形状变化的头张量重置。计划52549 bytes，六阶段配置冻结；没有重复原真实数据预检或旧训练。
+
+复用原baseline_dense_v6:0.0启动，pane993123 live。独立核验B4 Start≤5 seed42已完成4个训练轮次，无Traceback。实际training/loss字典与登记逐项相同，GRU128/20格输出及输入contract正确，原GRU32的11个松散文件已校验归档；164个受保护文件以未改stat或归档成员验证，主仓库只读HEAD仍7b2ab39。没有评test或修改主仓库。
+
+日志baseline_matched_protocol_training20260913.log，启动核验baseline_matched_protocol_training20260913_start_verification.json，SHA abbf905a7b00e03914d9eac8b5b3e7de1cfc3eca428c8c112df99f74584d846e。此为早期运行状态，不是正式新任务完成结果，不据早期召回决定换配置。五个后继阶段由原队列接续；完成后检查各档独立JSON和整批baseline_matched_protocol_training20260913_results.json。运行checkout固定6289761，后续本地进度文档提交不得在训练中pull到服务器。原泛化根因与稳定改进目标仍未达到。

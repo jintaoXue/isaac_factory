@@ -4,6 +4,10 @@
 
 ## 1. 交接状态
 
+**当前权威进度（52.3）：新三档已正式开训。**服务器dev_xwt固定6289761c11d09e3570899b89858486b29e9f4c83；33服务器检查及两份真实父权重加载检查通过，6阶段计划已登记。复用baseline_dense_v6:0.0，pane993123 live；独立核验B4 Start≤5 seed42已完成4轮，实际training/loss配置与登记逐项一致，input_contract与预检一致。旧GRU32首组11文件归档验证通过，164个受保护文件以原stat或归档成员核验；主仓库只读确认仍7b2ab39。运行中禁止pull、重启或重复本队列。B4s5→B5s5→B4s10→B5s10→B4s15→B5s15由原队列串行接续。当前没有完成的新任务成绩，原低召回根因仍未解决。
+
+日志baseline_matched_protocol_training20260913.log；登记baseline_matched_protocol_training20260913_plan.json；最终结果baseline_matched_protocol_training20260913_results.json尚待生成。启动独立核验baseline_matched_protocol_training20260913_start_verification.json，SHA abbf905a7b00e03914d9eac8b5b3e7de1cfc3eca428c8c112df99f74584d846e。只在本地更新进度文档，不让运行checkout随文档commit移动。下方“待部署/待启动”均为之前阶段的登记状态。
+
 **当前接续（新三档训练登记）：**用户确认要按新指标重新训练并跑一组结果。服务器已FF到78d206a，19项协议检查通过；真实208预检6/6通过且独立核验160个已有文件stat不变，原diag970601退出0，训练pane783323仍dead/exit0。预检35012 bytes，SHA 532d3b715d95106d54ba1fae01dc8bbc0e5d6995cfdda4ff2be2216b51281904；独立核验SHA 5d741a2f7317f9c762fcdc2b82c633124aba6e740824cb7766ca571d0ddae8e7。三档validation upcoming分母431/764/892，不能再用旧145比较命中数。
 
 新队列入口train_baseline_matched_curriculum.py已实现，本地33项定向检查通过。B4/B5各seed42，own near Start2 best→Start5→Start10→Start15；每档max100/patience40、will15选模、train/validation评估，test禁用。保留原GRU128/near及骨干；15→20只重置3个形状变化的未来头张量。采用参考共有的4倍事件窗采样、upcoming权重9/10/11、FP2.5与remain_len .5，保留baseline损失/解码路径和原各自LR/batch。累计记录旧父12/26实际训练轮次及后续所有轮次，不能称为纯架构单因素或与主模型完全等更新实验。只从实际训练轮次选模，无额外epoch0候选。原目录复用、先验证归档再移除松散文件；部分运行拒绝自动重启。服务器登记/真实父权重加载检查与正式开训待执行，当前还没有新训练成绩。详见长报告§52及JSON最新登记。

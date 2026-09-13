@@ -1,4 +1,59 @@
 {
+  "matched_curriculum208_20260913_training_started": {
+    "status": "training_live_first_task_epoch4_verified",
+    "runtime_commit": "6289761c11d09e3570899b89858486b29e9f4c83",
+    "pane_pid": 993123,
+    "pane_dead": false,
+    "server_checks_passed": 33,
+    "server_checks_artifact": "baseline_matched_curriculum_tests20260913.json",
+    "registered_plan": "baseline_matched_protocol_training20260913_plan.json",
+    "tasks": [
+      [
+        "B4",
+        5
+      ],
+      [
+        "B5",
+        5
+      ],
+      [
+        "B4",
+        10
+      ],
+      [
+        "B5",
+        10
+      ],
+      [
+        "B4",
+        15
+      ],
+      [
+        "B5",
+        15
+      ]
+    ],
+    "current_task": [
+      "B4",
+      5,
+      42
+    ],
+    "observed_epoch": 4,
+    "config_matches_registration": true,
+    "input_contract_matches_preflight": true,
+    "old_archive_members": 11,
+    "protected_files_verified": 164,
+    "main_reference_unchanged": "7b2ab393e838c1b54a78b2f125d41e0066d53ce0",
+    "verification_artifact": "baseline_matched_protocol_training20260913_start_verification.json",
+    "verification_sha256": "abbf905a7b00e03914d9eac8b5b3e7de1cfc3eca428c8c112df99f74584d846e",
+    "log": "baseline_matched_protocol_training20260913.log",
+    "final_artifact_expected": "baseline_matched_protocol_training20260913_results.json",
+    "test_evaluated": false,
+    "new_training_started": true,
+    "new_task_completed": false,
+    "do_not_pull_or_restart_running_checkout": true,
+    "root_cause_resolved": false
+  },
   "matched_curriculum208_20260913_registered": {
     "status": "implemented_registered_locally_not_yet_launched",
     "source_protocol_commit": "78d206a9ff3edae737d15a47babbe1a465453a5a",
