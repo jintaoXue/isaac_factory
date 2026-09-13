@@ -4217,3 +4217,71 @@ training快照及两次训练汇总，冻结诊断另行核验，不能把训练
 运行核验baseline_vector_gat_launch20260913.json，1152 bytes，SHA
 a9c0fd383169c53e3e933e3f8554efae136481646aa7555340bfbfa981242e5f。
 训练继续，暂无最终结果；禁止运行中pull、按中间upcoming挑epoch或重复启动现有批次。
+
+### 39.5 首颗训练完成，冻结共同邻居排序诊断启动
+
+接续先恢复UU独立Leo终端，同一SSH仍在。两次进度核验显示seed42正常推进至17/24轮，
+随后训练快照确认best8/total28，参数仍285982、保存阈值0.55，正式P/R/F1为
+0.8355555555555555/0.6867579908675799/0.7538847117794486，upcoming命中3/145；
+父near seed42为1/145。seed43已自动接续，最新观察至epoch3；未根据中间指标选模，
+当前不能认定两seed稳定改善。训练快照baseline_dense_vector_gat_b5s42_training20260913.json，
+31521 bytes，SHA f60b81bdb85fd27c4613e769b81ac49b5348c68cf5b579cb54b89af8ac600931。
+
+新增冻结观察源码0953fb3f10a53a1e998e3686770c5591bfc2eb97，diagnose_baseline_events.py
+SHA 5ac68a4105bc908843da17d1cff812b6d6c06e8158a56c33a4dbf97158fef43d。
+对同一原始forward注册临时hook，读取两层实际dropout前softmax；覆盖所有输入历史帧、
+所有头和无序查询节点对。只比较共同有效邻居且至少有两个；两查询各自首选必须在另一
+查询下严格落后，注意力绝对差大于1e-7，才计为换序。按query pair/time/head计数，并
+仅在forward后按ongoing/upcoming/negative分组。不同边掩码或数值并列不算换序。
+非零只证明使用了这种动态排序能力，不证明对召回有益；零也不能排除低排名邻居变化
+或小于容差的差异。未改预测、模型、阈值或选模；不将注意力当因果重要性。
+
+本地13 tests/6 subtests通过，包括真实标量/向量层差异、边掩码/并列/容差、节点排列、
+空支持、计数恒等式、单次原forward输出/参数/RNG相同，以及异常时hook移除。
+服务器仅fetch Git对象，HEAD仍979c680；独立进程4项测试通过。完整合成CUDA形状
+16×30×38×27、全连接边作为内存检查，两层实际输出与无hook前向逐值相同，CUDA RNG
+不变，峰值1441.306640625 MiB。这不是数据性能实验。服务器记录
+baseline_vector_gat_ranking_server_tests20260913.json，688 bytes，SHA
+9c11de797260942a82a9734362a39bb1cdc27e4a43a269ed15d8a89295b0caea。
+
+冻结驱动cbcec6b4233cd78d318e01d991d0cba90172cf0d已提交，服务器既有D目录文件
+baseline_vector_gat_frozen_driver20260913.py，8677 bytes，SHA
+9e8fd5c37e51476de8d16851d01c1522d0e6ce4ff735d5db76f54fd091833d37。
+确认原diag pane终态0后，seed42四份诊断在原baseline_dense_diag pane489190启动，
+日志vectorgat20260913_b5s42_diag.log；顺序best validation/train、last validation/train。
+诊断通过0953fb3 Git对象stdin执行，模型runtime仍979c680。驱动前后检查源码、六数据
+stat、该seed七文件、两颗B4及旧joint归档；best validation须复现保存阈值和正式
+分数/计数（连续MAE不要求CPU/GPU逐位一致）。已有结果只能严格核验后复用，不重跑。
+目前尚无完成诊断结论；B5 seed43训练继续，B4和主仓库未修改，未用test。
+
+### 39.6 首颗四诊断完成：动态排序已使用，泛化差距依然明显
+
+seed42冻结诊断pane489190正常退出0，四份结果均完成；独立回读结果文件与汇总内容、
+权重/epoch/源码、正式best validation分数和保存阈值全部一致。服务器仍979c680，
+八源码文件、六数据stat、该seed七训练文件、两颗B4和旧joint归档11成员核验通过。
+本次不重复六数据全量读取；整批结束后仍须完整SHA复核。
+
+| 权重与样本 | 保存阈值 | upcoming AP | 命中/目标 | 真例分数中位数 |
+|---|---:|---:|---:|---:|
+| best train | 0.55 | 0.01553820 | 13/595 | 0.01429456 |
+| best validation | 0.55 | 0.00791756 | 3/145 | 0.00818510 |
+| last train | 0.65 | 0.42392727 | 260/595 | 0.52487528 |
+| last validation | 0.65 | 0.00816133 | 3/145 | 0.00154505 |
+
+两层GAT在四份结果中均对全部595个train或145个validation upcoming目标观察到至少
+一次严格共同邻居首选换序。各层upcoming查询参与的pair/time/head比较中，换序占比：
+best train 0.20731/0.18093，best validation 0.20068/0.18690，last train
+0.21464/0.22441，last validation 0.20715/0.21778。这里的“全部目标”指每个目标
+至少有一次换序，不能解释为每一帧/头都换序或对预测具有因果贡献。
+
+新机制明确在真实输入上使用，但训练后期的upcoming可分性主要留在训练集；
+validation的分数中位数反而很低，AP未随train升高。这不支持把原GAT静态排序限制
+当作唯一瓶颈，也不证明完整GATv2、主模型所有组件交互或任何架构都无效。
+目前仅完成一颗seed，正式命中3对父near的1属于小变化，暂不采用为稳定提升。
+
+完整四诊断汇总baseline_vector_gat_b5s42_diagnostics20260913.json，536937 bytes，SHA
+02c92f54bf9361efdf0a59ce1277c075fdbc1704f44c9d50658f5c7f4385b256。
+独立核验baseline_vector_gat_b5s42_verification20260913.json，4675 bytes，SHA
+ee18d021d94092f5d3c9c15de8f9f1d7e7b023a3d152d6d58023f0f144c5dc6f。
+seed43仍按原预算训练，禁止重新运行seed42；待其结束后用同一冻结驱动执行四份
+诊断，再完成两seed/八诊断/六数据全量SHA整批核验。未改主仓库，未用test调参。

@@ -4,7 +4,28 @@
 
 ## 1. 交接状态
 
-**当前最新状态：**B5-only vector_gat修正预检已通过并启动两seed串行训练，服务器固定
+**当前最新状态：**vector_gat B5 seed42训练及四份冻结诊断均已完成并独立核验，
+diag pane489190退出0。两层实际动态排序在全部595/145个train/validation upcoming
+目标上都有观察，但last AP train=0.42392727、validation=0.00816133；真例概率中位数
+0.52487528/0.00154505。新增能力在用，泛化差距仍很大，尚不支持将低召回单独归因于
+原标量GAT的邻居排序限制。正式best=3/145（父near=1/145），seed43训练仍在继续。
+四诊断汇总536937 bytes，SHA 02c92f54bf9361efdf0a59ce1277c075fdbc1704f44c9d50658f5c7f4385b256；
+独立复核4675 bytes，SHA ee18d021d94092f5d3c9c15de8f9f1d7e7b023a3d152d6d58023f0f144c5dc6f。
+详见39.6；服务器固定979c680，禁止pull或重跑seed42，下一步待seed43训练结束后
+用同一8677-byte frozen driver做其四份诊断，最后核验两seed和六数据全量SHA。
+未改主仓库、未用test，原目标仍未完成。
+
+此前vector_gat B5 seed42已正常结束，best8/total28，正式P/R/F1为
+0.83555556/0.68675799/0.75388471，upcoming=3/145（父near=1/145）。seed43接续训练，
+最近观察至epoch3；单seed的小幅变化尚不能认定方法有效。服务器仍固定979c680，禁止pull。
+新增只读GAT换序观察0953fb3：两层、全部历史帧/头，比较两查询的共同有效邻居是否有
+严格相反的首选。只读实际softmax，不重算或替换预测；零计数不排除低排名邻居换序。
+本地13 tests/6 subtests、服务器4 tests及完整16×30×38×27 CUDA输出/RNG一致检查通过，
+峰值1441.306640625 MiB。seed42四份冻结诊断已在baseline_dense_diag pane489190启动，
+驱动cbcec6b，日志vectorgat20260913_b5s42_diag.log；尚无完成诊断结论。详见39.5。
+旧joint和父near结果保留，B4不运行新变体，未用test，原目标尚未完成。
+
+此前B5-only vector_gat修正预检已通过并启动两seed串行训练，服务器固定
 979c680。训练pane472305/driver472308 live，首组seed42实际Python472349，已核验至
 epoch4；实际vector_additive/near、参数285982、onset/F-beta关闭、test=false，旧joint
 归档11成员及六关键文件通过，B4两组和待运行B5 seed43文件不变。日志

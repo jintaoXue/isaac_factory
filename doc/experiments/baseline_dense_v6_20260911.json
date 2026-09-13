@@ -1,4 +1,148 @@
 {
+  "vector_gat_seed42_four_frozen_diagnostics_completed_20260913": {
+    "status": "B5_seed42_training_and_four_frozen_diagnostics_completed_and_independently_verified_seed43_training_live",
+    "training_source_commit": "979c680fb4d1919ae760cdfb0038f69fb7cc6708",
+    "diagnostic_source_commit": "0953fb3f10a53a1e998e3686770c5591bfc2eb97",
+    "diagnostic_pane_pid": 489190,
+    "diagnostic_exit_code": 0,
+    "diagnostic_aggregate": {
+      "file": "baseline_vector_gat_b5s42_diagnostics20260913.json",
+      "bytes": 536937,
+      "sha256": "02c92f54bf9361efdf0a59ce1277c075fdbc1704f44c9d50658f5c7f4385b256"
+    },
+    "independent_verification": {
+      "file": "baseline_vector_gat_b5s42_verification20260913.json",
+      "bytes": 4675,
+      "sha256": "ee18d021d94092f5d3c9c15de8f9f1d7e7b023a3d152d6d58023f0f144c5dc6f"
+    },
+    "order": [
+      "best_train",
+      "best_validation",
+      "last_train",
+      "last_validation"
+    ],
+    "thresholds": [
+      0.55,
+      0.55,
+      0.65,
+      0.65
+    ],
+    "upcoming_AP": [
+      0.015538201432853487,
+      0.007917557787166572,
+      0.4239272747148924,
+      0.008161326577276761
+    ],
+    "upcoming_hits": [
+      13,
+      3,
+      260,
+      3
+    ],
+    "upcoming_targets": [
+      595,
+      145,
+      595,
+      145
+    ],
+    "upcoming_median_probability": [
+      0.014294559136033058,
+      0.008185102604329586,
+      0.524875283241272,
+      0.0015450536739081144
+    ],
+    "all_upcoming_targets_have_observed_strict_reversal_in_each_GAT_layer": true,
+    "GAT1_upcoming_reversal_incidence_fraction": [
+      0.20730858115915587,
+      0.20067556226921787,
+      0.2146419955806929,
+      0.20714585431352803
+    ],
+    "GAT2_upcoming_reversal_incidence_fraction": [
+      0.180934642907823,
+      0.18689786841221886,
+      0.22441008331812928,
+      0.217776518966096
+    ],
+    "interpretation": "Dynamic common-neighbor top-choice ranking is used on real inputs, but the large last train/validation gap persists. This specific missing capability is not supported as the sole bottleneck. One seed is not a stable benefit, and the result does not exclude unrestricted GATv2 or main-model component interactions.",
+    "verified": {
+      "source_files": 8,
+      "dataset_stat_files": 6,
+      "current_training_files": 7,
+      "prior_joint_archive_members": 11,
+      "B4_files_unchanged": true,
+      "best_validation_canonical_count_score_and_saved_threshold_reproduced": true
+    },
+    "full_batch_data_hash_verification_pending": true,
+    "seed43_diagnostics_completed": false,
+    "test_evaluated": false,
+    "main_repository_modified": false,
+    "goal_met": false
+  },
+  "vector_gat_seed42_training_and_ranking_observer_launch_20260913": {
+    "status": "B5_seed42_training_completed_seed43_live_four_seed42_frozen_diagnostics_launched",
+    "training_source_commit": "979c680fb4d1919ae760cdfb0038f69fb7cc6708",
+    "seed42": {
+      "best_epoch": 8,
+      "epochs_trained": 28,
+      "parameter_count": 285982,
+      "saved_threshold": 0.55,
+      "precision": 0.8355555555555555,
+      "recall": 0.6867579908675799,
+      "f1": 0.7538847117794486,
+      "upcoming_hits": 3,
+      "upcoming_targets": 145,
+      "parent_near_upcoming_hits": 1,
+      "training_snapshot": {
+        "file": "baseline_dense_vector_gat_b5s42_training20260913.json",
+        "bytes": 31521,
+        "sha256": "f60b81bdb85fd27c4613e769b81ac49b5348c68cf5b579cb54b89af8ac600931"
+      }
+    },
+    "seed43": {
+      "status": "training_live",
+      "latest_observed_epoch": 3
+    },
+    "observer": {
+      "source_commit": "0953fb3f10a53a1e998e3686770c5591bfc2eb97",
+      "source_sha256": "5ac68a4105bc908843da17d1cff812b6d6c06e8158a56c33a4dbf97158fef43d",
+      "scope": "Both actual GAT layers, all history frames and heads; strict opposite top choices among at least two shared valid neighbors. Actual pre-dropout softmax read in one original forward. Labels stratify only afterward.",
+      "absolute_attention_tolerance": 1e-07,
+      "interpretation_limit": "Nonzero shows capability use, not causal recall benefit; zero does not exclude lower-rank or sub-tolerance reversals.",
+      "local_tests_passed": 13,
+      "local_subtests_passed": 6,
+      "server_tests": {
+        "file": "baseline_vector_gat_ranking_server_tests20260913.json",
+        "bytes": 688,
+        "sha256": "9c11de797260942a82a9734362a39bb1cdc27e4a43a269ed15d8a89295b0caea",
+        "tests_passed": 4,
+        "synthetic_cuda_shape": [
+          16,
+          30,
+          38,
+          27
+        ],
+        "predictions_and_cuda_rng_unchanged": true,
+        "peak_allocated_MiB": 1441.306640625
+      }
+    },
+    "diagnostics": {
+      "seed": 42,
+      "count_planned": 4,
+      "status": "launched",
+      "pane_pid": 489190,
+      "log": "vectorgat20260913_b5s42_diag.log",
+      "driver_source_commit": "cbcec6b4233cd78d318e01d991d0cba90172cf0d",
+      "driver_file": "baseline_vector_gat_frozen_driver20260913.py",
+      "driver_bytes": 8677,
+      "driver_sha256": "9e8fd5c37e51476de8d16851d01c1522d0e6ce4ff735d5db76f54fd091833d37",
+      "completed": false
+    },
+    "server_checkout_unchanged_during_training": true,
+    "test_evaluated": false,
+    "main_repository_modified": false,
+    "goal_met": false
+  },
   "vector_gat_real_preflight_passed_and_training_launched_20260913": {
     "status": "real_preflight_passed_two_seed_B5_batch_live_seed42_epoch4_verified",
     "training_source_commit": "979c680fb4d1919ae760cdfb0038f69fb7cc6708",
