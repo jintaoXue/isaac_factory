@@ -1,4 +1,22 @@
 {
+  "matched_remote_observation_blocked_20260914": {
+    "status": "blocked_on_UU_connection_restoration",
+    "consecutive_goal_turns_with_same_blocker": 3,
+    "blocker": "Independent Leo terminal remains on stale output; keyboard submission does not yield new SSH output; CUA noWindowsAvailable/timeoutReached observed",
+    "server_training_current_state": "unverified_not_assumed_terminal",
+    "last_verified_training_pid": 1037530,
+    "last_verified_b5_start5_epoch": 17,
+    "training_stopped_by_agent": false,
+    "training_restarted": false,
+    "finisher_source_commit": "3d966024e040a0e4599c19184c60a038ecc7109e",
+    "finisher_local_checks_passed": 10,
+    "finisher_server_deployed": false,
+    "finisher_server_started": false,
+    "current_scope": "Finish six updated-protocol B4/B5 tasks and formal verification/summary",
+    "new_diagnostics_paused": true,
+    "resume_action": "First inspect original queue handle, stage records and final result via restored UU Leo SSH; reuse completed work; deploy finisher only after appropriate actual-state checks",
+    "test_evaluated": false
+  },
   "matched_six_task_completion_priority_20260914": {
     "status": "phase_scoped_to_finish_six_matched_tasks_remote_observation_unavailable",
     "user_direction": "Finish only the six updated-protocol B4/B5 experiments and formal verification/summary before further diagnosis",

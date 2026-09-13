@@ -5234,3 +5234,9 @@ validation按will15 F1及P≥.8/R≥.7选模、按参考阈值流程选阈值；
 最近一次可信服务器进度仍为训练pane/实际Python1037530 live、B5 Start5第17轮、runtime6289761。随后UU独立Leo终端停留旧画面，Return/清空输入没有回读新输出，期间曾白屏；当前是观察通道异常，不能据此判断训练停止或重启队列。已请用户检查终端连接，等待回复。只用UU独立Leo SSH，未绕行本地SSH或主仓库。
 
 完成核验入口finish_baseline_matched_curriculum.py及10项本地检查已准备，尚未服务器测试/部署/启动。它只等待原pane1037530正常exit0，然后调用固定8c95076核验器补齐五组正式核验（复用已有B4核验），检查六组与最终batch/登记逐项一致、当前归档字节及164原文件，写baseline_matched_protocol_training20260913_final_verification.json。它不训练、不forward、不做新选模或诊断；观察错误继续等同一handle，不误判终态。待连接恢复先核验训练和baseline_dense_diag终态，再通过Git对象加载，禁止pull运行checkout。
+
+### 52.9 UU观察通道连续阻塞，等待恢复
+
+**当前阻塞（2026-09-14）：UU观察/控制通道已连续三个目标续接轮次复核未恢复。** 同一独立Leo终端保持旧B5第17轮画面，Raise/Return无新的SSH输出，控制接口曾返回noWindowsAvailable/timeoutReached；重连CUA控制接口也未恢复。不能据缓存画面判定训练当前live或terminal，服务器队列未被停止或重启。已请求用户恢复UU独立终端连接，当前无可继续的服务器操作；自动目标标记blocked等待外部连接恢复。恢复后先查原1037530实际状态、六阶段记录与最终结果，不重训已完成阶段。当前范围仍仅完成新协议六组及正式核验/汇总，新增诊断暂停。
+
+本地完成核验入口固定源码3d966024e040a0e4599c19184c60a038ecc7109e，10本地检查通过；未部署/未启动服务器finisher。服务器训练runtime最后确认6289761、编排8c95076，最后可信进度B4 Start5完成、B5 Start5第17轮。连接恢复前不把其余五项当完成，也不把训练观察超时当训练失败。
