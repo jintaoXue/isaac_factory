@@ -1,4 +1,58 @@
 {
+  "gru_capacity32_preflight_passed_training_started_20260913": {
+    "status": "first_b4_seed42_training_observed_epoch12_other_three_runs_not_started",
+    "report_section": "47.4",
+    "runtime_source_commit": "90a41a5b9c44e625f8c80083a8a950cd50f5eb13",
+    "training_pane_pid": 783323,
+    "observed_training_python_pid": 783366,
+    "training_log": "grucapacity20260913_train.log",
+    "preflight_pane_pid": 776564,
+    "preflight_exit_code": 0,
+    "server_tests_passed": 3,
+    "real_cuda_preflight_cases": 4,
+    "old_model_files_verified": 48,
+    "dataset_stat_verified": 6,
+    "runtime_source_files_verified": 14,
+    "first_old_archive_members_verified": 11,
+    "other_three_runs_old_files_verified": 36,
+    "observed_epoch": 12,
+    "intermediate_upcoming_recall": 0,
+    "not_final_candidate_result": true,
+    "comparison_script_local_tests_passed": 3,
+    "comparison_script_server_tests_pending": true,
+    "parent_diagnostics_to_reuse": 16,
+    "artifacts": {
+      "preflight": {
+        "file": "baseline_gru_capacity_preflight20260913.json",
+        "bytes": 41087,
+        "sha256": "4256633509d19c0539fc56055febb8b15d347e553e890e4633dc701387d5e510"
+      },
+      "preflight_tests": {
+        "file": "baseline_gru_capacity_tests20260913.json",
+        "bytes": 280,
+        "sha256": "eb58a4775758156a7573efcdc811c33d5a7fb868a458a3a477fb0271ade9b65b"
+      },
+      "preflight_verification": {
+        "file": "baseline_gru_capacity_preflight_verification20260913.json",
+        "bytes": 1438,
+        "sha256": "68c1b9abb5b59fc6e7c540736c1d31b187db1ef5945f9dd0880ebe56d74c8d84"
+      },
+      "launch": {
+        "file": "baseline_gru_capacity_launch20260913.json",
+        "bytes": 588,
+        "sha256": "ceaace0244945d39cc3690dacc612bb37e8e2c190d73841e43a125848a0b42b7"
+      },
+      "start_verification": {
+        "file": "baseline_gru_capacity_start_verification20260913.json",
+        "bytes": 1708,
+        "sha256": "c184265762118a0f61f141686847795ceecebe679994d0180481d96fde8578ad"
+      }
+    },
+    "do_not_pull_or_restart": true,
+    "test_evaluated": false,
+    "main_repository_modified": false,
+    "goal_met": false
+  },
   "gru_capacity32_registered_20260913": {
     "status": "local_implementation_and_three_checks_passed_not_deployed_or_preflighted_or_trained",
     "report_section": "47",
