@@ -14,7 +14,7 @@ from factory_baselines.dataset import load_shared_dataset
 from factory_bn_shared.bundle import file_hash
 
 
-DENSE_VARIANTS = ("history_control", "graph_context", "upcoming_weighted", "three_class", "near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta", "joint_onset", "vector_gat", "readout_dropout")
+DENSE_VARIANTS = ("history_control", "graph_context", "upcoming_weighted", "three_class", "near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta", "joint_onset", "vector_gat", "readout_dropout", "gru_capacity32")
 
 
 def dense_configuration(model: str, variant: str, seed: int, device: str) -> tuple:
@@ -36,10 +36,12 @@ def dense_configuration(model: str, variant: str, seed: int, device: str) -> tup
                      temporal_readout="last_mean", node_embedding=0,
                      event_context=variant == "graph_context",
                      event_head="three_class" if variant == "three_class" else "binary")
-    if variant in {"near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta", "joint_onset", "vector_gat", "readout_dropout"}:
+    if variant in {"near_precursor", "far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta", "joint_onset", "vector_gat", "readout_dropout", "gru_capacity32"}:
         overrides["event_precursor"] = "near_far" if variant == "far_precursor" else "near"
     if variant == "readout_dropout":
         overrides["readout_dropout"] = .2
+    if variant == "gru_capacity32":
+        overrides["gru_hidden"] = 32
     if variant == "temporal_attention":
         overrides["temporal_readout"] = "last_attention"
     if variant in {"onset_aux", "joint_onset"}:
@@ -115,7 +117,7 @@ def run_control(model: str, dataset_dir: Path, output_dir: Path, archive_tag: st
         "event_head": overrides["event_head"],
         "temporal_readout": overrides["temporal_readout"],
         "parent_control": ("onset_aux" if variant == "joint_onset" else "near_precursor"
-                           if variant in {"far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta", "vector_gat", "readout_dropout"} else None),
+                           if variant in {"far_precursor", "onset_aux", "temporal_attention", "history_graph_refine", "event_fbeta", "vector_gat", "readout_dropout", "gru_capacity32"} else None),
         "event_soft_fbeta": {
             "enabled": variant == "event_fbeta",
             "inside_event_loss_weight": loss_config.event_fbeta_weight,
@@ -165,6 +167,15 @@ def run_control(model: str, dataset_dir: Path, output_dir: Path, archive_tag: st
             "additional_parameters": 0, "evaluation_is_identity": True,
             "initial_weights_and_rng_match_parent": True,
             "additional_dropout_rng_during_training": True,
+            "input_loss_sampler_decoder_threshold_selection_unchanged": True,
+        }
+    if variant == "gru_capacity32":
+        record["temporal_capacity_control"] = {
+            "parent_gru_hidden": 128, "gru_hidden": 32,
+            "spatial_hidden": 64, "gru_layers": 1,
+            "scope": "single_config_field_gru_hidden_with_existing_width_dependent_readout_and_heads",
+            "initial_predictions_and_parameter_count_expected_to_differ": True,
+            "no_new_features_or_modules": True,
             "input_loss_sampler_decoder_threshold_selection_unchanged": True,
         }
     record_path.write_text(json.dumps(record, indent=2) + "\n")

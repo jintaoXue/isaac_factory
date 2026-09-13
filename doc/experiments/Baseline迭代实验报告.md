@@ -4915,3 +4915,26 @@ B5末轮召回fit60.75%、heldout4.86%、原validation2.76%。正例概率中位
 - baseline_episodeholdout20260913_final_verification.json：6740 bytes，SHA 0071a30c1af9e8d557853270a62ba868d60c18f7f8804a0de3ff6042fb2a5707。
 
 所有数值为读取时的精简显示舍入值，完整精度/来源在server JSON。最终独立记录status=two_models_eighteen_views_bootstrap_support_strata_and_calibration_bounds_verified；未用test，原完整根因/改善目标尚未达成。
+
+
+## 47. 单项GRU容量对照：已登记，尚未预检或训练
+
+### 47.1 去重核验及假设
+
+第46节真正未见episode整批完成后，服务器只读盘点D/models内B4/B5路径下config.json及其ZIP配置成员。baseline_gru_capacity_history_audit20260913.json为53098 bytes，SHA 7d032b4dffde116e1e96790840e9b1562f103f874732204d9769c7cdacd1b67c。匹配当前208 manifest的50份配置/50个配置SHA、其他manifest的56份/56个SHA，gru_hidden全部128，0份缺字段跳过。这是已保存配置的盘点，不把106份实例说成106次独立搜索，也不将所有其他manifest自动归为旧134；此范围没有已完成的缩小GRU宽度对照。
+
+已确认两模型fit好、两个未见集差，单加读出dropout也未改善。当前检验容量是否偏大、缩小容量能否改善迁移；不是已经证明记忆了某个特征，更不是宣称缺某个组件。保持B4 GCN+GRU和B5 GAT+GRU身份，父对照统一使用已完成near_precursor，两seed旧成绩/冻结诊断复用，不重训父模型。
+
+### 47.2 预先固定的唯一候选及评价协议
+
+- variant=gru_capacity32，archive_tag=grucapacity20260913。唯一模型配置差异gru_hidden 128→32；既有宽度依赖的history_readout及预测头同时缩小，不能声称只有GRU权重改变。B4参数273054→31230，B5 285982→44158；GRU自身两者均74496→9408。
+- 两层GCN/GAT空间hidden64、B5四head/原scalar注意力、单层GRU、last_mean、near23输入、node_embedding0、原dropout=.2、readout_dropout=0保持；不添加新输入、loss、头、图交互或采样策略。不同尺寸导致初始化/预测和后续RNG消耗可能不同，只保证相同seed下未改空间前缀初始化一致，不宣称完整配对权重或初始输出相同。
+- 恢复原138 train/30 validation/40 test，23859/5439/6886样本及原训练归一化；107-fit仅诊断，不作为正式候选数据。当前manifest e3d7b2008ad7c5d0844c10a4c0670ff36c5ba961382706695689daf7a050244f。test不评估、不参与选择。
+- B4/B5各seed42/43，从头训练共4次，B4 batch24/lr3e-4、B5 batch16/lr1.5e-4，原AdamW weight_decay=.01、max60/cosine、原最小轮数/早停/validation选择与阈值流程全部保持。只比较此128→32单点，不扫描宽度；不因中间结果改变训练轮数、损失或采样。
+- 完成后best/last×train/validation共16个冻结视图，与现有near相同model/seed/checkpoint/split对照，报告AP、正例概率、正式report upcoming命中、整体P/R/F1。正式命中取report_recall_upcoming×n_true_upcoming，不能无条件取who命中。训练AP下降本身不是改进；需未见排序和正式召回跨seed共同改善且维持整体报告质量，才有采用依据；last仅诊断，不作为另一次选优。没有显著稳定改善则记录负结果，不把一两个命中增量说成突破。
+
+### 47.3 实施与未完成事项
+
+本地train_dense_baseline_control新增配置分支和明确容量元数据；模型类本身未改。新增3项实质检查全部通过：旧EE全部变体配置不变、两seed空间前缀一致/参数减少、真实30×38×27+near23输入/节点mask/事件梯度路径。新增preflight_baseline_gru_capacity.py及run_baseline_gru_capacity.py，通过源码编译检查。实际CUDA预检必须核对父near存档配置/输入/训练/损失、原48模型文件与6数据stat、四组真实train batch反传和validation形状/有限性，无optimizer step；通过并独立验证后才能启动。沿用原4输出目录和tmux会话，先验证归档再替换训练文件，不创建/删除目录。
+
+服务器第46节训练/统计均已正常结束，运行checkout仍EE；本节此刻只有本地实现/测试，尚未commit/deploy、服务器测试、真实预检或开训。必须先复核无旧任务运行、固定源版本后FF更新，再执行一次新预检。旧readout负消融松散文件由baseline_dense_readout_dropout_metrics_20260913.json（SHA b599500b3dd973393d3a997569692959ae747f7a8eea022d2ad5db417f696c78）定位；不会误把它当near父权重。主仓库保持只读，无新主模型资料搜索。主prefix8不同cohort/缺匹配正式包的比较边界保持，原完整目标未达成。

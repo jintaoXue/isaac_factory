@@ -1,4 +1,64 @@
 {
+  "gru_capacity32_registered_20260913": {
+    "status": "local_implementation_and_three_checks_passed_not_deployed_or_preflighted_or_trained",
+    "report_section": "47",
+    "variant": "gru_capacity32",
+    "archive_tag": "grucapacity20260913",
+    "parent": "near_precursor",
+    "models": [
+      "B4",
+      "B5"
+    ],
+    "seeds": [
+      42,
+      43
+    ],
+    "only_changed_model_config": {
+      "gru_hidden": [
+        128,
+        32
+      ]
+    },
+    "width_dependent_readout_and_heads_also_shrink": true,
+    "parameter_counts": {
+      "B4": [
+        273054,
+        31230
+      ],
+      "B5": [
+        285982,
+        44158
+      ],
+      "gru_only": [
+        74496,
+        9408
+      ]
+    },
+    "cohort_episodes": {
+      "train": 138,
+      "validation": 30,
+      "test": 40
+    },
+    "unchanged_parent_training_loss_input_sampler_decoder_selection": true,
+    "max_epochs": 60,
+    "planned_training_runs": 4,
+    "planned_frozen_diagnostic_views": 16,
+    "parent_training_and_existing_diagnostics_reused": true,
+    "inventory": {
+      "file": "baseline_gru_capacity_history_audit20260913.json",
+      "bytes": 53098,
+      "sha256": "7d032b4dffde116e1e96790840e9b1562f103f874732204d9769c7cdacd1b67c",
+      "current_manifest_config_instances": 50,
+      "other_manifest_config_instances": 56,
+      "all_gru_hidden": 128,
+      "skipped": 0,
+      "not_independent_experiment_counts": true
+    },
+    "test_evaluated": false,
+    "new_directories": false,
+    "main_repository_modified": false,
+    "goal_met": false
+  },
   "episode_holdout_full_batch_and_followup_analyses_completed_20260913": {
     "status": "two_models_eighteen_views_bootstrap_support_strata_and_calibration_bounds_verified",
     "training_source": "ecc39e81c8f14483eaa50d90beea9743f9ac485c",
