@@ -1,4 +1,82 @@
 {
+  "episode_holdout_plan_completed_and_neural_diagnostic_registered_20260913": {
+    "status": "partition_independently_verified_inputs_four_local_tests_passed_neural_preflight_not_launched",
+    "runtime_commit": "ee838f59d2bdf2893a35ec00acae1308f9dd0e07",
+    "plan_source_commit": "8bae227417b831704d09532dd9af5de7dab59518",
+    "plan": {
+      "file": "baseline_episode_holdout_plan20260913.json",
+      "bytes": 445141,
+      "sha256": "459945152e82ae529dd50bcb7b6427951e3b9204f4ea4ef0fdb71b9ac0ab4e2a"
+    },
+    "server_plan_tests": {
+      "file": "baseline_episode_holdout_plan_server_tests20260913.json",
+      "bytes": 647,
+      "sha256": "c7fd43c054009ab06bc13aa14785f57e95a80cb4f527c8cacc09922aa90e7fb8",
+      "tests_passed": 4
+    },
+    "independent_plan_verification": {
+      "file": "baseline_episode_holdout_plan_verification20260913.json",
+      "bytes": 894,
+      "sha256": "c97523220d5bf711d4b678dd95f3a9eefed4207c91a0014eed8c16e35bb44ca6"
+    },
+    "views": {
+      "fit": {
+        "episodes": 107,
+        "samples": 18095,
+        "negative": 226202,
+        "ongoing": 3040,
+        "upcoming": 451
+      },
+      "heldout": {
+        "episodes": 31,
+        "samples": 5764,
+        "negative": 70950,
+        "ongoing": 1151,
+        "upcoming": 144
+      },
+      "original_validation": {
+        "episodes": 30,
+        "samples": 5439,
+        "negative": 67331,
+        "ongoing": 950,
+        "upcoming": 145
+      }
+    },
+    "neural_diagnostic": {
+      "models": [
+        "B4",
+        "B5"
+      ],
+      "seeds": [
+        42
+      ],
+      "parent_architecture": "near_precursor",
+      "max_epochs": 60,
+      "early_stopping": false,
+      "evaluation_checkpoint_epochs": [
+        10,
+        30,
+        60
+      ],
+      "fixed_report_threshold": 0.7,
+      "threshold_search": false,
+      "evaluation_views_used_for_selection": false,
+      "normalization_fit": "107 retained episodes only",
+      "input_local_tests_passed": 4,
+      "model_parameters_added": 0,
+      "formal_weights_replaced": false,
+      "official_208_split_modified": false,
+      "planned_frozen_diagnostic_views": 18,
+      "preflight_optimizer_steps": 0
+    },
+    "source_sha256": {
+      "baseline_episode_holdout_inputs.py": "85b87e7a66cbc4b96fe7dc4dccb718fbbad9368e635b0384d9f02dfd50291196",
+      "run_baseline_episode_holdout.py": "e3ea0a2a0e5ab5c17cdfc93fe3a9350bb0efb265664393d2e456df029fdad987"
+    },
+    "new_neural_training_started": false,
+    "test_evaluated": false,
+    "goal_met": false
+  },
   "episode_holdout_plan_server_access_pending_after_readout_completion_20260913": {
     "status": "completed_readout_and_parent_results_preserved_new_partition_audit_not_sent_UU_terminal_foreground_unavailable",
     "ready_source_commit": "8bae227417b831704d09532dd9af5de7dab59518",

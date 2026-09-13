@@ -4726,3 +4726,28 @@ AP表保留8位小数，精确值在服务器完整JSON；AP不是正式召回�
 当前仅完成上述分组工具与本地检查，服务器分组计划尚未生成，**没有启动新的神经训练**。实际计数核验后才登记具体诊断训练；须从头训练，并仅在保留fit episode上重拟合归一化。不能拿已见过被留出episode的旧权重充当该对照，也不能按留出/validation结果选择分组。若两类未见episode都弱，支持普遍跨episode泛化问题；若内部留出明显较好、原validation仍弱，支持进一步查split分布；若fit本身也学不好，则不能据此排除欠拟合或训练量影响。任何单次诊断仍不等于架构上限证明。
 
 分组准备源码8bae227417b831704d09532dd9af5de7dab59518已提交并推送dev_xwt。完成45.3收尾之后，UU独立终端又切回远控画面，出现原生控制管道关闭以及窗口变更拒绝；重连与窗口切换尚未恢复稳定终端。新的服务器分组检查/审计未发送，无新神经训练。已请用户将Leo独立终端置前；这一访问问题不影响已核验两批正常终态，也不能成为重跑它们的理由。
+
+
+### 46.1 分组审计完成：107 fit / 31 heldout / 原30 validation
+
+服务器重新核验仍dev_xwt@ee838f5、tracked clean；原610573/654613均dead=1/exit=0，无相关旧进程或holdout产物。分组源码8bae227仅fetch对象运行，4项服务器检查通过，直接复用B4旧两份缓存的身份与标签，没有模型forward。分组审计及独立逐episode/样本/原run内哈希选择/原validation不变/6数据stat核验均通过。第一次粘贴后窗口切走，回读独立终端仍是旧状态核查命令，未发现该审计已执行；再次明确Raise独立终端、核对整段粘贴后才提交成功。不能把窗口切换当作任务已执行的证据。
+
+| 诊断视图 | episode | 样本 | negative | ongoing | upcoming |
+|---|---:|---:|---:|---:|---:|
+| 保留fit | 107 | 18095 | 226202 | 3040 | 451 |
+| 原train内整episode留出 | 31 | 5764 | 70950 | 1151 | 144 |
+| 原validation | 30 | 5439 | 67331 | 950 | 145 |
+
+分组计划baseline_episode_holdout_plan20260913.json：445141 bytes，SHA 459945152e82ae529dd50bcb7b6427951e3b9204f4ea4ef0fdb71b9ac0ab4e2a。服务器测试647 bytes，SHA c7fd43c054009ab06bc13aa14785f57e95a80cb4f527c8cacc09922aa90e7fb8。独立分组核验baseline_episode_holdout_plan_verification20260913.json：894 bytes，SHA c97523220d5bf711d4b678dd95f3a9eefed4207c91a0014eed8c16e35bb44ca6。分组已经冻结，不按结果再次挑选heldout。
+
+### 46.2 真正神经留出诊断的固定方案与输入防泄漏检查
+
+本轮只做B4/B5各seed42，一共两次诊断训练。使用共同near_precursor的原骨干、图、损失、均匀抽样、优化器/学习率/余弦调度；B4 batch24/lr3e-4，B5 batch16/lr1.5e-4，AdamW weight_decay=.01，无新增参数、readout dropout保持父near的0。训练固定到既有最大预算60轮，保留10/30/60三个预先指定checkpoint；两类未见集都不用于早停、选模或调阈值，固定阈值.70仅诊断计分，AP为主要排序观察。每个checkpoint比较fit/heldout/原validation，合计18份诊断；不自动增加seed或换留出分组。固定60轮和取消验证早停是本次诊断设计，不声称训练轨迹等同原正式near，不将107-episode诊断分数替换208正式baseline结果。
+
+新增baseline_episode_holdout_inputs.py：先反变换冻结训练归一化，再只以107 fit episode中的适用且已观测节点计算均值/方差；内存中重归一化fit/heldout/validation，近窗摘要从同一新输入和fit均值重建，连缺测反变换使用的均值也不含heldout统计。原21连续通道以外的类型/劳动通道、图、标签和split不变，test输入不改且不构造test近窗特征。旧float32仿射反变换有通常的舍入误差，不将它当作精确实数重构。
+
+4项新增本地检查通过：改变全部排除输入及标签不会改变fit统计/fit输入与near摘要；更换旧仿射归一化后同一raw输入给出一致新输入（容差内），缺测仍为0、常量列稳定；test输入及所有split/标签不变；拒绝episode跨视图、test进入fit、原validation变化。驱动import与两模型实际配置检查通过。新run_baseline_episode_holdout.py先做真实fit批的两模型CUDA预检，核对完整父near配置/参数、全多任务损失和有限梯度，不做optimizer step；完成预检后才允许固定训练。
+
+新诊断文件只写既有D下专用episodeholdout20260913前缀，旧48当前正式/候选文件保持SHA不变，不覆盖其模型目录。每epoch保存进度，固定checkpoint分别保留；完成权重/已完成诊断按来源复用，部分训练须显式恢复，不能自动从头重启。NPZ内保存完整计分/来源，单独JSON写出中断可恢复，不重复已完成forward。当前代码和本地检查完成，服务器输入检查/真实预检与两次神经训练尚未启动。
+
+判读仍按46节：fit能学到而两类未见集都弱，支持普遍跨episode泛化问题；内部heldout明显较好、原validation弱，支持查原split额外难度；fit也弱则需考虑欠拟合或减少训练支持。比较应保留episode层面的相关性与样本量限制，不因单次阴性诊断宣称架构上限。主prefix8原包缺口继续存在，主仓库和test均不动。
