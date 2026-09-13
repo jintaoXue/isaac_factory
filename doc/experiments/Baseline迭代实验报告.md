@@ -4650,3 +4650,18 @@ B4/B5各seed42/43，从头初始化。保持near的30×38×27输入及23维近�
 拟定唯一标签readoutdrop20260913，尚未部署、未运行服务器测试/真实预检、未开训。完成后按正式best验证命中及整体P/R/F1判定收益，并用best/last train/validation诊断检查泛化差距；无稳定多seed提升不采用，不因单个seed结果自动扩展概率搜索，不用test。原目标仍未达成。
 
 执行器 `run_baseline_readout_dropout.py` 固定四组训练后接续16份best/last、train/validation诊断。训练前检查所有目的文件与旧权重，沿用原归档校验流程，逐组保存训练快照；诊断中断只允许`--phase diagnose`复用已核验输出，不隐式重训。尚未在服务器启动。
+
+
+### 45.1 服务器预检通过并启动已登记四组训练
+
+部署前核实服务器原979c680、dev_xwt、tracked clean；旧pane585575/585571均退出0，无相关Python。28当前模型SHA与6固定数据stat不变，readout标签尚无产物。随后仅快进BSTAN的dev_xwt至ee838f59d2bdf2893a35ec00acae1308f9dd0e07，4项服务器独立内存测试通过，不创建测试临时目录。
+
+真实预检pane609036退出0，四组均通过共同near配置/损失/训练预算、父near归档来源、初始化权重与RNG、全部初始eval输出逐值相同、训练mask及全多任务损失反传。B4参数273054，B5参数285982，无新增参数；训练丢弃比例约.200，峰值CUDA已分配B4约5.03GB、B5约4.66GB。预检不是新训练或改善证据。
+
+完整预检baseline_readout_dropout_preflight20260913.json：36918 bytes，SHA a357eb599f05e5e3b715ab547c6f1d1ae3ce90ff02305e437d36b39bed3c0f9a。独立核验baseline_readout_dropout_preflight_verification20260913.json：609 bytes，SHA 74a98d2bee7bf07b38ad654633a600842d68da33be57206458da423350067413。独立读取结果、终态、10源码哈希、28当前模型哈希、6数据stat、4父near归档哈希和服务器测试来源；未重复CUDA预检forward。
+
+已启动run_baseline_readout_dropout.py：训练pane/driver610573 live，首组B4 seed42实际Python610616。已读取新control=started及config：readout_dropout=.2、event_precursor=near、源码ee838f5、evaluate_test=false。日志readoutdrop20260913_train.log，训练按B4s42/B4s43/B5s42/B5s43串行，随后自动16份冻结诊断。运行中服务器必须固定ee838f5，不pull文档提交、不重启或并发同批训练；无新的最终指标。
+
+本次是训练层正则化控制，父near正式验证命中2/2/1/2（各145）直接复用，不将当前B4 joint与B5 vector的不同负消融混为父对照。上一代best保存在原目录的已校验archive中。未动主仓库、未用test、未新建或删除目录，原目标仍未达成。
+
+首组随后观察至epoch4，正式中间日志upcoming仍0；不提前判定候选有效或无效。独立启动复核baseline_readout_dropout_start_verification20260913.json：573 bytes，SHA 6b9cbdbd3078c1fcfcde0c743c4053b04ad7dd7fef8c5cfa90c1c0f053e5934f；新config所有模型/训练/损失字段与预检一致，旧archive 11数据成员CRC/SHA及6关键旧文件通过，另三组21当前文件与6固定数据stat未变。此时driver610573、训练Python610616仍live。

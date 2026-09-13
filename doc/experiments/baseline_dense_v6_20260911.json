@@ -1,4 +1,67 @@
 {
+  "readout_dropout_first_run_verified_20260913": {
+    "status": "first_B4_seed42_training_observed_through_epoch4",
+    "source_commit": "ee838f59d2bdf2893a35ec00acae1308f9dd0e07",
+    "training_pane_pid": 610573,
+    "training_python_pid": 610616,
+    "file": "baseline_readout_dropout_start_verification20260913.json",
+    "bytes": 573,
+    "sha256": "6b9cbdbd3078c1fcfcde0c743c4053b04ad7dd7fef8c5cfa90c1c0f053e5934f",
+    "archive_data_members": 11,
+    "prior_key_files_checked": 6,
+    "other_three_runs_files_unchanged": 21,
+    "dataset_files_stat_unchanged": 6,
+    "config_matches_preflight": true,
+    "final_metrics_available": false,
+    "test_evaluated": false,
+    "goal_met": false
+  },
+  "readout_dropout_training_started_20260913": {
+    "status": "four_registered_runs_started_first_B4_seed42_config_verified_no_final_result",
+    "source_commit": "ee838f59d2bdf2893a35ec00acae1308f9dd0e07",
+    "variant": "readout_dropout",
+    "archive_tag": "readoutdrop20260913",
+    "parent": "near_precursor",
+    "models": [
+      "B4",
+      "B5"
+    ],
+    "seeds": [
+      42,
+      43
+    ],
+    "readout_dropout": 0.2,
+    "max_epochs": 60,
+    "server_tests_passed": 4,
+    "real_preflight_cases_passed": 4,
+    "preflight_pane_pid": 609036,
+    "preflight_exit_code": 0,
+    "training_pane_pid": 610573,
+    "driver_pid": 610573,
+    "first_training_python_pid": 610616,
+    "preflight": {
+      "file": "baseline_readout_dropout_preflight20260913.json",
+      "bytes": 36918,
+      "sha256": "a357eb599f05e5e3b715ab547c6f1d1ae3ce90ff02305e437d36b39bed3c0f9a"
+    },
+    "independent_preflight_verification": {
+      "file": "baseline_readout_dropout_preflight_verification20260913.json",
+      "bytes": 609,
+      "sha256": "74a98d2bee7bf07b38ad654633a600842d68da33be57206458da423350067413"
+    },
+    "parameter_counts": {
+      "B4": 273054,
+      "B5": 285982
+    },
+    "initialization_rng_and_eval_equal_to_parent": true,
+    "log": "readoutdrop20260913_train.log",
+    "automatic_frozen_diagnostics": 16,
+    "do_not_pull_or_restart": true,
+    "repeat_parent_training": false,
+    "test_evaluated": false,
+    "main_repository_modified": false,
+    "goal_met": false
+  },
   "readout_dropout_candidate_registered_20260913": {
     "status": "local_twenty_tests_twenty_two_subtests_passed_not_deployed_or_trained",
     "variant": "readout_dropout",
