@@ -1,4 +1,91 @@
 {
+  "vector_gat_full_batch_completed_20260913": {
+    "status": "two_trainings_eight_diagnostics_and_both_terminal_panes_independently_verified",
+    "runtime_source_commit": "979c680fb4d1919ae760cdfb0038f69fb7cc6708",
+    "seeds": [
+      42,
+      43
+    ],
+    "best_epochs": [
+      8,
+      5
+    ],
+    "epochs_trained": [
+      28,
+      25
+    ],
+    "formal_upcoming_hits": [
+      3,
+      2
+    ],
+    "parent_near_upcoming_hits": [
+      1,
+      2
+    ],
+    "upcoming_targets_each": 145,
+    "mean_precision": 0.8332394018044742,
+    "mean_recall": 0.6844748858447489,
+    "mean_f1": 0.7515662275045688,
+    "mean_upcoming_recall": 0.017241379310344827,
+    "last_train_upcoming_AP": [
+      0.4239272747148924,
+      0.2865158535020259
+    ],
+    "last_validation_upcoming_AP": [
+      0.008161326577276761,
+      0.008654082858346174
+    ],
+    "dynamic_ranking_observed_for_all_upcoming_targets_both_layers_all_eight_diagnostics": true,
+    "full_aggregate": {
+      "file": "baseline_dense_vector_gat_metrics_20260913.json",
+      "bytes": 1262573,
+      "sha256": "e90919aeaae88f5bb924324bfc7d36451957f028f7dec0c554ba2e9b7f3285ae"
+    },
+    "independent_verification": {
+      "file": "baseline_vector_gat_final_verification20260913.json",
+      "bytes": 13191,
+      "sha256": "4f5659cb13afedbb8885fa70b1d45ebdaee91fba3fafdc60ee0cc927097a879b"
+    },
+    "training_pane_pid": 472305,
+    "training_exit_code": 0,
+    "diagnostic_pane_pid": 496576,
+    "diagnostic_exit_code": 0,
+    "associated_python_absent": true,
+    "current_files_checked": 28,
+    "prior_archive_members_checked": 22,
+    "full_data_hashes_checked": 6,
+    "B4_files_unchanged": true,
+    "adopted_as_stable_upcoming_improvement": false,
+    "test_evaluated": false,
+    "main_repository_modified": false,
+    "goal_met": false
+  },
+  "upcoming_runtime_schedule_audit_prepared_20260913": {
+    "status": "local_implementation_and_three_tests_complete_not_yet_run_on_server",
+    "scope": "Read frozen train/validation onset support and audited raw configuration/disturbance files; join actual physical-resource runtime starts to fixed half-open forecast-to-onset windows; reproduce stored plans using current generator and report mismatches; count independent training onset support per node/scenario/joint cell.",
+    "input_episodes": [
+      138,
+      30
+    ],
+    "upcoming_window_targets": [
+      595,
+      145
+    ],
+    "unique_upcoming_onsets": [
+      299,
+      73
+    ],
+    "planned_output": "baseline_upcoming_schedule_support20260913.json",
+    "local_tests_passed": 3,
+    "limitations": [
+      "Temporal coincidence does not prove causality.",
+      "No prior runtime start does not exclude QC, seed dependencies or other history.",
+      "No future schedule enters a model; no report or threshold changes."
+    ],
+    "test_evaluated": false,
+    "model_training": false,
+    "goal_met": false
+  },
   "vector_gat_seed43_training_and_automatic_completion_live_20260913": {
     "status": "seed43_epoch21_training_live_bounded_diagnostic_completion_waiting_for_existing_training",
     "training_source_commit": "979c680fb4d1919ae760cdfb0038f69fb7cc6708",

@@ -4309,3 +4309,58 @@ WAITING_FOR_EXISTING_SEED43_TRAINING_NO_RESTART；训练pane472305、seed43 Pyth
 6e8f9e0c348684bebf3def7ca34fb92d43e00bcd40c150c06332835ba31bf9b6。
 一次只读查询将末段SHA抄错导致断言失败，未改文件/进程；已分16字符重新读回正确值。
 后续只查看训练和vectorgat20260913_finish.log，不手动再启动第二颗诊断。
+
+### 39.8 两次训练与八诊断整批完成并独立核验
+
+接续实查训练pane472305和诊断pane496576均dead=1、exit=0，无本批Python，HEAD仍
+979c680且tracked clean。两次训练与八份诊断都已完成，不重复启动。B5 seed43为
+best5/total25、参数285982，正式P/R/F1=0.8309232480533927/0.6821917808219178/
+0.749247743229689，upcoming=2/145，等于父near seed43。其训练快照31365 bytes，SHA
+fad1a06efc8461bcd208331b85a666bae5252d80fdb17203ca32c0450feffc0e。
+两seed P/R/F1/upcoming recall均值分别为0.8332394018044742/0.6844748858447489/
+0.7515662275045688/0.017241379310344827；父near命中1/2，新候选3/2，没有稳定改善。
+
+| B5 seed43 | 保存阈值 | upcoming AP | 命中/145或595 | 概率漏报 | 时间漏报 |
+|---|---:|---:|---:|---:|---:|
+| best validation | 0.65 | 0.00723073 | 2/145 | 143 | 0 |
+| best train | 0.65 | 0.00941253 | 1/595 | 594 | 0 |
+| last validation | 0.55 | 0.00865408 | 3/145 | 142 | 0 |
+| last train | 0.55 | 0.28651585 | 155/595 | 440 | 0 |
+
+seed43两层在四份诊断的全部145或595个upcoming目标上均有实际严格换序；last train/
+validation真例分数中位数0.16032501/0.00104852。与seed42同样表现为后期训练判别能力
+提高而验证提升有限，不能把动态排序缺失当作唯一原因，也不能据此断言所有图架构上限。
+
+完整整批baseline_dense_vector_gat_metrics_20260913.json为1262573 bytes，SHA
+e90919aeaae88f5bb924324bfc7d36451957f028f7dec0c554ba2e9b7f3285ae。
+该文件生成时保留自身pane退出状态待核验，现通过独立记录补全：
+baseline_vector_gat_final_verification20260913.json，13191 bytes，SHA
+4f5659cb13afedbb8885fa70b1d45ebdaee91fba3fafdc60ee0cc927097a879b。
+独立核验覆盖两seed实际配置、best阈值及正式分数/计数、八个逐文件结果和权重/epoch/
+源码、28当前训练文件、两份旧joint归档22成员、六冻结数据全量SHA与stat、B4不变。
+没有替换正式best、没有评test、没有改主仓库；原目标仍未完成。
+
+## 40. 真实故障计划、起点与训练支持的只读审计
+
+39节结束后暂不增加训练候选。先核对过往覆盖：低学习率全模型续训已有v5/134实验，
+不是当前208的预训练因果证据；本轮没有据主模型的f180续训差异直接重复该搜索。
+新检查从输入可见性入手：本地cfg_disturbance的私有RNG按seed/env/episode生成故障
+目标、时刻和时长，injector在到计划时刻后才尝试激活；计划与seed不是当前事件头输入。
+源码本身仍不能证明真实208均由该版本生成或事件不可预测，故须核验真实日志。
+
+已只读检查各一份train/validation原始episode_config：文件哈希与冻结cohort audit
+相同，保存模式为resample_per_episode，存在完整计划与实际runtime事件。计划中的
+gantry序号可与物理resource ID不同，因此只用实际日志ID做起点匹配，不直接猜映射。
+准备diagnose_upcoming_schedule_support.py：复用已冻结dense_event_support的299/73
+去重起点及595/145窗口目标，验证168个train/validation配置和disturbance日志哈希，
+重新解析runtime区间并对照旧审计；用当前生成函数尝试还原保存计划，差异如实记录。
+
+每个upcoming anchor的匹配范围固定为首个未来窗口开始至起点窗口末端（半开区间），
+只匹配相同物理resource ID的实际runtime start。另统计之前是否有任何已记录runtime
+启动，但此条件不排除QC或其他历史信号。按节点、scenario和节点×scenario统计训练
+独立起点支持，不把重叠窗口当独立事件；scenario定义不含run/episode/seed。
+这些都是事后解释，不能变成报警过滤器、未来输入或信息论召回上限。
+
+本地3项测试通过：实际目标ID、时间区间边界、重叠anchor的不同边界、先前其他工位
+启动的处理、去重起点与窗口目标计数区别、联合场景支持和空集合。未新建目录，未改
+模型或训练文件，尚待服务器运行；输出只允许写既有D目录新JSON。
