@@ -87,70 +87,80 @@ def _add_undirected(adj: np.ndarray, i: int, j: int, w: float = 1.0) -> None:
 def build_factory_adjacency(
     resource_ids: list[str],
     resource_types: list[str] | None = None,
+    mode: str = "factory",
 ) -> np.ndarray:
     """Return symmetric adjacency ``(N, N)`` for factory resources.
 
-    Edge families
-    -------------
-    1. process flow along ``PROCESS_CHAIN``
-    2. buffer ↔ affiliated machines
-    3. transport agents (gantry / human / robot) ↔ all machines
-    4. same-type soft coupling among machines / gantries / robots
+    ``mode``
+    --------
+    factory: process chain + family + buffer + agent↔machine + same-type agents
+    identity: self-loops only (no spatial structure)
+    chain: process chain + sibling workstations
+    same_type: cliques within each resource type
     """
     n = len(resource_ids)
     idx = {rid: i for i, rid in enumerate(resource_ids)}
     types = resource_types or [""] * n
     adj = np.zeros((n, n), dtype=np.float64)
+    kind = str(mode or "factory").strip().lower()
+    if kind not in {"factory", "identity", "chain", "same_type"}:
+        raise ValueError(f"unknown graph mode: {mode!r}")
 
-    # 1) process chain
-    chain = [rid for rid in PROCESS_CHAIN if rid in idx]
-    for a, b in zip(chain, chain[1:]):
-        _add_undirected(adj, idx[a], idx[b], 1.0)
+    if kind != "identity":
+        if kind in {"factory", "chain"}:
+            chain = [rid for rid in PROCESS_CHAIN if rid in idx]
+            for a, b in zip(chain, chain[1:]):
+                _add_undirected(adj, idx[a], idx[b], 1.0)
+            family_groups: dict[str, list[str]] = {}
+            for rid in resource_ids:
+                if "_ws" in rid:
+                    family = rid.rsplit("_ws", 1)[0]
+                    family_groups.setdefault(family, []).append(rid)
+            for members in family_groups.values():
+                for a in members:
+                    for b in members:
+                        if a != b and a in idx and b in idx:
+                            _add_undirected(adj, idx[a], idx[b], 0.8)
 
-    # sibling workstations of the same machine family
-    family_groups: dict[str, list[str]] = {}
-    for rid in resource_ids:
-        if "_ws" in rid:
-            family = rid.rsplit("_ws", 1)[0]
-            family_groups.setdefault(family, []).append(rid)
-    for members in family_groups.values():
-        for a in members:
-            for b in members:
-                if a != b and a in idx and b in idx:
-                    _add_undirected(adj, idx[a], idx[b], 0.8)
+        if kind == "factory":
+            for rid, i in idx.items():
+                if not rid.startswith("storage_"):
+                    continue
+                for key, machines in BUFFER_MACHINE_AFFINITY.items():
+                    if key in rid:
+                        for m in machines:
+                            if m in idx:
+                                _add_undirected(adj, i, idx[m], 0.6)
+                        break
+            machine_ids = [
+                rid for rid, t in zip(resource_ids, types) if t == "machine" or "_ws" in rid
+            ]
+            agent_ids = [
+                rid
+                for rid, t in zip(resource_ids, types)
+                if t in ("gantry", "human", "transport_robot")
+                or rid.startswith(("gantry_", "human_", "robot_"))
+            ]
+            for agent in agent_ids:
+                for m in machine_ids:
+                    _add_undirected(adj, idx[agent], idx[m], 0.5)
+            for t_name in ("gantry", "transport_robot"):
+                members = [rid for rid, t in zip(resource_ids, types) if t == t_name]
+                for a in members:
+                    for b in members:
+                        if a != b:
+                            _add_undirected(adj, idx[a], idx[b], 0.3)
 
-    # 2) buffer affinities
-    for rid, i in idx.items():
-        if not rid.startswith("storage_"):
-            continue
-        for key, machines in BUFFER_MACHINE_AFFINITY.items():
-            if key in rid:
-                for m in machines:
-                    if m in idx:
-                        _add_undirected(adj, i, idx[m], 0.6)
-                break
+        if kind == "same_type":
+            groups: dict[str, list[int]] = {}
+            for i, t_name in enumerate(types):
+                groups.setdefault(str(t_name or "unk"), []).append(i)
+            for members in groups.values():
+                for a in members:
+                    for b in members:
+                        if a != b:
+                            _add_undirected(adj, a, b, 0.5)
 
-    # 3) logistics agents ↔ machines
-    machine_ids = [rid for rid, t in zip(resource_ids, types) if t == "machine" or "_ws" in rid]
-    agent_ids = [
-        rid
-        for rid, t in zip(resource_ids, types)
-        if t in ("gantry", "human", "transport_robot")
-        or rid.startswith(("gantry_", "human_", "robot_"))
-    ]
-    for agent in agent_ids:
-        for m in machine_ids:
-            _add_undirected(adj, idx[agent], idx[m], 0.5)
-
-    # 4) same-type soft clique for agents
-    for t_name in ("gantry", "transport_robot"):
-        members = [rid for rid, t in zip(resource_ids, types) if t == t_name]
-        for a in members:
-            for b in members:
-                if a != b:
-                    _add_undirected(adj, idx[a], idx[b], 0.3)
-
-    # self-loops help LapPE stability
     np.fill_diagonal(adj, 1.0)
     return adj
 

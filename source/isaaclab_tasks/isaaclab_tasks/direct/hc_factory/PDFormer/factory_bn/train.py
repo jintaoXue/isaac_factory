@@ -36,6 +36,7 @@ if str(_PDFORMER_ROOT) not in sys.path:
 
 from factory_bn.causes import CAUSE_REPORT_CLASSES, cause_ignore_ids
 from factory_bn.dataset import build_dataloaders, make_pattern_keys
+from factory_bn.graph import build_factory_adjacency, hop_distance_matrix
 from factory_bn.model import BNPDFormer, OCC_TYPE_NAMES
 from factory_bn.remain import (
     node_event_targets,
@@ -915,6 +916,19 @@ def train(cfg: dict[str, Any]) -> Path:
             f"[train] oversample_event={oversample} oversample_upcoming={oversample_up} "
             f"up_windows={n_up} on_windows={n_on} n={len(weights)}"
         )
+
+    graph_mode = str(cfg.get("graph_mode", "factory") or "factory").strip().lower()
+    if graph_mode != "pack":
+        resource_ids = [str(x) for x in data_feature.get("resource_ids") or []]
+        resource_types = [str(x) for x in data_feature.get("resource_types") or []]
+        if resource_ids:
+            adj = build_factory_adjacency(
+                resource_ids, resource_types, mode=graph_mode
+            ).astype(np.float32)
+            data_feature["adj_mx"] = adj
+            data_feature["sh_mx"] = hop_distance_matrix(adj).astype(np.float32)
+            n_edge = int(((adj > 0) & ~np.eye(adj.shape[0], dtype=bool)).sum() // 2)
+            print(f"[train] graph_mode={graph_mode} undirected_edges={n_edge}")
 
     pattern_keys = make_pattern_keys(
         data_feature["train_feature_windows"],

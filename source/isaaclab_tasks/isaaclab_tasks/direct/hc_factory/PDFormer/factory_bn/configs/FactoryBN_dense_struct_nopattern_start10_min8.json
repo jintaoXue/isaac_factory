@@ -1,0 +1,8 @@
+{
+  "extends": "FactoryBN_dense_struct_nopattern_start5_min8.json",
+  "event_max_start_windows": 10,
+  "event_will_upcoming_pos_weight": 10.0,
+  "event_will_far_start_pos_weight": 10.0,
+  "save_dir": "libcity/cache/model_cache/dense_i1_struct_nopattern_start10_min8",
+  "wandb_name": "dense_i1_struct_nopattern_start10_min8"
+}

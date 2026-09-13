@@ -444,6 +444,7 @@ class BNPDFormer(nn.Module):
         self.t_attn_size = int(config.get("t_attn_size", 1))
         self.far_mask_delta = int(config.get("far_mask_delta", 4))
         self.dtw_delta = int(config.get("dtw_delta", 5))
+        self.use_delay_pattern = bool(config.get("use_delay_pattern", True))
         self.lape_dim = int(config.get("lape_dim", 8))
         self.device = config.get("device", torch.device("cpu"))
 
@@ -1290,23 +1291,26 @@ class BNPDFormer(nn.Module):
     def encode(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Returns skip (B, skip_dim, N, T), enc (B,T,N,D), h_last (B,N,D)."""
         B, T, N, _ = x.shape
-        x_pattern_list = []
-        for i in range(self.s_attn_size):
-            x_pattern = F.pad(
-                x[:, : T + i + 1 - self.s_attn_size, :, : self.output_dim],
-                (0, 0, 0, 0, self.s_attn_size - 1 - i, 0),
-                "constant",
-                0,
-            ).unsqueeze(-2)
-            x_pattern_list.append(x_pattern)
-        x_patterns = torch.cat(x_pattern_list, dim=-2)
-
-        pat_embs, key_embs = [], []
-        for i in range(self.output_dim):
-            pat_embs.append(self.pattern_embeddings[i](x_patterns[..., i]).unsqueeze(-1))
-            key_embs.append(self.pattern_embeddings[i](self.pattern_keys[..., i]).unsqueeze(-1))
-        x_patterns = torch.cat(pat_embs, dim=-1)
-        pattern_keys = torch.cat(key_embs, dim=-1)
+        if self.use_delay_pattern:
+            x_pattern_list = []
+            for i in range(self.s_attn_size):
+                x_pattern = F.pad(
+                    x[:, : T + i + 1 - self.s_attn_size, :, : self.output_dim],
+                    (0, 0, 0, 0, self.s_attn_size - 1 - i, 0),
+                    "constant",
+                    0,
+                ).unsqueeze(-2)
+                x_pattern_list.append(x_pattern)
+            x_patterns = torch.cat(x_pattern_list, dim=-2)
+            pat_embs, key_embs = [], []
+            for i in range(self.output_dim):
+                pat_embs.append(self.pattern_embeddings[i](x_patterns[..., i]).unsqueeze(-1))
+                key_embs.append(self.pattern_embeddings[i](self.pattern_keys[..., i]).unsqueeze(-1))
+            x_patterns = torch.cat(pat_embs, dim=-1)
+            pattern_keys = torch.cat(key_embs, dim=-1)
+        else:
+            x_patterns = None
+            pattern_keys = None
 
         enc = self.enc_embed_layer(x, self.lap_mx)
         enc = enc + self.node_id_embed.weight.view(1, 1, N, self.embed_dim)

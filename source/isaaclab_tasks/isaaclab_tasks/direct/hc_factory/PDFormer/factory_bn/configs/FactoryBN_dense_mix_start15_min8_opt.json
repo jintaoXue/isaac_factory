@@ -1,0 +1,6 @@
+{
+  "extends": "FactoryBN_dense_12_3_start15_min8_opt.json",
+  "data_dir": "raw_data/dense_i1_mix",
+  "save_dir": "libcity/cache/model_cache/dense_i1_mix_start15_min8_cause4_opt",
+  "wandb_name": "dense_i1_mix_start15_min8_cause4_opt"
+}

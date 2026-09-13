@@ -476,6 +476,7 @@ def export_runs(
     write_atomic: bool = True,
     require_complete: int = 0,
     skip_deadlock: bool = False,
+    run_names: list[str] | None = None,
 ) -> Path:
     """Export one or more bottleneck runs into a single FactoryBN training bundle.
 
@@ -485,10 +486,13 @@ def export_runs(
     if not run_dirs:
         raise ValueError("At least one run_dir is required")
 
+    if run_names is not None and len(run_names) != len(run_dirs):
+        raise ValueError("run_names must match run_dirs one-to-one")
     labeled: list[tuple[str, Path]] = []
-    for p in run_dirs:
+    for i, p in enumerate(run_dirs):
         p = Path(p)
-        labeled.append((p.name, p.resolve()))
+        name = str(run_names[i]) if run_names is not None else p.name
+        labeled.append((name, p.resolve()))
 
     all_ids: dict[str, str] = {}
     per_ep_rows: list[

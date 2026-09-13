@@ -1,0 +1,6 @@
+{
+  "extends": "FactoryBN_dense_12_3_start5_min8_opt.json",
+  "graph_mode": "identity",
+  "save_dir": "libcity/cache/model_cache/dense_i1_struct_nograph_start5_min8",
+  "wandb_name": "dense_i1_struct_nograph_start5_min8"
+}

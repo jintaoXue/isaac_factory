@@ -247,13 +247,14 @@ class STSelfAttention(nn.Module):
 
         geo_q = self.geo_q_conv(x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
         geo_k = self.geo_k_conv(x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
-        for i in range(self.output_dim):
-            pattern_q = self.pattern_q_linears[i](x_patterns[..., i])
-            pattern_k = self.pattern_k_linears[i](pattern_keys[..., i])
-            pattern_v = self.pattern_v_linears[i](pattern_keys[..., i])
-            pattern_attn = (pattern_q @ pattern_k.transpose(-2, -1)) * self.scale
-            pattern_attn = pattern_attn.softmax(dim=-1)
-            geo_k += pattern_attn @ pattern_v
+        if x_patterns is not None and pattern_keys is not None:
+            for i in range(self.output_dim):
+                pattern_q = self.pattern_q_linears[i](x_patterns[..., i])
+                pattern_k = self.pattern_k_linears[i](pattern_keys[..., i])
+                pattern_v = self.pattern_v_linears[i](pattern_keys[..., i])
+                pattern_attn = (pattern_q @ pattern_k.transpose(-2, -1)) * self.scale
+                pattern_attn = pattern_attn.softmax(dim=-1)
+                geo_k += pattern_attn @ pattern_v
         geo_v = self.geo_v_conv(x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
         geo_q = geo_q.reshape(B, T, N, self.geo_num_heads, self.head_dim).permute(0, 1, 3, 2, 4)
         geo_k = geo_k.reshape(B, T, N, self.geo_num_heads, self.head_dim).permute(0, 1, 3, 2, 4)

@@ -709,6 +709,7 @@ def test_grouped_embed_and_contrastive() -> None:
 
     from factory_bn.backbone import GroupedTokenEmbedding
     from factory_bn.dataset import run_dim_id
+    from factory_bn.graph import build_factory_adjacency
     from factory_bn.model import supervised_contrastive_loss
 
     assert run_dim_id("n10_machine1.0__episode_00") == 0
@@ -717,6 +718,22 @@ def test_grouped_embed_and_contrastive() -> None:
     assert run_dim_id("n10_material1.0__episode_03") == 3
     assert run_dim_id("n10_none1.0__episode_00") == 4
     assert run_dim_id("toy") == -1
+    assert run_dim_id("n10_mix_hl1.0__episode_00") == -1
+    assert run_dim_id("human+log__episode_00") == -1
+    assert run_dim_id("four_dim__episode_00") == -1
+
+    ids = [
+        "num02_rollerbedCNCPipeIntersectionCuttingMachine_ws0",
+        "num04_groovingMachineLarge_ws0",
+        "gantry_0",
+    ]
+    types = ["machine", "machine", "gantry"]
+    ident = build_factory_adjacency(ids, types, mode="identity")
+    factory = build_factory_adjacency(ids, types, mode="factory")
+    assert ident.sum() == 3
+    assert factory[0, 1] > 0
+    assert factory[0, 2] > 0
+    assert ident[0, 1] == 0
 
     x = torch.zeros(2, 3, 4, 26)
     y = GroupedTokenEmbedding(26, 64)(x)

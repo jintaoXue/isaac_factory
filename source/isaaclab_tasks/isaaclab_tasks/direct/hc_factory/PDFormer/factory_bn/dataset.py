@@ -512,6 +512,9 @@ def run_dim_id(episode_name: str) -> int:
     Unknown names get -1 so they do not share a contrastive class by accident.
     """
     prefix = _run_prefix(episode_name).lower()
+    mix_markers = ("mix", "+", "four_dim")
+    if any(mark in prefix for mark in mix_markers):
+        return -1
     for key, idx in (
         ("logistics", 2),
         ("material", 3),
