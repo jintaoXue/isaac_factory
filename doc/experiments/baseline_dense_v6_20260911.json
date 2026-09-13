@@ -1,4 +1,68 @@
 {
+  "episode_holdout_neural_training_started_verified_20260913": {
+    "status": "actual_fit_only_B4_training_verified_B5_and_eighteen_frozen_views_pending",
+    "source_commit": "ecc39e81c8f14483eaa50d90beea9743f9ac485c",
+    "runtime_commit": "ee838f59d2bdf2893a35ec00acae1308f9dd0e07",
+    "driver_file": "run_baseline_episode_holdout_resume20260913.py",
+    "driver_sha256": "dc0742115f6eaac42a791449d73f9dc97129ce0af2fa7e1ba1c12765f9140e9a",
+    "training_pane_pid": 712854,
+    "training_pane_live": true,
+    "log": "episodeholdout20260913_train_resume.log",
+    "observed_model": "B4",
+    "observed_epoch": 7,
+    "observed_optimizer_steps": 5278,
+    "observed_training_loss": 1.41988306759668,
+    "optimizer_updates_confirmed": true,
+    "server_fix_tests_passed": 2,
+    "real_saved_config_cases_passed": 2,
+    "server_fix_tests": {
+      "file": "baseline_episodeholdout20260913_resume_server_tests.json",
+      "bytes": 699,
+      "sha256": "5a1866fc6f0e05be8398c8987788ec15c24513da13fafbffba4154d79d47cc67"
+    },
+    "launch_record": {
+      "file": "baseline_episodeholdout20260913_resume_launch.json",
+      "bytes": 2526,
+      "sha256": "ac1b1432f176b54599434afa15ad325a60f22d6623e78593f74331b58aa3344d"
+    },
+    "independent_actual_start_verification": {
+      "file": "baseline_episodeholdout20260913_start_verification.json",
+      "bytes": 974,
+      "sha256": "4c1d62e2477879cb6808c8ebbdbff9473c46f4ce53a13e6946edfa6e244195b5"
+    },
+    "formal_model_files_unchanged": 48,
+    "dataset_stats_unchanged": 6,
+    "old_failed_files_preserved": 4,
+    "preflight_repeated": false,
+    "models": [
+      "B4",
+      "B5"
+    ],
+    "seed": 42,
+    "epochs_each": 60,
+    "fixed_checkpoint_epochs": [
+      10,
+      30,
+      60
+    ],
+    "diagnostic_views": [
+      "fit",
+      "heldout",
+      "original_validation"
+    ],
+    "evaluation_after_each_model_finishes_training": true,
+    "threshold": 0.7,
+    "unseen_views_used_for_selection": false,
+    "fit_episodes": 107,
+    "heldout_episodes": 31,
+    "original_validation_episodes": 30,
+    "heldout_upcoming": 144,
+    "original_validation_upcoming": 145,
+    "final_metrics_available": false,
+    "do_not_pull_or_restart": true,
+    "test_evaluated": false,
+    "goal_met": false
+  },
   "episode_holdout_real_preflight_completed_startup_comparison_fix_20260913": {
     "status": "real_preflight_passed_first_training_driver_exited_before_optimizer_step_serialized_configuration_comparison_fixed_locally",
     "preflight_source_commit": "9782fff8d849503f8baac5bf101536c454ac1152",

@@ -4,11 +4,11 @@
 
 ## 1. 交接状态
 
-**当前最新状态（以下旧“此前”段落均为历史）：**第45节readout_dropout四组训练、16份候选诊断及完整父near配对诊断全部正常结束并独立核验。原训练pane610573与补缺pane654613均dead=1/exit=0；服务器仍dev_xwt@ee838f59d2bdf2893a35ec00acae1308f9dd0e07、tracked clean。正式upcoming命中为B4 0/3、B5 2/2（各145），父near为2/2/1/2；无稳定实质收益，不采用、不重跑。原目标未达成，下一训练尚未登记。
+**当前最新状态（以下旧“此前”段落均为历史）：**第46节真正神经episode留出诊断已进入训练。107 fit/31 heldout/原30 validation；B4 seed42已独立核验至7/60轮、5278次优化器更新，B5随后串行；pane712854 live，日志episodeholdout20260913_train_resume.log。预先保存10/30/60权重并在每个模型训练完成后计分三个视图，共18份诊断；两个未见集不参与梯度、归一化、早停或选模。尚无本轮未见集指标，原目标未达成。禁止pull、重启或并发本批诊断。
 
 **接续注意：**UU独立Leo SSH已恢复，原任务均正常完成。父补缺源码9862d72只fetch对象运行，服务器4项测试及12份已有父诊断来源核验通过，仅新增B5 last四份，没有重训父模型。B5 last train AP由约.30降至.23，validation仍约.009–.010。详见§45.3及JSON `readout_dropout_full_batch_and_parent_comparison_completed_20260913`。两份独立终态记录为baseline_readout_dropout_final_verification20260913.json、baseline_readout_parent_final_verification20260913.json。当前松散权重为dropout负消融，不能当作已采用最优baseline。
 
-**最新接续（46.3）：**分组已核验为107 fit/31 heldout/原30 validation，upcoming 451/144/145。输入处理4项服务器检查及真实两模型CUDA预检均通过（pane705965 exit0）；预检完整JSON SHA f9fce5742c0cfafe68972ba443ad528795e509ae76a5c88f9f5b8dc4d24bf7da。首训练driver708379在优化器构造前因JSON tuple/list直接比较退出1，没有epoch/optimizer step/progress文件。已本地修正完整配置表示比较及旧预检来源复用门，两项新回归通过；待服务器检查后接续原两次尚未开始的训练，不重复CUDA预检。原driver/失败日志保持，服务器runtime仍ee838f5，禁止pull。固定两模型seed42/60轮/10、30、60事后诊断/.70阈值协议不变，不覆盖正式模型、不用test。
+**最新接续（46.4）：**修复源码ecc39e81c8f14483eaa50d90beea9743f9ac485c已通过服务器2回归+2真实已保存配置检查，复用已完成preflight（未重复CUDA预检）。实际D内driver为run_baseline_episode_holdout_resume20260913.py，runtime仍dev_xwt@ee838f59d2bdf2893a35ec00acae1308f9dd0e07、tracked clean；新pane712854已经真实训练，不再处于708379启动失败阶段。48原模型文件、6数据stat和4旧失败/预检文件保持不变。独立启动记录baseline_episodeholdout20260913_start_verification.json，974 bytes，SHA 4c1d62e2477879cb6808c8ebbdbff9473c46f4ce53a13e6946edfa6e244195b5。完整终态baseline_episodeholdout20260913_complete.json尚待生成。部分训练不能自动从头重跑；预检/旧方向继续复用。
 
 **先查去重索引：[Baseline_upcoming排查台账.md](Baseline_upcoming排查台账.md)。** 当前208训练、诊断、旧134搜索及未解假设分开记录；禁止重复已完成搜索。四份`baseline_repr_{b4,b5}s42_last_{train,validation}20260913.npz`供后续复用，禁止重复对应forward。
 
