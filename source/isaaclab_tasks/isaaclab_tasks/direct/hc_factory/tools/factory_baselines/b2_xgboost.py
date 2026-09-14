@@ -24,6 +24,7 @@ from factory_bn_shared.remain import (
 
 from .dataset import FactoryBaselineTensorDataset, load_shared_dataset
 from .evaluation import EVALUATION_CONTRACT, add_time_metric_metadata, event_rule_kwargs
+from . import protocol_20260913 as matched_protocol
 from .metrics import (
     REPORT_THRESHOLD_SWEEP,
     _binary_metrics,
@@ -40,6 +41,9 @@ class B2XGBoostConfig:
 
     training_profile: str = "baseline_fair_v2"
     evaluate_test: bool = True
+    evaluate_train: bool = False
+    evaluation_protocol: str = "legacy"
+    event_max_start_windows: int = 2
     seed: int = 42
     n_estimators: int = 500
     max_depth: int = 5
@@ -62,6 +66,12 @@ class B2XGBoostConfig:
     checkpoint_min_report_recall: float = 0.70
 
     def __post_init__(self) -> None:
+        if self.evaluation_protocol not in {"legacy", matched_protocol.VERSION}:
+            raise ValueError("Unknown B2 evaluation protocol")
+        if self.evaluation_protocol == matched_protocol.VERSION:
+            matched_protocol.evaluation_contract(self.event_max_start_windows)
+            if self.evaluate_test:
+                raise ValueError("Matched B2 development must not evaluate test")
         if not self.training_profile.strip():
             raise ValueError("training_profile must not be empty")
         for name in (
@@ -309,7 +319,8 @@ def _event_training_data(
         duration = sample["event_duration"].numpy()[valid_nodes].astype(np.float32)
         hist_hot = sample["hist_last_hot"].numpy()[valid_nodes] > 0.5
         positive = will > 0
-        ongoing = positive & (hist_hot | (start == 0))
+        matched = payload.get("evaluation_contract", {}).get("version") == matched_protocol.VERSION
+        ongoing = positive & (hist_hot if matched else (hist_hot | (start == 0)))
         sample_parts.append(
             np.full(len(valid_nodes), sample_index, dtype=np.int64)
         )
@@ -652,12 +663,20 @@ def train_b2_xgboost(
     np.random.seed(config.seed)
     dataset_dir = Path(dataset_dir).resolve()
     output_dir = Path(output_dir).resolve()
+    matched = config.evaluation_protocol == matched_protocol.VERSION
+    if matched and not output_dir.is_dir():
+        raise ValueError("Matched B2 must reuse an existing output directory")
     output_dir.mkdir(parents=True, exist_ok=True)
     started_at = time.time()
     payload, manifest = load_shared_dataset(dataset_dir)
+    if matched:
+        payload, manifest = matched_protocol.protocol_view(
+            payload, manifest, config.event_max_start_windows
+        )
+    contract = manifest.get("evaluation_contract", EVALUATION_CONTRACT)
     split_indices = {
         name: payload["split_indices"][name].numpy().astype(np.int64)
-        for name in ("train", "validation", "test")
+        for name in (("train", "validation", "test") if config.evaluate_test else ("train", "validation"))
     }
     train_indices = split_indices["train"]
     train_X = _base_features(payload, train_indices)
@@ -667,11 +686,16 @@ def train_b2_xgboost(
     cause_valid = cause_values >= 0
     for cause_id in cause_ignore_ids(cause_classes):
         cause_valid &= cause_values != int(cause_id)
+    if matched:
+        cause_valid &= np.isin(cause_values, [
+            i for i, name in enumerate(cause_classes) if name in matched_protocol.CAUSE_CLASSES
+        ])
     cause_trained = bool(cause_valid.any())
+    fallback_cause = cause_classes.index("transport_delay") if matched else 0
     cause_head = (
         _fit_classifier(train_X[cause_valid], cause_values[cause_valid], config)
         if cause_trained
-        else _Head(kind="constant", constant=0, classes=[0])
+        else _Head(kind="constant", constant=fallback_cause, classes=[fallback_cause])
     )
     remain_len_head = _fit_regressor(
         train_X,
@@ -763,9 +787,8 @@ def train_b2_xgboost(
     )
     sample_lookup = {int(row["sample_index"]): row for row in sample_rows}
     all_metrics: dict[str, Any] = {}
-    evaluation_splits = (
-        ("validation", "test") if config.evaluate_test else ("validation",)
-    )
+    # Select on validation once; all remaining splits use that frozen threshold.
+    evaluation_splits = ("validation",) + (("train",) if config.evaluate_train else ()) + (("test",) if config.evaluate_test else ())
     for split_name in evaluation_splits:
         _, arrays = (
             (None, validation_arrays)
@@ -786,6 +809,7 @@ def train_b2_xgboost(
             len(cause_classes),
             cause_classes=cause_classes,
             cause_majority=cause_majority,
+            report_classes=matched_protocol.CAUSE_CLASSES if matched else None,
         )
         score_count = 0
         score_abs_sum = 0.0
@@ -867,15 +891,28 @@ def train_b2_xgboost(
         }
         metrics.update(hot_metrics)
         metrics["remain_len_mae"] = remain_len_mae
+        if matched:
+            extra = matched_protocol.remain_metrics(
+                arrays["remain_len"], arrays["target_remain_len"],
+                payload["jobs_remaining"][arrays["sample_index"]].numpy(),
+                payload["jobs_total"][arrays["sample_index"]].numpy(), contract,
+            )
+            metrics["remain"].update(extra)
+            metrics.update(extra)
 
         thresholds = (
             [event_report_threshold]
-            if split_name == "test"
+            if split_name != "validation"
             else [config.event_report_threshold, *config.report_threshold_sweep]
         )
         report_candidates = []
         for threshold in dict.fromkeys(float(value) for value in thresholds):
-            candidate = station_report_metrics(
+            score_station = matched_protocol.station_metrics if matched else station_report_metrics
+            rule_args = ({"contract": contract} if matched else {
+                **event_rule_kwargs(int(payload["event_min_windows"])),
+                "start_tol_windows": 3,
+            })
+            candidate = score_station(
                 target_grid_array,
                 arrays["event_will_probability"],
                 arrays["event_start_index"],
@@ -883,8 +920,7 @@ def train_b2_xgboost(
                 remain_mask_array,
                 occupancy_mask_array,
                 threshold=threshold,
-                **event_rule_kwargs(int(payload["event_min_windows"])),
-                start_tol_windows=3,
+                **rule_args,
                 hist_last_hot=history_hot_array,
             )
             candidate["report_threshold_used"] = threshold
@@ -892,6 +928,7 @@ def train_b2_xgboost(
         report_metrics = choose_report_metrics(
             report_candidates,
             min_precision=config.report_threshold_min_precision,
+            primary="will15" if matched else "report",
         )
         event_report_threshold = float(report_metrics["report_threshold_used"])
         metrics["station_report"] = report_metrics
@@ -935,6 +972,7 @@ def train_b2_xgboost(
         add_time_metric_metadata(
             metrics, window_size_s=float(manifest["window_size_s"]),
             sample_count=metrics["sample_count"],
+            contract=contract,
         )
         all_metrics[split_name] = metrics
         _write_json(output_dir / f"metrics_{split_name}.json", metrics)
@@ -1036,7 +1074,7 @@ def train_b2_xgboost(
         ),
         "dataset_contract": manifest["dataset_contract"],
         "dataset_version": manifest["dataset_version"],
-        "evaluation_contract": dict(EVALUATION_CONTRACT),
+        "evaluation_contract": dict(contract),
         "label_version": manifest["label_version"],
         "prediction_target_version": manifest["prediction_target_version"],
         "config": asdict(config),
@@ -1056,9 +1094,9 @@ def train_b2_xgboost(
     _write_json(output_dir / "metrics.json", all_metrics)
     validation_report = all_metrics["validation"]["station_report"]
     checkpoint_constraint_met = (
-        float(validation_report["report_precision"])
+        float(validation_report["will15_precision" if matched else "report_precision"])
         >= config.report_threshold_min_precision
-        and float(validation_report["report_recall"])
+        and float(validation_report["will15_recall" if matched else "report_recall"])
         >= config.checkpoint_min_report_recall
     )
     summary = {
@@ -1069,7 +1107,7 @@ def train_b2_xgboost(
         "seed": config.seed,
         "dataset_contract": manifest["dataset_contract"],
         "dataset_version": manifest["dataset_version"],
-        "evaluation_contract": dict(EVALUATION_CONTRACT),
+        "evaluation_contract": dict(contract),
         "label_version": manifest["label_version"],
         "validation_hot_f1": all_metrics["validation"]["remain"]["hot_f1"],
         "dataset_manifest_sha256": metadata["dataset_manifest_sha256"],
@@ -1079,6 +1117,12 @@ def train_b2_xgboost(
         "validation_report_precision": validation_report["report_precision"],
         "validation_report_recall": validation_report["report_recall"],
         "validation_report_f1": validation_report["report_f1"],
+        "validation_primary_f1": validation_report["will15_f1" if matched else "report_f1"],
+        "primary_metric": "will15_f1" if matched else "report_f1",
+        "initialization": "independent_fit_per_task",
+        "model_selection": "fixed_boosting_round_budget_no_epoch_checkpoint_search",
+        "n_estimators_per_head": config.n_estimators,
+        "evaluation_splits": list(evaluation_splits),
         "checkpoint_precision_constraint": config.report_threshold_min_precision,
         "checkpoint_recall_constraint": config.checkpoint_min_report_recall,
         "checkpoint_constraint_met": checkpoint_constraint_met,

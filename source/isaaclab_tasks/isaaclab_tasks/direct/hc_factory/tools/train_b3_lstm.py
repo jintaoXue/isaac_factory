@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from factory_baselines.protocol_20260913 import VERSION
 
 from factory_baselines import (
     MultiTaskLossConfig,
@@ -52,9 +53,14 @@ def main() -> None:
     parser.add_argument("--checkpoint_min_report_precision", type=float, default=0.80)
     parser.add_argument("--checkpoint_min_report_recall", type=float, default=0.70)
     parser.add_argument("--validation_only", action="store_true")
+    parser.add_argument("--evaluate_train", action="store_true")
+    parser.add_argument("--evaluation_protocol", choices=("legacy", VERSION), default="legacy")
+    parser.add_argument("--event_max_start_windows", type=int, default=2)
+    parser.add_argument("--warm_start_archive", type=Path)
     args = parser.parse_args()
     summary = train_torch_baseline(
         model_kind="b3_lstm",
+        warm_start_archive=args.warm_start_archive,
         dataset_dir=args.dataset_dir,
         output_dir=args.output_dir,
         model_overrides={
@@ -68,6 +74,9 @@ def main() -> None:
         train_config=TorchTrainConfig(
             training_profile=args.training_profile,
             evaluate_test=not args.validation_only,
+            evaluate_train=args.evaluate_train,
+            evaluation_protocol=args.evaluation_protocol,
+            event_max_start_windows=args.event_max_start_windows,
             batch_size=args.batch_size,
             max_epochs=args.max_epochs,
             patience=args.patience,

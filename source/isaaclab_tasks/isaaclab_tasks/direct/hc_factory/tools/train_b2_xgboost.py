@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 from factory_baselines import B2XGBoostConfig, train_b2_xgboost
+from factory_baselines.protocol_20260913 import VERSION
 
 
 def main() -> None:
@@ -36,10 +37,16 @@ def main() -> None:
     parser.add_argument("--report_threshold_min_precision", type=float, default=0.80)
     parser.add_argument("--checkpoint_min_report_recall", type=float, default=0.70)
     parser.add_argument("--validation_only", action="store_true")
+    parser.add_argument("--evaluate_train", action="store_true")
+    parser.add_argument("--evaluation_protocol", choices=("legacy", VERSION), default="legacy")
+    parser.add_argument("--event_max_start_windows", type=int, default=2)
     args = parser.parse_args()
     config = B2XGBoostConfig(
         training_profile=args.training_profile,
         evaluate_test=not args.validation_only,
+        evaluate_train=args.evaluate_train,
+        evaluation_protocol=args.evaluation_protocol,
+        event_max_start_windows=args.event_max_start_windows,
         seed=args.seed,
         n_estimators=args.n_estimators,
         max_depth=args.max_depth,

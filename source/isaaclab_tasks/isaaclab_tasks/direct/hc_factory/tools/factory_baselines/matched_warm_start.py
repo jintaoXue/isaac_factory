@@ -64,7 +64,9 @@ def validate_parent(contents, *, model_kind, model_config, config_class, initial
                 or meta["evaluation_contract"] != protocol.evaluation_contract(expected)):
             raise ValueError("Parent must be the immediately preceding matched task")
     comparable = {**parent_config, "max_remain_windows": 20}
-    if comparable != model_config or model_config.get("event_precursor") != "near":
+    b3_matched = model_kind == "b3_lstm" and not first
+    expected_precursor = None if b3_matched else "near"
+    if comparable != model_config or model_config.get("event_precursor") != expected_precursor:
         raise ValueError("Only the legacy 15-to-20 output horizon may change")
     if not meta.get("git_commit") or meta["git_commit"] == "unknown":
         raise ValueError("Parent source commit is missing")
