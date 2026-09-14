@@ -130,7 +130,9 @@ def collect(dataset):
                       'training_budget': summary.get('training_budget'),
                       **{split: compact_metrics(values) for split, values in metrics.items()}}
             results.append(result)
-        sources[final_name] = {'sha256': sha(final_path), 'plan_sha256': sha(plan_path), 'runtime_commit': plan['source_commit']}
+        sources[final_name] = {'sha256': sha(final_path), 'plan_sha256': sha(plan_path),
+                               'runtime_commit': plan['source_commit'],
+                               'verification_repair_commit': plan.get('recovery', {}).get('repair_source_commit')}
     results.sort(key=lambda r: (r['max_start'], r['model']))
     validate_identities(results, [(m, s) for s in (5, 10, 15) for m in ('B2', 'B3', 'B4', 'B5')])
     return {'status': 'twelve_matched_baseline_results_verified', 'test_evaluated': False,

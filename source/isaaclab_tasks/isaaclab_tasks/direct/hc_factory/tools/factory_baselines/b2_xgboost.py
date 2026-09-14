@@ -981,13 +981,16 @@ def train_b2_xgboost(
         for position, sample_index in enumerate(arrays["sample_index"]):
             lookup = sample_lookup[int(sample_index)]
             cause_prediction = int(arrays["cause_predictions"][position])
+            cause_target = int(arrays["y_cause"][position])
             prediction_rows.append(
                 {
                     **lookup,
                     "predicted_cause": manifest["cause_classes"][cause_prediction],
+                    "target_cause": manifest["cause_classes"][cause_target] if cause_target >= 0 else "",
                     "predicted_remain_len_windows": float(
                         arrays["remain_len"][position]
                     ),
+                    "target_remain_len_windows": int(arrays["target_remain_len"][position]),
                 }
             )
             for source, field in (
@@ -1017,11 +1020,13 @@ def train_b2_xgboost(
         _write_csv(
             output_dir / f"predictions_{split_name}.csv",
             prediction_rows,
-            list(sample_rows[0])
+            list(dict.fromkeys(list(sample_rows[0])
             + [
                 "predicted_cause",
+                "target_cause",
                 "predicted_remain_len_windows",
-            ],
+                "target_remain_len_windows",
+            ])),
         )
         _write_csv(
             output_dir / f"occupancy_events_{split_name}.csv",

@@ -218,6 +218,46 @@ def prepare(source, device, paths):
     print("REMAINING_SIX_REGISTERED", flush=True)
     return plan
 
+def b2_target_rows(rows, split, targets):
+    """Supply omitted B2 CSV truth in memory; never change predictions or disk CSVs."""
+    if split not in {"train", "validation"}:
+        raise ValueError("No test labels may be indexed")
+    seen, result = set(), []
+    for row in rows:
+        index = int(row["sample_index"])
+        if index not in targets or index in seen or row["split"] != split:
+            raise ValueError("B2 rows contain missing, repeated or cross-split samples")
+        seen.add(index)
+        cause, remain = targets[index]
+        if "target_cause" in row and row["target_cause"] != cause:
+            raise ValueError("B2 CSV cause target differs from the source tensor")
+        if "target_remain_len_windows" in row:
+            close(row["target_remain_len_windows"], remain, tolerance=0.)
+        result.append({**row, "target_cause": cause, "target_remain_len_windows": remain})
+    if seen != set(targets):
+        raise ValueError("B2 predictions do not cover the complete registered split")
+    return result
+
+
+def b2_source_targets(splits, classes):
+    """Read only train/validation scalar truth from the original immutable bundle."""
+    if sha(DATASET / "dataset_manifest.json") != SOURCE_MANIFEST:
+        raise ValueError("B2 source manifest changed")
+    payload, manifest = load_shared_dataset(DATASET)
+    if manifest["cause_classes"] != classes:
+        raise ValueError("B2 source cause vocabulary changed")
+    result = {}
+    for split in ("train", "validation"):
+        indices = payload["split_indices"][split].tolist()
+        if len(indices) != len(set(indices)) or set(indices) != set(splits[split]["sample_indices"]):
+            raise ValueError("B2 source split differs from registration")
+        causes = payload["y_cause"][indices].tolist()
+        remains = payload["target_remain_len"][indices].tolist()
+        result[split] = {index: (classes[cause] if cause >= 0 else "", remain)
+                         for index, cause, remain in zip(indices, causes, remains)}
+    return result
+
+
 def verify_output(task, summary, source, counts):
     directory = Path(task["output_dir"])
     config = json.loads((directory / "config.json").read_text())
@@ -231,6 +271,9 @@ def verify_output(task, summary, source, counts):
         raise ValueError("Wrong summary task contract")
     splits = json.loads((DATASET / "split_manifest.json").read_text())
     classes = json.loads((DATASET / "dataset_manifest.json").read_text())["cause_classes"]
+    # The original B2 exporter copied metadata columns but omitted scalar truth.
+    # Recover truth from the same tensors used for metrics, preserving saved bytes.
+    targets = b2_source_targets(splits, classes) if task["model"] == "B2" else None
     scores = {}
     for split, values in metrics.items():
         if (values != json.loads((directory / f"metrics_{split}.json").read_text())
@@ -240,8 +283,10 @@ def verify_output(task, summary, source, counts):
         scores[split] = station_counts(values["station_report"], counts[split])
         close(scores[split]["threshold"], summary["event_report_threshold"])
         with (directory / f"predictions_{split}.csv").open(newline="") as stream:
-            confusion = verify_prediction_rows(list(csv.DictReader(stream)),
-                set(splits[split]["sample_indices"]), split, values, classes)
+            rows = list(csv.DictReader(stream))
+        if targets is not None:
+            rows = b2_target_rows(rows, split, targets[split])
+        confusion = verify_prediction_rows(rows, set(splits[split]["sample_indices"]), split, values, classes)
         with (directory / f"confusion_matrix_{split}.csv").open(newline="") as stream:
             for row in csv.DictReader(stream):
                 for predicted in classes:
@@ -276,8 +321,12 @@ def verify_output(task, summary, source, counts):
         if budget["stage_optimizer_steps"] != summary["epochs_trained"] * math.ceil(counts["train"]["samples"] / 32):
             raise ValueError("B3 stage update accounting differs")
     else:
+        if set(config["models"]) != set(HEADS):
+            raise ValueError("B2 must contain all seven saved head definitions")
         for meta in config["models"].values():
             if meta["path"]:
+                if Path(meta["path"]).name != meta["path"]:
+                    raise ValueError("B2 model must be a direct-child artifact")
                 json.loads((directory / meta["path"]).read_text())
     files = {name: sha(directory / name) for name in FILES if (directory / name).exists()}
     if any("test" in name for name in files):
@@ -285,7 +334,7 @@ def verify_output(task, summary, source, counts):
     return {"status": "validation_completed", "source_commit": source, "model": task["model"],
             "max_start": cap, "summary": summary, "metrics": metrics, "scores": scores,
             "artifact_sha256": files, "test_evaluated": False, "verification":
-            "Saved identities/history, metric counts and split CSV coverage; cause confusion/unweighted MAE independently recomputed. Weighted MAE uses saved phase statistics."}
+            "Saved identities/history, metric counts and split CSV coverage; cause confusion/unweighted MAE independently recomputed. B2 scalar truth is cross-checked or supplied in memory from original train/validation tensors, without rewriting CSVs. Weighted MAE uses saved phase statistics."}
 
 def run(source, device):
     require_runtime(source)

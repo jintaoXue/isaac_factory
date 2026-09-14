@@ -1,4 +1,25 @@
 {
+  "remaining_b2_start5_csv_verification_repair_prepared_20260915": {
+    "status": "user_reported_b2_start5_verification_failure_repair_prepared_not_executed_on_server",
+    "runtime_commit": "cd29f5011a9c3bd14ea4aaad38ea9ad3bbc216a3",
+    "reported_progress": [
+      "REMAINING_PREFLIGHT_PASSED 5",
+      "REMAINING_PREFLIGHT_PASSED 10",
+      "REMAINING_PREFLIGHT_PASSED 15",
+      "REMAINING_SIX_REGISTERED",
+      "REMAINING_STAGE_START B2 5"
+    ],
+    "reported_error": "KeyError: 'target_cause' in verify_prediction_rows",
+    "root_cause": "B2 copied model_sample_index metadata without exporting target_cause or target_remain_len_windows; the previous synthetic fixture mistakenly included these fields",
+    "recovery": "Verify the saved completed B2 using canonical train/validation scalar truth in memory, keep all artifacts unchanged, preserve failed registration copies, then run the remaining five tasks with fixed verification and frozen original core trainers",
+    "recovery_script": "recover_remaining_baselines_matched.py",
+    "local_unique_checks_passed": 49,
+    "server_recovery_executed": false,
+    "b2_training_completion_verified_on_server": false,
+    "test_evaluated": false,
+    "new_directories": false,
+    "observation_channel": "User-pasted terminal output; assistant UU/SSH operations remain stopped"
+  },
   "remaining_b2_b3_uu_recheck_20260915": {
     "status": "independent_uu_terminal_timeout_cursor_ssh_surface_visible_awaiting_scope_clarification",
     "goal": "Complete B2/B3 six tasks and summarize all B2-B5 twelve matched tasks",

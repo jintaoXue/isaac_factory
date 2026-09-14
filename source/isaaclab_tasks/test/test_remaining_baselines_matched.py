@@ -144,8 +144,9 @@ def test_b2_full_matched_exports_use_new_targets_four_causes_and_frozen_train_th
     supported = [meta["cause_classes"].index(n) for n in protocol.CAUSE_CLASSES]
     data["y_cause"] = torch.tensor([supported[0], supported[1], supported[0]])
     outputs = {}
-    rows = "sample_index,split,target_cause,target_remain_len_windows,first_future_start_s,group_id,run_id,env_id,episode_id,anchor_time_s\n"
-    rows += "\n".join(f"{i},{'train' if i < 2 else 'validation'},{meta['cause_classes'][int(data['y_cause'][i])]},20,1800,g{i},r0,0,{i},1740" for i in range(3))
+    # The real model_sample_index.csv contains metadata, not scalar target columns.
+    rows = "sample_index,split,first_future_start_s,group_id,run_id,env_id,episode_id,anchor_time_s\n"
+    rows += "\n".join(f"{i},{'train' if i < 2 else 'validation'},1800,g{i},r0,0,{i},1740" for i in range(3))
     class MemoryPath:
         def __init__(self, name): self.name = str(name)
         def resolve(self): return self
@@ -167,7 +168,12 @@ def test_b2_full_matched_exports_use_new_targets_four_causes_and_frozen_train_th
     monkeypatch.setattr(b2, "_fit_regressor", lambda X,y,cfg: b2._Head(kind="constant", constant=float(np.mean(y))))
     monkeypatch.setattr(b2, "_save_head", lambda d,n,h: {"kind":h.kind,"path":None,"constant":h.constant,"classes":h.classes})
     monkeypatch.setattr(b2, "_write_json", lambda p,x: outputs.update({str(p).split("/")[-1]:x}))
-    monkeypatch.setattr(b2, "_write_csv", lambda p,x,f: outputs.update({str(p).split("/")[-1]:x}))
+    def save_csv(path, values, fields):
+        stream = io.StringIO()
+        writer = csv.DictWriter(stream, fieldnames=fields)
+        writer.writeheader(); writer.writerows(values)
+        outputs[str(path).split("/")[-1]] = list(csv.DictReader(io.StringIO(stream.getvalue())))
+    monkeypatch.setattr(b2, "_write_csv", save_csv)
     real_choose = b2.choose_report_metrics
     calls = []
     def choose(candidates, **kwargs):
@@ -187,3 +193,16 @@ def test_b2_full_matched_exports_use_new_targets_four_causes_and_frozen_train_th
     assert all(v["evaluation_contract"]["max_start_windows"] == 10 for v in (train,val))
     assert all("remain_len_mae_middle_weighted" in v["remain"] for v in (train,val))
     assert not any("test" in key for key in outputs)
+    from verify_baseline_matched_results import verify_prediction_rows
+    from run_remaining_baselines_matched import b2_target_rows
+    for split, indices in (("train", [0,1]), ("validation", [2])):
+        exported = outputs[f"predictions_{split}.csv"]
+        values = outputs["metrics.json"][split]
+        verify_prediction_rows(exported, set(indices), split, values, meta['cause_classes'])
+        # The original cd29f50 outputs omit both fields. Its unchanged predictions
+        # must verify equally using immutable source truth in memory.
+        omitted = [{k:v for k,v in row.items() if k not in {'target_cause','target_remain_len_windows'}} for row in exported]
+        targets = {i:(meta['cause_classes'][int(data['y_cause'][i])],int(data['target_remain_len'][i])) for i in indices}
+        restored = b2_target_rows(omitted, split, targets)
+        verify_prediction_rows(restored, set(indices), split, values, meta['cause_classes'])
+        assert all('target_cause' not in row for row in omitted)

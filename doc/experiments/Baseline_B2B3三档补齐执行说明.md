@@ -2,6 +2,22 @@
 
 日期：2026-09-14。当前目标为补齐 B2（XGBoost）、B3（LSTM）各 Start≤5/10/15，共六组结果；upcoming 根因优化继续暂停。B4/B5 六组已经由用户返回正式核验结果，不重训、不重复收尾。本文件记录代码准备情况，**不代表服务器已经启动或通过预检**。
 
+## 2026-09-15 首组核验错误与恢复
+
+用户已返回服务器日志：三档预检通过，六组登记完成，B2 Start5 在 `verify_prediction_rows` 报 `KeyError: target_cause`。当前不得重复原启动命令，也不要直接 pull 更新训练 checkout。
+
+B2 原 CSV 从 `model_sample_index.csv` 复制元数据，却没有显式导出 `target_cause`、`target_remain_len_windows`。代码执行顺序显示，训练器在进入核验前已完成保存；但仍需恢复入口实际检查模型、summary、指标、预测覆盖和来源后才能认定该组结果完整。测试已改用真实元数据列结构，经实际 CSV 序列化再送入核验器，补上这一回归缺口。
+
+恢复入口为 `recover_remaining_baselines_matched.py`。通过 Git 对象加载修复后的核验/编排，服务器核心训练器仍使用原 `cd29f50`。旧 CSV 只在核验内存中按原数据 train/validation 的 sample_index 补齐两列真值，并独立重算原因混淆和全局剩余时间 MAE；不改写任何已有预测、模型、指标或阈值，不作新推理、拟合或 test 评估。未来新版本的 B2 导出器也已补齐两列，但本批不切换核心训练版本。
+
+入口只接受原第一组这一个错误、原 pane dead/exit1、B4/B5 finisher dead/exit0、后五组均未启动以及干净的 `BSTAN_isaac_factory/dev_xwt@cd29f50`。先核验保存结果，保留失败计划和记录的完整副本，再把第一组登记为已完成、接续剩余五组。验证失败会保留现场停止，不自动重训。
+
+恢复命令使用对话给出的修复提交号。只需 `git fetch origin dev_xwt`，再以系统 Python 从该提交读取恢复入口；不要使用普通 launcher 的 `--resume` 来覆盖这个已知失败。
+
+恢复日志位于原数据根目录：`remaining_matched20260914_recovery20260915.log`。看到 `B2_START5_RECOVERED_WITHOUT_REFIT`、`REUSING_COMPLETED B2 5`，随后 `REMAINING_STAGE_START B3 5`，才表示核验成功且已经接续。最终仍以 `B2_B3_SIX_TASKS_VERIFIED` 为六组完成标志。
+
+本次 49 项不同的本地检查通过；恢复尚未在服务器执行。后续报告应注明这次仅修正核验接口，不把它描述为训练失败重跑或 upcoming 改善。
+
 ## 代码与评估范围
 
 实现提交：`33000410300c78f943086cbe3cc9deef4223bee1`，分支 `dev_xwt`。启动时将实际运行的完整提交号写入计划和结果；后续仅含文档的提交不改变训练实现。
