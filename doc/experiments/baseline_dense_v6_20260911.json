@@ -1,4 +1,14 @@
 {
+  "remaining_b2_b3_uu_recheck_20260915": {
+    "status": "independent_uu_terminal_timeout_cursor_ssh_surface_visible_awaiting_scope_clarification",
+    "goal": "Complete B2/B3 six tasks and summarize all B2-B5 twelve matched tasks",
+    "direct_observation": "UU TerminalWindow failed terminal-list retrieval after two retries; UU remote desktop shows Cursor SSH my_sci and sci@sci shell",
+    "remote_commands_sent": false,
+    "actual_server_training_state": "unknown",
+    "local_progress": "Read-only twelve-task result collector prepared, not executed on server",
+    "goal_blocked_audit_count": 1,
+    "test_evaluated": false
+  },
   "remaining_b2_b3_matched_prepared_20260914": {
     "status": "code_prepared_local_checks_passed_awaiting_user_server_launch",
     "priority": "Complete B2/B3 Start5/10/15 before resuming upcoming optimization; do not rerun B4/B5",
