@@ -1,4 +1,240 @@
 {
+  "remaining_b2_b3_matched_prepared_20260914": {
+    "status": "code_prepared_local_checks_passed_awaiting_user_server_launch",
+    "priority": "Complete B2/B3 Start5/10/15 before resuming upcoming optimization; do not rerun B4/B5",
+    "implementation_commit": "33000410300c78f943086cbe3cc9deef4223bee1",
+    "tasks": [
+      {
+        "model": "B2",
+        "max_start": 5
+      },
+      {
+        "model": "B3",
+        "max_start": 5
+      },
+      {
+        "model": "B2",
+        "max_start": 10
+      },
+      {
+        "model": "B3",
+        "max_start": 10
+      },
+      {
+        "model": "B2",
+        "max_start": 15
+      },
+      {
+        "model": "B3",
+        "max_start": 15
+      }
+    ],
+    "seed": 42,
+    "initialization": {
+      "B2": "independent fixed 500-round-per-nonconstant-head fits for each task",
+      "B3": "random Start5 then own selected Start5 -> Start10 -> Start15, new optimizer per stage"
+    },
+    "local_validation": {
+      "new_in_memory_checks_passed": 23,
+      "related_existing_checks_passed": 38,
+      "native_xgboost_available_locally": false
+    },
+    "server_preflight_executed": false,
+    "server_training_started": false,
+    "new_directories": false,
+    "test_evaluated": false,
+    "new_summary_artifact": "remaining_matched20260914_results.json",
+    "guide": "Baseline_B2B3三档补齐执行说明.md",
+    "comparison_limits": "Same current data/history source and reference evaluation rules; native feature representations, losses, initialization and cumulative training budgets differ."
+  },
+  "matched_six_task_results_reported_by_user_20260914": {
+    "status": "six_tasks_completed_and_server_final_verification_reported_by_user",
+    "evidence_source": "User-pasted terminal output from summary command reading the final verification JSON",
+    "server_reported_status": "six_matched_tasks_independently_verified",
+    "full_server_json_copied_to_local": false,
+    "final_verification_sha256": null,
+    "final_verification_artifact": "baseline_matched_protocol_training20260913_final_verification.json",
+    "runtime_commit": "6289761c11d09e3570899b89858486b29e9f4c83",
+    "finisher_source_commit": "3d966024e040a0e4599c19184c60a038ecc7109e",
+    "seed": 42,
+    "stage_epochs_total": 255,
+    "metric_precision": "Percentages and MAE preserve the user's terminal display rounding; integer supports retained",
+    "results": [
+      {
+        "model": "B4",
+        "max_start": 5,
+        "selected_epoch": 1,
+        "epochs_trained": 41,
+        "threshold": 0.5,
+        "train": {
+          "will15_f1_percent": 69.18,
+          "upcoming_strict_recall_percent": 5.59,
+          "upcoming_strict_hits": 98,
+          "upcoming_support": 1753
+        },
+        "validation": {
+          "will15_precision_percent": 80.48,
+          "will15_recall_percent": 56.55,
+          "will15_f1_percent": 66.43,
+          "upcoming_strict_recall_percent": 7.42,
+          "upcoming_strict_hits": 32,
+          "upcoming_who_recall_percent": 7.42,
+          "upcoming_who_hits": 32,
+          "upcoming_support": 431,
+          "ongoing_who_recall_percent": 80.78,
+          "remain_len_mae_middle_weighted_windows": 13.3421,
+          "cause_accuracy_percent": 88.76,
+          "cause_macro_recall_percent": 86.31
+        }
+      },
+      {
+        "model": "B5",
+        "max_start": 5,
+        "selected_epoch": 2,
+        "epochs_trained": 42,
+        "threshold": 0.7,
+        "train": {
+          "will15_f1_percent": 72.16,
+          "upcoming_strict_recall_percent": 9.7,
+          "upcoming_strict_hits": 170,
+          "upcoming_support": 1753
+        },
+        "validation": {
+          "will15_precision_percent": 81.33,
+          "will15_recall_percent": 57.09,
+          "will15_f1_percent": 67.09,
+          "upcoming_strict_recall_percent": 8.12,
+          "upcoming_strict_hits": 35,
+          "upcoming_who_recall_percent": 8.12,
+          "upcoming_who_hits": 35,
+          "upcoming_support": 431,
+          "ongoing_who_recall_percent": 81.24,
+          "remain_len_mae_middle_weighted_windows": 11.2884,
+          "cause_accuracy_percent": 95.75,
+          "cause_macro_recall_percent": 95.38
+        }
+      },
+      {
+        "model": "B4",
+        "max_start": 10,
+        "selected_epoch": 3,
+        "epochs_trained": 43,
+        "threshold": 0.9,
+        "train": {
+          "will15_f1_percent": 63.49,
+          "upcoming_strict_recall_percent": 10.42,
+          "upcoming_strict_hits": 324,
+          "upcoming_support": 3109
+        },
+        "validation": {
+          "will15_precision_percent": 81.52,
+          "will15_recall_percent": 38.29,
+          "will15_f1_percent": 52.11,
+          "upcoming_strict_recall_percent": 3.53,
+          "upcoming_strict_hits": 27,
+          "upcoming_who_recall_percent": 3.53,
+          "upcoming_who_hits": 27,
+          "upcoming_support": 764,
+          "ongoing_who_recall_percent": 68.33,
+          "remain_len_mae_middle_weighted_windows": 16.2363,
+          "cause_accuracy_percent": 90.01,
+          "cause_macro_recall_percent": 87.5
+        }
+      },
+      {
+        "model": "B5",
+        "max_start": 10,
+        "selected_epoch": 2,
+        "epochs_trained": 42,
+        "threshold": 0.85,
+        "train": {
+          "will15_f1_percent": 66.42,
+          "upcoming_strict_recall_percent": 9.49,
+          "upcoming_strict_hits": 295,
+          "upcoming_support": 3109
+        },
+        "validation": {
+          "will15_precision_percent": 81.18,
+          "will15_recall_percent": 41.63,
+          "will15_f1_percent": 55.03,
+          "upcoming_strict_recall_percent": 3.14,
+          "upcoming_strict_hits": 24,
+          "upcoming_who_recall_percent": 3.4,
+          "upcoming_who_hits": 26,
+          "upcoming_support": 764,
+          "ongoing_who_recall_percent": 74.66,
+          "remain_len_mae_middle_weighted_windows": 10.6643,
+          "cause_accuracy_percent": 95.72,
+          "cause_macro_recall_percent": 94.81
+        }
+      },
+      {
+        "model": "B4",
+        "max_start": 15,
+        "selected_epoch": 5,
+        "epochs_trained": 45,
+        "threshold": 0.94,
+        "train": {
+          "will15_f1_percent": 88.16,
+          "upcoming_strict_recall_percent": 73.32,
+          "upcoming_strict_hits": 2657,
+          "upcoming_support": 3624
+        },
+        "validation": {
+          "will15_precision_percent": 66.84,
+          "will15_recall_percent": 37.18,
+          "will15_f1_percent": 47.78,
+          "upcoming_strict_recall_percent": 2.8,
+          "upcoming_strict_hits": 25,
+          "upcoming_who_recall_percent": 3.25,
+          "upcoming_who_hits": 29,
+          "upcoming_support": 892,
+          "ongoing_who_recall_percent": 71.33,
+          "remain_len_mae_middle_weighted_windows": 11.782,
+          "cause_accuracy_percent": 90.4,
+          "cause_macro_recall_percent": 88.37
+        }
+      },
+      {
+        "model": "B5",
+        "max_start": 15,
+        "selected_epoch": 2,
+        "epochs_trained": 42,
+        "threshold": 0.9,
+        "train": {
+          "will15_f1_percent": 64.34,
+          "upcoming_strict_recall_percent": 13.16,
+          "upcoming_strict_hits": 477,
+          "upcoming_support": 3624
+        },
+        "validation": {
+          "will15_precision_percent": 80.36,
+          "will15_recall_percent": 35.43,
+          "will15_f1_percent": 49.18,
+          "upcoming_strict_recall_percent": 2.91,
+          "upcoming_strict_hits": 26,
+          "upcoming_who_recall_percent": 3.36,
+          "upcoming_who_hits": 30,
+          "upcoming_support": 892,
+          "ongoing_who_recall_percent": 67.72,
+          "remain_len_mae_middle_weighted_windows": 9.6109,
+          "cause_accuracy_percent": 95.18,
+          "cause_macro_recall_percent": 93.62
+        }
+      }
+    ],
+    "test_evaluated": false,
+    "new_training_started": false,
+    "new_diagnostics_started": false,
+    "new_root_cause_diagnostics_paused": true,
+    "architecture_root_cause_established": false,
+    "report": "Baseline六组对齐实验工作汇报_2026-09-14.md",
+    "supersedes_current_state_of": [
+      "matched_remote_observation_blocked_20260914",
+      "matched_six_task_completion_priority_20260914"
+    ],
+    "next_step": "Freeze this batch and build a same-protocol main-model comparison; no duplicate training or diagnostics."
+  },
   "matched_remote_observation_blocked_20260914": {
     "status": "blocked_on_UU_connection_restoration",
     "consecutive_goal_turns_with_same_blocker": 3,
