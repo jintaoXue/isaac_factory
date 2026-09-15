@@ -1,5 +1,7 @@
 # B4/B5 upcoming 排查台账
 
+**2026-09-15 用户确认固定版本：Baseline 对齐结果 v1。** 固定 B2–B5 各 Start≤5/10/15 共十二组，seed42，仅 train/validation；已选权重、阈值、指标和训练来源保持。版本标识 `baseline_matched_v1_20260915`，结果快照提交 `82ec916e5d9c94ed43f2ae20d403e72b60b1169b`，固定清单见 `baseline_matched_v1_20260915_freeze.json`，绑定原报告、完整指标数据、两批最终证明及十二阶段记录SHA。后续实验单独登记和比较，不覆盖v1，不重复已完成训练/收尾。该版本可用于当前baseline对照；单seed、初始化/预算差异、主模型同口径结果未汇入及upcoming根因未定等边界继续保留。本次仅更新本地版本记录，没有服务器操作或新训练。
+
 **2026-09-15 当前权威终态：十二组完整导出已回传，统一报告完成。** `summarize_all_matched_baselines.py --csv`（源码 `93a8fb3`）返回 `twelve_matched_baseline_results_verified`、`test_evaluated=false` 及12行28字段，B2/B3训练、原因、剩余时间和轮次已全部补齐，不再有待导出字段。最终报告见[十二组实验汇总](Baseline十二组对齐实验汇总_2026-09-15.md)，完整精度/来源/十二个阶段SHA见 `baseline_matched_all_20260915_report_data.json`。本地交叉核对通过，来源为用户终端回传，不是助手重连服务器读取原始JSON。
 
 新增结论：B3三档训练upcoming严格为99.71%/97.72%/99.97%，验证5.34%/4.06%/2.47%，明显泛化差距也出现在LSTM；不证明缺少某组件或架构上限。B2三档F1为65.26%/56.83%/54.66%，在Start10/15最高；验证剩余MAE=4.6319窗、原因准确率98.90%/宏召回98.07%，均优于本批其他模型。B3 best/实际epoch=20/60、4/44、49/89。图模型不能写成全面领先，upcoming仍未解决。

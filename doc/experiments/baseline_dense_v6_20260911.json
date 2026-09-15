@@ -1,4 +1,21 @@
 {
+  "baseline_matched_v1_frozen_by_user_20260915": {
+    "version": "baseline_matched_v1_20260915",
+    "status": "frozen_for_current_baseline_comparison",
+    "freeze_manifest": "baseline_matched_v1_20260915_freeze.json",
+    "freeze_manifest_sha256": "7d2b6bcb67f1b49fda5b125d5e7805f574d20ef120c07bd8878e5941f6f719b6",
+    "result_snapshot_commit": "82ec916e5d9c94ed43f2ae20d403e72b60b1169b",
+    "local_artifact_sha256": {
+      "Baseline十二组对齐实验汇总_2026-09-15.md": "a53be4a614556046894fd5ef170cd1a4b25609f9d0a5c99815b4da557320fe03",
+      "baseline_matched_all_20260915_report_data.json": "f25dd6c2a646adae998963761181c630b5078e458089c15eb4fd2ea4a4037c2d"
+    },
+    "tasks": 12,
+    "seed": 42,
+    "test_evaluated": false,
+    "future_experiments_must_preserve_v1": true,
+    "new_training_or_server_operations": false,
+    "interpretation": "Valuable current baseline comparison, not proof of architecture limits or a completed same-data BNPDFormer superiority claim"
+  },
   "twelve_matched_complete_report_received_20260915": {
     "status": "twelve_experiments_verified_full_compact_export_received_report_complete",
     "evidence_source": "User-returned server collector REPORT_META plus all twelve 28-field rows; local arithmetic and historical consistency checks passed",

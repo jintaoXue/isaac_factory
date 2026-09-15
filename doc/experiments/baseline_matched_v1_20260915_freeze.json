@@ -1,0 +1,228 @@
+{
+  "version": "baseline_matched_v1_20260915",
+  "display_name": "Baseline 对齐结果 v1（2026-09-15）",
+  "status": "frozen_for_current_baseline_comparison",
+  "authorized_by": "User requested fixing the current valuable baseline experiments as one version",
+  "frozen_on": "2026-09-15",
+  "result_snapshot_commit": "82ec916e5d9c94ed43f2ae20d403e72b60b1169b",
+  "branch": "dev_xwt",
+  "authorized_server_repository": "/home/sci/work/BSTAN_isaac_factory",
+  "task_scope": {
+    "models": [
+      "B2 XGBoost",
+      "B3 LSTM",
+      "B4 GCN+GRU",
+      "B5 GAT+GRU"
+    ],
+    "max_start_windows": [
+      5,
+      10,
+      15
+    ],
+    "number_of_tasks": 12,
+    "seed": 42,
+    "evaluated_splits": [
+      "train",
+      "validation"
+    ],
+    "test_evaluated": false
+  },
+  "protocol": {
+    "reference_commit": "7b2ab393e838c1b54a78b2f125d41e0066d53ce0",
+    "reference_configs": "FactoryBN_dense_12_3_start{5,10,15}_min8_opt.json",
+    "history_windows": 30,
+    "window_size_seconds": 60,
+    "nodes": 38,
+    "feature_channels": 27,
+    "min_hot_windows": 8,
+    "future_grid_windows": 20,
+    "report_primary": "will15 = station identification on configured start limit",
+    "upcoming_partition": "true event and cold final history window",
+    "upcoming_strict_start_tolerance_windows": 3,
+    "source_episode_split": {
+      "train": 138,
+      "validation": 30,
+      "test": 40
+    },
+    "validation_upcoming_support": [
+      431,
+      764,
+      892
+    ]
+  },
+  "local_artifact_sha256": {
+    "Baseline十二组对齐实验汇总_2026-09-15.md": "a53be4a614556046894fd5ef170cd1a4b25609f9d0a5c99815b4da557320fe03",
+    "baseline_matched_all_20260915_report_data.json": "f25dd6c2a646adae998963761181c630b5078e458089c15eb4fd2ea4a4037c2d"
+  },
+  "server_report_meta": {
+    "status": "twelve_matched_baseline_results_verified",
+    "test_evaluated": false,
+    "dataset_manifest_sha256": "e3d7b2008ad7c5d0844c10a4c0670ff36c5ba961382706695689daf7a050244f",
+    "sources": {
+      "baseline_matched_protocol_training20260913_final_verification.json": {
+        "sha256": "5582925c7bebc08b34d9798e5ca89f6343d496fac8e849353ac96c189f7480f0",
+        "plan_sha256": "fffa0795ab48abb0e3f0ebb9ef5944a4d41639d2a46bb134c1836a11e50c6117",
+        "runtime_commit": "6289761c11d09e3570899b89858486b29e9f4c83",
+        "verification_repair_commit": null
+      },
+      "remaining_matched20260914_results.json": {
+        "sha256": "79dae84ef51f602c1b10c2aa0276552816c869bf18c25ec9ea85b10e98d7fda6",
+        "plan_sha256": "40ba87e1a9832e109c2e4aa80a0a5e60017ac384921b7f23ce2fed1431b60e3a",
+        "runtime_commit": "cd29f5011a9c3bd14ea4aaad38ea9ad3bbc216a3",
+        "verification_repair_commit": "18dfac3e558d59f71b23746cda6e13df6e1f9c28"
+      }
+    },
+    "verification_scope": "Completed plans and final proofs; all current/archive artifact hashes; frozen metrics, counts and selected result identities. No model inference or new selection.",
+    "record_sha256": {
+      "B2_s5": "1793f7b1ec1ab7063f00b44f8d23a5125214760ad0259e5fdf5dfefb2a655bc9",
+      "B3_s5": "a1c4790c3a02584c3de2b539171f9e7adc1cd2039d63d7a0b632eaf3d6e7ac50",
+      "B4_s5": "ca51675479b36dd10f398c46801dd621689fc376e7323077527ac56f968a1126",
+      "B5_s5": "bcb4bec06716dd7959f9de44e9fd4583320ff7aa96b55a3e88755230a2c1af73",
+      "B2_s10": "0bc70f9520b26ab417a41fd8e5762e103e2682af389cd3c48afee910f2134f9d",
+      "B3_s10": "7dc60e383eab4e9bfa3f086f519df6e2cee06eb12c01c18c554fdfa525b49450",
+      "B4_s10": "745e0e441c1ef1a4dacfcb5cbbe80314543480ed2ce9ce04dfb5fad3833797c1",
+      "B5_s10": "52a221cfa0a0f6d10152a9e975eb3a8519ccff70b785dc270a02a4c388a460ba",
+      "B2_s15": "6f5887fbe227ed537f26fa351f82a544b9a8f536bf46a9afa5abf4c5efe6c890",
+      "B3_s15": "7e536800079980552f1674893490fb92429fa70d975dcd605155300ecf32624a",
+      "B4_s15": "fd8c584a5addf859c07a9e9123e28f820d29954cd54760cfb1f154c822befbb4",
+      "B5_s15": "dcff0c69598ce54175267cac8cb06556a49afe6cbbe32fbf4a3f30cacfbf7aab"
+    }
+  },
+  "frozen_selected_results": [
+    {
+      "model": "B2",
+      "start": 5,
+      "best_epoch": null,
+      "epochs": null,
+      "boosting_rounds": 500,
+      "threshold": 0.8,
+      "initialization": "independent_fit_per_task",
+      "record_sha256": "1793f7b1ec1ab7063f00b44f8d23a5125214760ad0259e5fdf5dfefb2a655bc9"
+    },
+    {
+      "model": "B3",
+      "start": 5,
+      "best_epoch": 20,
+      "epochs": 60,
+      "boosting_rounds": null,
+      "threshold": 0.55,
+      "initialization": "random",
+      "record_sha256": "a1c4790c3a02584c3de2b539171f9e7adc1cd2039d63d7a0b632eaf3d6e7ac50"
+    },
+    {
+      "model": "B4",
+      "start": 5,
+      "best_epoch": 1,
+      "epochs": 41,
+      "boosting_rounds": null,
+      "threshold": 0.5,
+      "initialization": "warm_start_weights_only",
+      "record_sha256": "ca51675479b36dd10f398c46801dd621689fc376e7323077527ac56f968a1126"
+    },
+    {
+      "model": "B5",
+      "start": 5,
+      "best_epoch": 2,
+      "epochs": 42,
+      "boosting_rounds": null,
+      "threshold": 0.7,
+      "initialization": "warm_start_weights_only",
+      "record_sha256": "bcb4bec06716dd7959f9de44e9fd4583320ff7aa96b55a3e88755230a2c1af73"
+    },
+    {
+      "model": "B2",
+      "start": 10,
+      "best_epoch": null,
+      "epochs": null,
+      "boosting_rounds": 500,
+      "threshold": 0.8,
+      "initialization": "independent_fit_per_task",
+      "record_sha256": "0bc70f9520b26ab417a41fd8e5762e103e2682af389cd3c48afee910f2134f9d"
+    },
+    {
+      "model": "B3",
+      "start": 10,
+      "best_epoch": 4,
+      "epochs": 44,
+      "boosting_rounds": null,
+      "threshold": 0.6,
+      "initialization": "warm_start_weights_only",
+      "record_sha256": "7dc60e383eab4e9bfa3f086f519df6e2cee06eb12c01c18c554fdfa525b49450"
+    },
+    {
+      "model": "B4",
+      "start": 10,
+      "best_epoch": 3,
+      "epochs": 43,
+      "boosting_rounds": null,
+      "threshold": 0.9,
+      "initialization": "warm_start_weights_only",
+      "record_sha256": "745e0e441c1ef1a4dacfcb5cbbe80314543480ed2ce9ce04dfb5fad3833797c1"
+    },
+    {
+      "model": "B5",
+      "start": 10,
+      "best_epoch": 2,
+      "epochs": 42,
+      "boosting_rounds": null,
+      "threshold": 0.85,
+      "initialization": "warm_start_weights_only",
+      "record_sha256": "52a221cfa0a0f6d10152a9e975eb3a8519ccff70b785dc270a02a4c388a460ba"
+    },
+    {
+      "model": "B2",
+      "start": 15,
+      "best_epoch": null,
+      "epochs": null,
+      "boosting_rounds": 500,
+      "threshold": 0.8,
+      "initialization": "independent_fit_per_task",
+      "record_sha256": "6f5887fbe227ed537f26fa351f82a544b9a8f536bf46a9afa5abf4c5efe6c890"
+    },
+    {
+      "model": "B3",
+      "start": 15,
+      "best_epoch": 49,
+      "epochs": 89,
+      "boosting_rounds": null,
+      "threshold": 0.5,
+      "initialization": "warm_start_weights_only",
+      "record_sha256": "7e536800079980552f1674893490fb92429fa70d975dcd605155300ecf32624a"
+    },
+    {
+      "model": "B4",
+      "start": 15,
+      "best_epoch": 5,
+      "epochs": 45,
+      "boosting_rounds": null,
+      "threshold": 0.94,
+      "initialization": "warm_start_weights_only",
+      "record_sha256": "fd8c584a5addf859c07a9e9123e28f820d29954cd54760cfb1f154c822befbb4"
+    },
+    {
+      "model": "B5",
+      "start": 15,
+      "best_epoch": 2,
+      "epochs": 42,
+      "boosting_rounds": null,
+      "threshold": 0.9,
+      "initialization": "warm_start_weights_only",
+      "record_sha256": "dcff0c69598ce54175267cac8cb06556a49afe6cbbe32fbf4a3f30cacfbf7aab"
+    }
+  ],
+  "preservation_rules": [
+    "Keep these twelve selected models, thresholds, metrics and provenance as v1; do not replace them with a later best or highest-upcoming result",
+    "Do not rerun completed training, preflight, recovery or verification merely to recreate this version",
+    "Record future changes, hypotheses, metrics and selected results as a separate version; preserve the current server artifacts and archives",
+    "Keep baseline backbones and disclose representation, initialization and budget differences",
+    "Do not use test for tuning"
+  ],
+  "comparison_scope": "Current single-seed train/validation model comparison. Task/score semantics match the stated main reference; same-data main-model results and controlled component attribution remain separate work.",
+  "unresolved": [
+    "Low upcoming recall and its root cause",
+    "Stable upcoming improvement",
+    "Same-protocol main-model comparison results",
+    "Multiple-seed uncertainty; final held-out test evaluation has not been performed"
+  ],
+  "freeze_operation_scope": "Local documentation/provenance only. No server connection, new training, threshold selection, artifact rewrite, filesystem locking or server backup was performed."
+}
