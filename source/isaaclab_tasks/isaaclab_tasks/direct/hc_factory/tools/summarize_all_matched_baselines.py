@@ -2,11 +2,15 @@
 """Read and verify the twelve completed B2--B5 tasks; print a compact report source."""
 from __future__ import annotations
 
+import argparse
+import csv
+import hashlib
 import json
 from pathlib import Path
 import subprocess
+import sys
 
-from verify_baseline_matched_results import artifact_snapshot, close, sha, station_counts
+from verify_baseline_matched_results import artifact_snapshot, close, station_counts
 
 ROOT = Path('/home/sci/work/BSTAN_isaac_factory')
 DATASET = ROOT / 'source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/output/bottleneck_dataset/experiments/factory_pdformer_134_v3'
@@ -22,6 +26,15 @@ GROUPS = (
 
 def read(path):
     return json.loads(path.read_text())
+
+
+def sha(path):
+    # This report does not need the ML environment; support server system Python 3.10.
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def validate_identities(rows, expected):
@@ -140,7 +153,40 @@ def collect(dataset):
             'verification_scope': 'Completed plans and final proofs; all current/archive artifact hashes; frozen metrics, counts and selected result identities. No model inference or new selection.'}
 
 
+def print_csv(result):
+    metadata = {key: value for key, value in result.items() if key != 'results'}
+    metadata['record_sha256'] = {f"{r['model']}_s{r['max_start']}": r['record_sha256'] for r in result['results']}
+    print('REPORT_META ' + json.dumps(metadata, ensure_ascii=False, separators=(',', ':')))
+    fields = ['model','start','best_epoch','epochs','boosting_rounds','threshold',
+              'train_P','train_R','train_F1','train_up_strict_hits','train_up_who_hits','train_up_n',
+              'val_P','val_R','val_F1','val_up_strict_hits','val_up_who_hits','val_up_n',
+              'val_ongoing_who_R','val_remain_MAE_middle_weighted','val_cause_acc','val_cause_macro_R',
+              'train_remain_MAE_middle_weighted','train_cause_acc','train_cause_macro_R',
+              'cumulative_epochs','cumulative_optimizer_steps','initialization']
+    writer = csv.writer(sys.stdout)
+    writer.writerow(fields)
+    for r in result['results']:
+        train, val = r['train'], r['validation']
+        budget = r['training_budget'] or {}
+        def scores(m):
+            return [m[k] for k in ('will15_precision','will15_recall','will15_f1',
+                    'n_matched_report_upcoming','n_matched_who_upcoming','n_true_upcoming')]
+        values = [r['model'],r['max_start'],r['selected_epoch'],r['epochs_trained'],
+                  r['boosting_rounds_per_head'],val['report_threshold_used'], *scores(train), *scores(val),
+                  val['who_recall_ongoing'],val['remain_len_mae_middle_weighted'],val['cause_acc'],val['cause_macro_recall'],
+                  train['remain_len_mae_middle_weighted'],train['cause_acc'],train['cause_macro_recall'],
+                  budget.get('cumulative_epochs_trained'),budget.get('cumulative_optimizer_steps'),r['initialization']]
+        writer.writerow(values)
+
+
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--csv', action='store_true', help='Print compact report metadata and twelve CSV rows; all ratios are 0--1')
+    args = parser.parse_args()
     if Path.cwd().resolve() != ROOT or subprocess.check_output(['git', 'branch', '--show-current'], text=True).strip() != 'dev_xwt':
         raise ValueError('Use only BSTAN_isaac_factory on dev_xwt')
-    print(json.dumps(collect(DATASET), ensure_ascii=False, separators=(',', ':'), allow_nan=False))
+    result = collect(DATASET)
+    if args.csv:
+        print_csv(result)
+    else:
+        print(json.dumps(result, ensure_ascii=False, separators=(',', ':'), allow_nan=False))

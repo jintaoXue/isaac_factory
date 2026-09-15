@@ -1,5 +1,9 @@
 # B4/B5 upcoming 排查台账
 
+**2026-09-15 B2/B3全部完成（用户日志回传）：**六组均已结束，最终标志 `B2_B3_SIX_TASKS_VERIFIED`，SHA `79dae84ef51f602c1b10c2aa0276552816c869bf18c25ec9ea85b10e98d7fda6`，随后 `REMAINING_RECOVERY_COMPLETED`。B2 Start5复用未重训，B4/B5保持完成；不得重启任何已完成阶段。十二组验证事件指标及比较已写入[十二组汇总](Baseline十二组对齐实验汇总_2026-09-15.md)，B2三档F1=65.26/56.83/54.66%，B3=53.61/44.95/43.83%。当前只待服务器只读导出B2/B3训练/原因/剩余时间及B3轮数，以补齐报告；新增诊断暂停，助手UU操作仍停止。
+
+**2026-09-15 恢复成功（用户日志回传）：**修复源码 `18dfac3`、原训练 runtime `cd29f50`。已打印 `B2_START5_RECOVERED_WITHOUT_REFIT` 和 `REUSING_COMPLETED B2 5`，第一组核验通过且没有重训。B2 Start5 validation P/R/F1=81.5155%/54.4061%/65.2574%，阈值0.8，upcoming工位/严格均23/431=5.3364%，ongoing工位687/874=78.6041%。随后已打印 `REMAINING_STAGE_START B3 5`、`Preparing train-only event sampling weights`，最新证据为第2/6组开始准备采样；不是全批完成，也没有当前进程存活的独立核验。完整服务器结果仍待回传。B4/B5 六组完成状态已由用户状态命令再次确认。助手未恢复 UU/SSH 操作。
+
 **2026-09-15 用户服务器输出更新：**B2/B3 三档预检已通过、六组已登记；第一组 B2 Start5 停在产物核验，报 `KeyError: target_cause`。源码确认 B2 预测 CSV 漏写原因和剩余时间两列真值，旧合成测试索引表误含这两列，导致未复现真实格式。属于导出/核验接口缺口，不能作为模型性能或 upcoming 根因结论。修复及窄恢复入口 `recover_remaining_baselines_matched.py` 已准备，49 项本地检查通过；服务器恢复尚未执行。恢复先核验已保存模型/指标/原数据真值，保留 CSV 和全部模型字节，再复用 B2 Start5、接续其余五组；训练 runtime 保持 `cd29f50`，只 fetch 修复源码对象、不 pull、不重训首组、不重跑预检。助手仍按用户要求停止 UU 操作，由用户执行恢复命令。
 
 **2026-09-15 接续核验：**用户要求在恢复的 UU 中代跑 B2/B3 并汇总 B2–B5 全部十二组。已实际打开 Leo 的 UU 独立终端，连接成功后两次“获取终端列表超时”，最终提示检查被控端连接；没有 SSH shell，尚未发送服务器命令。UU 桌面可读，Cursor 显示 `SSH: my_sci` 和 `sci@sci ~/work` shell；因本指南先前限定 `TerminalWindow`，已异步询问本次是否允许使用该现有 Cursor SSH 终端。等待确认期间只准备本地十二组纯产物核验/汇总入口 `summarize_all_matched_baselines.py`；服务器状态、B2/B3 是否已启动及新成绩尚未知，不重启任何队列。

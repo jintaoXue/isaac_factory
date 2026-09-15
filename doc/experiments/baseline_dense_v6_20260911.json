@@ -1,4 +1,190 @@
 {
+  "remaining_six_completed_reported_by_user_20260915": {
+    "status": "user_reported_six_verified_and_recovery_completed",
+    "evidence_source": "User-pasted completed-stage log including final SHA and recovery completion marker",
+    "runtime_commit": "cd29f5011a9c3bd14ea4aaad38ea9ad3bbc216a3",
+    "repair_source_commit": "18dfac3e558d59f71b23746cda6e13df6e1f9c28",
+    "final_artifact": "remaining_matched20260914_results.json",
+    "reported_final_sha256": "79dae84ef51f602c1b10c2aa0276552816c869bf18c25ec9ea85b10e98d7fda6",
+    "b2_start5_retrained": false,
+    "test_evaluated": false,
+    "full_server_result_retrieved_locally": false,
+    "still_needed_for_complete_report": [
+      "B2/B3 selected epochs and training budgets",
+      "B2/B3 train metrics",
+      "B2/B3 cause and remaining-time metrics"
+    ],
+    "results": [
+      {
+        "model": "B2",
+        "max_start": 5,
+        "threshold": 0.8,
+        "seed": 42,
+        "validation": {
+          "will15_precision": 0.8151549942594719,
+          "will15_recall": 0.5440613026819924,
+          "will15_f1": 0.6525735294117648,
+          "ongoing_support": 874,
+          "ongoing_who_hits": 687,
+          "ongoing_strict_hits": 685,
+          "upcoming_support": 431,
+          "upcoming_who_hits": 23,
+          "upcoming_strict_hits": 23,
+          "upcoming_start_bin_strict_hits": [
+            23,
+            0,
+            0
+          ]
+        }
+      },
+      {
+        "model": "B3",
+        "max_start": 5,
+        "threshold": 0.55,
+        "seed": 42,
+        "validation": {
+          "will15_precision": 0.6520307354555434,
+          "will15_recall": 0.45517241379310347,
+          "will15_f1": 0.5361010830324909,
+          "ongoing_support": 874,
+          "ongoing_who_hits": 569,
+          "ongoing_strict_hits": 567,
+          "upcoming_support": 431,
+          "upcoming_who_hits": 25,
+          "upcoming_strict_hits": 23,
+          "upcoming_start_bin_strict_hits": [
+            23,
+            0,
+            0
+          ]
+        }
+      },
+      {
+        "model": "B2",
+        "max_start": 10,
+        "threshold": 0.8,
+        "seed": 42,
+        "validation": {
+          "will15_precision": 0.8168373151308305,
+          "will15_recall": 0.4356796116504854,
+          "will15_f1": 0.5682627621685793,
+          "ongoing_support": 884,
+          "ongoing_who_hits": 695,
+          "ongoing_strict_hits": 683,
+          "upcoming_support": 764,
+          "upcoming_who_hits": 23,
+          "upcoming_strict_hits": 22,
+          "upcoming_start_bin_strict_hits": [
+            22,
+            0,
+            0
+          ]
+        }
+      },
+      {
+        "model": "B3",
+        "max_start": 10,
+        "threshold": 0.6,
+        "seed": 42,
+        "validation": {
+          "will15_precision": 0.5356842989084802,
+          "will15_recall": 0.3871359223300971,
+          "will15_f1": 0.44945403311025006,
+          "ongoing_support": 884,
+          "ongoing_who_hits": 579,
+          "ongoing_strict_hits": 568,
+          "upcoming_support": 764,
+          "upcoming_who_hits": 59,
+          "upcoming_strict_hits": 31,
+          "upcoming_start_bin_strict_hits": [
+            23,
+            8,
+            0
+          ]
+        }
+      },
+      {
+        "model": "B2",
+        "max_start": 15,
+        "threshold": 0.8,
+        "seed": 42,
+        "validation": {
+          "will15_precision": 0.8108407079646017,
+          "will15_recall": 0.41226096737907764,
+          "will15_f1": 0.546607009694258,
+          "ongoing_support": 886,
+          "ongoing_who_hits": 706,
+          "ongoing_strict_hits": 692,
+          "upcoming_support": 892,
+          "upcoming_who_hits": 27,
+          "upcoming_strict_hits": 23,
+          "upcoming_start_bin_strict_hits": [
+            23,
+            0,
+            0
+          ]
+        }
+      },
+      {
+        "model": "B3",
+        "max_start": 15,
+        "threshold": 0.5,
+        "seed": 42,
+        "validation": {
+          "will15_precision": 0.5982490272373541,
+          "will15_recall": 0.3458942632170979,
+          "will15_f1": 0.4383464005702067,
+          "ongoing_support": 886,
+          "ongoing_who_hits": 563,
+          "ongoing_strict_hits": 549,
+          "upcoming_support": 892,
+          "upcoming_who_hits": 52,
+          "upcoming_strict_hits": 22,
+          "upcoming_start_bin_strict_hits": [
+            16,
+            4,
+            2
+          ]
+        }
+      }
+    ]
+  },
+  "remaining_b2_start5_recovered_and_b3_started_reported_20260915": {
+    "status": "user_reported_b2_start5_recovered_without_refit_b3_start5_sampling_preparation",
+    "evidence_source": "User-pasted recovery log; complete server JSON and process state have not been independently retrieved",
+    "runtime_commit": "cd29f5011a9c3bd14ea4aaad38ea9ad3bbc216a3",
+    "repair_source_commit": "18dfac3e558d59f71b23746cda6e13df6e1f9c28",
+    "completed_tasks": [
+      [
+        "B2",
+        5
+      ]
+    ],
+    "latest_started_task": [
+      "B3",
+      5
+    ],
+    "latest_log_message": "Preparing train-only event sampling weights",
+    "b2_start5_refit": false,
+    "all_six_completed": false,
+    "test_evaluated": false,
+    "validation_b2_start5": {
+      "will15_f1": 0.6525735294117648,
+      "will15_precision": 0.8151549942594719,
+      "will15_recall": 0.5440613026819924,
+      "report_threshold_used": 0.8,
+      "n_true_upcoming": 431,
+      "n_matched_who_upcoming": 23,
+      "n_matched_report_upcoming": 23,
+      "who_recall_upcoming": 0.05336426914153132,
+      "report_recall_upcoming": 0.05336426914153132,
+      "n_true_ongoing": 874,
+      "n_matched_who_ongoing": 687,
+      "n_matched_report_ongoing": 685,
+      "who_recall_ongoing": 0.7860411899313501,
+      "report_recall_ongoing": 0.7837528604118993
+    }
+  },
   "remaining_b2_start5_csv_verification_repair_prepared_20260915": {
     "status": "user_reported_b2_start5_verification_failure_repair_prepared_not_executed_on_server",
     "runtime_commit": "cd29f5011a9c3bd14ea4aaad38ea9ad3bbc216a3",
