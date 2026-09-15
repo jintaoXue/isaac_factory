@@ -1,4 +1,98 @@
 {
+  "twelve_matched_complete_report_received_20260915": {
+    "status": "twelve_experiments_verified_full_compact_export_received_report_complete",
+    "evidence_source": "User-returned server collector REPORT_META plus all twelve 28-field rows; local arithmetic and historical consistency checks passed",
+    "report_file": "Baseline十二组对齐实验汇总_2026-09-15.md",
+    "report_sha256": "a53be4a614556046894fd5ef170cd1a4b25609f9d0a5c99815b4da557320fe03",
+    "data_file": "baseline_matched_all_20260915_report_data.json",
+    "data_sha256": "f25dd6c2a646adae998963761181c630b5078e458089c15eb4fd2ea4a4037c2d",
+    "attachment_sha256": "ec45a5a5d13f0af9f39aa21971bd8bf0a239c2df39819d1fa0890e5b04d5cc48",
+    "collector_source_commit": "93a8fb3e444d1da81c9ed1c09fbd53d58db6b3d8",
+    "server_report_meta": {
+      "status": "twelve_matched_baseline_results_verified",
+      "test_evaluated": false,
+      "dataset_manifest_sha256": "e3d7b2008ad7c5d0844c10a4c0670ff36c5ba961382706695689daf7a050244f",
+      "sources": {
+        "baseline_matched_protocol_training20260913_final_verification.json": {
+          "sha256": "5582925c7bebc08b34d9798e5ca89f6343d496fac8e849353ac96c189f7480f0",
+          "plan_sha256": "fffa0795ab48abb0e3f0ebb9ef5944a4d41639d2a46bb134c1836a11e50c6117",
+          "runtime_commit": "6289761c11d09e3570899b89858486b29e9f4c83",
+          "verification_repair_commit": null
+        },
+        "remaining_matched20260914_results.json": {
+          "sha256": "79dae84ef51f602c1b10c2aa0276552816c869bf18c25ec9ea85b10e98d7fda6",
+          "plan_sha256": "40ba87e1a9832e109c2e4aa80a0a5e60017ac384921b7f23ce2fed1431b60e3a",
+          "runtime_commit": "cd29f5011a9c3bd14ea4aaad38ea9ad3bbc216a3",
+          "verification_repair_commit": "18dfac3e558d59f71b23746cda6e13df6e1f9c28"
+        }
+      },
+      "verification_scope": "Completed plans and final proofs; all current/archive artifact hashes; frozen metrics, counts and selected result identities. No model inference or new selection.",
+      "record_sha256": {
+        "B2_s5": "1793f7b1ec1ab7063f00b44f8d23a5125214760ad0259e5fdf5dfefb2a655bc9",
+        "B3_s5": "a1c4790c3a02584c3de2b539171f9e7adc1cd2039d63d7a0b632eaf3d6e7ac50",
+        "B4_s5": "ca51675479b36dd10f398c46801dd621689fc376e7323077527ac56f968a1126",
+        "B5_s5": "bcb4bec06716dd7959f9de44e9fd4583320ff7aa96b55a3e88755230a2c1af73",
+        "B2_s10": "0bc70f9520b26ab417a41fd8e5762e103e2682af389cd3c48afee910f2134f9d",
+        "B3_s10": "7dc60e383eab4e9bfa3f086f519df6e2cee06eb12c01c18c554fdfa525b49450",
+        "B4_s10": "745e0e441c1ef1a4dacfcb5cbbe80314543480ed2ce9ce04dfb5fad3833797c1",
+        "B5_s10": "52a221cfa0a0f6d10152a9e975eb3a8519ccff70b785dc270a02a4c388a460ba",
+        "B2_s15": "6f5887fbe227ed537f26fa351f82a544b9a8f536bf46a9afa5abf4c5efe6c890",
+        "B3_s15": "7e536800079980552f1674893490fb92429fa70d975dcd605155300ecf32624a",
+        "B4_s15": "fd8c584a5addf859c07a9e9123e28f820d29954cd54760cfb1f154c822befbb4",
+        "B5_s15": "dcff0c69598ce54175267cac8cb06556a49afe6cbbe32fbf4a3f30cacfbf7aab"
+      }
+    },
+    "full_compact_report_fields_received": true,
+    "full_original_server_json_or_models_downloaded": false,
+    "still_needed_for_baseline_report": [],
+    "b2_start5_retrained": false,
+    "b45_results_preserved": true,
+    "new_training_or_diagnostics_started_in_report_turn": false,
+    "assistant_uu_or_ssh_resumed": false,
+    "test_evaluated": false,
+    "neural_current_stage_epochs_total": 448,
+    "b3_selected_epochs": [
+      20,
+      4,
+      49
+    ],
+    "b3_actual_epochs": [
+      60,
+      44,
+      89
+    ],
+    "b3_train_upcoming_strict_hits": [
+      1748,
+      3038,
+      3623
+    ],
+    "train_upcoming_support": [
+      1753,
+      3109,
+      3624
+    ],
+    "b3_validation_upcoming_strict_hits": [
+      23,
+      31,
+      22
+    ],
+    "validation_upcoming_support": [
+      431,
+      764,
+      892
+    ],
+    "new_findings": [
+      "LSTM also shows severe train-validation generalization gaps; training fit does not prove transferable rules or an architecture ceiling",
+      "B2 has highest validation overall F1 for start10/15; graph models do not consistently beat XGBoost",
+      "B2 has lowest validation middle-weighted remaining MAE and highest cause accuracy/macro recall in this batch; equal scalar results across starts agree with unchanged native scalar-head recipes"
+    ],
+    "limits": [
+      "Single seed42; main model same-protocol results not yet included",
+      "Initialization, representation and training budgets differ",
+      "Upcoming root cause and stable improvement remain unresolved; no dedicated main-model component is transplanted",
+      "Earlier status entries are chronological evidence, superseded by this completion record"
+    ]
+  },
   "remaining_six_completed_reported_by_user_20260915": {
     "status": "user_reported_six_verified_and_recovery_completed",
     "evidence_source": "User-pasted completed-stage log including final SHA and recovery completion marker",
