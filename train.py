@@ -110,6 +110,12 @@ parser.add_argument(
     help="E3 (+E): on ε-explore branch, mix frozen-teacher greedy vs random (ratio decays).",
 )
 parser.add_argument(
+    "--autoregressive",
+    action="store_true",
+    default=False,
+    help="E5/E6 (+A): layered ε + in-step Q candidate sampling (train only; eval stays greedy).",
+)
+parser.add_argument(
     "--prioritized_replay",
     action="store_true",
     default=False,
@@ -143,7 +149,7 @@ parser.add_argument(
     "--algo_variant",
     type=str,
     default=None,
-    help="Journal tag: E1|E2|E3|E3-no-oru|E4|E4-no-oru|E*.5|… (asserted knobs in HierarchicalTPA).",
+    help="Journal tag: E1|E2|E3|E3-no-oru|E4|E4-no-oru|E5|E6|E*.5|… (asserted knobs in HierarchicalTPA).",
 )
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument(
@@ -361,6 +367,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         algo_cfg["params"]["config"]["oru"] = True
     if getattr(args_cli, "teacher_explore", False):
         algo_cfg["params"]["config"]["teacher_explore"] = True
+    if getattr(args_cli, "autoregressive", False):
+        algo_cfg["params"]["config"]["autoregressive"] = True
     if getattr(args_cli, "prioritized_replay", False):
         algo_cfg["params"]["config"]["prioritized_replay"] = True
     if getattr(args_cli, "dueling_dqn", False):

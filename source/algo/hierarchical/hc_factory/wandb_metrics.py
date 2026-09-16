@@ -165,6 +165,8 @@ def define_shared_metrics(
         "18_teacher_explore_ratio",
         "19_explore_teacher_frac",
         "20_explore_random_frac",
+        "21_autoregressive",
+        "22_ar_reselect_rate",
     ):
         wandb.define_metric(f"MetricTrain/{key}", step_metric="Train/step")
     wandb.define_metric("MetricTrain/algo_variant", step_metric="Train/step")
@@ -430,6 +432,8 @@ def train_metrics(
     teacher_explore: bool | None = None,
     teacher_explore_ratio: float | None = None,
     teacher_explore_counts: dict[str, int] | None = None,
+    autoregressive: bool | None = None,
+    ar_reselect_rate: float | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {}
     if epsilon is not None:
@@ -470,6 +474,10 @@ def train_metrics(
         if n_explore > 0:
             payload["MetricTrain/19_explore_teacher_frac"] = float(n_teacher) / float(n_explore)
             payload["MetricTrain/20_explore_random_frac"] = float(n_random) / float(n_explore)
+    if autoregressive is not None:
+        payload["MetricTrain/21_autoregressive"] = float(bool(autoregressive))
+    if ar_reselect_rate is not None:
+        payload["MetricTrain/22_ar_reselect_rate"] = float(ar_reselect_rate)
     return payload
 
 

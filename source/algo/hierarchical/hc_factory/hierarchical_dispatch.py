@@ -150,16 +150,34 @@ def build_hier_rl_action(
     max_parallel_cd_dispatch: int = 1,
     pre: dict | None = None,
 ) -> dict:
-    """RL variant: A/B/C/D agents with same info-pool CD loop (Phase 1: K=1 typical)."""
+    """RL variant: A/B/C/D agents with same info-pool CD loop (Phase 1: K=1 typical).
+
+    When ``agents.autoregressive`` is True and ``epsilon`` is in (0,1), apply
+    per-layer ``ar_eps_scale_*`` (E5/E6). Forced modes ε∈{0,1} (teacher_explore
+    exploit/teacher/random) keep a single epsilon for all layers.
+    """
     if pre is None:
         pre = agents.obs_encoder.preprocess(env_state_action_dict)
+
+    base_eps = float(epsilon)
+
+    def _layer_eps(name: str) -> float:
+        if not bool(getattr(agents, "autoregressive", False)):
+            return base_eps
+        if base_eps <= 0.0 or base_eps >= 1.0:
+            return base_eps
+        scales = getattr(agents, "ar_eps_scale", None) or {}
+        from .autoregressive import layered_epsilon
+
+        return layered_epsilon(base_eps, float(scales.get(name, 1.0)))
+
     pool = TpaInfoPool(env_state_action_dict, cuda_device)
-    product_sequencing = agents.agent_A.act(env_state_action_dict, epsilon, pre=pre)
+    product_sequencing = agents.agent_A.act(env_state_action_dict, _layer_eps("A"), pre=pre)
     pool.apply_product_sequencing(product_sequencing)
 
     eligible = pool.compute_b_eligible_mask()
     slot_order = agents.agent_B.rank_slots(
-        env_state_action_dict, eligible, epsilon, product_sequencing, pre=pre
+        env_state_action_dict, eligible, _layer_eps("B"), product_sequencing, pre=pre
     )
     b_dim = eligible.shape[0]
     human_dim = env_state_action_dict["agent_action_mask"]["human"]["self_availability_mask"].shape[0]
@@ -182,14 +200,14 @@ def build_hier_rl_action(
         )
         slot_one_hot = _slot_to_one_hot(slot_index, b_dim, cuda_device)
         process_task_planning = agents.agent_C.act_with_mask(
-            env_state_action_dict, slot_one_hot, c_mask_for_act, epsilon, pre=pre
+            env_state_action_dict, slot_one_hot, c_mask_for_act, _layer_eps("C"), pre=pre
         )
         if process_task_planning[0] == 1 and c_mask.sum() <= 1:
             continue
 
         d_masks = pool.get_d_masks()
         human_robot_allocation = agents.agent_D.act_with_masks(
-            env_state_action_dict, process_task_planning, d_masks, epsilon, pre=pre
+            env_state_action_dict, process_task_planning, d_masks, _layer_eps("D"), pre=pre
         )
         if process_task_planning[0] != 1 and human_robot_allocation["human"].sum() == 0:
             continue

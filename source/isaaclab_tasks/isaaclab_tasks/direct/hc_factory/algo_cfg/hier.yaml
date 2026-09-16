@@ -122,7 +122,16 @@ params:
     teacher_explore_ratio_start: 1.0
     teacher_explore_ratio_end: 0.0
     teacher_explore_decay_env_steps: 300000
-    # Journal algo_variant tags (asserted in HierarchicalTPA): E1…E4, E3-no-oru, E4-no-oru, …
+    # E5/E6 (+A): layered ε + in-step candidate sampling (online act only; eval=greedy).
+    # Ablation *-no-ar: autoregressive=False. SS/TF deferred (no replay rewrite).
+    autoregressive: False
+    ar_n_candidates: 4
+    ar_softmax_temperature: 1.0
+    ar_eps_scale_A: 0.5
+    ar_eps_scale_B: 0.5   # unified with b_score ×0.5 when AR on (no double scale)
+    ar_eps_scale_C: 1.0
+    ar_eps_scale_D: 1.0
+    # Journal algo_variant tags (asserted in HierarchicalTPA): E1…E6, E3-no-oru, E4-no-oru, …
     stagnation_l1: 400
     stagnation_l2: 600
     stagnation_l3: 800

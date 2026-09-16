@@ -118,7 +118,30 @@ class MaskedDQNAgent:
             if self.noisy and self.q_net.training:
                 self.q_net.reset_noise()
             q_values = self.q_net(obs.unsqueeze(0)).squeeze(0)
-        return masked_select_action(q_values, mask, act_eps)
+        if mask.sum() == 0:
+            return None
+        if random.random() < act_eps:
+            from .hier_utils import masked_random_action
+
+            return masked_random_action(mask)
+        # Greedy path: optional E5/E6 in-step candidate sampling (train only).
+        if (
+            bool(getattr(self, "autoregressive", False))
+            and bool(getattr(self, "ar_sample_at_act", True))
+            and int(getattr(self, "ar_n_candidates", 1) or 1) > 1
+        ):
+            from .autoregressive import candidate_select_action
+
+            return candidate_select_action(
+                q_values,
+                mask,
+                n_candidates=int(self.ar_n_candidates),
+                temperature=float(getattr(self, "ar_softmax_temperature", 1.0)),
+                stats=getattr(self, "ar_stats", None),
+            )
+        from .hier_utils import masked_argmax
+
+        return masked_argmax(q_values, mask)
 
     def act_tensor(self, obs: torch.Tensor, mask: torch.Tensor, epsilon: float) -> torch.Tensor:
         action_idx = self.select_action(obs, mask, epsilon)
@@ -434,7 +457,10 @@ class RLProductSelectionAgent:
         self.dqn: MaskedDQNAgent | None = None
         self.dqn_kwargs = dqn_kwargs
         # T1RH: when True, use lower ε on B ranking so Q-scores dominate earlier.
+        # When autoregressive=True, layered ar_eps_scale_B is applied by the caller
+        # instead of this extra ×0.5 (protocol: unify with E5/E6 scales).
         self.b_score_rl = False
+        self.autoregressive = False
         from .agent_B_product_priority import ProductPriorityAgent
 
         self._priority = ProductPriorityAgent(device)
@@ -456,7 +482,9 @@ class RLProductSelectionAgent:
             return self._priority.rank_slots(eligible_mask)
 
         self._ensure_dqn(env_state_action_dict, product_sequencing_action)
-        rank_eps = float(epsilon) * (0.5 if self.b_score_rl else 1.0)
+        rank_eps = float(epsilon)
+        if self.b_score_rl and not self.autoregressive:
+            rank_eps *= 0.5
         if self.dqn is not None and getattr(self.dqn, "noisy", False):
             rank_eps = 0.0
         if random.random() < rank_eps:
@@ -478,7 +506,40 @@ class RLProductSelectionAgent:
 
         staging = int(eligible_mask.shape[0] - 1)
         producing = [int(i.item()) for i in indices if int(i.item()) != staging]
-        producing.sort(key=lambda slot: float(q[slot].item()), reverse=True)
+        # AR candidate sampling on B scores: subsample producing slots then sort by Q.
+        if (
+            self.autoregressive
+            and bool(getattr(self.dqn, "ar_sample_at_act", True))
+            and len(producing) > 1
+            and int(getattr(self.dqn, "ar_n_candidates", 1) or 1) > 1
+        ):
+            from .autoregressive import candidate_select_action
+
+            # Build a temp mask over B dim for producing(+staging later).
+            prod_mask = torch.zeros_like(mask)
+            for s in producing:
+                prod_mask[s] = 1
+            stats = getattr(self.dqn, "ar_stats", None)
+            # Repeatedly peel top candidates to form a partial order, then append rest by Q.
+            remaining = set(producing)
+            ordered_prod: list[int] = []
+            n_cand = min(int(self.dqn.ar_n_candidates), len(producing))
+            # One candidate-select for the head of the ranking (primary B decision).
+            head = candidate_select_action(
+                q,
+                prod_mask,
+                n_candidates=n_cand,
+                temperature=float(getattr(self.dqn, "ar_softmax_temperature", 1.0)),
+                stats=stats,
+            )
+            if head is not None and head in remaining:
+                ordered_prod.append(int(head))
+                remaining.discard(int(head))
+            rest = sorted(remaining, key=lambda slot: float(q[slot].item()), reverse=True)
+            ordered_prod.extend(rest)
+            producing = ordered_prod
+        else:
+            producing.sort(key=lambda slot: float(q[slot].item()), reverse=True)
         ordered = producing
         if eligible_mask[staging].item() == 1:
             ordered.append(staging)

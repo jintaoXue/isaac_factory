@@ -41,6 +41,7 @@ from .teacher_explore import (
     choose_explore_policy,
     teacher_explore_ratio,
 )
+from .autoregressive import ar_reselect_rate
 from .wandb_metrics import (
     HumanFatigueMonitor,
     LocalMetricsWriter,
@@ -140,22 +141,23 @@ class HierarchicalTPA:
         A product sequencing → B product selection → C task planning → D allocation
     """
 
-    # Journal E* expected effective knobs: (H, b_score, A, B, teacher_explore, oru).
+    # Journal E* expected: (H, b_score, A, B, teacher_explore, oru, autoregressive).
     _VARIANT_KNOB_EXPECT = {
-        "E1": (False, False, 1.0, 1.0, False, False),
-        "E1.5": (True, False, 2.0, 1.5, False, False),
-        "E2": (False, False, 1.0, 1.0, False, True),
-        "E2.5": (True, False, 2.0, 1.5, False, True),
-        "E3": (False, False, 1.0, 1.0, True, True),
-        "E3-no-oru": (False, False, 1.0, 1.0, True, False),
-        "E3.5": (True, False, 2.0, 1.5, True, True),
-        "E4": (True, True, 2.0, 1.5, True, True),
-        "E4-no-oru": (True, True, 2.0, 1.5, True, False),
-        # Planned (assert when entry lands):
-        "E5": (False, False, 1.0, 1.0, True, True),
-        "E6": (True, True, 2.0, 1.5, True, True),
-        "E6-no-oru": (True, True, 2.0, 1.5, True, False),
-        "E6-no-guide": (True, True, 2.0, 1.5, False, True),
+        "E1": (False, False, 1.0, 1.0, False, False, False),
+        "E1.5": (True, False, 2.0, 1.5, False, False, False),
+        "E2": (False, False, 1.0, 1.0, False, True, False),
+        "E2.5": (True, False, 2.0, 1.5, False, True, False),
+        "E3": (False, False, 1.0, 1.0, True, True, False),
+        "E3-no-oru": (False, False, 1.0, 1.0, True, False, False),
+        "E3.5": (True, False, 2.0, 1.5, True, True, False),
+        "E4": (True, True, 2.0, 1.5, True, True, False),
+        "E4-no-oru": (True, True, 2.0, 1.5, True, False, False),
+        "E5": (False, False, 1.0, 1.0, True, True, True),
+        "E6": (True, True, 2.0, 1.5, True, True, True),
+        "E6-no-oru": (True, True, 2.0, 1.5, True, False, True),
+        "E6-no-guide": (True, True, 2.0, 1.5, False, True, True),
+        "E6-no-ar": (True, True, 2.0, 1.5, True, True, False),
+        "E6-no-hier": (False, False, 1.0, 1.0, True, True, True),  # ≡ E5
     }
 
     @staticmethod
@@ -189,11 +191,12 @@ class HierarchicalTPA:
             float(self.credit_scale_B),
             self.teacher_explore,
             self._oru_enabled,
+            self.autoregressive,
         )
         if got != expect:
             raise RuntimeError(
                 f"[Hier] knob mismatch for algo_variant={v}: "
-                f"got H/bscore/A/B/te/oru={got} expected {expect}. "
+                f"got H/bscore/A/B/te/oru/ar={got} expected {expect}. "
                 f"Check journal script, YAML, and train.py flags."
             )
 
@@ -275,6 +278,14 @@ class HierarchicalTPA:
         self.credit_scale_CD = float(config.get("credit_scale_CD", 1.0))
         # b_score is independent of hierarchical_credit (default False).
         self.b_score_rl = bool(config.get("b_score_rl", False))
+        # E5/E6 (+A): layered ε + in-step candidate sampling (online act only).
+        from .autoregressive import default_ar_eps_scales
+
+        self.autoregressive = bool(config.get("autoregressive", False))
+        self.ar_n_candidates = int(config.get("ar_n_candidates", 4) or 4)
+        self.ar_softmax_temperature = float(config.get("ar_softmax_temperature", 1.0) or 1.0)
+        self.ar_eps_scale = default_ar_eps_scales(config)
+        self._ar_stats = {"decisions": 0, "reselect": 0}
         # Explore / teacher dumps the whole online buffer as offline replay — keep enough capacity.
         if bool(config.get("explore") or config.get("explore_catalog") or config.get("teacher_collect")) and bool(
             config.get("explore_save_offline_replay", True)
@@ -320,8 +331,10 @@ class HierarchicalTPA:
         self.agent_A = RLProductSequencingAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs_A)
         self.agent_B = RLProductSelectionAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
         self.agent_B.b_score_rl = self.b_score_rl
+        self.agent_B.autoregressive = self.autoregressive
         self.agent_C = RLProcessTaskPlanningAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
         self.agent_D = RLHumanRobotAllocatorAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
+        self._apply_ar_to_agents(sample_at_act=True)
 
         self.oru: ORUController | None = None
         self._oru_enabled = bool(config.get("oru", False)) and not bool(
@@ -345,7 +358,14 @@ class HierarchicalTPA:
             f"hier_credit={self.hierarchical_credit} "
             f"(A={self.credit_scale_A} B={self.credit_scale_B} CD={self.credit_scale_CD}) "
             f"b_score_rl={self.b_score_rl} teacher_explore={self.teacher_explore} "
-            f"oru={self._oru_enabled}"
+            f"oru={self._oru_enabled} ar={self.autoregressive}"
+            + (
+                f"(cand={self.ar_n_candidates} τ={self.ar_softmax_temperature:g} "
+                f"eps_scale=A{self.ar_eps_scale['A']:g}/B{self.ar_eps_scale['B']:g}/"
+                f"C{self.ar_eps_scale['C']:g}/D{self.ar_eps_scale['D']:g})"
+                if self.autoregressive
+                else ""
+            )
         )
         self._assert_experiment_knobs(config)
 
@@ -440,6 +460,42 @@ class HierarchicalTPA:
         self.peak_ongoing_robot = max(self.peak_ongoing_robot, n_robot)
         return n_producing, n_ongoing, n_human, n_robot
 
+    def _stamp_ar_dqn(self, dqn, *, sample_at_act: bool) -> None:
+        if dqn is None:
+            return
+        dqn.autoregressive = bool(self.autoregressive)
+        dqn.ar_n_candidates = int(self.ar_n_candidates)
+        dqn.ar_softmax_temperature = float(self.ar_softmax_temperature)
+        dqn.ar_sample_at_act = bool(self.autoregressive) and bool(sample_at_act)
+        dqn.ar_stats = self._ar_stats
+
+    def _apply_ar_to_agents(self, *, sample_at_act: bool = True) -> None:
+        """Push AR flags onto live DQN heads (lazy-created heads get stamped each act)."""
+        self.agent_B.autoregressive = bool(self.autoregressive)
+        for agent in (self.agent_A, self.agent_B, self.agent_C):
+            self._stamp_ar_dqn(getattr(agent, "dqn", None), sample_at_act=sample_at_act)
+        d_agent = self.agent_D
+        self._stamp_ar_dqn(getattr(d_agent, "human_dqn", None), sample_at_act=sample_at_act)
+        self._stamp_ar_dqn(getattr(d_agent, "robot_dqn", None), sample_at_act=sample_at_act)
+
+    def _disable_ar_on_policy(self, policy) -> None:
+        """Frozen teacher must stay pure greedy (no candidate sampling)."""
+        if policy is None:
+            return
+        for agent_name in ("agent_A", "agent_B", "agent_C"):
+            agent = getattr(policy, agent_name, None)
+            dqn = getattr(agent, "dqn", None) if agent is not None else None
+            if dqn is not None:
+                dqn.autoregressive = False
+                dqn.ar_sample_at_act = False
+        d_agent = getattr(policy, "agent_D", None)
+        if d_agent is not None:
+            for attr in ("human_dqn", "robot_dqn"):
+                dqn = getattr(d_agent, attr, None)
+                if dqn is not None:
+                    dqn.autoregressive = False
+                    dqn.ar_sample_at_act = False
+
     def get_epsilon(self) -> float:
         if getattr(self, "horizon", None) is not None and self.horizon.explore:
             return 1.0
@@ -509,6 +565,8 @@ class HierarchicalTPA:
         )
 
         assert self.vec_env is not None, "vec_env required for test()"
+        # Protocol eval: pure greedy — disable AR candidate sampling.
+        self._apply_ar_to_agents(sample_at_act=False)
         seeds = list(self.config.get("test_seeds") or [int(self.config.get("seed", 42))])
         episodes_per_seed = int(self.config.get("test_times", 1))
         eval_epsilon = float(self.config.get("test_epsilon", 0.0))
@@ -601,6 +659,7 @@ class HierarchicalTPA:
         if self.agent_A.dqn is None:
             return
         self._teacher_policy = build_frozen_teacher(self)
+        self._disable_ar_on_policy(self._teacher_policy)
         print(
             f"[Hier] teacher_explore: frozen T0 copy ready; "
             f"ratio {self.teacher_explore_ratio_start:g}→{self.teacher_explore_ratio_end:g} "
@@ -612,6 +671,7 @@ class HierarchicalTPA:
     ) -> tuple[dict, dict]:
         from .hierarchical_dispatch import build_hier_rl_action
 
+        self._apply_ar_to_agents(sample_at_act=True)
         agents = self
         act_eps = float(epsilon)
         mode = "exploit"
@@ -1436,6 +1496,10 @@ class HierarchicalTPA:
                         ),
                         teacher_explore_counts=(
                             dict(self._teacher_explore_counts) if self.teacher_explore else None
+                        ),
+                        autoregressive=self.autoregressive,
+                        ar_reselect_rate=(
+                            ar_reselect_rate(self._ar_stats) if self.autoregressive else None
                         ),
                     )
                 )
