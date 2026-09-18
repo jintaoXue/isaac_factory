@@ -153,6 +153,7 @@ class HierarchicalTPA:
         "E4": (True, True, 2.0, 1.5, True, True, False),
         "E4-no-oru": (True, True, 2.0, 1.5, True, False, False),
         "E5": (False, False, 1.0, 1.0, True, True, True),
+        "E5-no-oru": (False, False, 1.0, 1.0, True, False, True),
         "E6": (True, True, 2.0, 1.5, True, True, True),
         "E6-no-oru": (True, True, 2.0, 1.5, True, False, True),
         "E6-no-guide": (True, True, 2.0, 1.5, False, True, True),

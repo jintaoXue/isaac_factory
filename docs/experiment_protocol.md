@@ -2,8 +2,8 @@
 
 > **现行实验协议**（原 `t0_finetuning_research_plan.md`）。旧版 T0–T4 / +RHC 看板见 `docs/experiment_protocol_old.md`。  
 > 入口：`./run_2026_journal_experiments.sh <实验名> [cuda:0] [--dry-run]`。  
-> **已接入口：** E0 / E1 / E1.5 / E2 / E2.5 / E3 / E3-no-oru / E3.5 / E4 / E4-no-oru / E5 / E6 / TEACHER。  
-> **仅命名 / stub：** `E6-no-*` / `E6-plus-*` / `E2-random-data`（调用会提示未实现）。
+> **已接入口：** E0 / E1 / E1.5 / E2 / E2.5 / E3 / E3-no-oru / E3.5 / E4 / E4-no-oru / E5 / E5-no-oru / E6 / E6-no-oru / TEACHER。  
+> **仅命名 / stub：** `E6-no-guide` / `E6-no-hier` / `E6-no-ar` / `E6-plus-*` / `E2-random-data`（调用会提示未实现）。
 
 **目标：固定 N=10，从同一个 T0 checkpoint 出发，在有限新增预算下改善 makespan 与成功率。**
 
@@ -105,8 +105,10 @@ E3 = E2 全套 + `--teacher_explore`：ε 探索分支上，以衰减的教师�
 **E3-no-oru = E1 + 教师探索，不开 ORU**（不需要教师 offline 库）。用于回答：教师探索收益是否依赖 ORU。  
 wandb：`Hier4TPA-E3-no-oru-N10-S42`。对照：`E3`（有 ORU）/ `E1`（两者都无）。
 
-同族接口（已接）：`**E4-no-oru**` = E4 去掉 ORU（保留教师探索 + 层级学习）。  
-规划 stub：`E6-no-oru`（完整方法上去掉 ORU）。
+同族接口（已接）：
+- **`E4-no-oru`** = E4 去掉 ORU（保留教师探索 + 层级学习）
+- **`E5-no-oru`** = E5 去掉 ORU（保留教师探索 + AR）
+- **`E6-no-oru`** = E6 去掉 ORU（完整方法下去掉教师数据）
 
 ## E1.5 / E2.5 / E3.5（信用缩放消融支线）
 
@@ -226,8 +228,9 @@ E0 只评测；E1–E6 分别从同一个 T0 checkpoint 初始化，教师固定
 | -------------------- | ------ | ------------------ | ------------------------- |
 | `**E3-no-oru**`      | **已接** | E3 去掉 ORU（保留教师探索）  | vs E3：ORU 贡献；vs E1：教师探索贡献 |
 | `**E4-no-oru**`      | **已接** | E4 去掉 ORU          | vs E4：完整层级设定下 ORU 贡献      |
+| `**E5-no-oru**`      | **已接** | E5 去掉 ORU（保留 AR＋教师探索） | vs E5：AR 设定下 ORU 贡献 |
+| `**E6-no-oru**`      | **已接** | E6 去掉 ORU          | vs E6：完整方法下 ORU           |
 | `E2-random-data`     | stub   | E2 的教师库换为随机库       | vs E2：教师数据质量              |
-| `E6-no-oru`          | stub   | E6 去掉 ORU          | vs E6：完整方法下 ORU           |
 | `E6-no-guide`        | stub   | E6 去掉教师探索          | vs E6：教师探索贡献              |
 | `E6-no-hier`         | stub   | E6 去掉层级学习，等同 E5    | 复用 E5，不重复训练               |
 | `E6-no-ar`           | stub   | E6 去掉自回归，等同 E4     | 复用 E4，不重复训练               |
