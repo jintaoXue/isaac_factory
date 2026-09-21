@@ -36,28 +36,21 @@ ls "$HC_LOAD_DIR/nn/state_encoder_step_${HC_LOAD_STEP}.pth"
 路径前缀：`/home/sci/work/isaac_factory_tpa/logs/rl_games/HcFactory/`  
 （E2.5 短跑 `2mq6zow7` 不参与横比。）
 
-### 5090 命令（N=10，seeds 43–52）
+### 5090 一条龙（推荐）
+
+默认串跑 **E1 → E2 → E2.5 → E6**（训练最优 step）；**跳过 E0**（W&B 已有完整 eval `df55hqiz`）。缺 ckpt 会直接报错退出。
 
 ```bash
 cd ~/work/isaac_factory_tpa && git pull
-BASE=logs/rl_games/HcFactory
-export HC_TEST_SEEDS=43,44,45,46,47,48,49,50,51,52 HC_TEST_TIMES=1
-
-# E0（入口已写死 1290000）
-./run_2026_journal_experiments.sh E0 cuda:0
-
-HC_LOAD_DIR=$BASE/hier_2026-09-13_15-20-57 HC_LOAD_STEP=1080000 HC_EVAL_VARIANT=E1 \
-  ./run_2026_journal_experiments.sh hier-eval-n10 cuda:0
-
-HC_LOAD_DIR=$BASE/hier_2026-09-15_18-39-11 HC_LOAD_STEP=145000 HC_EVAL_VARIANT=E2 \
-  ./run_2026_journal_experiments.sh hier-eval-n10 cuda:0
-
-HC_LOAD_DIR=$BASE/hier_2026-09-11_19-46-22 HC_LOAD_STEP=850000 HC_EVAL_VARIANT=E2.5 \
-  ./run_2026_journal_experiments.sh hier-eval-n10 cuda:0
-
-HC_LOAD_DIR=$BASE/hier_2026-09-17_10-05-15 HC_LOAD_STEP=415000 HC_EVAL_VARIANT=E6 \
-  ./run_2026_journal_experiments.sh hier-eval-n10 cuda:0
+# 可选预览
+./run_2026_journal_experiments.sh eval-5090 cuda:0 --dry-run
+# 正式
+./run_2026_journal_experiments.sh eval-5090 cuda:0
+# 若也要重跑 E0：
+# HC_EVAL_INCLUDE_E0=1 ./run_2026_journal_experiments.sh eval-5090 cuda:0
 ```
+
+wandb 名：`Hier4TPA-{E1|E2|E2.5|E6}-N10-S42-step{STEP}-eval`，项目 `HcFactory_TPA_Eval`。
 
 ## 4090 工位（拷权重或本机评）
 

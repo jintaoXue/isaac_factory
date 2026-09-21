@@ -10,6 +10,7 @@ set -euo pipefail
 #   HC_LOAD_DIR=... ./run_2026_journal_experiments.sh eval-T1 [cuda:0]
 #   ./run_2026_journal_experiments.sh baselines [cuda:0]
 #   HC_LOAD_DIR=... HC_LOAD_STEP=... ./run_2026_journal_experiments.sh hier-eval [cuda:0]
+#   ./run_2026_journal_experiments.sh eval-5090 [cuda:0] [--dry-run]
 # Stub: E6-no-guide|E6-no-hier|E6-no-ar|E2-random-data|…
 
 MODE="${1:-}"
@@ -63,6 +64,9 @@ usage() {
           需 HC_LOAD_DIR；可选 HC_LOAD_STEP / HC_EVAL_STEPS
   hier-eval / hier-eval-n16 / hier-eval-n10
           通用评测（HC_EVAL_VARIANT 默认 eval）
+  eval-5090 [cuda:N] [--dry-run]
+          一条龙评测 5090 本地权重：E1→E2→E2.5→E6（训练最优 step；默认跳过已完成的 E0）
+          见 docs/eval_checkpoint_selection.md；HC_EVAL_INCLUDE_E0=1 可加跑 E0
 
 基线:
   baselines | rule-n10 | rule-n16 | random-n10 | random-n16 | random | rule
@@ -1442,6 +1446,70 @@ run_journal_stub() {
     return 1
 }
 
+# 5090 panel: train-best ckpts that live under isaac_factory_tpa (see docs/eval_checkpoint_selection.md).
+# Default skips E0 (already finished on W&B df55hqiz). Set HC_EVAL_INCLUDE_E0=1 to include.
+run_eval_5090_panel() {
+    local repo_root dry_run="${3:-}" base enc
+    repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
+    cd "${repo_root}"
+    if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
+        echo "错误: 设备需为 cuda:N 或 cpu" >&2
+        return 1
+    fi
+    if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
+        echo "用法: $0 eval-5090 [cuda:N] [--dry-run]" >&2
+        return 1
+    fi
+
+    base="${repo_root}/logs/rl_games/HcFactory"
+    # variant|rel_dir|best_step
+    local -a jobs=(
+        "E1|hier_2026-09-13_15-20-57|1080000"
+        "E2|hier_2026-09-15_18-39-11|145000"
+        "E2.5|hier_2026-09-11_19-46-22|850000"
+        "E6|hier_2026-09-17_10-05-15|415000"
+    )
+
+    echo "[eval-5090] device=${DEVICE}; seeds=${HC_TEST_SEEDS}; times=${HC_TEST_TIMES}; base=${base}"
+    echo "[eval-5090] ckpt rule: train-best FO makespan → nearest save_interval (docs/eval_checkpoint_selection.md)"
+
+    if [[ "${HC_EVAL_INCLUDE_E0:-0}" == "1" ]]; then
+        echo "[eval-5090] --- E0 (include) ---"
+        if [[ "${dry_run}" == --dry-run ]]; then
+            echo "[eval-5090] dry-run: would run E0"
+        else
+            run_e0_eval "${MODE}" "${DEVICE}"
+        fi
+    else
+        echo "[eval-5090] skip E0 (already have W&B eval); set HC_EVAL_INCLUDE_E0=1 to force"
+    fi
+
+    local spec variant rel step load_dir
+    for spec in "${jobs[@]}"; do
+        IFS='|' read -r variant rel step <<<"${spec}"
+        load_dir="${base}/${rel}"
+        enc="${load_dir}/nn/state_encoder_step_${step}.pth"
+        echo "[eval-5090] --- ${variant} step=${step} dir=${rel} ---"
+        if [[ "${dry_run}" == --dry-run ]]; then
+            echo "[eval-5090] dry-run: HC_LOAD_DIR=${load_dir} HC_LOAD_STEP=${step} HC_EVAL_VARIANT=${variant}"
+            echo "[eval-5090] dry-run: would require ${enc}"
+            continue
+        fi
+        if [[ ! -f "${enc}" ]]; then
+            echo "错误: 缺少训练最优 ckpt: ${enc}" >&2
+            echo "提示: 可 ls ${load_dir}/nn/state_encoder_step_*.pth 后改 docs 表 / 本函数 step" >&2
+            return 1
+        fi
+        export HC_LOAD_DIR="${load_dir}"
+        export HC_LOAD_STEP="${step}"
+        export HC_EVAL_VARIANT="${variant}"
+        export HC_WANDB_NAME="Hier4TPA-${variant}-N10-S42-step${step}-eval"
+        unset EVAL_STEPS
+        run_hier_eval_for_n 10
+    done
+    echo "[eval-5090] done"
+}
+
 case "${MODE}" in
     E0) run_e0_eval "$@" ;;
     E1) run_e1_train "$@" ;;
@@ -1474,6 +1542,7 @@ case "${MODE}" in
     eval-T1) run_eval_variant T1 ;;
     eval-T1R) run_eval_variant T1R ;;
     eval-T1RH) run_eval_variant T1RH ;;
+    eval-5090|eval_5090) run_eval_5090_panel "$@" ;;
     hier-eval) run_hier_eval ;;
     hier-eval-n16) run_hier_eval_for_n 16 ;;
     hier-eval-n10) run_hier_eval_for_n 10 ;;
