@@ -83,7 +83,7 @@ run_hier_eval_for_n() {
         exit 1
     fi
     export HC_TRAIN_N_PRODUCTS="${n_products}"
-    if [ -z "${EVAL_STEPS}" ]; then
+    if [ -z "${EVAL_STEPS:-}" ]; then
         echo "[journal] hier eval N=${n_products} step=latest, variant=${HC_EVAL_VARIANT:-eval}"
         ./batch_train.sh 29 "${DEVICE}"
         return
@@ -1504,7 +1504,7 @@ run_eval_5090_panel() {
         export HC_LOAD_STEP="${step}"
         export HC_EVAL_VARIANT="${variant}"
         export HC_WANDB_NAME="Hier4TPA-${variant}-N10-S42-step${step}-eval"
-        unset EVAL_STEPS
+        EVAL_STEPS=""
         run_hier_eval_for_n 10
     done
     echo "[eval-5090] done"
