@@ -270,6 +270,7 @@ E0 只评测；E1–E6 分别从同一个 T0 checkpoint 初始化，教师固定
 - **主结果**：成功率、成功订单 makespan、含失败惩罚的整体指标；效率报告达到预定性能目标的新增步数与实际时间，未达到则明确标注。
 - **机制证据**：教师探索看早期退化/失败，层级学习看各层样本与 TD 误差，自回归增强看候选改选率及最终调度收益；ORU 消融看 `E3` vs `E3-no-oru`；不只报告总 reward。
 - **确认实验**：主跑训练 S42；额外训练种子作方差时再开 S；**评测固定 43–52×1**；配对差值与置信区间；验证集选配置，测试集不参与选择。单个 T0 起点结论限于该起点，预训练和采库成本单列。
+- **评测 ckpt**：E* 学生权重按**训练曲线最优**选点（非 latest）；规则与逐步表见 [`docs/eval_checkpoint_selection.md`](eval_checkpoint_selection.md)。教师 / E0 仍固定 step **1290000**。
 
 本文为现行 E0–E6 方案；旧协议看板已归档为 `docs/experiment_protocol_old.md`。  
 E0 加载旧 T0 权重时，loader 会自动把 pre-Rainbow 的 `net.0/2/4` 映射到当前 `feature`+`net`（无需重训）。
