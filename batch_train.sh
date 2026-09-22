@@ -685,6 +685,7 @@ run_test_29() {
     # Hier eval: load HC_LOAD_DIR nn/, no curriculum.
     # Default: split seeds into chunks (HC_EVAL_SEED_CHUNK=5) so each chunk is a
     # fresh process — long single-process evals were crashing after 9/10 seeds.
+    # All chunks share one W&B run id + name (resume), so the UI shows a single record.
     if [ -z "${HC_LOAD_DIR}" ]; then
         echo "错误: run_test_29 需要 HC_LOAD_DIR 指向训练实验目录（含 nn/）"
         echo "示例：HC_LOAD_DIR=logs/rl_games/HcFactory/hier_2026-08-18_22-00-00 ./batch_train.sh 29 cuda:0"
@@ -693,7 +694,7 @@ run_test_29() {
     _eval_n="${HC_TRAIN_N_PRODUCTS}"
     _eval_t=$([ "${_eval_n}" = "10" ] && echo "${HC_T_MAX_N10}" || echo "${HC_T_MAX_N16}")
     _eval_tag="${HC_EVAL_VARIANT:-eval}"
-    _eval_wandb_base="${HC_WANDB_NAME:-hier_eval_${_eval_tag}_N${_eval_n}_step${HC_LOAD_STEP:-latest}_T${_eval_t}}"
+    _eval_wandb_name="${HC_WANDB_NAME:-hier_eval_${_eval_tag}_N${_eval_n}_step${HC_LOAD_STEP:-latest}_T${_eval_t}}"
     export HC_EVAL_SEED_CHUNK="${HC_EVAL_SEED_CHUNK:-5}"
 
     local -a chunks=()
@@ -703,22 +704,55 @@ run_test_29() {
         exit 1
     fi
 
-    echo "运行 29: hier test (${_eval_tag}) N=${_eval_n} T_max=${_eval_t} load=${HC_LOAD_DIR}"
-    echo "  seeds=${HC_TEST_SEEDS} chunk=${HC_EVAL_SEED_CHUNK} → ${#chunks[@]} process(es); wandb_base=${_eval_wandb_base}"
+    local _nseeds
+    _nseeds=$(awk -F',' '{print NF}' <<<"${HC_TEST_SEEDS}")
+    local _total_eps=$((_nseeds * HC_TEST_TIMES))
+    export HC_EVAL_ALL_SEEDS="${HC_TEST_SEEDS}"
+    export HC_EVAL_TOTAL_EPISODES="${_total_eps}"
 
-    local chunk first last _eval_wandb_name expected_eps done_eps=0
+    # Stable eval output dir so chunk-2 can append episodes.jsonl into one record.
+    local _safe_name
+    _safe_name=$(echo "${_eval_wandb_name}" | tr '/ :' '___')
+    export HC_EVAL_OUTPUT_DIR="${HC_EVAL_OUTPUT_DIR:-${HC_LOAD_DIR}/eval_panel_${_safe_name}}"
+    mkdir -p "${HC_EVAL_OUTPUT_DIR}"
+
+    # One W&B run id shared by every chunk process.
+    if [[ -z "${HC_WANDB_RUN_ID:-}" ]]; then
+        HC_WANDB_RUN_ID="$(
+            python -c 'import wandb; print(wandb.util.generate_id())' 2>/dev/null \
+            || python -c 'import uuid; print(uuid.uuid4().hex[:8])'
+        )"
+        export HC_WANDB_RUN_ID
+    fi
+    export WANDB_RUN_ID="${HC_WANDB_RUN_ID}"
+    export HC_WANDB_RESUME="${HC_WANDB_RESUME:-allow}"
+    export WANDB_RESUME="${HC_WANDB_RESUME}"
+
+    echo "运行 29: hier test (${_eval_tag}) N=${_eval_n} T_max=${_eval_t} load=${HC_LOAD_DIR}"
+    echo "  seeds=${HC_TEST_SEEDS} chunk=${HC_EVAL_SEED_CHUNK} → ${#chunks[@]} process(es)"
+    echo "  wandb_name=${_eval_wandb_name} run_id=${HC_WANDB_RUN_ID} out=${HC_EVAL_OUTPUT_DIR}"
+
+    local chunk expected_eps done_eps=0
     local -a seed_arr=()
+    # Fresh panel: clear prior jsonl unless caller set HC_EVAL_APPEND=1 already.
+    if [[ "${HC_EVAL_KEEP_PRIOR:-0}" != "1" ]]; then
+        rm -f "${HC_EVAL_OUTPUT_DIR}/episodes.jsonl" \
+              "${HC_EVAL_OUTPUT_DIR}/eval_results.json" \
+              "${HC_EVAL_OUTPUT_DIR}/eval_summary.json" \
+              "${HC_EVAL_OUTPUT_DIR}/eval_summary_partial.json"
+    fi
+
+    local chunk_i=0
     for chunk in "${chunks[@]}"; do
         IFS=',' read -ra seed_arr <<<"${chunk}"
-        first="${seed_arr[0]}"
-        last="${seed_arr[-1]}"
         expected_eps=$(( ${#seed_arr[@]} * HC_TEST_TIMES ))
-        if [[ "${#chunks[@]}" -eq 1 ]]; then
-            _eval_wandb_name="${_eval_wandb_base}"
+        export HC_EVAL_EPISODE_OFFSET="${done_eps}"
+        if [[ "${chunk_i}" -eq 0 ]]; then
+            export HC_EVAL_APPEND=0
         else
-            _eval_wandb_name="${_eval_wandb_base}-s${first}-${last}"
+            export HC_EVAL_APPEND=1
         fi
-        echo "  --- chunk seeds=${chunk} wandb=${_eval_wandb_name} ---"
+        echo "  --- chunk#${chunk_i} seeds=${chunk} episode_offset=${HC_EVAL_EPISODE_OFFSET} append=${HC_EVAL_APPEND} ---"
         python train.py \
             --task "${HC_TASK}" \
             --algo hier \
@@ -736,11 +770,10 @@ run_test_29() {
             $(hc_t_max_args) \
             ${DEVICE_ARG}
         done_eps=$((done_eps + expected_eps))
-        echo "  [eval] chunk finished (+${expected_eps} ep planned); cumulative planned=${done_eps}"
+        chunk_i=$((chunk_i + 1))
+        echo "  [eval] chunk finished; cumulative episodes=${done_eps}/${_total_eps}"
     done
-    local _nseeds
-    _nseeds=$(awk -F',' '{print NF}' <<<"${HC_TEST_SEEDS}")
-    echo "[eval] all chunks done for ${_eval_wandb_base}; expected total episodes=$((_nseeds * HC_TEST_TIMES)) across ${#chunks[@]} W&B run(s)"
+    echo "[eval] all chunks done → one W&B run name=${_eval_wandb_name} id=${HC_WANDB_RUN_ID} episodes=${done_eps}"
 }
 
 run_test_30() {

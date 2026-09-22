@@ -562,6 +562,19 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
             resume="allow",
             mode=wandb_mode,
         )
+        # Same W&B record across chunked eval processes (HC_EVAL_SEED_CHUNK).
+        run_id = (
+            os.environ.get("HC_WANDB_RUN_ID")
+            or os.environ.get("WANDB_RUN_ID")
+            or ""
+        ).strip()
+        if run_id:
+            init_kwargs["id"] = run_id
+            init_kwargs["resume"] = (
+                os.environ.get("HC_WANDB_RESUME")
+                or os.environ.get("WANDB_RESUME")
+                or "allow"
+            ).strip() or "allow"
         # Per-run identity (does not change machine-global wandb login / ~/.netrc):
         #   WANDB_API_KEY / HC_WANDB_API_KEY  → which account
         #   WANDB_ENTITY / HC_WANDB_ENTITY    → which team/user owns the project
@@ -586,9 +599,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         except Exception:
             pass
         entity_str = init_kwargs.get("entity") or "(default login)"
+        run_id_str = init_kwargs.get("id") or "(new)"
         print(
             f"[wandb] init mode={wandb_mode} entity={entity_str} "
-            f"project={init_kwargs['project']} name={run_name}"
+            f"project={init_kwargs['project']} name={run_name} "
+            f"id={run_id_str} resume={init_kwargs.get('resume')}"
         )
         wandb.init(**init_kwargs)
 

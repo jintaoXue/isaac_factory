@@ -571,7 +571,9 @@ class HierarchicalTPA:
         seeds = list(self.config.get("test_seeds") or [int(self.config.get("seed", 42))])
         episodes_per_seed = int(self.config.get("test_times", 1))
         eval_epsilon = float(self.config.get("test_epsilon", 0.0))
-        output_dir = os.path.join(self.experiment_dir, "eval")
+        output_dir = str(os.environ.get("HC_EVAL_OUTPUT_DIR") or "").strip()
+        if not output_dir:
+            output_dir = os.path.join(self.experiment_dir, "eval")
         eval_anchor = int(self.config.get("t_max_anchor", _curr.T_MAX_ANCHOR))
         eval_n = int(self.config.get("train_n_products", _curr.N_FULL_ORDER))
 
@@ -602,7 +604,8 @@ class HierarchicalTPA:
         if self.use_wandb:
             self.init_wandb_logger()
 
-        total_eps = len(seeds) * episodes_per_seed
+        chunk_eps = len(seeds) * episodes_per_seed
+        total_eps = int(os.environ.get("HC_EVAL_TOTAL_EPISODES") or chunk_eps)
         log_iv = int(self.config.get("test_progress_log_interval", self.log_interval))
         stream = EvalStream(
             output_dir,
@@ -618,9 +621,10 @@ class HierarchicalTPA:
 
         print(
             f"[Hier] test N={eval_n} T_max={eval_horizon} "
-            f"eps={eval_epsilon} seeds={seeds} n={episodes_per_seed}"
+            f"eps={eval_epsilon} seeds={seeds} n={episodes_per_seed} "
+            f"total_target={total_eps} out={output_dir}"
         )
-        results = run_eval_episodes(
+        run_eval_episodes(
             self.vec_env,
             lambda o, eps: self.act(o, epsilon=eps)[0:2],
             seeds=seeds,
@@ -630,10 +634,17 @@ class HierarchicalTPA:
             on_reset=_on_eval_reset,
             stream=stream,
         )
+        # Prefer full stream (includes prior chunk episodes when appending).
+        results = list(stream.results)
+        all_seeds_csv = str(os.environ.get("HC_EVAL_ALL_SEEDS") or "").strip()
+        if all_seeds_csv:
+            report_seeds = [int(s.strip()) for s in all_seeds_csv.split(",") if s.strip()]
+        else:
+            report_seeds = seeds
         payload = build_eval_payload(
             algo_name="hier",
             results=results,
-            seeds=seeds,
+            seeds=report_seeds,
             episodes_per_seed=episodes_per_seed,
             epsilon=eval_epsilon,
             checkpoint=getattr(self, "_checkpoint_path", None),

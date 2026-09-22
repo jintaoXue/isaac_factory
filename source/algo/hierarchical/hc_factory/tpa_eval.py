@@ -163,7 +163,26 @@ class EvalMetricsTracker:
         self.makespan_all: list[int] = []
         self.makespan_success: list[int] = []
         self.success_hist: list[float] = []
-        self.episodes_done = 0
+        # Chunked eval: continue episode index across processes (1..10 in one W&B run).
+        self.episodes_done = int(os.environ.get("HC_EVAL_EPISODE_OFFSET", "0") or 0)
+
+    def hydrate_from_results(self, results: list[EpisodeResult]) -> None:
+        """Restore running means after resuming a chunked eval."""
+        self.makespan_all = []
+        self.makespan_success = []
+        self.success_hist = []
+        for row in results:
+            self.success_hist.append(float(row.success))
+            if row.success:
+                self.makespan_success.append(int(row.makespan))
+                self.makespan_all.append(int(row.makespan))
+            elif row.truncated:
+                self.makespan_all.append(int(row.makespan))
+        self.episodes_done = max(
+            self.episodes_done,
+            int(os.environ.get("HC_EVAL_EPISODE_OFFSET", "0") or 0),
+            len(results),
+        )
 
     def _wall_sec(self) -> float:
         return float(time.time() - self._t0)
@@ -362,10 +381,31 @@ class EvalStream:
         os.makedirs(output_dir, exist_ok=True)
         self.episodes_path = os.path.join(output_dir, "episodes.jsonl")
         self.partial_path = os.path.join(output_dir, "eval_summary_partial.json")
-        open(self.episodes_path, "w", encoding="utf-8").close()
+        append = bool(int(os.environ.get("HC_EVAL_APPEND", "0") or 0))
+        if append and os.path.isfile(self.episodes_path):
+            self._load_prior_episodes()
+        else:
+            open(self.episodes_path, "w", encoding="utf-8").close()
         _eprint(
             f"[Eval:{algo_name}] live stream → {self.episodes_path} "
-            f"(total={self.total_episodes}, T_budget={self.t_budget}, log_interval={log_interval})"
+            f"(done={len(self.results)}/{self.total_episodes}, T_budget={self.t_budget}, "
+            f"log_interval={log_interval}, append={append})"
+        )
+
+    def _load_prior_episodes(self) -> None:
+        prior: list[EpisodeResult] = []
+        with open(self.episodes_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                raw = json.loads(line)
+                prior.append(EpisodeResult(**raw))
+        self.results = prior
+        self.tracker.hydrate_from_results(prior)
+        _eprint(
+            f"[Eval:{self.algo_name}] resumed {len(prior)} prior episode(s) "
+            f"(episode_offset→{self.tracker.episodes_done})"
         )
 
     def _flush_partial_summary(self) -> None:

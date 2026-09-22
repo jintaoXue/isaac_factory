@@ -25,9 +25,10 @@ ls "$HC_LOAD_DIR/nn/state_encoder_step_${HC_LOAD_STEP}.pth"
 ## 跑满 10 个 seed（重要）
 
 历史上 5090 单进程连跑 10 局会在 **seed 52（第 10 局）前崩溃**，W&B 只剩 9 条。  
-`batch_train.sh` job 29 现默认 **`HC_EVAL_SEED_CHUNK=5`**：把 43–52 拆成两段进程（`43–47` / `48–52`），每段结束后退出 Isaac，再开下一段。
+`batch_train.sh` job 29 现默认 **`HC_EVAL_SEED_CHUNK=5`**：把 43–52 拆成两段 **进程**（`43–47` / `48–52`），中间退出 Isaac 再开下一段。
 
-- W&B 会出现两个 run：`…-eval-s43-47` 与 `…-eval-s48-52`（合起来仍是协议 10 局）。  
+- **同一条 W&B 记录**：两段共用同一个 `HC_WANDB_RUN_ID` + 相同 `wandb_name`，第二段 `resume=allow` 续写；`MetricFullorderCore/episode` 连续为 1…10。  
+- 本地 `episodes.jsonl` 也写到同一目录并 append。  
 - 若坚持单进程：`HC_EVAL_SEED_CHUNK=0`（不推荐在 5090 长评测上用）。
 
 ## 5090 已有权重
@@ -94,7 +95,7 @@ ls -lh logs/rl_games/HcFactory/hier_2026-09-17_06-43-17/nn/*_step_750000.pth
 # 预览
 ./run_2026_journal_experiments.sh eval-E5 cuda:0 --dry-run
 
-# 正式（默认 chunk=5 → 两个 W&B run：s43-47 + s48-52）
+# 正式（默认 chunk=5，但仍是**一条** W&B run：Hier4TPA-E5-…-eval）
 ./run_2026_journal_experiments.sh eval-E5 cuda:0
 ```
 
@@ -127,5 +128,5 @@ HC_WANDB_NAME=Hier4TPA-E5-N10-S42-step750000-eval \
 ## 注意
 
 - **训练最优 ≠ 评测最优**：E2/E6 最优点偏早，latest 会差一截；正式表必须报所选 step。  
-- 评测表汇总时把 `-s43-47` 与 `-s48-52` 的 5+5 局合并算 mean±std。  
+- 评测表汇总时看单条 `Hier4TPA-*-eval` run 的 10 局（chunk 续写到同一记录）。  
 - 重算可用 W&B history：`Train/step` + `MetricFullorderCore/05_makespan`，再按 §规则对齐 5000。
