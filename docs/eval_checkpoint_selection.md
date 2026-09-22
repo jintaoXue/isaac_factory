@@ -65,13 +65,13 @@ cd ~/work/isaac_factory_tpa && git pull origin master
 | E4 | `hier_2026-09-12_10-20-18` | 645000 | |
 | E5 | `hier_2026-09-17_06-43-17` | 750000 | |
 | E5-no-oru | `hier_2026-09-18_21-14-57` | 360000 | |
-| E6-no-oru | `hier_2026-09-21_15-42-18` | 415000 | 若仍在训则为 **best-so-far**，训完后可重算再评 |
+| E6-no-oru | `hier_2026-09-21_15-42-18` | （训完后重算） | **暂不进 `eval-desk`** |
 
 工位根：`/home/xue/work/isaac_factory/logs/rl_games/HcFactory/`  
 5090 根：`/home/sci/work/isaac_factory_tpa/logs/rl_games/HcFactory/`
 
 ```bash
-# 5090 拉代码后一条龙（顺序：E4→E5-no-oru→E5→…）
+# 5090 拉代码后一条龙（顺序：E4→E5-no-oru→E5→E3.5→E3-no-oru→E1.5→E3）
 cd ~/work/isaac_factory_tpa && git pull origin master
 ./run_2026_journal_experiments.sh eval-desk cuda:0 --dry-run
 ./run_2026_journal_experiments.sh eval-desk cuda:0

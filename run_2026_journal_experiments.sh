@@ -72,7 +72,7 @@ usage() {
   eval-E5 [cuda:N] [--dry-run]
           评测从工位同步过来的 E5 训练最优 ckpt（step 750000）
   eval-desk [cuda:N] [--dry-run]
-          评测工位训完并已同步的全部 E*：E1.5/E3/E3-no-oru/E3.5/E4/E5/E5-no-oru[/E6-no-oru]
+          评测工位训完并已同步的 E*：E4/E5-no-oru/E5/E3.5/E3-no-oru/E1.5/E3（不含 E6-no-oru）
 
 基线:
   baselines | rule-n10 | rule-n16 | random-n10 | random-n16 | random | rule
@@ -1573,7 +1573,7 @@ run_eval_desk_panel() {
         echo "用法: $0 eval-desk [cuda:N] [--dry-run]" >&2
         return 1
     fi
-    # Priority order for paper table; E6-no-oru may still be training (best-so-far).
+    # Priority order for paper table (desk-trained; synced train-best steps).
     local -a jobs=(
         "E4|hier_2026-09-12_10-20-18|645000"
         "E5-no-oru|hier_2026-09-18_21-14-57|360000"
@@ -1582,7 +1582,6 @@ run_eval_desk_panel() {
         "E3-no-oru|hier_2026-09-14_01-26-32|595000"
         "E1.5|hier_2026-09-09_15-05-17|755000"
         "E3|hier_2026-09-15_14-37-23|715000"
-        "E6-no-oru|hier_2026-09-21_15-42-18|415000"
     )
     if [[ "${dry_run}" == --dry-run ]]; then
         run_eval_job_panel eval-desk "${jobs[@]}" --dry-run
