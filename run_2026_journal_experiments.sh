@@ -11,6 +11,7 @@ set -euo pipefail
 #   ./run_2026_journal_experiments.sh baselines [cuda:0]
 #   HC_LOAD_DIR=... HC_LOAD_STEP=... ./run_2026_journal_experiments.sh hier-eval [cuda:0]
 #   ./run_2026_journal_experiments.sh eval-5090 [cuda:0] [--dry-run]
+#   ./run_2026_journal_experiments.sh eval-E5 [cuda:0] [--dry-run]
 # Stub: E6-no-guide|E6-no-hier|E6-no-ar|E2-random-data|…
 
 MODE="${1:-}"
@@ -67,6 +68,9 @@ usage() {
   eval-5090 [cuda:N] [--dry-run]
           一条龙评测 5090 本地权重：E1→E2→E2.5→E6（训练最优 step；默认跳过已完成的 E0）
           见 docs/eval_checkpoint_selection.md；HC_EVAL_INCLUDE_E0=1 可加跑 E0
+          默认 HC_EVAL_SEED_CHUNK=5（每 5 个 seed 重启进程，避免第 10 局前崩溃）
+  eval-E5 [cuda:N] [--dry-run]
+          评测从工位同步过来的 E5 训练最优 ckpt（step 750000）
 
 基线:
   baselines | rule-n10 | rule-n16 | random-n10 | random-n16 | random | rule
@@ -1472,6 +1476,8 @@ run_eval_5090_panel() {
 
     echo "[eval-5090] device=${DEVICE}; seeds=${HC_TEST_SEEDS}; times=${HC_TEST_TIMES}; base=${base}"
     echo "[eval-5090] ckpt rule: train-best FO makespan → nearest save_interval (docs/eval_checkpoint_selection.md)"
+    export HC_EVAL_SEED_CHUNK="${HC_EVAL_SEED_CHUNK:-5}"
+    echo "[eval-5090] seed_chunk=${HC_EVAL_SEED_CHUNK} (fresh process per chunk; avoids 9/10 crash)"
 
     if [[ "${HC_EVAL_INCLUDE_E0:-0}" == "1" ]]; then
         echo "[eval-5090] --- E0 (include) ---"
@@ -1510,6 +1516,43 @@ run_eval_5090_panel() {
     echo "[eval-5090] done"
 }
 
+# E5 desk→5090 eval (train-best step 750000). Requires synced nn/*_step_750000.pth.
+run_eval_e5() {
+    local repo_root dry_run="${3:-}" base load_dir step=750000 enc
+    repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
+    cd "${repo_root}"
+    if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
+        echo "错误: 设备需为 cuda:N 或 cpu" >&2
+        return 1
+    fi
+    if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
+        echo "用法: $0 eval-E5 [cuda:N] [--dry-run]" >&2
+        return 1
+    fi
+    base="${repo_root}/logs/rl_games/HcFactory"
+    load_dir="${base}/hier_2026-09-17_06-43-17"
+    enc="${load_dir}/nn/state_encoder_step_${step}.pth"
+    export HC_EVAL_SEED_CHUNK="${HC_EVAL_SEED_CHUNK:-5}"
+    echo "[eval-E5] device=${DEVICE}; step=${step}; seeds=${HC_TEST_SEEDS}; chunk=${HC_EVAL_SEED_CHUNK}"
+    echo "[eval-E5] load_dir=${load_dir}"
+    if [[ "${dry_run}" == --dry-run ]]; then
+        echo "[eval-E5] dry-run: would require ${enc}"
+        return 0
+    fi
+    if [[ ! -f "${enc}" ]]; then
+        echo "错误: 缺少 E5 训练最优 ckpt: ${enc}" >&2
+        echo "请先从工位 rsync step ${step} 权重到此目录（见 docs/eval_checkpoint_selection.md）" >&2
+        return 1
+    fi
+    export HC_LOAD_DIR="${load_dir}"
+    export HC_LOAD_STEP="${step}"
+    export HC_EVAL_VARIANT=E5
+    export HC_WANDB_NAME="Hier4TPA-E5-N10-S42-step${step}-eval"
+    EVAL_STEPS=""
+    run_hier_eval_for_n 10
+    echo "[eval-E5] done"
+}
+
 case "${MODE}" in
     E0) run_e0_eval "$@" ;;
     E1) run_e1_train "$@" ;;
@@ -1543,6 +1586,7 @@ case "${MODE}" in
     eval-T1R) run_eval_variant T1R ;;
     eval-T1RH) run_eval_variant T1RH ;;
     eval-5090|eval_5090) run_eval_5090_panel "$@" ;;
+    eval-E5|eval_E5|E5-eval) run_eval_e5 "$@" ;;
     hier-eval) run_hier_eval ;;
     hier-eval-n16) run_hier_eval_for_n 16 ;;
     hier-eval-n10) run_hier_eval_for_n 10 ;;

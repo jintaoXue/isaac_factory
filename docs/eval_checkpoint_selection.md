@@ -1,6 +1,6 @@
 # 评测 Checkpoint 选择（训练最优，非 latest）
 
-> 更新：2026-09-21。与 T0 教师选点同一精神：**训练曲线 makespan 最低点 → 最近 `save_interval` 保存步**。  
+> 更新：2026-09-22。与 T0 教师选点同一精神：**训练曲线 makespan 最低点 → 最近 `save_interval` 保存步**。  
 > **不要**用评测 seeds 43–52 来挑 ckpt（协议：测试集不参与选择）。
 
 ## 选择规则（固定）
@@ -22,54 +22,110 @@ ls "$HC_LOAD_DIR/nn/state_encoder_step_${HC_LOAD_STEP}.pth"
 
 若缺文件，改为同目录下**不大于** `Train/step` 的最大已存 step。
 
-## 5090 可评（本地有权重）
+## 跑满 10 个 seed（重要）
+
+历史上 5090 单进程连跑 10 局会在 **seed 52（第 10 局）前崩溃**，W&B 只剩 9 条。  
+`batch_train.sh` job 29 现默认 **`HC_EVAL_SEED_CHUNK=5`**：把 43–52 拆成两段进程（`43–47` / `48–52`），每段结束后退出 Isaac，再开下一段。
+
+- W&B 会出现两个 run：`…-eval-s43-47` 与 `…-eval-s48-52`（合起来仍是协议 10 局）。  
+- 若坚持单进程：`HC_EVAL_SEED_CHUNK=0`（不推荐在 5090 长评测上用）。
+
+## 5090 已有权重
 
 
-| 实验 | W&B run | log 目录 | best ms @ ep | Train/step | **HC_LOAD_STEP** | vs last ms |
-| --- | --- | --- | --- | --- | ---: | --- |
-| E0 / T0 | `zynalxhz` | `hier_2026-08-27_23-17-41` | 14600 @ 70 | 1290374 | **1290000** | last 15558 |
-| E1 | `4zo7fjs3` | `hier_2026-09-13_15-20-57` | 15425 @ 60 | 1081850 | **1080000** | = final（最优在末） |
-| E2 | `b4jokwbb` | `hier_2026-09-15_18-39-11` | 15202 @ 8 | 143341 | **145000** | last 17280 |
-| E2.5 | `zvjalw62` | `hier_2026-09-11_19-46-22` | 16029 @ 46 | 852112 | **850000** | last 18116 |
-| E6 | `efzuah0r` | `hier_2026-09-17_10-05-15` | 16126 @ 23 | 414820 | **415000** | last 20815 |
+| 实验 | W&B run | log 目录 | best ms @ ep | Train/step | **HC_LOAD_STEP** |
+| --- | --- | --- | --- | --- | ---: |
+| E0 / T0 | `zynalxhz` | `hier_2026-08-27_23-17-41` | 14600 @ 70 | 1290374 | **1290000** |
+| E1 | `4zo7fjs3` | `hier_2026-09-13_15-20-57` | 15425 @ 60 | 1081850 | **1080000** |
+| E2 | `b4jokwbb` | `hier_2026-09-15_18-39-11` | 15202 @ 8 | 143341 | **145000** |
+| E2.5 | `zvjalw62` | `hier_2026-09-11_19-46-22` | 16029 @ 46 | 852112 | **850000** |
+| E6 | `efzuah0r` | `hier_2026-09-17_10-05-15` | 16126 @ 23 | 414820 | **415000** |
 
-路径前缀：`/home/sci/work/isaac_factory_tpa/logs/rl_games/HcFactory/`  
-（E2.5 短跑 `2mq6zow7` 不参与横比。）
+路径前缀：`/home/sci/work/isaac_factory_tpa/logs/rl_games/HcFactory/`
 
-### 5090 一条龙（推荐）
-
-默认串跑 **E1 → E2 → E2.5 → E6**（训练最优 step）；**跳过 E0**（W&B 已有完整 eval `df55hqiz`）。缺 ckpt 会直接报错退出。
+### 5090 一条龙
 
 ```bash
-cd ~/work/isaac_factory_tpa && git pull
-# 可选预览
-./run_2026_journal_experiments.sh eval-5090 cuda:0 --dry-run
-# 正式
+cd ~/work/isaac_factory_tpa && git pull origin master
 ./run_2026_journal_experiments.sh eval-5090 cuda:0
-# 若也要重跑 E0：
-# HC_EVAL_INCLUDE_E0=1 ./run_2026_journal_experiments.sh eval-5090 cuda:0
 ```
 
-wandb 名：`Hier4TPA-{E1|E2|E2.5|E6}-N10-S42-step{STEP}-eval`，项目 `HcFactory_TPA_Eval`。
+## E5：工位 → 5090（只传选中 step）
 
-## 4090 工位（拷权重或本机评）
+| 项 | 值 |
+| --- | --- |
+| 实验 | **E5**（`c3ces8gi`） |
+| 工位目录 | `/home/xue/work/isaac_factory/logs/rl_games/HcFactory/hier_2026-09-17_06-43-17` |
+| 5090 目录 | `/home/sci/work/isaac_factory_tpa/logs/rl_games/HcFactory/hier_2026-09-17_06-43-17` |
+| best | makespan **15780** @ ep40，`Train/step≈748232` |
+| **HC_LOAD_STEP** | **750000** |
+| 文件（仅这 6 个） | `state_encoder` / `agent_A` / `agent_B` / `agent_C` / `agent_D_human` / `agent_D_robot` 的 `*_step_750000.pth`（合计约 2.6MB） |
+
+### 1) 在工位执行 rsync（只传 step 750000）
+
+```bash
+# 在工位 xue@sci / home/xue/work/isaac_factory
+REMOTE=sci@10.68.14.234          # 按你的 5090 登录改
+REMOTE_REPO=/home/sci/work/isaac_factory_tpa
+SRC=logs/rl_games/HcFactory/hier_2026-09-17_06-43-17/nn
+STEP=750000
+
+ssh "${REMOTE}" "mkdir -p ${REMOTE_REPO}/${SRC}"
+
+rsync -avz --progress \
+  "${SRC}/state_encoder_step_${STEP}.pth" \
+  "${SRC}/agent_A_step_${STEP}.pth" \
+  "${SRC}/agent_B_step_${STEP}.pth" \
+  "${SRC}/agent_C_step_${STEP}.pth" \
+  "${SRC}/agent_D_human_step_${STEP}.pth" \
+  "${SRC}/agent_D_robot_step_${STEP}.pth" \
+  "${REMOTE}:${REMOTE_REPO}/${SRC}/"
+```
+
+### 2) 5090 拉代码并评测 E5
+
+```bash
+cd ~/work/isaac_factory_tpa
+git pull origin master
+
+# 确认 6 个文件
+ls -lh logs/rl_games/HcFactory/hier_2026-09-17_06-43-17/nn/*_step_750000.pth
+
+# 预览
+./run_2026_journal_experiments.sh eval-E5 cuda:0 --dry-run
+
+# 正式（默认 chunk=5 → 两个 W&B run：s43-47 + s48-52）
+./run_2026_journal_experiments.sh eval-E5 cuda:0
+```
+
+等价手动命令：
+
+```bash
+BASE=logs/rl_games/HcFactory/hier_2026-09-17_06-43-17
+export HC_TEST_SEEDS=43,44,45,46,47,48,49,50,51,52 HC_TEST_TIMES=1 HC_EVAL_SEED_CHUNK=5
+HC_LOAD_DIR=$BASE HC_LOAD_STEP=750000 HC_EVAL_VARIANT=E5 \
+HC_WANDB_NAME=Hier4TPA-E5-N10-S42-step750000-eval \
+  ./run_2026_journal_experiments.sh hier-eval-n10 cuda:0
+```
+
+## 4090 工位其余（未同步则需同样 rsync 单 step）
 
 
-| 实验 | run | best ms @ ep | **HC_LOAD_STEP** |
-| --- | --- | --- | ---: |
-| E1.5 | `m3nz6opg` | 15872 @ 42 | 755000 |
-| E3 | `opk2sqyy` | 16628 @ 38 | 715000 |
-| E3-no-oru | `2orsgsw7` | 16118 @ 32 | 595000 |
-| E3.5 | `31rt1h7i` | 15197 @ 33 | 595000 |
-| E4 | `zgtz84wp` | 15570 @ 35 | 645000 |
-| E5 | `c3ces8gi` | 15780 @ 40 | 750000 |
-| E5-no-oru | `a2n538na` | 14550 @ 21 | 360000 |
-| E6-no-oru | `kok6twua` | （抓取时几乎未训完） | 待跑满后重算 |
+| 实验 | run | log 目录 | best ms @ ep | **HC_LOAD_STEP** |
+| --- | --- | --- | --- | ---: |
+| E1.5 | `m3nz6opg` | （见该 run `full_experiment_name`） | 15872 @ 42 | 755000 |
+| E3 | `opk2sqyy` | （同上） | 16628 @ 38 | 715000 |
+| E3-no-oru | `2orsgsw7` | （同上） | 16118 @ 32 | 595000 |
+| E3.5 | `31rt1h7i` | （同上） | 15197 @ 33 | 595000 |
+| E4 | `zgtz84wp` | （同上） | 15570 @ 35 | 645000 |
+| **E5** | `c3ces8gi` | **`hier_2026-09-17_06-43-17`** | **15780 @ 40** | **750000** |
+| E5-no-oru | `a2n538na` | `hier_2026-09-18_21-14-57` | 14550 @ 21 | 360000 |
+| E6-no-oru | `kok6twua` | （训完后重算） | — | 待定 |
 
-log 目录从各 run 的 `full_experiment_name` 读取（本机 `/home/xue/work/isaac_factory/logs/...`）。
+本机根路径：`/home/xue/work/isaac_factory/logs/rl_games/HcFactory/`。
 
 ## 注意
 
 - **训练最优 ≠ 评测最优**：E2/E6 最优点偏早，latest 会差一截；正式表必须报所选 step。  
-- 早期单点最优方差大；若审稿质疑，可加稳健规则（如「后半程最优」）作附录，主表仍用本文件规则并保持全方法一致。  
+- 评测表汇总时把 `-s43-47` 与 `-s48-52` 的 5+5 局合并算 mean±std。  
 - 重算可用 W&B history：`Train/step` + `MetricFullorderCore/05_makespan`，再按 §规则对齐 5000。

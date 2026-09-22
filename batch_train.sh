@@ -188,6 +188,49 @@ hc_test_args() {
     echo "--test --test_times ${HC_TEST_TIMES} --test_seeds ${HC_TEST_SEEDS}"
 }
 
+# Split comma-separated seeds into chunks of size HC_EVAL_SEED_CHUNK (default 5).
+# Chunking restarts the Python/Isaac process between chunks to avoid ~5h OOM crashes
+# that previously aborted every eval after seed 51 (9/10 episodes).
+# Set HC_EVAL_SEED_CHUNK=0 to run all seeds in one process.
+hc_seed_chunks() {
+    local seeds_csv="${1:-${HC_TEST_SEEDS}}"
+    local chunk_size="${HC_EVAL_SEED_CHUNK:-5}"
+    local -a seeds=()
+    local s
+    IFS=',' read -ra seeds <<<"${seeds_csv}"
+    # trim empties
+    local -a clean=()
+    for s in "${seeds[@]}"; do
+        s="${s//[[:space:]]/}"
+        [[ -n "${s}" ]] && clean+=("${s}")
+    done
+    if [[ "${#clean[@]}" -eq 0 ]]; then
+        echo "错误: 空的 test seeds" >&2
+        return 1
+    fi
+    if [[ -z "${chunk_size}" || "${chunk_size}" == "0" || "${chunk_size}" -ge "${#clean[@]}" ]]; then
+        local joined
+        joined=$(IFS=,; echo "${clean[*]}")
+        echo "${joined}"
+        return 0
+    fi
+    local i=0
+    local -a buf=()
+    for s in "${clean[@]}"; do
+        buf+=("${s}")
+        i=$((i + 1))
+        if [[ "${#buf[@]}" -eq "${chunk_size}" ]]; then
+            joined=$(IFS=,; echo "${buf[*]}")
+            echo "${joined}"
+            buf=()
+        fi
+    done
+    if [[ "${#buf[@]}" -gt 0 ]]; then
+        joined=$(IFS=,; echo "${buf[*]}")
+        echo "${joined}"
+    fi
+}
+
 
 hc_max_train_ep_args() {
     # E1–E6 finetune budget
@@ -639,7 +682,9 @@ run_t1rh() {
 }
 
 run_test_29() {
-    # 全量 16 件评测：加载 27 训练的 nn/，不用 --curriculum
+    # Hier eval: load HC_LOAD_DIR nn/, no curriculum.
+    # Default: split seeds into chunks (HC_EVAL_SEED_CHUNK=5) so each chunk is a
+    # fresh process — long single-process evals were crashing after 9/10 seeds.
     if [ -z "${HC_LOAD_DIR}" ]; then
         echo "错误: run_test_29 需要 HC_LOAD_DIR 指向训练实验目录（含 nn/）"
         echo "示例：HC_LOAD_DIR=logs/rl_games/HcFactory/hier_2026-08-18_22-00-00 ./batch_train.sh 29 cuda:0"
@@ -648,24 +693,54 @@ run_test_29() {
     _eval_n="${HC_TRAIN_N_PRODUCTS}"
     _eval_t=$([ "${_eval_n}" = "10" ] && echo "${HC_T_MAX_N10}" || echo "${HC_T_MAX_N16}")
     _eval_tag="${HC_EVAL_VARIANT:-eval}"
-    _eval_wandb_name="${HC_WANDB_NAME:-hier_eval_${_eval_tag}_N${_eval_n}_step${HC_LOAD_STEP:-latest}_T${_eval_t}}"
-    echo "运行 29: hier test (${_eval_tag}) full-order N=${_eval_n} T_max=${_eval_t} load=${HC_LOAD_DIR} wandb=${_eval_wandb_name}"
-    python train.py \
-        --task "${HC_TASK}" \
-        --algo hier \
-        --num_envs 1 \
-        --headless \
-        --test \
-        --test_times "${HC_TEST_TIMES}" \
-        --test_seeds "${HC_TEST_SEEDS}" \
-        --train_n_products "${_eval_n}" \
-        --load_dir "${HC_LOAD_DIR}" \
-        --wandb_activate \
-        --wandb_project "${HC_WANDB_TEST_PROJECT}" \
-        --wandb_name "${_eval_wandb_name}" \
-        $(hc_load_step_args) \
-        $(hc_t_max_args) \
-        ${DEVICE_ARG}
+    _eval_wandb_base="${HC_WANDB_NAME:-hier_eval_${_eval_tag}_N${_eval_n}_step${HC_LOAD_STEP:-latest}_T${_eval_t}}"
+    export HC_EVAL_SEED_CHUNK="${HC_EVAL_SEED_CHUNK:-5}"
+
+    local -a chunks=()
+    mapfile -t chunks < <(hc_seed_chunks "${HC_TEST_SEEDS}")
+    if [[ "${#chunks[@]}" -eq 0 ]]; then
+        echo "错误: 无法解析 HC_TEST_SEEDS=${HC_TEST_SEEDS}" >&2
+        exit 1
+    fi
+
+    echo "运行 29: hier test (${_eval_tag}) N=${_eval_n} T_max=${_eval_t} load=${HC_LOAD_DIR}"
+    echo "  seeds=${HC_TEST_SEEDS} chunk=${HC_EVAL_SEED_CHUNK} → ${#chunks[@]} process(es); wandb_base=${_eval_wandb_base}"
+
+    local chunk first last _eval_wandb_name expected_eps done_eps=0
+    local -a seed_arr=()
+    for chunk in "${chunks[@]}"; do
+        IFS=',' read -ra seed_arr <<<"${chunk}"
+        first="${seed_arr[0]}"
+        last="${seed_arr[-1]}"
+        expected_eps=$(( ${#seed_arr[@]} * HC_TEST_TIMES ))
+        if [[ "${#chunks[@]}" -eq 1 ]]; then
+            _eval_wandb_name="${_eval_wandb_base}"
+        else
+            _eval_wandb_name="${_eval_wandb_base}-s${first}-${last}"
+        fi
+        echo "  --- chunk seeds=${chunk} wandb=${_eval_wandb_name} ---"
+        python train.py \
+            --task "${HC_TASK}" \
+            --algo hier \
+            --num_envs 1 \
+            --headless \
+            --test \
+            --test_times "${HC_TEST_TIMES}" \
+            --test_seeds "${chunk}" \
+            --train_n_products "${_eval_n}" \
+            --load_dir "${HC_LOAD_DIR}" \
+            --wandb_activate \
+            --wandb_project "${HC_WANDB_TEST_PROJECT}" \
+            --wandb_name "${_eval_wandb_name}" \
+            $(hc_load_step_args) \
+            $(hc_t_max_args) \
+            ${DEVICE_ARG}
+        done_eps=$((done_eps + expected_eps))
+        echo "  [eval] chunk finished (+${expected_eps} ep planned); cumulative planned=${done_eps}"
+    done
+    local _nseeds
+    _nseeds=$(awk -F',' '{print NF}' <<<"${HC_TEST_SEEDS}")
+    echo "[eval] all chunks done for ${_eval_wandb_base}; expected total episodes=$((_nseeds * HC_TEST_TIMES)) across ${#chunks[@]} W&B run(s)"
 }
 
 run_test_30() {
