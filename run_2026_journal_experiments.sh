@@ -11,7 +11,7 @@ set -euo pipefail
 #   ./run_2026_journal_experiments.sh baselines [cuda:0]
 #   HC_LOAD_DIR=... HC_LOAD_STEP=... ./run_2026_journal_experiments.sh hier-eval [cuda:0]
 #   ./run_2026_journal_experiments.sh eval-5090 [cuda:0] [--dry-run]
-#   ./run_2026_journal_experiments.sh eval-E5 [cuda:0] [--dry-run]
+#   ./run_2026_journal_experiments.sh eval-E5|eval-desk [cuda:0] [--dry-run]
 # Stub: E6-no-guide|E6-no-hier|E6-no-ar|E2-random-data|…
 
 MODE="${1:-}"
@@ -71,6 +71,8 @@ usage() {
           默认 HC_EVAL_SEED_CHUNK=5（每 5 个 seed 重启进程，避免第 10 局前崩溃）
   eval-E5 [cuda:N] [--dry-run]
           评测从工位同步过来的 E5 训练最优 ckpt（step 750000）
+  eval-desk [cuda:N] [--dry-run]
+          评测工位训完并已同步的全部 E*：E1.5/E3/E3-no-oru/E3.5/E4/E5/E5-no-oru[/E6-no-oru]
 
 基线:
   baselines | rule-n10 | rule-n16 | random-n10 | random-n16 | random | rule
@@ -1506,6 +1508,8 @@ run_eval_5090_panel() {
             echo "提示: 可 ls ${load_dir}/nn/state_encoder_step_*.pth 后改 docs 表 / 本函数 step" >&2
             return 1
         fi
+        # Each experiment must own its own W&B run + eval output dir.
+        unset HC_WANDB_RUN_ID WANDB_RUN_ID HC_EVAL_OUTPUT_DIR HC_EVAL_EPISODE_OFFSET HC_EVAL_APPEND
         export HC_LOAD_DIR="${load_dir}"
         export HC_LOAD_STEP="${step}"
         export HC_EVAL_VARIANT="${variant}"
@@ -1516,11 +1520,80 @@ run_eval_5090_panel() {
     echo "[eval-5090] done"
 }
 
-# E5 desk→5090 eval (train-best step 750000). Requires synced nn/*_step_750000.pth.
-run_eval_e5() {
-    local repo_root dry_run="${3:-}" base load_dir step=750000 enc
+# Shared helper: run a list of variant|rel_dir|step jobs under logs/rl_games/HcFactory.
+run_eval_job_panel() {
+    local panel_name="$1"
+    shift
+    local dry_run=""
+    # optional trailing --dry-run in "$@" from caller
+    local -a jobs=("$@")
+    if [[ "${#jobs[@]}" -gt 0 && "${jobs[-1]}" == --dry-run ]]; then
+        dry_run=--dry-run
+        unset 'jobs[-1]'
+    fi
+    local repo_root base
     repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
     cd "${repo_root}"
+    base="${repo_root}/logs/rl_games/HcFactory"
+    export HC_EVAL_SEED_CHUNK="${HC_EVAL_SEED_CHUNK:-5}"
+    echo "[${panel_name}] device=${DEVICE}; seeds=${HC_TEST_SEEDS}; chunk=${HC_EVAL_SEED_CHUNK}; jobs=${#jobs[@]}"
+    local spec variant rel step load_dir enc
+    for spec in "${jobs[@]}"; do
+        IFS='|' read -r variant rel step <<<"${spec}"
+        load_dir="${base}/${rel}"
+        enc="${load_dir}/nn/state_encoder_step_${step}.pth"
+        echo "[${panel_name}] --- ${variant} step=${step} dir=${rel} ---"
+        if [[ "${dry_run}" == --dry-run ]]; then
+            echo "[${panel_name}] dry-run: would require ${enc}"
+            continue
+        fi
+        if [[ ! -f "${enc}" ]]; then
+            echo "错误: 缺少训练最优 ckpt: ${enc}" >&2
+            return 1
+        fi
+        unset HC_WANDB_RUN_ID WANDB_RUN_ID HC_EVAL_OUTPUT_DIR HC_EVAL_EPISODE_OFFSET HC_EVAL_APPEND
+        export HC_LOAD_DIR="${load_dir}"
+        export HC_LOAD_STEP="${step}"
+        export HC_EVAL_VARIANT="${variant}"
+        export HC_WANDB_NAME="Hier4TPA-${variant}-N10-S42-step${step}-eval"
+        EVAL_STEPS=""
+        run_hier_eval_for_n 10
+    done
+    echo "[${panel_name}] done"
+}
+
+# Desk-trained E* (synced train-best steps). See docs/eval_checkpoint_selection.md.
+run_eval_desk_panel() {
+    local dry_run="${3:-}"
+    if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
+        echo "错误: 设备需为 cuda:N 或 cpu" >&2
+        return 1
+    fi
+    if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
+        echo "用法: $0 eval-desk [cuda:N] [--dry-run]" >&2
+        return 1
+    fi
+    # Priority order for paper table; E6-no-oru may still be training (best-so-far).
+    local -a jobs=(
+        "E4|hier_2026-09-12_10-20-18|645000"
+        "E5-no-oru|hier_2026-09-18_21-14-57|360000"
+        "E5|hier_2026-09-17_06-43-17|750000"
+        "E3.5|hier_2026-09-10_19-58-56|595000"
+        "E3-no-oru|hier_2026-09-14_01-26-32|595000"
+        "E1.5|hier_2026-09-09_15-05-17|755000"
+        "E3|hier_2026-09-15_14-37-23|715000"
+        "E6-no-oru|hier_2026-09-21_15-42-18|415000"
+    )
+    if [[ "${dry_run}" == --dry-run ]]; then
+        run_eval_job_panel eval-desk "${jobs[@]}" --dry-run
+    else
+        run_eval_job_panel eval-desk "${jobs[@]}"
+    fi
+}
+
+# E5 desk→5090 eval (train-best step 750000). Requires synced nn/*_step_750000.pth.
+run_eval_e5() {
+    local dry_run="${3:-}"
     if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
         echo "错误: 设备需为 cuda:N 或 cpu" >&2
         return 1
@@ -1529,28 +1602,12 @@ run_eval_e5() {
         echo "用法: $0 eval-E5 [cuda:N] [--dry-run]" >&2
         return 1
     fi
-    base="${repo_root}/logs/rl_games/HcFactory"
-    load_dir="${base}/hier_2026-09-17_06-43-17"
-    enc="${load_dir}/nn/state_encoder_step_${step}.pth"
-    export HC_EVAL_SEED_CHUNK="${HC_EVAL_SEED_CHUNK:-5}"
-    echo "[eval-E5] device=${DEVICE}; step=${step}; seeds=${HC_TEST_SEEDS}; chunk=${HC_EVAL_SEED_CHUNK}"
-    echo "[eval-E5] load_dir=${load_dir}"
+    local -a jobs=("E5|hier_2026-09-17_06-43-17|750000")
     if [[ "${dry_run}" == --dry-run ]]; then
-        echo "[eval-E5] dry-run: would require ${enc}"
-        return 0
+        run_eval_job_panel eval-E5 "${jobs[@]}" --dry-run
+    else
+        run_eval_job_panel eval-E5 "${jobs[@]}"
     fi
-    if [[ ! -f "${enc}" ]]; then
-        echo "错误: 缺少 E5 训练最优 ckpt: ${enc}" >&2
-        echo "请先从工位 rsync step ${step} 权重到此目录（见 docs/eval_checkpoint_selection.md）" >&2
-        return 1
-    fi
-    export HC_LOAD_DIR="${load_dir}"
-    export HC_LOAD_STEP="${step}"
-    export HC_EVAL_VARIANT=E5
-    export HC_WANDB_NAME="Hier4TPA-E5-N10-S42-step${step}-eval"
-    EVAL_STEPS=""
-    run_hier_eval_for_n 10
-    echo "[eval-E5] done"
 }
 
 case "${MODE}" in
@@ -1587,6 +1644,7 @@ case "${MODE}" in
     eval-T1RH) run_eval_variant T1RH ;;
     eval-5090|eval_5090) run_eval_5090_panel "$@" ;;
     eval-E5|eval_E5|E5-eval) run_eval_e5 "$@" ;;
+    eval-desk|eval_desk) run_eval_desk_panel "$@" ;;
     hier-eval) run_hier_eval ;;
     hier-eval-n16) run_hier_eval_for_n 16 ;;
     hier-eval-n10) run_hier_eval_for_n 10 ;;

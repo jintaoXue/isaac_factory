@@ -51,6 +51,34 @@ cd ~/work/isaac_factory_tpa && git pull origin master
 ./run_2026_journal_experiments.sh eval-5090 cuda:0
 ```
 
+## 工位全部 → 5090（`eval-desk`）
+
+工位训完需同步的最优 step（只传 6 个 `*_step_STEP.pth`）：
+
+
+| 实验 | log 目录 | **HC_LOAD_STEP** | 备注 |
+| --- | --- | ---: | --- |
+| E1.5 | `hier_2026-09-09_15-05-17` | 755000 | |
+| E3 | `hier_2026-09-15_14-37-23` | 715000 | |
+| E3-no-oru | `hier_2026-09-14_01-26-32` | 595000 | |
+| E3.5 | `hier_2026-09-10_19-58-56` | 595000 | |
+| E4 | `hier_2026-09-12_10-20-18` | 645000 | |
+| E5 | `hier_2026-09-17_06-43-17` | 750000 | |
+| E5-no-oru | `hier_2026-09-18_21-14-57` | 360000 | |
+| E6-no-oru | `hier_2026-09-21_15-42-18` | 415000 | 若仍在训则为 **best-so-far**，训完后可重算再评 |
+
+工位根：`/home/xue/work/isaac_factory/logs/rl_games/HcFactory/`  
+5090 根：`/home/sci/work/isaac_factory_tpa/logs/rl_games/HcFactory/`
+
+```bash
+# 5090 拉代码后一条龙（顺序：E4→E5-no-oru→E5→…）
+cd ~/work/isaac_factory_tpa && git pull origin master
+./run_2026_journal_experiments.sh eval-desk cuda:0 --dry-run
+./run_2026_journal_experiments.sh eval-desk cuda:0
+```
+
+每个实验仍是 **一条** W&B run（chunk 续写）；缺 ckpt 会停在该实验。
+
 ## E5：工位 → 5090（只传选中 step）
 
 | 项 | 值 |
