@@ -71,7 +71,9 @@ cd ~/work/isaac_factory_tpa && git pull origin master
 5090 根：`/home/sci/work/isaac_factory_tpa/logs/rl_games/HcFactory/`
 
 ```bash
-# 5090 拉代码后一条龙（顺序：E4→E5-no-oru→E5→E3.5→E3-no-oru→E1.5→E3）
+# 5090 正序；本机可倒序对开（等本地训练结束后）：
+#   while pgrep -af 'train.py|run_2026_journal_experiments.sh E' >/dev/null; do sleep 60; done
+#   ./run_2026_journal_experiments.sh eval-desk-rev cuda:0
 cd ~/work/isaac_factory_tpa && git pull origin master
 ./run_2026_journal_experiments.sh eval-desk cuda:0 --dry-run
 ./run_2026_journal_experiments.sh eval-desk cuda:0

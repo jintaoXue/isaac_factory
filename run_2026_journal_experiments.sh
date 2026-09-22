@@ -11,7 +11,7 @@ set -euo pipefail
 #   ./run_2026_journal_experiments.sh baselines [cuda:0]
 #   HC_LOAD_DIR=... HC_LOAD_STEP=... ./run_2026_journal_experiments.sh hier-eval [cuda:0]
 #   ./run_2026_journal_experiments.sh eval-5090 [cuda:0] [--dry-run]
-#   ./run_2026_journal_experiments.sh eval-E5|eval-desk [cuda:0] [--dry-run]
+#   ./run_2026_journal_experiments.sh eval-E5|eval-desk|eval-desk-rev [cuda:0] [--dry-run]
 # Stub: E6-no-guide|E6-no-hier|E6-no-ar|E2-random-data|…
 
 MODE="${1:-}"
@@ -73,6 +73,8 @@ usage() {
           评测从工位同步过来的 E5 训练最优 ckpt（step 750000）
   eval-desk [cuda:N] [--dry-run]
           评测工位训完并已同步的 E*：E4/E5-no-oru/E5/E3.5/E3-no-oru/E1.5/E3（不含 E6-no-oru）
+  eval-desk-rev [cuda:N] [--dry-run]
+          同上，倒序：E3→E1.5→E3-no-oru→E3.5→E5→E5-no-oru→E4（适合本机与 5090 对开）
 
 基线:
   baselines | rule-n10 | rule-n16 | random-n10 | random-n16 | random | rule
@@ -1563,17 +1565,18 @@ run_eval_job_panel() {
 }
 
 # Desk-trained E* (synced train-best steps). See docs/eval_checkpoint_selection.md.
+# reverse=1 → E3 … E4（本机与 5090 eval-desk 对开，少抢同一实验）。
 run_eval_desk_panel() {
-    local dry_run="${3:-}"
+    local dry_run="${3:-}" reverse="${4:-0}"
     if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
         echo "错误: 设备需为 cuda:N 或 cpu" >&2
         return 1
     fi
-    if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
-        echo "用法: $0 eval-desk [cuda:N] [--dry-run]" >&2
+    if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 4 )); then
+        echo "用法: $0 eval-desk|eval-desk-rev [cuda:N] [--dry-run]" >&2
         return 1
     fi
-    # Priority order for paper table (desk-trained; synced train-best steps).
+    # Forward priority for paper table (desk-trained; synced train-best steps).
     local -a jobs=(
         "E4|hier_2026-09-12_10-20-18|645000"
         "E5-no-oru|hier_2026-09-18_21-14-57|360000"
@@ -1583,10 +1586,20 @@ run_eval_desk_panel() {
         "E1.5|hier_2026-09-09_15-05-17|755000"
         "E3|hier_2026-09-15_14-37-23|715000"
     )
+    local panel_name=eval-desk
+    if [[ "${reverse}" == "1" || "${HC_EVAL_DESK_REVERSE:-0}" == "1" ]]; then
+        local -a rev=()
+        local i
+        for ((i=${#jobs[@]}-1; i>=0; i--)); do
+            rev+=("${jobs[i]}")
+        done
+        jobs=("${rev[@]}")
+        panel_name=eval-desk-rev
+    fi
     if [[ "${dry_run}" == --dry-run ]]; then
-        run_eval_job_panel eval-desk "${jobs[@]}" --dry-run
+        run_eval_job_panel "${panel_name}" "${jobs[@]}" --dry-run
     else
-        run_eval_job_panel eval-desk "${jobs[@]}"
+        run_eval_job_panel "${panel_name}" "${jobs[@]}"
     fi
 }
 
@@ -1644,6 +1657,10 @@ case "${MODE}" in
     eval-5090|eval_5090) run_eval_5090_panel "$@" ;;
     eval-E5|eval_E5|E5-eval) run_eval_e5 "$@" ;;
     eval-desk|eval_desk) run_eval_desk_panel "$@" ;;
+    eval-desk-rev|eval_desk_rev)
+        # MODE DEVICE [--dry-run] → pass reverse=1 as 4th arg to panel
+        run_eval_desk_panel "${MODE}" "${DEVICE}" "${3:-}" 1
+        ;;
     hier-eval) run_hier_eval ;;
     hier-eval-n16) run_hier_eval_for_n 16 ;;
     hier-eval-n10) run_hier_eval_for_n 10 ;;
