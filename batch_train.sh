@@ -188,9 +188,9 @@ hc_test_args() {
     echo "--test --test_times ${HC_TEST_TIMES} --test_seeds ${HC_TEST_SEEDS}"
 }
 
-# Split comma-separated seeds into chunks of size HC_EVAL_SEED_CHUNK (default 5).
-# Chunking restarts the Python/Isaac process between chunks to avoid ~5h OOM crashes
-# that previously aborted every eval after seed 51 (9/10 episodes).
+# Split comma-separated seeds into chunks of size HC_EVAL_SEED_CHUNK (default 2).
+# Chunking restarts the Python/Isaac process between chunks; offset advances only by
+# actual episodes.jsonl lines (short chunks abort — do not skip unfinished seeds).
 # Set HC_EVAL_SEED_CHUNK=0 to run all seeds in one process.
 hc_seed_chunks() {
     local seeds_csv="${1:-${HC_TEST_SEEDS}}"

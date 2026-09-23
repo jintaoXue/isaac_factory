@@ -147,7 +147,7 @@ ls -lh logs/rl_games/HcFactory/hier_2026-09-17_06-43-17/nn/*_step_750000.pth
 
 ```bash
 BASE=logs/rl_games/HcFactory/hier_2026-09-17_06-43-17
-export HC_TEST_SEEDS=43,44,45,46,47,48,49,50,51,52 HC_TEST_TIMES=1 HC_EVAL_SEED_CHUNK=5
+export HC_TEST_SEEDS=43,44,45,46,47,48,49,50,51,52 HC_TEST_TIMES=1 HC_EVAL_SEED_CHUNK=2
 HC_LOAD_DIR=$BASE HC_LOAD_STEP=750000 HC_EVAL_VARIANT=E5 \
 HC_WANDB_NAME=Hier4TPA-E5-N10-S42-step750000-eval \
   ./run_2026_journal_experiments.sh hier-eval-n10 cuda:0

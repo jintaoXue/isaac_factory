@@ -68,7 +68,7 @@ usage() {
   eval-5090 [cuda:N] [--dry-run]
           一条龙评测 5090 本地权重：E1→E2→E2.5→E6（训练最优 step；默认跳过已完成的 E0）
           见 docs/eval_checkpoint_selection.md；HC_EVAL_INCLUDE_E0=1 可加跑 E0
-          默认 HC_EVAL_SEED_CHUNK=5（每 5 个 seed 重启进程，避免第 10 局前崩溃）
+          默认 HC_EVAL_SEED_CHUNK=2；按 episodes.jsonl 实际行数推进 offset，缺局即停
   eval-E5 [cuda:N] [--dry-run]
           评测从工位同步过来的 E5 训练最优 ckpt（step 750000）
   eval-desk [cuda:N] [--dry-run]
