@@ -72,11 +72,11 @@ usage() {
   eval-E5 [cuda:N] [--dry-run]
           评测从工位同步过来的 E5 训练最优 ckpt（step 750000）
   eval-desk [cuda:N] [--dry-run]
-          评测工位 E*：E4 / E5-no-oru(peak+near) / E5 / E3.5 / E3-no-oru / E1.5 / E3
+          评测工位 E*：E4 / E5-no-oru / E5 / E3.5 / E3-no-oru / E1.5 / E3
   eval-desk-rev [cuda:N] [--dry-run]
           同上倒序（本机与 5090 对开）
   eval-E5-no-oru-near [cuda:N] [--dry-run]
-          仅评 E5-no-oru 峰值附近 step 355000（Train/step≈358003 的 ≤ 侧存盘）
+          评 E5-no-oru 峰值附近 10 个存盘：335k–380k（间隔 5k）
 
 基线:
   baselines | rule-n10 | rule-n16 | random-n10 | random-n16 | random | rule
@@ -1579,11 +1579,10 @@ run_eval_desk_panel() {
         return 1
     fi
     # Forward priority for paper table (desk-trained; synced train-best steps).
-    # E5-no-oru: peak 360000 训练下降最快但 eval 差；另加峰值附近 355000（≤ Train/step）。
+    # E5-no-oru 峰值附近 10 ckpt 见 eval-E5-no-oru-near（不塞满 desk 面板）。
     local -a jobs=(
         "E4|hier_2026-09-12_10-20-18|645000"
         "E5-no-oru|hier_2026-09-18_21-14-57|360000"
-        "E5-no-oru-near|hier_2026-09-18_21-14-57|355000"
         "E5|hier_2026-09-17_06-43-17|750000"
         "E3.5|hier_2026-09-10_19-58-56|595000"
         "E3-no-oru|hier_2026-09-14_01-26-32|595000"
@@ -1626,7 +1625,19 @@ run_eval_e5() {
     fi
 }
 
-# E5-no-oru near-peak (step 355000): best ep ended ~358003; ≤-side save vs peak 360000.
+# E5-no-oru near-peak sweep: 10 saves around best ep (Train/step≈358003 → 360k band).
+# Steps 335000..380000 @ save_interval 5000 (all present on desk).
+e5_no_oru_near_jobs() {
+    local dir=hier_2026-09-18_21-14-57
+    local -a steps=(335000 340000 345000 350000 355000 360000 365000 370000 375000 380000)
+    local s
+    local -a jobs=()
+    for s in "${steps[@]}"; do
+        jobs+=("E5-no-oru-${s}|${dir}|${s}")
+    done
+    printf '%s\n' "${jobs[@]}"
+}
+
 run_eval_e5_no_oru_near() {
     local dry_run="${3:-}"
     if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
@@ -1637,7 +1648,8 @@ run_eval_e5_no_oru_near() {
         echo "用法: $0 eval-E5-no-oru-near [cuda:N] [--dry-run]" >&2
         return 1
     fi
-    local -a jobs=("E5-no-oru-near|hier_2026-09-18_21-14-57|355000")
+    local -a jobs=()
+    mapfile -t jobs < <(e5_no_oru_near_jobs)
     if [[ "${dry_run}" == --dry-run ]]; then
         run_eval_job_panel eval-E5-no-oru-near "${jobs[@]}" --dry-run
     else

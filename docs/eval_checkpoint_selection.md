@@ -32,17 +32,29 @@ ls "$HC_LOAD_DIR/nn/state_encoder_step_${HC_LOAD_STEP}.pth"
 - 默认 **`HC_EVAL_SEED_CHUNK=2`**（更勤重启进程）；两段仍续写 **同一条** W&B run。  
 - `HC_EVAL_SEED_CHUNK=0` = 单进程（不推荐）。
 
-## E5-no-oru 双 checkpoint
+## E5-no-oru 峰值附近 10 checkpoints
 
-| 标签 | step | 依据 | 说明 |
-| --- | ---: | --- | --- |
-| **E5-no-oru**（peak） | **360000** | 全局最低 makespan 14550 @ ep21，`Train/step≈358003` | 最近 5k 存盘（略晚于 ep 结束） |
-| **E5-no-oru-near** | **355000** | 同上 ep，**≤ Train/step** 侧存盘 | 峰值附近备选（避免用到 ep 后才写出的权重） |
+最佳训练局 makespan **14550** @ ep21，`Train/step≈358003` → 以 **360000** 为中心，按 `save_interval=5000` 左右各取，共 **10** 个：
+
+| step | 相对 peak |
+| ---: | --- |
+| 335000 | −5 |
+| 340000 | −4 |
+| 345000 | −3 |
+| 350000 | −2 |
+| 355000 | −1（≤ Train/step） |
+| **360000** | **0（peak / 最近存盘）** |
+| 365000 | +1 |
+| 370000 | +2 |
+| 375000 | +3 |
+| 380000 | +4 |
 
 ```bash
-# 只评 near
+# 一键评这 10 个（各 seeds 43–52 ×1）
 ./run_2026_journal_experiments.sh eval-E5-no-oru-near cuda:0
 ```
+
+`eval-desk` 仍只挂 peak **360000**；附近扫参走上面入口。
 
 ## 5090 已有权重
 
@@ -77,8 +89,7 @@ cd ~/work/isaac_factory_tpa && git pull origin master
 | E3.5 | `hier_2026-09-10_19-58-56` | 595000 | |
 | E4 | `hier_2026-09-12_10-20-18` | 645000 | |
 | E5 | `hier_2026-09-17_06-43-17` | 750000 | |
-| E5-no-oru | `hier_2026-09-18_21-14-57` | 360000 | 训练峰值（最近 5k） |
-| E5-no-oru-near | 同上 | **355000** | 峰值附近 ≤-side 存盘 |
+| E5-no-oru | `hier_2026-09-18_21-14-57` | 360000 | 训练峰值；附近 10 点见 `eval-E5-no-oru-near` |
 | E6-no-oru | `hier_2026-09-21_15-42-18` | （训完后重算） | **暂不进 `eval-desk`** |
 
 工位根：`/home/xue/work/isaac_factory/logs/rl_games/HcFactory/`  
