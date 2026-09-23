@@ -1482,8 +1482,8 @@ run_eval_5090_panel() {
 
     echo "[eval-5090] device=${DEVICE}; seeds=${HC_TEST_SEEDS}; times=${HC_TEST_TIMES}; base=${base}"
     echo "[eval-5090] ckpt rule: train-best FO makespan → nearest save_interval (docs/eval_checkpoint_selection.md)"
-    export HC_EVAL_SEED_CHUNK="${HC_EVAL_SEED_CHUNK:-5}"
-    echo "[eval-5090] seed_chunk=${HC_EVAL_SEED_CHUNK} (fresh process per chunk; avoids 9/10 crash)"
+    export HC_EVAL_SEED_CHUNK="${HC_EVAL_SEED_CHUNK:-2}"
+    echo "[eval-5090] seed_chunk=${HC_EVAL_SEED_CHUNK} (fresh process per chunk; verify jsonl before next)"
 
     if [[ "${HC_EVAL_INCLUDE_E0:-0}" == "1" ]]; then
         echo "[eval-5090] --- E0 (include) ---"
@@ -1539,7 +1539,7 @@ run_eval_job_panel() {
     repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
     cd "${repo_root}"
     base="${repo_root}/logs/rl_games/HcFactory"
-    export HC_EVAL_SEED_CHUNK="${HC_EVAL_SEED_CHUNK:-5}"
+    export HC_EVAL_SEED_CHUNK="${HC_EVAL_SEED_CHUNK:-2}"
     echo "[${panel_name}] device=${DEVICE}; seeds=${HC_TEST_SEEDS}; chunk=${HC_EVAL_SEED_CHUNK}; jobs=${#jobs[@]}"
     local spec variant rel step load_dir enc
     for spec in "${jobs[@]}"; do

@@ -194,7 +194,7 @@ hc_test_args() {
 # Set HC_EVAL_SEED_CHUNK=0 to run all seeds in one process.
 hc_seed_chunks() {
     local seeds_csv="${1:-${HC_TEST_SEEDS}}"
-    local chunk_size="${HC_EVAL_SEED_CHUNK:-5}"
+    local chunk_size="${HC_EVAL_SEED_CHUNK:-2}"
     local -a seeds=()
     local s
     IFS=',' read -ra seeds <<<"${seeds_csv}"
