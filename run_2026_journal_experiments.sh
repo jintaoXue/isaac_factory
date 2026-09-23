@@ -1,6 +1,22 @@
 #!/bin/bash
 set -euo pipefail
 
+# E5-human 快速运行（教师热启动＋教师探索＋AR＋人因奖励；ORU 关闭）
+# 在训练机执行；cuda:0 可换为空闲 GPU。以下命令各自运行，不会自动串跑。
+# conda activate isaac-lab
+# cd /home/xue/work/isaac_factory
+#
+# 1. 预览
+# HC_HUMAN_RUN_TAG=formal-v1 bash run_2026_journal_experiments.sh E5-human cuda:0 --dry-run
+# 2. 冒烟：5 局，独立目录
+# HC_HUMAN_RUN_TAG=smoke-v1 HC_MAX_TRAIN_EPISODES=5 bash run_2026_journal_experiments.sh E5-human cuda:0
+# 3. 正式：60 局，从同一 T0 初始化
+# HC_HUMAN_RUN_TAG=formal-v1 HC_MAX_TRAIN_EPISODES=60 bash run_2026_journal_experiments.sh E5-human cuda:0
+# 4. 协议评测：预先固定 step300000，N10 / seeds43–52×1 / epsilon=0
+# HC_LOAD_DIR=logs/rl_games/HcFactory/hier_E5-human-formal-v1 HC_LOAD_STEP=300000 bash run_2026_journal_experiments.sh eval-E5-human cuda:0
+# 可选消融：正式训练命令前加 HC_HUMAN_REWARD=false（独立 E5-human-off 目录）。
+# 同名训练目录存在时拒绝覆盖；重复实验将 tag 改为 formal-v2 / smoke-v2。
+
 # Hier4TPA journal entry — E0–E6 + ablations; see docs/experiment_protocol.md.
 # Usage:
 #   ./run_2026_journal_experiments.sh E0 [cuda:0] [--dry-run]
@@ -49,6 +65,8 @@ usage() {
   E4-no-oru  E4 去掉 ORU（保留教师探索＋层级学习）
   E5      E3＋自回归（分层 ε＋步内候选采样；无 H/b_score）
   E5-no-oru  E5 去掉 ORU（保留教师探索＋AR）
+  E5-human   E5-no-oru＋人因奖励；HC_HUMAN_RUN_TAG 命名；HC_HUMAN_REWARD=false 消融
+  eval-E5-human  同协议 43–52×1；需 HC_LOAD_DIR / HC_LOAD_STEP；支持 --dry-run
   E6      E5＋E4 完整方法（AR＋层级学习）
   E6-no-oru  E6 去掉 ORU（保留教师探索＋AR＋层级学习）
   TEACHER 冻结 T0 教师采库（ε=0，默认 50 ep，seed 42）
@@ -1357,6 +1375,120 @@ run_e5_no_oru_train() {
     "${cmd[@]}"
 }
 
+run_e5_human_train() {
+    # P0: same backbone as E5-no-oru; separate output/name, bounded reward only.
+    local repo_root load_dir dry_run="${3:-}"
+    local tag="${HC_HUMAN_RUN_TAG:-$(date +%Y%m%d_%H%M%S)}"
+    local enabled="${HC_HUMAN_REWARD:-true}"
+    [[ "${tag}" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "Invalid HC_HUMAN_RUN_TAG" >&2; return 1; }
+    [[ "${enabled}" == true || "${enabled}" == false ]] || { echo "HC_HUMAN_REWARD=true|false" >&2; return 1; }
+    local variant=E5-human
+    [[ "${enabled}" == true ]] || variant=E5-human-off
+    repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
+    cd "${repo_root}"
+    load_dir="${HC_HUMAN_TEACHER_DIR:-${repo_root}/logs/rl_games/HcFactory/hier_2026-08-27_23-17-41}"
+    local out="${repo_root}/logs/rl_games/HcFactory/hier_${variant}-${tag}"
+    if [[ "${dry_run}" != --dry-run && -e "${out}" ]]; then
+        echo "拒绝覆盖现有训练目录: ${out}; 请更换 HC_HUMAN_RUN_TAG" >&2
+        return 1
+    fi
+    if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
+        echo "错误: 设备需为 cuda:N 或 cpu" >&2
+        return 1
+    fi
+    if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
+        echo "用法: $0 E5-human [cuda:N] [--dry-run]" >&2
+        return 1
+    fi
+    if [[ "${dry_run}" != --dry-run ]]; then
+        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
+        if [[ -f "${local_env}" ]]; then
+            set -a
+            source "${local_env}"
+            set +a
+        fi
+        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
+            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
+        fi
+    fi
+    export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
+    export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
+    if [[ "${dry_run}" != --dry-run ]]; then
+        local head
+        for head in state_encoder agent_A agent_B agent_C agent_D_human agent_D_robot; do
+            [[ -s "${load_dir}/nn/${head}_step_1290000.pth" ]] || {
+                echo "缺少教师模型: ${load_dir}/nn/${head}_step_1290000.pth" >&2; return 1;
+            }
+        done
+    fi
+    export HC_WARMSTART=""
+    unset HC_WANDB_RUN_ID WANDB_RUN_ID HC_WANDB_RESUME WANDB_RESUME
+    local -a cmd=(
+        python train.py --task HRTPaHC-v1 --algo hier
+        --device "${DEVICE}" --num_envs 1 --headless --seed 42
+        --train_n_products 10 --max_parallel_cd_dispatch 10
+        --max_sim_episodes "${HC_MAX_TRAIN_EPISODES}"
+        --load_dir "${load_dir}" --load_step 1290000
+        --teacher_explore
+        --autoregressive
+        --wandb_activate --wandb_project HcFactory_TPA
+        --wandb_name "Hier4TPA-${variant}-N10-S42-${tag}"
+        --algo_variant "${variant}"
+        --ftg_thresh_phy 0.95
+        "+agent.params.config.full_experiment_name=${variant}-${tag}"
+        "agent.params.config.human_aware_reward=${enabled}"
+        agent.params.config.human_reward_metrics=true
+        "agent.params.config.human_mismatch_coef=${HC_HUMAN_MISMATCH_COEF:-0.05}"
+        "agent.params.config.human_overwork_coef=${HC_HUMAN_OVERWORK_COEF:-0.01}"
+        "agent.params.config.human_recovery_coef=${HC_HUMAN_RECOVERY_COEF:-0.0}"
+        "agent.params.config.human_fatigue_threshold=${HC_HUMAN_FATIGUE_THRESHOLD:-0.8}"
+        "agent.params.config.human_shaping_cap=${HC_HUMAN_SHAPING_CAP:-0.04}"
+        agent.params.config.t_max_anchor=64000
+        agent.params.config.max_episodic_steps=40000
+        agent.params.config.parallel_producing_limit=10
+        agent.params.config.c_forbid_none_mode=always
+        agent.params.config.curriculum=false
+        agent.params.config.explore=false
+        agent.params.config.explore_catalog=false
+        agent.params.config.catalog_collect=false
+        agent.params.config.oru=false
+        agent.params.config.teacher_explore=true
+        agent.params.config.autoregressive=true
+        agent.params.config.teacher_explore_ratio_start=1.0
+        agent.params.config.teacher_explore_ratio_end=0.0
+        agent.params.config.teacher_explore_decay_env_steps=300000
+        agent.params.config.ar_n_candidates=4
+        agent.params.config.ar_softmax_temperature=1.0
+        agent.params.config.ar_eps_scale_A=0.5
+        agent.params.config.ar_eps_scale_B=0.5
+        agent.params.config.ar_eps_scale_C=1.0
+        agent.params.config.ar_eps_scale_D=1.0
+        agent.params.config.prioritized_replay=false
+        agent.params.config.dueling_dqn=false
+        agent.params.config.noisy_net=false
+        agent.params.config.hierarchical_credit=false
+        agent.params.config.b_score_rl=false
+        agent.params.config.env_rule_based_exploration=false
+        agent.params.config.learning_rate=2.0e-5
+        agent.params.config.encoder_learning_rate=1.0e-5
+        agent.params.config.late_learning_rate=2.0e-5
+        agent.params.config.late_encoder_learning_rate=1.0e-5
+        agent.params.config.epsilon_start=0.05
+        agent.params.config.epsilon_end=0.05
+        agent.params.config.epsilon_decay_steps=1
+        'agent.params.config.warmstart=""'
+        'agent.params.config.load_name=""'
+    )
+    echo "[${variant}] human_reward=${enabled}; seed=42; output=${out}"
+    echo "[E5-human] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=Hier4TPA-${variant}-N10-S42-${tag}"
+    if [[ "${dry_run}" == --dry-run ]]; then
+        printf '%q ' "${cmd[@]}"
+        printf '\n'
+        return 0
+    fi
+    "${cmd[@]}"
+}
+
 run_e6_no_oru_train() {
     # E6-no-oru: E6 without ORU (AR + hier + b_score + teacher_explore; no catalog).
     local repo_root load_dir dry_run="${3:-}"
@@ -1692,6 +1824,38 @@ run_eval_e5_no_oru_far() {
     fi
 }
 
+run_eval_e5_human() {
+    local dry_run="${3:-}" repo_root head
+    repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
+    cd "${repo_root}"
+    [[ -z "${dry_run}" || "${dry_run}" == --dry-run ]] || return 1
+    local load_dir="${HC_LOAD_DIR:?请设置新 human 训练的 HC_LOAD_DIR}"
+    local step="${HC_LOAD_STEP:?请指定预先固定或独立验证集选择的 HC_LOAD_STEP}"
+    [[ "${step}" =~ ^[0-9]+$ ]] || { echo "HC_LOAD_STEP 必须是整数" >&2; return 1; }
+    local tag="$(date +%Y%m%d_%H%M%S)_$$"
+    export HC_LOAD_DIR="${load_dir}" HC_LOAD_STEP="${step}"
+    export HC_TEST_SEEDS=43,44,45,46,47,48,49,50,51,52 HC_TEST_TIMES=1
+    export HC_TRAIN_N_PRODUCTS=10 HC_T_MAX_ANCHOR=64000 HC_MULTI_K=10
+    export HC_HUMAN_EVAL=1 HC_EVAL_VARIANT=E5-human
+    export HC_WANDB_NAME="Hier4TPA-E5-human-N10-step${step}-eval-${tag}"
+    export HC_WANDB_TEST_PROJECT=HcFactory_TPA_Eval HC_WARMSTART=""
+    export HC_EVAL_OUTPUT_DIR="${load_dir}/eval_human_step${step}_${tag}"
+    export HC_EVAL_KEEP_PRIOR=0
+    unset HC_WANDB_RUN_ID WANDB_RUN_ID HC_WANDB_RESUME WANDB_RESUME
+    echo "[eval-E5-human] N10 K10 T40000 epsilon=0 seeds=43..52 x1; shaping OFF, human KPI ON"
+    echo "[eval-E5-human] load=${load_dir} step=${step}; out=${HC_EVAL_OUTPUT_DIR}"
+    if [[ "${dry_run}" == --dry-run ]]; then
+        echo "bash batch_train.sh 29 ${DEVICE} (fixed protocol above, existing chunked eval)"
+        return 0
+    fi
+    for head in state_encoder agent_A agent_B agent_C agent_D_human agent_D_robot; do
+        [[ -s "${load_dir}/nn/${head}_step_${step}.pth" ]] || {
+            echo "缺少权重: ${load_dir}/nn/${head}_step_${step}.pth" >&2; return 1;
+        }
+    done
+    bash batch_train.sh 29 "${DEVICE}"
+}
+
 case "${MODE}" in
     E0) run_e0_eval "$@" ;;
     E1) run_e1_train "$@" ;;
@@ -1704,6 +1868,8 @@ case "${MODE}" in
     E4) run_e4_train "$@" ;;
     E4-no-oru|E4_no_oru) run_e4_no_oru_train "$@" ;;
     E5) run_e5_train "$@" ;;
+    E5-human) run_e5_human_train "$@" ;;
+    eval-E5-human) run_eval_e5_human "$@" ;;
     E5-no-oru|E5_no_oru) run_e5_no_oru_train "$@" ;;
     E6) run_e6_train "$@" ;;
     E6-no-oru|E6_no_oru) run_e6_no_oru_train "$@" ;;

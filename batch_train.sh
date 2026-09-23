@@ -697,6 +697,22 @@ run_test_29() {
     _eval_wandb_name="${HC_WANDB_NAME:-hier_eval_${_eval_tag}_N${_eval_n}_step${HC_LOAD_STEP:-latest}_T${_eval_t}}"
     export HC_EVAL_SEED_CHUNK="${HC_EVAL_SEED_CHUNK:-2}"
 
+    # Only the new human eval opts into KPI logging. Existing sweep argv is unchanged.
+    local -a human_eval_args=()
+    if [[ "${HC_HUMAN_EVAL:-0}" == 1 ]]; then
+        human_eval_args=(
+            --algo_variant E5-human-eval --test_epsilon 0 --max_parallel_cd_dispatch 10
+            agent.params.config.human_aware_reward=false
+            agent.params.config.human_reward_metrics=true
+            agent.params.config.parallel_producing_limit=10
+            agent.params.config.max_episodic_steps=40000
+            agent.params.config.curriculum=false
+            agent.params.config.oru=false
+            agent.params.config.teacher_explore=false
+            'agent.params.config.warmstart=""'
+        )
+    fi
+
     local -a chunks=()
     mapfile -t chunks < <(hc_seed_chunks "${HC_TEST_SEEDS}")
     if [[ "${#chunks[@]}" -eq 0 ]]; then
@@ -774,6 +790,7 @@ run_test_29() {
             --wandb_name "${_eval_wandb_name}" \
             $(hc_load_step_args) \
             $(hc_t_max_args) \
+            "${human_eval_args[@]}" \
             ${DEVICE_ARG}
         rc=$?
         if [[ ! -f "${HC_EVAL_OUTPUT_DIR}/episodes.jsonl" ]]; then

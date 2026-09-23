@@ -155,6 +155,8 @@ class HierarchicalTPA:
         "E5": (False, False, 1.0, 1.0, True, True, True),
         "E5-no-oru": (False, False, 1.0, 1.0, True, False, True),
         "E6": (True, True, 2.0, 1.5, True, True, True),
+        "E5-human": (False, False, 1.0, 1.0, True, False, True),
+        "E5-human-off": (False, False, 1.0, 1.0, True, False, True),
         "E6-no-oru": (True, True, 2.0, 1.5, True, False, True),
         "E6-no-guide": (True, True, 2.0, 1.5, False, True, True),
         "E6-no-ar": (True, True, 2.0, 1.5, True, True, False),
@@ -1211,7 +1213,10 @@ class HierarchicalTPA:
                     truncated = False
                     success = False
                 # When done, env has already reset next_obs; use pre-step obs for last fatigue frame.
-                self._fatigue.update(env_id, obs[env_id] if done else next_obs[env_id])
+                self._fatigue.update(
+                    env_id, obs[env_id] if done else next_obs[env_id],
+                    rl=next_obs[env_id].get("rl", {}),
+                )
                 episode_reward[env_id] += reward
                 episode_len[env_id] += 1
                 rl_step = next_obs[env_id].get("rl") or {}

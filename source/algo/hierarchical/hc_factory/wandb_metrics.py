@@ -116,6 +116,11 @@ def define_shared_metrics(
     wandb.define_metric("MetricFullorderCore/episode")
     wandb.define_metric("MetricTest/episode")
     wandb.define_metric("MetricHuman/episode")
+    wandb.define_metric("MetricReward/*", step_metric="Train/step")
+    wandb.define_metric("MetricReward/ep_*", step_metric="MetricHuman/episode")
+    wandb.define_metric("MetricHuman/ep_assigned_*", step_metric="MetricHuman/episode")
+    wandb.define_metric("MetricHuman/ep_mismatch_rate", step_metric="MetricHuman/episode")
+    wandb.define_metric("MetricHuman/ep_dispatch_count", step_metric="MetricHuman/episode")
 
     for key in _CORE_KEYS:
         wandb.define_metric(f"MetricCore/{key}", step_metric="MetricCore/episode")
@@ -232,9 +237,30 @@ class HumanFatigueTracker:
         self._ema_ready = [False] * self.num_humans
         self._ep_sum = 0.0
         self._ep_count = 0
+        self._reset_reward_stats()
 
-    def update(self, env_dict: dict) -> None:
-        """Ingest one env frame; skip empty / out-of-range human slots."""
+    def _reset_reward_stats(self):
+        self._reward_totals = {}
+        self._reward_latest = {}
+        self._reward_steps = 0
+        self._assignment_sums = {}
+
+    def update(self, env_dict: dict, rl: dict | None = None) -> None:
+        """Ingest one env frame, including terminal rewards preserved across reset."""
+        reward_state = env_dict.get("rl", {}) if rl is None else rl
+        stats = reward_state.get("human_reward_stats")
+        if stats is not None:
+            parts = reward_state.get("reward_parts", {})
+            self._reward_latest = {str(k): float(v) for k, v in parts.items()}
+            self._reward_latest["human_total"] = sum(float(v) for k, v in parts.items() if k.startswith("human_"))
+            self._reward_latest["total"] = float(reward_state.get("reward", 0.0))
+            self._reward_latest["enabled"] = float(stats.get("enabled", 0.0))
+            self._reward_latest["cap_hit"] = float(stats.get("cap_hit", 0.0))
+            self._reward_steps += 1
+            for key, value in self._reward_latest.items():
+                self._reward_totals[key] = self._reward_totals.get(key, 0.0) + value
+            for key in ("assignments", "assigned_skill_sum", "assigned_speed_sum", "mismatch_count", "gap_sum"):
+                self._assignment_sums[key] = self._assignment_sums.get(key, 0.0) + float(stats.get(key, 0.0))
         humans = env_dict.get("human") or {}
         if not isinstance(humans, dict):
             return
@@ -258,6 +284,7 @@ class HumanFatigueTracker:
     def step_payload(self) -> dict[str, Any]:
         """Train/step curves: per-worker EMA + mean/max over registered workers."""
         payload: dict[str, Any] = {}
+        payload.update({f"MetricReward/{k}": v for k, v in self._reward_latest.items()})
         ready = [self.ema[i] for i in range(self.num_humans) if self._ema_ready[i]]
         for i in range(self.num_humans):
             if self._ema_ready[i]:
@@ -270,6 +297,17 @@ class HumanFatigueTracker:
     def episode_payload(self, *, episode: int) -> dict[str, Any]:
         """Episode-end stats (aligned with MetricCore/episode via MetricHuman/episode)."""
         payload: dict[str, Any] = {"MetricHuman/episode": int(episode)}
+        if self._reward_steps:
+            for key, value in self._reward_totals.items():
+                payload[f"MetricReward/ep_{key}_sum"] = value
+                payload[f"MetricReward/ep_{key}_mean"] = value / self._reward_steps
+            count = self._assignment_sums.get("assignments", 0.0)
+            payload["MetricHuman/ep_dispatch_count"] = count
+            if count:
+                payload["MetricHuman/ep_assigned_skill_mean"] = self._assignment_sums["assigned_skill_sum"] / count
+                payload["MetricHuman/ep_assigned_speed_mean"] = self._assignment_sums["assigned_speed_sum"] / count
+                payload["MetricHuman/ep_assigned_gap_mean"] = self._assignment_sums["gap_sum"] / count
+                payload["MetricHuman/ep_mismatch_rate"] = self._assignment_sums["mismatch_count"] / count
         if self._ep_count > 0:
             payload["MetricHuman/ep_mean_fatigue"] = float(self._ep_sum / self._ep_count)
         ready = [self.ema[i] for i in range(self.num_humans) if self._ema_ready[i]]
@@ -284,6 +322,7 @@ class HumanFatigueTracker:
         self._ema_ready = [False] * self.num_humans
         self._ep_sum = 0.0
         self._ep_count = 0
+        self._reset_reward_stats()
 
 
 class HumanFatigueMonitor:
@@ -310,8 +349,8 @@ class HumanFatigueMonitor:
             )
         return self.trackers[env_id]
 
-    def update(self, env_id: int, env_dict: dict) -> None:
-        self.ensure(env_id).update(env_dict)
+    def update(self, env_id: int, env_dict: dict, *, rl: dict | None = None) -> None:
+        self.ensure(env_id).update(env_dict, rl=rl)
 
     def step_payload(self, env_id: int = 0) -> dict[str, Any]:
         return self.ensure(env_id).step_payload()

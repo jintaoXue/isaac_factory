@@ -136,3 +136,12 @@ params:
     stagnation_l2: 600
     stagnation_l3: 800
     decision_ring_k: 20
+
+    # P0 human-aware shaping: off for all existing variants.
+    human_aware_reward: false
+    human_reward_metrics: false
+    human_mismatch_coef: 0.05
+    human_overwork_coef: 0.01
+    human_recovery_coef: 0.0
+    human_fatigue_threshold: 0.8
+    human_shaping_cap: 0.04

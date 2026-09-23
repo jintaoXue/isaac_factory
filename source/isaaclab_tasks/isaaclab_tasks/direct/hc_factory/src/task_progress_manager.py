@@ -8,6 +8,8 @@ from ..env_asset_cfg.cfg_gantry_zone import get_gantry_zone
 from .material import find_free_storage, reserve_storage_slot, finalize_material_batch_task_done
 import torch
 import copy
+from .human_aware_reward import HumanAwareReward
+from ..env_asset_cfg.cfg_human import human_effective_skill, human_efficiency
 
 
 def staging_slot_index(parallel_producing_limit: int | None = None) -> int:
@@ -76,8 +78,13 @@ class TaskManager:
         self.finish_bonus = float(finish_bonus)
         self.task_bonus = float(task_bonus)
         self.success_bonus = float(success_bonus)
+        self.configure_human_reward({})
+
+    def configure_human_reward(self, config):
+        self.human_reward = HumanAwareReward(config, human_effective_skill, human_efficiency)
 
     def reset(self, env_state_action_dict) -> dict:
+        self.human_reward.reset()
         #production progress reset
         env_state_action_dict["progress"]["product_order"] = copy.deepcopy(CfgProductOrder)
         env_state_action_dict["progress"]["not_started"] = copy.deepcopy(CfgProductOrder)
@@ -202,6 +209,13 @@ class TaskManager:
             "task": float(part_task),
             "success": float(part_success),
         }
+        human_parts, human_stats = self.human_reward.finish_step(env_state_action_dict)
+        if human_parts:
+            rl["reward_parts"].update(human_parts)
+            rl["reward"] += sum(human_parts.values())
+            rl["human_reward_stats"] = human_stats
+        else:
+            rl.pop("human_reward_stats", None)
         return env_state_action_dict
 
     def check_done_production(self, env_state_action_dict: dict) -> bool:
@@ -359,6 +373,7 @@ class TaskManager:
             new_task_record["chosen_gantry_index"] = chosen_gantry_index
 
         env_state_action_dict["progress"]["ongoing_task_records"][new_task_record["product_index"]] = new_task_record
+        self.human_reward.on_assignment(env_state_action_dict, new_task_record)
         self.apply_new_task_record_to_human_robot_machine_material(env_state_action_dict, new_task_record)
         if new_task_record.get("from_staging_slot"):
             self._commit_new_product_to_producing(env_state_action_dict, new_task_record)

@@ -84,6 +84,8 @@ class HcVectorEnvBase(DirectRLEnv):
 
     def setup_one_env(self, env_id: int):
         single_env = HcSingleEnv(env_id=env_id, route_manager=self.route_manager, cuda_device=self.cuda_device)
+        reward_config = self.cfg_vector_env.train_cfg["params"]["config"]
+        single_env.task_manager.configure_human_reward(reward_config)
         self.env_list.append(single_env)
 
     def reset(self, num_worker=None, num_robot=None, evaluate=False):

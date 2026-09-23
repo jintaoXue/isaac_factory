@@ -130,6 +130,7 @@ class HcSingleEnvBase():
     def step_env_logic(self, action: dict | None = None, action_extra: list[dict] | None = None) -> None:
         # time_start = time.time()
         self.env_state_action_dict['action'] = action
+        self.task_manager.human_reward.begin_step(self.env_state_action_dict)
         for m in self.iter_managers():
             m.step(self.env_state_action_dict)
         self.env_state_action_dict["time_step"] += 1
