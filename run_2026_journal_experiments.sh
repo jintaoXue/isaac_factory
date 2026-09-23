@@ -72,11 +72,11 @@ usage() {
   eval-E5 [cuda:N] [--dry-run]
           评测从工位同步过来的 E5 训练最优 ckpt（step 750000）
   eval-desk [cuda:N] [--dry-run]
-          评测工位 E*：E4 / E5-no-oru(peak+late) / E5 / E3.5 / E3-no-oru / E1.5 / E3
+          评测工位 E*：E4 / E5-no-oru(peak+near) / E5 / E3.5 / E3-no-oru / E1.5 / E3
   eval-desk-rev [cuda:N] [--dry-run]
           同上倒序（本机与 5090 对开）
-  eval-E5-no-oru-late [cuda:N] [--dry-run]
-          仅评 E5-no-oru 后半程最优 step 870000
+  eval-E5-no-oru-near [cuda:N] [--dry-run]
+          仅评 E5-no-oru 峰值附近 step 355000（Train/step≈358003 的 ≤ 侧存盘）
 
 基线:
   baselines | rule-n10 | rule-n16 | random-n10 | random-n16 | random | rule
@@ -1579,11 +1579,11 @@ run_eval_desk_panel() {
         return 1
     fi
     # Forward priority for paper table (desk-trained; synced train-best steps).
-    # E5-no-oru: peak 360000 训练下降最快但 eval 差；另加后半程最优 870000。
+    # E5-no-oru: peak 360000 训练下降最快但 eval 差；另加峰值附近 355000（≤ Train/step）。
     local -a jobs=(
         "E4|hier_2026-09-12_10-20-18|645000"
         "E5-no-oru|hier_2026-09-18_21-14-57|360000"
-        "E5-no-oru-late|hier_2026-09-18_21-14-57|870000"
+        "E5-no-oru-near|hier_2026-09-18_21-14-57|355000"
         "E5|hier_2026-09-17_06-43-17|750000"
         "E3.5|hier_2026-09-10_19-58-56|595000"
         "E3-no-oru|hier_2026-09-14_01-26-32|595000"
@@ -1626,22 +1626,22 @@ run_eval_e5() {
     fi
 }
 
-# E5-no-oru late (half2 best step 870000) — peak 360000 下降快但 eval 差。
-run_eval_e5_no_oru_late() {
+# E5-no-oru near-peak (step 355000): best ep ended ~358003; ≤-side save vs peak 360000.
+run_eval_e5_no_oru_near() {
     local dry_run="${3:-}"
     if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
         echo "错误: 设备需为 cuda:N 或 cpu" >&2
         return 1
     fi
     if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
-        echo "用法: $0 eval-E5-no-oru-late [cuda:N] [--dry-run]" >&2
+        echo "用法: $0 eval-E5-no-oru-near [cuda:N] [--dry-run]" >&2
         return 1
     fi
-    local -a jobs=("E5-no-oru-late|hier_2026-09-18_21-14-57|870000")
+    local -a jobs=("E5-no-oru-near|hier_2026-09-18_21-14-57|355000")
     if [[ "${dry_run}" == --dry-run ]]; then
-        run_eval_job_panel eval-E5-no-oru-late "${jobs[@]}" --dry-run
+        run_eval_job_panel eval-E5-no-oru-near "${jobs[@]}" --dry-run
     else
-        run_eval_job_panel eval-E5-no-oru-late "${jobs[@]}"
+        run_eval_job_panel eval-E5-no-oru-near "${jobs[@]}"
     fi
 }
 
@@ -1679,7 +1679,7 @@ case "${MODE}" in
     eval-T1RH) run_eval_variant T1RH ;;
     eval-5090|eval_5090) run_eval_5090_panel "$@" ;;
     eval-E5|eval_E5|E5-eval) run_eval_e5 "$@" ;;
-    eval-E5-no-oru-late|eval_E5_no_oru_late|E5-no-oru-late-eval) run_eval_e5_no_oru_late "$@" ;;
+    eval-E5-no-oru-near|eval_E5_no_oru_near|E5-no-oru-near-eval|eval-E5-no-oru-late|eval_E5_no_oru_late|E5-no-oru-late-eval) run_eval_e5_no_oru_near "$@" ;;
     eval-desk|eval_desk) run_eval_desk_panel "$@" ;;
     eval-desk-rev|eval_desk_rev)
         # MODE DEVICE [--dry-run] → pass reverse=1 as 4th arg to panel

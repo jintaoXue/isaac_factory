@@ -36,12 +36,12 @@ ls "$HC_LOAD_DIR/nn/state_encoder_step_${HC_LOAD_STEP}.pth"
 
 | 标签 | step | 依据 | 说明 |
 | --- | ---: | --- | --- |
-| **E5-no-oru**（peak） | **360000** | 全局最低 makespan 14550 @ ep21 | 训练下降最快，但协议 eval 偏弱 |
-| **E5-no-oru-late** | **870000** | 后半程 / last20 最优 15877 @ ep50 | 更稳候选，`eval-desk` 已纳入；也可单独跑 |
+| **E5-no-oru**（peak） | **360000** | 全局最低 makespan 14550 @ ep21，`Train/step≈358003` | 最近 5k 存盘（略晚于 ep 结束） |
+| **E5-no-oru-near** | **355000** | 同上 ep，**≤ Train/step** 侧存盘 | 峰值附近备选（避免用到 ep 后才写出的权重） |
 
 ```bash
-# 只评 late
-./run_2026_journal_experiments.sh eval-E5-no-oru-late cuda:0
+# 只评 near
+./run_2026_journal_experiments.sh eval-E5-no-oru-near cuda:0
 ```
 
 ## 5090 已有权重
@@ -77,8 +77,8 @@ cd ~/work/isaac_factory_tpa && git pull origin master
 | E3.5 | `hier_2026-09-10_19-58-56` | 595000 | |
 | E4 | `hier_2026-09-12_10-20-18` | 645000 | |
 | E5 | `hier_2026-09-17_06-43-17` | 750000 | |
-| E5-no-oru | `hier_2026-09-18_21-14-57` | 360000 | 训练峰值 |
-| E5-no-oru-late | 同上 | **870000** | 后半程最优（额外候选） |
+| E5-no-oru | `hier_2026-09-18_21-14-57` | 360000 | 训练峰值（最近 5k） |
+| E5-no-oru-near | 同上 | **355000** | 峰值附近 ≤-side 存盘 |
 | E6-no-oru | `hier_2026-09-21_15-42-18` | （训完后重算） | **暂不进 `eval-desk`** |
 
 工位根：`/home/xue/work/isaac_factory/logs/rl_games/HcFactory/`  
