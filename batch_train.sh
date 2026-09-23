@@ -683,9 +683,9 @@ run_t1rh() {
 
 run_test_29() {
     # Hier eval: load HC_LOAD_DIR nn/, no curriculum.
-    # Default: split seeds into chunks (HC_EVAL_SEED_CHUNK=5) so each chunk is a
-    # fresh process — long single-process evals were crashing after 9/10 seeds.
-    # All chunks share one W&B run id + name (resume), so the UI shows a single record.
+    # Default: split seeds into small chunks (HC_EVAL_SEED_CHUNK=2) so each chunk is a
+    # fresh process — long single-process evals were crashing mid-chunk; bash used to
+    # advance the episode offset by the *planned* size anyway, skipping unfinished seeds.
     if [ -z "${HC_LOAD_DIR}" ]; then
         echo "错误: run_test_29 需要 HC_LOAD_DIR 指向训练实验目录（含 nn/）"
         echo "示例：HC_LOAD_DIR=logs/rl_games/HcFactory/hier_2026-08-18_22-00-00 ./batch_train.sh 29 cuda:0"
@@ -695,7 +695,7 @@ run_test_29() {
     _eval_t=$([ "${_eval_n}" = "10" ] && echo "${HC_T_MAX_N10}" || echo "${HC_T_MAX_N16}")
     _eval_tag="${HC_EVAL_VARIANT:-eval}"
     _eval_wandb_name="${HC_WANDB_NAME:-hier_eval_${_eval_tag}_N${_eval_n}_step${HC_LOAD_STEP:-latest}_T${_eval_t}}"
-    export HC_EVAL_SEED_CHUNK="${HC_EVAL_SEED_CHUNK:-5}"
+    export HC_EVAL_SEED_CHUNK="${HC_EVAL_SEED_CHUNK:-2}"
 
     local -a chunks=()
     mapfile -t chunks < <(hc_seed_chunks "${HC_TEST_SEEDS}")
@@ -732,9 +732,9 @@ run_test_29() {
     echo "  seeds=${HC_TEST_SEEDS} chunk=${HC_EVAL_SEED_CHUNK} → ${#chunks[@]} process(es)"
     echo "  wandb_name=${_eval_wandb_name} run_id=${HC_WANDB_RUN_ID} out=${HC_EVAL_OUTPUT_DIR}"
 
-    local chunk expected_eps done_eps=0
+    local chunk expected_eps done_eps=0 actual_eps=0
     local -a seed_arr=()
-    # Fresh panel: clear prior jsonl unless caller set HC_EVAL_APPEND=1 already.
+    # Fresh panel: clear prior jsonl unless caller set HC_EVAL_KEEP_PRIOR=1.
     if [[ "${HC_EVAL_KEEP_PRIOR:-0}" != "1" ]]; then
         rm -f "${HC_EVAL_OUTPUT_DIR}/episodes.jsonl" \
               "${HC_EVAL_OUTPUT_DIR}/eval_results.json" \
@@ -742,12 +742,18 @@ run_test_29() {
               "${HC_EVAL_OUTPUT_DIR}/eval_summary_partial.json"
     fi
 
-    local chunk_i=0
+    local chunk_i=0 rc
     for chunk in "${chunks[@]}"; do
         IFS=',' read -ra seed_arr <<<"${chunk}"
         expected_eps=$(( ${#seed_arr[@]} * HC_TEST_TIMES ))
-        export HC_EVAL_EPISODE_OFFSET="${done_eps}"
-        if [[ "${chunk_i}" -eq 0 ]]; then
+        # Offset must match *actually* finished episodes, not planned chunk size.
+        if [[ -f "${HC_EVAL_OUTPUT_DIR}/episodes.jsonl" ]]; then
+            actual_eps=$(grep -cve '^[[:space:]]*$' "${HC_EVAL_OUTPUT_DIR}/episodes.jsonl" || true)
+        else
+            actual_eps=0
+        fi
+        export HC_EVAL_EPISODE_OFFSET="${actual_eps}"
+        if [[ "${actual_eps}" -eq 0 ]]; then
             export HC_EVAL_APPEND=0
         else
             export HC_EVAL_APPEND=1
@@ -769,10 +775,30 @@ run_test_29() {
             $(hc_load_step_args) \
             $(hc_t_max_args) \
             ${DEVICE_ARG}
-        done_eps=$((done_eps + expected_eps))
+        rc=$?
+        if [[ ! -f "${HC_EVAL_OUTPUT_DIR}/episodes.jsonl" ]]; then
+            echo "错误: chunk#${chunk_i} 未写出 episodes.jsonl (python rc=${rc})" >&2
+            return 1
+        fi
+        actual_eps=$(grep -cve '^[[:space:]]*$' "${HC_EVAL_OUTPUT_DIR}/episodes.jsonl" || true)
+        local need=$(( HC_EVAL_EPISODE_OFFSET + expected_eps ))
+        if [[ "${actual_eps}" -lt "${need}" ]]; then
+            echo "错误: chunk#${chunk_i} 未跑满 — 期望累计 ${need} 局，实际 ${actual_eps}（python rc=${rc}）" >&2
+            echo "  已完成 seeds 见 ${HC_EVAL_OUTPUT_DIR}/episodes.jsonl；勿在缺局时推进下一 chunk。" >&2
+            return 1
+        fi
+        if [[ "${rc}" -ne 0 ]]; then
+            echo "错误: chunk#${chunk_i} python 非零退出 rc=${rc}" >&2
+            return "${rc}"
+        fi
+        done_eps=${actual_eps}
         chunk_i=$((chunk_i + 1))
-        echo "  [eval] chunk finished; cumulative episodes=${done_eps}/${_total_eps}"
+        echo "  [eval] chunk ok; cumulative episodes=${done_eps}/${_total_eps}"
     done
+    if [[ "${done_eps}" -ne "${_total_eps}" ]]; then
+        echo "错误: 评测未满 ${_total_eps} 局（实际 ${done_eps}）" >&2
+        return 1
+    fi
     echo "[eval] all chunks done → one W&B run name=${_eval_wandb_name} id=${HC_WANDB_RUN_ID} episodes=${done_eps}"
 }
 

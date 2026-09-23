@@ -24,12 +24,25 @@ ls "$HC_LOAD_DIR/nn/state_encoder_step_${HC_LOAD_STEP}.pth"
 
 ## 跑满 10 个 seed（重要）
 
-历史上 5090 单进程连跑 10 局会在 **seed 52（第 10 局）前崩溃**，W&B 只剩 9 条。  
-`batch_train.sh` job 29 现默认 **`HC_EVAL_SEED_CHUNK=5`**：把 43–52 拆成两段 **进程**（`43–47` / `48–52`），中间退出 Isaac 再开下一段。
+历史上 5090/本机评测常出现「只有 8–9 局」：根因是 **chunk 进程中途崩溃后，bash 仍按计划 +5 推进 `HC_EVAL_EPISODE_OFFSET`**，下一 chunk 跳号，W&B 缺 seed（常见缺 47 与 52）。  
 
-- **同一条 W&B 记录**：两段共用同一个 `HC_WANDB_RUN_ID` + 相同 `wandb_name`，第二段 `resume=allow` 续写；`MetricFullorderCore/episode` 连续为 1…10。  
-- 本地 `episodes.jsonl` 也写到同一目录并 append。  
-- 若坚持单进程：`HC_EVAL_SEED_CHUNK=0`（不推荐在 5090 长评测上用）。
+现已修复（`batch_train.sh` job 29）：
+- offset **只按 `episodes.jsonl` 实际行数**推进；  
+- chunk 未跑满或 python 非 0 **直接失败**，不再偷偷开下一 chunk；  
+- 默认 **`HC_EVAL_SEED_CHUNK=2`**（更勤重启进程）；两段仍续写 **同一条** W&B run。  
+- `HC_EVAL_SEED_CHUNK=0` = 单进程（不推荐）。
+
+## E5-no-oru 双 checkpoint
+
+| 标签 | step | 依据 | 说明 |
+| --- | ---: | --- | --- |
+| **E5-no-oru**（peak） | **360000** | 全局最低 makespan 14550 @ ep21 | 训练下降最快，但协议 eval 偏弱 |
+| **E5-no-oru-late** | **870000** | 后半程 / last20 最优 15877 @ ep50 | 更稳候选，`eval-desk` 已纳入；也可单独跑 |
+
+```bash
+# 只评 late
+./run_2026_journal_experiments.sh eval-E5-no-oru-late cuda:0
+```
 
 ## 5090 已有权重
 
@@ -64,7 +77,8 @@ cd ~/work/isaac_factory_tpa && git pull origin master
 | E3.5 | `hier_2026-09-10_19-58-56` | 595000 | |
 | E4 | `hier_2026-09-12_10-20-18` | 645000 | |
 | E5 | `hier_2026-09-17_06-43-17` | 750000 | |
-| E5-no-oru | `hier_2026-09-18_21-14-57` | 360000 | |
+| E5-no-oru | `hier_2026-09-18_21-14-57` | 360000 | 训练峰值 |
+| E5-no-oru-late | 同上 | **870000** | 后半程最优（额外候选） |
 | E6-no-oru | `hier_2026-09-21_15-42-18` | （训完后重算） | **暂不进 `eval-desk`** |
 
 工位根：`/home/xue/work/isaac_factory/logs/rl_games/HcFactory/`  
