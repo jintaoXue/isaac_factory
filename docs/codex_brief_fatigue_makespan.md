@@ -40,7 +40,7 @@
 ### 1.3 E5-no-oru 选点进度（给 Codex 别重复造轮子）
 
 - Run dir：`logs/rl_games/HcFactory/hier_2026-09-18_21-14-57`  
-- 入口：`eval-E5-no-oru-near`（335k–380k）、`eval-E5-no-oru-far`（窗外次优 10）  
+- 入口：`eval-E5-no-oru-near`（**340k–380k**，已跳过满评的 335k）、`eval-E5-no-oru-far`（窗外次优 10）  
 - 文档：`docs/eval_checkpoint_selection.md`  
 - 回家扫参包（若相关）：`_ckpt_export/E5-no-oru_home_eval/`（勿写 Obsidian）
 

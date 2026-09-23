@@ -94,7 +94,7 @@ usage() {
   eval-desk-rev [cuda:N] [--dry-run]
           同上倒序（本机与 5090 对开）
   eval-E5-no-oru-near [cuda:N] [--dry-run]
-          评 E5-no-oru 峰值附近 10 个存盘：335k–380k（间隔 5k）
+          评 E5-no-oru 峰值附近剩余存盘：340k–380k（跳过已满评的 335k）
   eval-E5-no-oru-far [cuda:N] [--dry-run]
           评峰值窗外另外 10 个训练最优存盘（makespan 次优档，供 5090）
 
@@ -1759,11 +1759,11 @@ run_eval_e5() {
     fi
 }
 
-# E5-no-oru near-peak sweep: 10 saves around best ep (Train/step≈358003 → 360k band).
-# Steps 335000..380000 @ save_interval 5000 (all present on desk).
+# E5-no-oru near-peak sweep around best ep (Train/step≈358003 → 360k band).
+# Skip 335000: already full 10/10 protocol eval (mean≈17220). Remaining 340k–380k.
 e5_no_oru_near_jobs() {
     local dir=hier_2026-09-18_21-14-57
-    local -a steps=(335000 340000 345000 350000 355000 360000 365000 370000 375000 380000)
+    local -a steps=(340000 345000 350000 355000 360000 365000 370000 375000 380000)
     local s
     local -a jobs=()
     for s in "${steps[@]}"; do
