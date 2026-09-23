@@ -77,6 +77,8 @@ usage() {
           同上倒序（本机与 5090 对开）
   eval-E5-no-oru-near [cuda:N] [--dry-run]
           评 E5-no-oru 峰值附近 10 个存盘：335k–380k（间隔 5k）
+  eval-E5-no-oru-far [cuda:N] [--dry-run]
+          评峰值窗外另外 10 个训练最优存盘（makespan 次优档，供 5090）
 
 基线:
   baselines | rule-n10 | rule-n16 | random-n10 | random-n16 | random | rule
@@ -1657,6 +1659,39 @@ run_eval_e5_no_oru_near() {
     fi
 }
 
+# E5-no-oru far sweep: top-10 train-best saves OUTSIDE the 335k–380k peak window
+# (≤-aligned to save_interval; files verified on desk). Prefer 5090 for this panel.
+e5_no_oru_far_jobs() {
+    local dir=hier_2026-09-18_21-14-57
+    # ms@ep: 15216,15769,15877,16018,16100,16164,16252,16332,16390,16395
+    local -a steps=(240000 495000 870000 205000 85000 990000 480000 1010000 595000 940000)
+    local s
+    local -a jobs=()
+    for s in "${steps[@]}"; do
+        jobs+=("E5-no-oru-${s}|${dir}|${s}")
+    done
+    printf '%s\n' "${jobs[@]}"
+}
+
+run_eval_e5_no_oru_far() {
+    local dry_run="${3:-}"
+    if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
+        echo "错误: 设备需为 cuda:N 或 cpu" >&2
+        return 1
+    fi
+    if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
+        echo "用法: $0 eval-E5-no-oru-far [cuda:N] [--dry-run]" >&2
+        return 1
+    fi
+    local -a jobs=()
+    mapfile -t jobs < <(e5_no_oru_far_jobs)
+    if [[ "${dry_run}" == --dry-run ]]; then
+        run_eval_job_panel eval-E5-no-oru-far "${jobs[@]}" --dry-run
+    else
+        run_eval_job_panel eval-E5-no-oru-far "${jobs[@]}"
+    fi
+}
+
 case "${MODE}" in
     E0) run_e0_eval "$@" ;;
     E1) run_e1_train "$@" ;;
@@ -1692,6 +1727,7 @@ case "${MODE}" in
     eval-5090|eval_5090) run_eval_5090_panel "$@" ;;
     eval-E5|eval_E5|E5-eval) run_eval_e5 "$@" ;;
     eval-E5-no-oru-near|eval_E5_no_oru_near|E5-no-oru-near-eval|eval-E5-no-oru-late|eval_E5_no_oru_late|E5-no-oru-late-eval) run_eval_e5_no_oru_near "$@" ;;
+    eval-E5-no-oru-far|eval_E5_no_oru_far|E5-no-oru-far-eval) run_eval_e5_no_oru_far "$@" ;;
     eval-desk|eval_desk) run_eval_desk_panel "$@" ;;
     eval-desk-rev|eval_desk_rev)
         # MODE DEVICE [--dry-run] → pass reverse=1 as 4th arg to panel

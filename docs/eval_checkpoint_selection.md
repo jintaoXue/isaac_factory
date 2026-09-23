@@ -56,6 +56,53 @@ ls "$HC_LOAD_DIR/nn/state_encoder_step_${HC_LOAD_STEP}.pth"
 
 `eval-desk` 仍只挂 peak **360000**；附近扫参走上面入口。
 
+## E5-no-oru 窗外另 10 checkpoints（5090）
+
+在 **335k–380k 之外**，按训练 `makespan` 次优档对齐 `save_interval=5000`（≤ Train/step）再取 **10** 个：
+
+| step | 训练 ms（对齐依据） |
+| ---: | ---: |
+| 240000 | 15216 |
+| 495000 | 15769 |
+| 870000 | 15877 |
+| 205000 | 16018 |
+| 85000 | 16100 |
+| 990000 | 16164 |
+| 480000 | 16252 |
+| 1010000 | 16332 |
+| 595000 | 16390 |
+| 940000 | 16395 |
+
+### 工位 → 5090（只传这 10×6 个 `.pth`）
+
+```bash
+cd ~/work/isaac_factory
+REMOTE=sci@10.68.14.234
+REMOTE_REPO=/home/sci/work/isaac_factory_tpa
+SRC=logs/rl_games/HcFactory/hier_2026-09-18_21-14-57/nn
+STEPS="240000 495000 870000 205000 85000 990000 480000 1010000 595000 940000"
+
+ssh "${REMOTE}" "mkdir -p ${REMOTE_REPO}/${SRC}"
+for STEP in ${STEPS}; do
+  rsync -avz --progress \
+    "${SRC}/state_encoder_step_${STEP}.pth" \
+    "${SRC}/agent_A_step_${STEP}.pth" \
+    "${SRC}/agent_B_step_${STEP}.pth" \
+    "${SRC}/agent_C_step_${STEP}.pth" \
+    "${SRC}/agent_D_human_step_${STEP}.pth" \
+    "${SRC}/agent_D_robot_step_${STEP}.pth" \
+    "${REMOTE}:${REMOTE_REPO}/${SRC}/"
+done
+```
+
+### 5090 评测
+
+```bash
+cd ~/work/isaac_factory_tpa && git pull origin master
+./run_2026_journal_experiments.sh eval-E5-no-oru-far cuda:0 --dry-run
+./run_2026_journal_experiments.sh eval-E5-no-oru-far cuda:0
+```
+
 ## 5090 已有权重
 
 
