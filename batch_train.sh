@@ -704,6 +704,7 @@ run_test_29() {
             --algo_variant E5-human-eval --test_epsilon 0 --max_parallel_cd_dispatch 10
             agent.params.config.human_aware_reward=false
             agent.params.config.human_reward_metrics=true
+            "agent.params.config.human_pair_head=${HC_HUMAN_PAIR_EVAL:-false}"
             agent.params.config.parallel_producing_limit=10
             agent.params.config.max_episodic_steps=40000
             agent.params.config.curriculum=false

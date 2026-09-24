@@ -156,6 +156,8 @@ class HierarchicalTPA:
         "E5-no-oru": (False, False, 1.0, 1.0, True, False, True),
         "E6": (True, True, 2.0, 1.5, True, True, True),
         "E5-human": (False, False, 1.0, 1.0, True, False, True),
+        "E5-human-pair": (False, False, 1.0, 1.0, True, False, True),
+        "E5-pair": (False, False, 1.0, 1.0, True, False, True),
         "E5-human-off": (False, False, 1.0, 1.0, True, False, True),
         "E6-no-oru": (True, True, 2.0, 1.5, True, False, True),
         "E6-no-guide": (True, True, 2.0, 1.5, False, True, True),
@@ -336,7 +338,10 @@ class HierarchicalTPA:
         self.agent_B.b_score_rl = self.b_score_rl
         self.agent_B.autoregressive = self.autoregressive
         self.agent_C = RLProcessTaskPlanningAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
-        self.agent_D = RLHumanRobotAllocatorAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
+        self.agent_D = RLHumanRobotAllocatorAgent(
+            self.obs_encoder, self.cuda_device,
+            human_pair_head=bool(config.get("human_pair_head", False)), **dqn_kwargs
+        )
         self._apply_ar_to_agents(sample_at_act=True)
 
         self.oru: ORUController | None = None
@@ -908,7 +913,7 @@ class HierarchicalTPA:
                 "D_human",
                 self.agent_D.human_dqn,
                 (
-                    lambda pre, transition: self.obs_encoder.encode_D(
+                    lambda pre, transition: self.agent_D.encode_human_obs(
                         pre, transition.context.to(self.cuda_device)
                     )
                 ),

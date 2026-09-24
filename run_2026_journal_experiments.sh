@@ -1,6 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
+# 网络切换：E5-human=原网络；E5-human-pair=配对残差网络＋人因奖励；E5-pair=仅新网络。
+# 新网络预览：HC_HUMAN_RUN_TAG=pair-smoke-v1 bash run_2026_journal_experiments.sh E5-human-pair cuda:0 --dry-run
+# 新网络短训：HC_HUMAN_RUN_TAG=pair-smoke-v1 HC_MAX_TRAIN_EPISODES=5 bash run_2026_journal_experiments.sh E5-human-pair cuda:0
+# 新网络正式：HC_HUMAN_RUN_TAG=pair-formal-v1 HC_MAX_TRAIN_EPISODES=60 bash run_2026_journal_experiments.sh E5-human-pair cuda:0
+# 新网络评测：HC_LOAD_DIR=logs/rl_games/HcFactory/hier_E5-human-pair-pair-formal-v1 HC_LOAD_STEP=300000 bash run_2026_journal_experiments.sh eval-E5-human-pair cuda:0
+#
 # E5-human 快速运行（教师热启动＋教师探索＋AR＋人因奖励；ORU 关闭）
 # 在训练机执行；cuda:0 可换为空闲 GPU。以下命令各自运行，不会自动串跑。
 # conda activate isaac-lab
@@ -65,6 +71,9 @@ usage() {
   E4-no-oru  E4 去掉 ORU（保留教师探索＋层级学习）
   E5      E3＋自回归（分层 ε＋步内候选采样；无 H/b_score）
   E5-no-oru  E5 去掉 ORU（保留教师探索＋AR）
+  E5-human-pair  新 D-human 配对残差网络＋人因奖励（旧教师热启动）
+  E5-pair        新网络、不加人因奖励（网络单独消融）
+  eval-E5-human-pair | eval-E5-pair  新网络协议评测；需 HC_LOAD_DIR / HC_LOAD_STEP
   E5-human   E5-no-oru＋人因奖励；HC_HUMAN_RUN_TAG 命名；HC_HUMAN_REWARD=false 消融
   eval-E5-human  同协议 43–52×1；需 HC_LOAD_DIR / HC_LOAD_STEP；支持 --dry-run
   E6      E5＋E4 完整方法（AR＋层级学习）
@@ -1384,6 +1393,13 @@ run_e5_human_train() {
     [[ "${enabled}" == true || "${enabled}" == false ]] || { echo "HC_HUMAN_REWARD=true|false" >&2; return 1; }
     local variant=E5-human
     [[ "${enabled}" == true ]] || variant=E5-human-off
+    local pair_head=false
+    if [[ "${MODE}" == E5-human-pair || "${MODE}" == E5-pair ]]; then
+        pair_head=true
+        [[ "${MODE}" != E5-pair ]] || enabled=false
+        variant=E5-human-pair
+        [[ "${enabled}" == true ]] || variant=E5-pair
+    fi
     repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
     cd "${repo_root}"
     load_dir="${HC_HUMAN_TEACHER_DIR:-${repo_root}/logs/rl_games/HcFactory/hier_2026-08-27_23-17-41}"
@@ -1436,6 +1452,7 @@ run_e5_human_train() {
         --algo_variant "${variant}"
         --ftg_thresh_phy 0.95
         "+agent.params.config.full_experiment_name=${variant}-${tag}"
+        "agent.params.config.human_pair_head=${pair_head}"
         "agent.params.config.human_aware_reward=${enabled}"
         agent.params.config.human_reward_metrics=true
         "agent.params.config.human_mismatch_coef=${HC_HUMAN_MISMATCH_COEF:-0.05}"
@@ -1479,7 +1496,7 @@ run_e5_human_train() {
         'agent.params.config.warmstart=""'
         'agent.params.config.load_name=""'
     )
-    echo "[${variant}] human_reward=${enabled}; seed=42; output=${out}"
+    echo "[${variant}] human_reward=${enabled} pair_head=${pair_head}; seed=42; output=${out}"
     echo "[E5-human] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=Hier4TPA-${variant}-N10-S42-${tag}"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
@@ -1833,17 +1850,23 @@ run_eval_e5_human() {
     local step="${HC_LOAD_STEP:?请指定预先固定或独立验证集选择的 HC_LOAD_STEP}"
     [[ "${step}" =~ ^[0-9]+$ ]] || { echo "HC_LOAD_STEP 必须是整数" >&2; return 1; }
     local tag="$(date +%Y%m%d_%H%M%S)_$$"
+    local variant=E5-human
+    export HC_HUMAN_PAIR_EVAL=false
+    if [[ "${MODE}" == eval-E5-human-pair || "${MODE}" == eval-E5-pair ]]; then
+        variant="${MODE#eval-}"
+        export HC_HUMAN_PAIR_EVAL=true
+    fi
     export HC_LOAD_DIR="${load_dir}" HC_LOAD_STEP="${step}"
     export HC_TEST_SEEDS=43,44,45,46,47,48,49,50,51,52 HC_TEST_TIMES=1
     export HC_TRAIN_N_PRODUCTS=10 HC_T_MAX_ANCHOR=64000 HC_MULTI_K=10
-    export HC_HUMAN_EVAL=1 HC_EVAL_VARIANT=E5-human
-    export HC_WANDB_NAME="Hier4TPA-E5-human-N10-step${step}-eval-${tag}"
+    export HC_HUMAN_EVAL=1 HC_EVAL_VARIANT="${variant}"
+    export HC_WANDB_NAME="Hier4TPA-${variant}-N10-step${step}-eval-${tag}"
     export HC_WANDB_TEST_PROJECT=HcFactory_TPA_Eval HC_WARMSTART=""
     export HC_EVAL_OUTPUT_DIR="${load_dir}/eval_human_step${step}_${tag}"
     export HC_EVAL_KEEP_PRIOR=0
     unset HC_WANDB_RUN_ID WANDB_RUN_ID HC_WANDB_RESUME WANDB_RESUME
-    echo "[eval-E5-human] N10 K10 T40000 epsilon=0 seeds=43..52 x1; shaping OFF, human KPI ON"
-    echo "[eval-E5-human] load=${load_dir} step=${step}; out=${HC_EVAL_OUTPUT_DIR}"
+    echo "[eval-${variant}] N10 K10 T40000 epsilon=0 seeds=43..52 x1; shaping OFF, human KPI ON, pair_head=${HC_HUMAN_PAIR_EVAL}"
+    echo "[eval-${variant}] load=${load_dir} step=${step}; out=${HC_EVAL_OUTPUT_DIR}"
     if [[ "${dry_run}" == --dry-run ]]; then
         echo "bash batch_train.sh 29 ${DEVICE} (fixed protocol above, existing chunked eval)"
         return 0
@@ -1868,8 +1891,8 @@ case "${MODE}" in
     E4) run_e4_train "$@" ;;
     E4-no-oru|E4_no_oru) run_e4_no_oru_train "$@" ;;
     E5) run_e5_train "$@" ;;
-    E5-human) run_e5_human_train "$@" ;;
-    eval-E5-human) run_eval_e5_human "$@" ;;
+    E5-human|E5-human-pair|E5-pair) run_e5_human_train "$@" ;;
+    eval-E5-human|eval-E5-human-pair|eval-E5-pair) run_eval_e5_human "$@" ;;
     E5-no-oru|E5_no_oru) run_e5_no_oru_train "$@" ;;
     E6) run_e6_train "$@" ;;
     E6-no-oru|E6_no_oru) run_e6_no_oru_train "$@" ;;

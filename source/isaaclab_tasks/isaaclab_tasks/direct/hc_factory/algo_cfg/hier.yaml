@@ -145,3 +145,6 @@ params:
     human_recovery_coef: 0.0
     human_fatigue_threshold: 0.8
     human_shaping_cap: 0.04
+
+    # Optional D-human pair residual; old interface/network remains the default.
+    human_pair_head: false

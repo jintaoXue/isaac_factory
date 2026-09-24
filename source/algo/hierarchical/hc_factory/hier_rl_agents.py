@@ -10,6 +10,7 @@ import torch.optim as optim
 
 from .hier_buffer import PrioritizedReplayBuffer, ReplayBuffer, Transition
 from .hier_networks import QNetwork
+from .human_pair import HumanPairQNetwork, PAIR_FEATURE_DIM, human_task_pair_features
 from .hier_utils import index_to_one_hot, masked_select_action, one_hot_to_index
 
 
@@ -71,6 +72,7 @@ class MaskedDQNAgent:
         dueling: bool = False,
         noisy: bool = False,
         noisy_std: float = 0.5,
+        human_pair_dim: int = 0,
     ):
         self.name = name
         self.obs_dim = obs_dim
@@ -90,8 +92,11 @@ class MaskedDQNAgent:
         self.train_steps = 0
 
         q_kwargs = dict(dueling=self.dueling, noisy=self.noisy, noisy_std=float(noisy_std))
-        self.q_net = QNetwork(obs_dim, action_dim, hidden_dim, **q_kwargs).to(device)
-        self.target_net = QNetwork(obs_dim, action_dim, hidden_dim, **q_kwargs).to(device)
+        network = HumanPairQNetwork if human_pair_dim else QNetwork
+        if human_pair_dim:
+            q_kwargs["pair_feature_dim"] = human_pair_dim
+        self.q_net = network(obs_dim, action_dim, hidden_dim, **q_kwargs).to(device)
+        self.target_net = network(obs_dim, action_dim, hidden_dim, **q_kwargs).to(device)
         self.target_net.load_state_dict(self.q_net.state_dict())
         self.optimizer = optim.Adam(self.q_net.parameters(), lr=lr)
         if self.prioritized_replay:
@@ -382,12 +387,18 @@ class MaskedDQNAgent:
         return float(loss.item())
 
     def save(self, path: str) -> None:
-        torch.save({"q_net": self.q_net.state_dict(), "name": self.name}, path)
+        torch.save({"q_net": self.q_net.state_dict(), "name": self.name,
+                    "architecture": "human_pair_v1" if isinstance(self.q_net, HumanPairQNetwork) else "legacy"}, path)
 
     def load(self, path: str) -> None:
-        checkpoint = torch.load(path, weights_only=True)
+        checkpoint = torch.load(path, map_location=self.device, weights_only=True)
         state = _migrate_q_net_state_dict(checkpoint["q_net"], self.q_net)
-        self.q_net.load_state_dict(state)
+        if isinstance(self.q_net, HumanPairQNetwork):
+            self.q_net.load_compatible_state_dict(state)
+        else:
+            if any(k.startswith("pair_residual.") for k in state):
+                raise RuntimeError("Pair checkpoint requires human_pair_head=true; refusing to drop learned residual")
+            self.q_net.load_state_dict(state)
         self.target_net.load_state_dict(self.q_net.state_dict())
 
 
@@ -718,7 +729,8 @@ class RLHumanRobotAllocatorAgent:
 
     ACTION_KEY = "human_robot_allocation"
 
-    def __init__(self, obs_encoder, device: torch.device, **dqn_kwargs):
+    def __init__(self, obs_encoder, device: torch.device, *, human_pair_head: bool = False, **dqn_kwargs):
+        self.human_pair_head = bool(human_pair_head)
         self.obs_encoder = obs_encoder
         self.device = device
         self.human_dqn: MaskedDQNAgent | None = None
@@ -731,8 +743,23 @@ class RLHumanRobotAllocatorAgent:
         obs_dim = self.obs_encoder.get_obs_dim_D(env_state_action_dict, process_task_planning_action)
         human_dim = env_state_action_dict["agent_action_mask"]["human"]["self_availability_mask"].shape[0]
         robot_dim = env_state_action_dict["agent_action_mask"]["robot"]["self_availability_mask"].shape[0]
-        self.human_dqn = MaskedDQNAgent("agent_D_human", obs_dim, human_dim, self.device, **self.dqn_kwargs)
+        extra = human_dim * PAIR_FEATURE_DIM if self.human_pair_head else 0
+        self.human_dqn = MaskedDQNAgent(
+            "agent_D_human", obs_dim + extra, human_dim, self.device,
+            human_pair_dim=PAIR_FEATURE_DIM if self.human_pair_head else 0, **self.dqn_kwargs
+        )
         self.robot_dqn = MaskedDQNAgent("agent_D_robot", obs_dim, robot_dim, self.device, **self.dqn_kwargs)
+
+    def encode_human_obs(self, env_or_pre, task_action, *, pre=None, base_obs=None):
+        """One path for acting, replay TD (including next state), and offline updates."""
+        if base_obs is None:
+            base_obs = self.obs_encoder.encode_D(env_or_pre, task_action, pre=pre)
+        if not self.human_pair_head:
+            return base_obs
+        pre = self.obs_encoder._resolve_pre(env_or_pre, pre)
+        action_dim = int(pre["agent_action_mask"]["human"]["self_availability_mask"].numel())
+        pairs = human_task_pair_features(pre, task_action.to(self.device), action_dim)
+        return torch.cat((base_obs, pairs.flatten()))
 
     def act(
         self,
@@ -787,7 +814,10 @@ class RLHumanRobotAllocatorAgent:
 
         obs = self.obs_encoder.encode_D(env_state_action_dict, process_task_planning_action, pre=pre)
         return {
-            "human": self.human_dqn.act_tensor(obs, human_mask, epsilon),
+            "human": self.human_dqn.act_tensor(
+                self.encode_human_obs(env_state_action_dict, process_task_planning_action, pre=pre, base_obs=obs),
+                human_mask, epsilon
+            ),
             "robot": self.robot_dqn.act_tensor(obs, robot_mask, epsilon),
         }
 
@@ -838,7 +868,8 @@ class RLHumanRobotAllocatorAgent:
             )
             if learn:
                 human_loss = self.human_dqn.compute_loss(
-                    encode_d, offline_buffer=offline_buffer_human, mix_ratio=mix_ratio
+                    lambda pre, transition: self.encode_human_obs(pre, transition.context.to(self.device)),
+                    offline_buffer=offline_buffer_human, mix_ratio=mix_ratio
                 )
         if action["robot"].sum() > 0:
             self.robot_dqn.store_pre(
