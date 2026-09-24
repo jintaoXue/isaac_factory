@@ -157,6 +157,9 @@ class HierarchicalTPA:
         "E6": (True, True, 2.0, 1.5, True, True, True),
         "E5-human": (False, False, 1.0, 1.0, True, False, True),
         "E5-human-pair": (False, False, 1.0, 1.0, True, False, True),
+        "E5-human-pair-c": (False, False, 1.0, 1.0, True, False, True),
+        "E5-human-pair-aux": (False, False, 1.0, 1.0, True, False, True),
+        "E5-human-pair-c-aux": (False, False, 1.0, 1.0, True, False, True),
         "E5-pair": (False, False, 1.0, 1.0, True, False, True),
         "E5-human-off": (False, False, 1.0, 1.0, True, False, True),
         "E6-no-oru": (True, True, 2.0, 1.5, True, False, True),
@@ -337,10 +340,14 @@ class HierarchicalTPA:
         self.agent_B = RLProductSelectionAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
         self.agent_B.b_score_rl = self.b_score_rl
         self.agent_B.autoregressive = self.autoregressive
-        self.agent_C = RLProcessTaskPlanningAgent(self.obs_encoder, self.cuda_device, **dqn_kwargs)
+        self.agent_C = RLProcessTaskPlanningAgent(
+            self.obs_encoder, self.cuda_device, task_pair_head=bool(config.get("task_pair_head", False)), **dqn_kwargs)
         self.agent_D = RLHumanRobotAllocatorAgent(
             self.obs_encoder, self.cuda_device,
-            human_pair_head=bool(config.get("human_pair_head", False)), **dqn_kwargs
+            human_pair_head=bool(config.get("human_pair_head", False)),
+            duration_aux=bool(config.get("human_duration_aux", False)),
+            duration_aux_weight=float(config.get("duration_aux_weight", 0.05)),
+            duration_aux_scale=float(config.get("duration_aux_scale", 1000.0)), **dqn_kwargs
         )
         self._apply_ar_to_agents(sample_at_act=True)
 
@@ -837,8 +844,11 @@ class HierarchicalTPA:
             if loss_b is not None:
                 loss_entries.append(("B", loss_b, self.agent_B.dqn))
 
+            c_prev = prev_obs
+            if self.agent_C.task_pair_head and dispatch.get("c_human_available") is not None:
+                c_prev = {**prev_obs, "_task_pair_available": dispatch["c_human_available"]}
             loss_c = self.agent_C.observe_step(
-                prev_obs,
+                c_prev,
                 selection,
                 planning,
                 reward * self.credit_scale_CD,
@@ -875,6 +885,12 @@ class HierarchicalTPA:
         if not should_learn:
             return losses
 
+        aux = self.agent_D.duration_aux
+        if aux is not None and any(name == "D_human" for name, _, _ in loss_entries):
+            aux_loss = aux.compute_loss(self.agent_D)
+            if aux_loss is not None:
+                loss_entries = [(name, loss + aux_loss if name == "D_human" else loss, dqn)
+                                for name, loss, dqn in loss_entries]
         losses = self._joint_learn(loss_entries)
         for key, value in losses.items():
             self._loss_window[key].append(value)
@@ -903,7 +919,7 @@ class HierarchicalTPA:
                 "C",
                 self.agent_C.dqn,
                 (
-                    lambda pre, transition: self.obs_encoder.encode_C(
+                    lambda pre, transition: self.agent_C.encode_task_obs(
                         pre, transition.context.to(self.cuda_device)
                     )
                 ),
@@ -1217,6 +1233,12 @@ class HierarchicalTPA:
                     done = False
                     truncated = False
                     success = False
+                if self.agent_D.duration_aux is not None:
+                    self.agent_D.duration_aux.observe(
+                        env_id, prev_pre_list[env_id],
+                        next_obs[env_id].get("rl", {}).get("duration_events", []),
+                        done=done, restored=restored,
+                    )
                 # When done, env has already reset next_obs; use pre-step obs for last fatigue frame.
                 self._fatigue.update(
                     env_id, obs[env_id] if done else next_obs[env_id],
@@ -1526,6 +1548,14 @@ class HierarchicalTPA:
                     )
                 )
                 payload.update(loss_payload)
+                if self.agent_C.task_pair_head or self.agent_D.duration_aux_enabled:
+                    payload.update({
+                        "MetricNetwork/task_pair_head": int(self.agent_C.task_pair_head),
+                        "MetricNetwork/human_pair_head": int(self.agent_D.human_pair_head),
+                        "MetricNetwork/human_duration_aux": int(self.agent_D.duration_aux_enabled),
+                    })
+                if self.agent_D.duration_aux is not None:
+                    payload.update(self.agent_D.duration_aux.metrics())
                 if self.oru is not None:
                     payload.update(self.oru.metrics_payload())
                 if self.horizon.catalog_metrics_enabled:

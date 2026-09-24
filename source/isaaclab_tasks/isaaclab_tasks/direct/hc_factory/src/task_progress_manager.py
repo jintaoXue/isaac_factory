@@ -82,6 +82,7 @@ class TaskManager:
 
     def configure_human_reward(self, config):
         self.human_reward = HumanAwareReward(config, human_effective_skill, human_efficiency)
+        self.duration_events_enabled = bool(config.get("human_duration_aux", False))
 
     def reset(self, env_state_action_dict) -> dict:
         self.human_reward.reset()
@@ -115,6 +116,8 @@ class TaskManager:
         }
 
     def step(self, env_state_action_dict: dict) -> dict:
+        if self.duration_events_enabled:
+            env_state_action_dict.setdefault("rl", {})["duration_events"] = []
 
         self.decode_action_product_sequencing(env_state_action_dict)
 
@@ -373,6 +376,7 @@ class TaskManager:
             new_task_record["chosen_gantry_index"] = chosen_gantry_index
 
         env_state_action_dict["progress"]["ongoing_task_records"][new_task_record["product_index"]] = new_task_record
+        self._duration_event(env_state_action_dict, new_task_record, "start")
         self.human_reward.on_assignment(env_state_action_dict, new_task_record)
         self.apply_new_task_record_to_human_robot_machine_material(env_state_action_dict, new_task_record)
         if new_task_record.get("from_staging_slot"):
@@ -580,6 +584,16 @@ class TaskManager:
         assert env_state_action_dict["material"][material_name]["ongoing_task_record_index"] == None, "The ongoing task record should be empty"
         env_state_action_dict["material"][material_name]["ongoing_task_record_index"] = task_record["product_index"]        
 
+    def _duration_event(self, state, record, kind):
+        if not self.duration_events_enabled:
+            return
+        event = {"kind": kind, "product": int(record["product_index"]),
+                 "task": int(record["task_index"]), "human": int(record["human_index"]),
+                 "start": int(record["task_start_time_step"])}
+        if kind == "complete":
+            event["duration"] = int(state["time_step"]) + 1 - event["start"]
+        state["rl"].setdefault("duration_events", []).append(event)
+
     def step_task_records(self, env_state_action_dict):
 
         ongoing_task_records: dict = env_state_action_dict["progress"]["ongoing_task_records"]
@@ -590,6 +604,7 @@ class TaskManager:
         for product_index, task_record in ongoing_task_records.items():
             product_type = task_record["product"]
             if self._check_subtask_and_task_done(env_state_action_dict, task_record):
+                self._duration_event(env_state_action_dict, task_record, "complete")
                 n_task_done += 1
                 material_name = f"num_{product_index:02d}_{product_type}"
                 finalize_material_batch_task_done(

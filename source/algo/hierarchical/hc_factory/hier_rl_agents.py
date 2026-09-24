@@ -10,7 +10,9 @@ import torch.optim as optim
 
 from .hier_buffer import PrioritizedReplayBuffer, ReplayBuffer, Transition
 from .hier_networks import QNetwork
-from .human_pair import HumanPairQNetwork, PAIR_FEATURE_DIM, human_task_pair_features
+from .human_pair import (HumanPairQNetwork, TaskHumanPairQNetwork, PAIR_FEATURE_DIM,
+                         TASK_PAIR_FEATURE_DIM, human_task_pair_features, task_human_summary)
+from .duration_aux import DurationAuxReplay
 from .hier_utils import index_to_one_hot, masked_select_action, one_hot_to_index
 
 
@@ -73,6 +75,8 @@ class MaskedDQNAgent:
         noisy: bool = False,
         noisy_std: float = 0.5,
         human_pair_dim: int = 0,
+        task_pair_head: bool = False,
+        duration_aux: bool = False,
     ):
         self.name = name
         self.obs_dim = obs_dim
@@ -92,7 +96,11 @@ class MaskedDQNAgent:
         self.train_steps = 0
 
         q_kwargs = dict(dueling=self.dueling, noisy=self.noisy, noisy_std=float(noisy_std))
-        network = HumanPairQNetwork if human_pair_dim else QNetwork
+        if duration_aux and not human_pair_dim:
+            raise ValueError("duration_aux requires human_pair_head=true")
+        network = TaskHumanPairQNetwork if task_pair_head else (HumanPairQNetwork if human_pair_dim else QNetwork)
+        if duration_aux:
+            q_kwargs["duration_aux"] = True
         if human_pair_dim:
             q_kwargs["pair_feature_dim"] = human_pair_dim
         self.q_net = network(obs_dim, action_dim, hidden_dim, **q_kwargs).to(device)
@@ -388,7 +396,8 @@ class MaskedDQNAgent:
 
     def save(self, path: str) -> None:
         torch.save({"q_net": self.q_net.state_dict(), "name": self.name,
-                    "architecture": "human_pair_v1" if isinstance(self.q_net, HumanPairQNetwork) else "legacy"}, path)
+                    "architecture": ("task_pair_v1" if isinstance(self.q_net, TaskHumanPairQNetwork) else
+                                     "human_pair_v1" if isinstance(self.q_net, HumanPairQNetwork) else "legacy")}, path)
 
     def load(self, path: str) -> None:
         checkpoint = torch.load(path, map_location=self.device, weights_only=True)
@@ -397,7 +406,9 @@ class MaskedDQNAgent:
             self.q_net.load_compatible_state_dict(state)
         else:
             if any(k.startswith("pair_residual.") for k in state):
-                raise RuntimeError("Pair checkpoint requires human_pair_head=true; refusing to drop learned residual")
+                raise RuntimeError(
+                    "Pair checkpoint requires " + ("task_pair_head=true" if self.name == "agent_C" else "human_pair_head=true")
+                    + "; refusing to drop learned residual")
             self.q_net.load_state_dict(state)
         self.target_net.load_state_dict(self.q_net.state_dict())
 
@@ -633,7 +644,8 @@ class RLProcessTaskPlanningAgent:
     AGENT_KEY = "agent_C_process_task_planner"
     ACTION_KEY = "process_task_planning"
 
-    def __init__(self, obs_encoder, device: torch.device, **dqn_kwargs):
+    def __init__(self, obs_encoder, device: torch.device, *, task_pair_head=False, **dqn_kwargs):
+        self.task_pair_head = bool(task_pair_head)
         self.obs_encoder = obs_encoder
         self.device = device
         self.dqn: MaskedDQNAgent | None = None
@@ -654,7 +666,16 @@ class RLProcessTaskPlanningAgent:
             return
         obs_dim = self.obs_encoder.get_obs_dim_C(env_state_action_dict, product_selection_action)
         action_dim = env_state_action_dict["agent_action_mask"][self.AGENT_KEY].shape[1]
-        self.dqn = MaskedDQNAgent("agent_C", obs_dim, action_dim, self.device, **self.dqn_kwargs)
+        extra = action_dim * TASK_PAIR_FEATURE_DIM if self.task_pair_head else 0
+        self.dqn = MaskedDQNAgent("agent_C", obs_dim + extra, action_dim, self.device,
+                                  task_pair_head=self.task_pair_head, **self.dqn_kwargs)
+
+    def encode_task_obs(self, env_or_pre, selection, *, pre=None):
+        base = self.obs_encoder.encode_C(env_or_pre, selection, pre=pre)
+        if not self.task_pair_head:
+            return base
+        resolved = self.obs_encoder._resolve_pre(env_or_pre, pre)
+        return torch.cat((base, task_human_summary(resolved).flatten().to(base.device)))
 
     def act(
         self,
@@ -666,7 +687,7 @@ class RLProcessTaskPlanningAgent:
     ) -> torch.Tensor:
         self._ensure_dqn(env_state_action_dict, product_selection_action)
         mask = self._get_task_mask(env_state_action_dict, product_selection_action)
-        obs = self.obs_encoder.encode_C(env_state_action_dict, product_selection_action, pre=pre)
+        obs = self.encode_task_obs(env_state_action_dict, product_selection_action, pre=pre)
         return self.dqn.act_tensor(obs, mask, epsilon)
 
     def act_with_mask(
@@ -679,7 +700,7 @@ class RLProcessTaskPlanningAgent:
         pre: dict | None = None,
     ) -> torch.Tensor:
         self._ensure_dqn(env_state_action_dict, product_selection_action)
-        obs = self.obs_encoder.encode_C(env_state_action_dict, product_selection_action, pre=pre)
+        obs = self.encode_task_obs(env_state_action_dict, product_selection_action, pre=pre)
         return self.dqn.act_tensor(obs, task_mask, epsilon)
 
     def observe_step(
@@ -718,7 +739,7 @@ class RLProcessTaskPlanningAgent:
         if not learn:
             return None
         return self.dqn.compute_loss(
-            lambda pre, transition: self.obs_encoder.encode_C(pre, transition.context.to(self.device)),
+            lambda pre, transition: self.encode_task_obs(pre, transition.context.to(self.device)),
             offline_buffer=offline_buffer,
             mix_ratio=mix_ratio,
         )
@@ -729,7 +750,12 @@ class RLHumanRobotAllocatorAgent:
 
     ACTION_KEY = "human_robot_allocation"
 
-    def __init__(self, obs_encoder, device: torch.device, *, human_pair_head: bool = False, **dqn_kwargs):
+    def __init__(self, obs_encoder, device: torch.device, *, human_pair_head: bool = False,
+                 duration_aux=False, duration_aux_weight=0.05, duration_aux_scale=1000.0, **dqn_kwargs):
+        if duration_aux and not human_pair_head:
+            raise ValueError("human_duration_aux requires human_pair_head=true")
+        self.duration_aux_enabled = bool(duration_aux)
+        self.duration_aux = DurationAuxReplay(weight=duration_aux_weight, scale=duration_aux_scale) if duration_aux else None
         self.human_pair_head = bool(human_pair_head)
         self.obs_encoder = obs_encoder
         self.device = device
@@ -746,7 +772,8 @@ class RLHumanRobotAllocatorAgent:
         extra = human_dim * PAIR_FEATURE_DIM if self.human_pair_head else 0
         self.human_dqn = MaskedDQNAgent(
             "agent_D_human", obs_dim + extra, human_dim, self.device,
-            human_pair_dim=PAIR_FEATURE_DIM if self.human_pair_head else 0, **self.dqn_kwargs
+            human_pair_dim=PAIR_FEATURE_DIM if self.human_pair_head else 0,
+            duration_aux=self.duration_aux_enabled, **self.dqn_kwargs
         )
         self.robot_dqn = MaskedDQNAgent("agent_D_robot", obs_dim, robot_dim, self.device, **self.dqn_kwargs)
 

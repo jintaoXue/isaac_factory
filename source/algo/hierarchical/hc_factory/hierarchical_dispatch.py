@@ -199,8 +199,13 @@ def build_hier_rl_action(
             c_mask, slot_index, pool, forbid_none_mode=forbid_none_mode
         )
         slot_one_hot = _slot_to_one_hot(slot_index, b_dim, cuda_device)
+        c_pre = pre
+        c_human_available = None
+        if getattr(agents.agent_C, "task_pair_head", False):
+            c_human_available = pool.get_d_masks()["human"].clone()
+            c_pre = {**pre, "_task_pair_available": c_human_available}
         process_task_planning = agents.agent_C.act_with_mask(
-            env_state_action_dict, slot_one_hot, c_mask_for_act, _layer_eps("C"), pre=pre
+            env_state_action_dict, slot_one_hot, c_mask_for_act, _layer_eps("C"), pre=c_pre
         )
         if process_task_planning[0] == 1 and c_mask.sum() <= 1:
             continue
@@ -226,6 +231,8 @@ def build_hier_rl_action(
                 "human_robot_allocation": human_robot_allocation,
             }
         )
+        if c_human_available is not None:
+            dispatch_list[-1]["c_human_available"] = c_human_available
 
     product_priority = agents.agent_B.scores_from_order(eligible, slot_order, b_dim, cuda_device)
 

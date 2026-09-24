@@ -117,6 +117,8 @@ def define_shared_metrics(
     wandb.define_metric("MetricTest/episode")
     wandb.define_metric("MetricHuman/episode")
     wandb.define_metric("MetricReward/*", step_metric="Train/step")
+    wandb.define_metric("MetricAux/*", step_metric="Train/step")
+    wandb.define_metric("MetricNetwork/*", step_metric="Train/step")
     wandb.define_metric("MetricReward/ep_*", step_metric="MetricHuman/episode")
     wandb.define_metric("MetricHuman/ep_assigned_*", step_metric="MetricHuman/episode")
     wandb.define_metric("MetricHuman/ep_mismatch_rate", step_metric="MetricHuman/episode")

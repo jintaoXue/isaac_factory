@@ -148,3 +148,9 @@ params:
 
     # Optional D-human pair residual; old interface/network remains the default.
     human_pair_head: false
+
+    # Independent opt-in task summary residual and supervised duration head.
+    task_pair_head: false
+    human_duration_aux: false
+    duration_aux_weight: 0.05
+    duration_aux_scale: 1000.0
