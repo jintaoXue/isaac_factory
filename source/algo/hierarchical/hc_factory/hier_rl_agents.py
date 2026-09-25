@@ -12,6 +12,14 @@ from .hier_buffer import PrioritizedReplayBuffer, ReplayBuffer, Transition
 from .hier_networks import QNetwork
 from .human_pair import (HumanPairQNetwork, TaskHumanPairQNetwork, PAIR_FEATURE_DIM,
                          TASK_PAIR_FEATURE_DIM, human_task_pair_features, task_human_summary)
+from .human_match import (
+    HumanMatchQNetwork,
+    TaskMatchQNetwork,
+    MATCH_FEATURE_DIM,
+    TASK_MATCH_FEATURE_DIM,
+    human_task_match_features,
+    task_human_match_summary,
+)
 from .duration_aux import DurationAuxReplay
 from .hier_utils import index_to_one_hot, masked_select_action, one_hot_to_index
 
@@ -76,6 +84,8 @@ class MaskedDQNAgent:
         noisy_std: float = 0.5,
         human_pair_dim: int = 0,
         task_pair_head: bool = False,
+        human_match_dim: int = 0,
+        task_match_head: bool = False,
         duration_aux: bool = False,
     ):
         self.name = name
@@ -96,13 +106,27 @@ class MaskedDQNAgent:
         self.train_steps = 0
 
         q_kwargs = dict(dueling=self.dueling, noisy=self.noisy, noisy_std=float(noisy_std))
-        if duration_aux and not human_pair_dim:
-            raise ValueError("duration_aux requires human_pair_head=true")
-        network = TaskHumanPairQNetwork if task_pair_head else (HumanPairQNetwork if human_pair_dim else QNetwork)
-        if duration_aux:
-            q_kwargs["duration_aux"] = True
-        if human_pair_dim:
+        if duration_aux and not human_pair_dim and not human_match_dim:
+            raise ValueError("duration_aux requires human_pair_head or human_match_head")
+        if human_match_dim and human_pair_dim:
+            raise ValueError("human_match_head and human_pair_head are mutually exclusive")
+        if task_match_head and task_pair_head:
+            raise ValueError("task_match_head and task_pair_head are mutually exclusive")
+        if task_match_head:
+            network = TaskMatchQNetwork
+            q_kwargs["pair_feature_dim"] = TASK_MATCH_FEATURE_DIM
+        elif human_match_dim:
+            network = HumanMatchQNetwork
+            q_kwargs["pair_feature_dim"] = human_match_dim
+        elif task_pair_head:
+            network = TaskHumanPairQNetwork
+        elif human_pair_dim:
+            network = HumanPairQNetwork
             q_kwargs["pair_feature_dim"] = human_pair_dim
+        else:
+            network = QNetwork
+        if duration_aux and network is HumanPairQNetwork:
+            q_kwargs["duration_aux"] = True
         self.q_net = network(obs_dim, action_dim, hidden_dim, **q_kwargs).to(device)
         self.target_net = network(obs_dim, action_dim, hidden_dim, **q_kwargs).to(device)
         self.target_net.load_state_dict(self.q_net.state_dict())
@@ -395,20 +419,34 @@ class MaskedDQNAgent:
         return float(loss.item())
 
     def save(self, path: str) -> None:
-        torch.save({"q_net": self.q_net.state_dict(), "name": self.name,
-                    "architecture": ("task_pair_v1" if isinstance(self.q_net, TaskHumanPairQNetwork) else
-                                     "human_pair_v1" if isinstance(self.q_net, HumanPairQNetwork) else "legacy")}, path)
+        if isinstance(self.q_net, TaskMatchQNetwork):
+            arch = "task_match_v1"
+        elif isinstance(self.q_net, HumanMatchQNetwork):
+            arch = "human_match_v1"
+        elif isinstance(self.q_net, TaskHumanPairQNetwork):
+            arch = "task_pair_v1"
+        elif isinstance(self.q_net, HumanPairQNetwork):
+            arch = "human_pair_v1"
+        else:
+            arch = "legacy"
+        torch.save({"q_net": self.q_net.state_dict(), "name": self.name, "architecture": arch}, path)
 
     def load(self, path: str) -> None:
         checkpoint = torch.load(path, map_location=self.device, weights_only=True)
         state = _migrate_q_net_state_dict(checkpoint["q_net"], self.q_net)
-        if isinstance(self.q_net, HumanPairQNetwork):
+        if isinstance(self.q_net, (HumanMatchQNetwork, HumanPairQNetwork)):
             self.q_net.load_compatible_state_dict(state)
         else:
             if any(k.startswith("pair_residual.") for k in state):
                 raise RuntimeError(
                     "Pair checkpoint requires " + ("task_pair_head=true" if self.name == "agent_C" else "human_pair_head=true")
                     + "; refusing to drop learned residual")
+            if any(k.startswith(("human_tower.", "ctx_tower.", "feat_score.", "prior_weight")) for k in state):
+                raise RuntimeError(
+                    "Match checkpoint requires "
+                    + ("task_match_head=true" if self.name == "agent_C" else "human_match_head=true")
+                    + "; refusing to drop learned match head"
+                )
             self.q_net.load_state_dict(state)
         self.target_net.load_state_dict(self.q_net.state_dict())
 
@@ -644,8 +682,11 @@ class RLProcessTaskPlanningAgent:
     AGENT_KEY = "agent_C_process_task_planner"
     ACTION_KEY = "process_task_planning"
 
-    def __init__(self, obs_encoder, device: torch.device, *, task_pair_head=False, **dqn_kwargs):
+    def __init__(self, obs_encoder, device: torch.device, *, task_pair_head=False, task_match_head=False, **dqn_kwargs):
+        if task_pair_head and task_match_head:
+            raise ValueError("task_pair_head and task_match_head are mutually exclusive")
         self.task_pair_head = bool(task_pair_head)
+        self.task_match_head = bool(task_match_head)
         self.obs_encoder = obs_encoder
         self.device = device
         self.dqn: MaskedDQNAgent | None = None
@@ -666,16 +707,29 @@ class RLProcessTaskPlanningAgent:
             return
         obs_dim = self.obs_encoder.get_obs_dim_C(env_state_action_dict, product_selection_action)
         action_dim = env_state_action_dict["agent_action_mask"][self.AGENT_KEY].shape[1]
-        extra = action_dim * TASK_PAIR_FEATURE_DIM if self.task_pair_head else 0
-        self.dqn = MaskedDQNAgent("agent_C", obs_dim + extra, action_dim, self.device,
-                                  task_pair_head=self.task_pair_head, **self.dqn_kwargs)
+        if self.task_match_head:
+            extra = action_dim * TASK_MATCH_FEATURE_DIM
+        elif self.task_pair_head:
+            extra = action_dim * TASK_PAIR_FEATURE_DIM
+        else:
+            extra = 0
+        self.dqn = MaskedDQNAgent(
+            "agent_C",
+            obs_dim + extra,
+            action_dim,
+            self.device,
+            task_pair_head=self.task_pair_head,
+            task_match_head=self.task_match_head,
+            **self.dqn_kwargs,
+        )
 
     def encode_task_obs(self, env_or_pre, selection, *, pre=None):
         base = self.obs_encoder.encode_C(env_or_pre, selection, pre=pre)
-        if not self.task_pair_head:
+        if not self.task_pair_head and not self.task_match_head:
             return base
         resolved = self.obs_encoder._resolve_pre(env_or_pre, pre)
-        return torch.cat((base, task_human_summary(resolved).flatten().to(base.device)))
+        summary = task_human_match_summary(resolved) if self.task_match_head else task_human_summary(resolved)
+        return torch.cat((base, summary.flatten().to(base.device)))
 
     def act(
         self,
@@ -751,12 +805,18 @@ class RLHumanRobotAllocatorAgent:
     ACTION_KEY = "human_robot_allocation"
 
     def __init__(self, obs_encoder, device: torch.device, *, human_pair_head: bool = False,
+                 human_match_head: bool = False,
                  duration_aux=False, duration_aux_weight=0.05, duration_aux_scale=1000.0, **dqn_kwargs):
-        if duration_aux and not human_pair_head:
-            raise ValueError("human_duration_aux requires human_pair_head=true")
+        if human_pair_head and human_match_head:
+            raise ValueError("human_pair_head and human_match_head are mutually exclusive")
+        if duration_aux and not human_pair_head and not human_match_head:
+            raise ValueError("human_duration_aux requires human_pair_head or human_match_head")
+        if duration_aux and human_match_head:
+            raise ValueError("human_duration_aux is only wired for human_pair_head (use pair-aux entry)")
         self.duration_aux_enabled = bool(duration_aux)
         self.duration_aux = DurationAuxReplay(weight=duration_aux_weight, scale=duration_aux_scale) if duration_aux else None
         self.human_pair_head = bool(human_pair_head)
+        self.human_match_head = bool(human_match_head)
         self.obs_encoder = obs_encoder
         self.device = device
         self.human_dqn: MaskedDQNAgent | None = None
@@ -769,11 +829,21 @@ class RLHumanRobotAllocatorAgent:
         obs_dim = self.obs_encoder.get_obs_dim_D(env_state_action_dict, process_task_planning_action)
         human_dim = env_state_action_dict["agent_action_mask"]["human"]["self_availability_mask"].shape[0]
         robot_dim = env_state_action_dict["agent_action_mask"]["robot"]["self_availability_mask"].shape[0]
-        extra = human_dim * PAIR_FEATURE_DIM if self.human_pair_head else 0
+        if self.human_match_head:
+            extra = human_dim * MATCH_FEATURE_DIM
+            human_kwargs = dict(human_match_dim=MATCH_FEATURE_DIM)
+        elif self.human_pair_head:
+            extra = human_dim * PAIR_FEATURE_DIM
+            human_kwargs = dict(
+                human_pair_dim=PAIR_FEATURE_DIM,
+                duration_aux=self.duration_aux_enabled,
+            )
+        else:
+            extra = 0
+            human_kwargs = {}
         self.human_dqn = MaskedDQNAgent(
             "agent_D_human", obs_dim + extra, human_dim, self.device,
-            human_pair_dim=PAIR_FEATURE_DIM if self.human_pair_head else 0,
-            duration_aux=self.duration_aux_enabled, **self.dqn_kwargs
+            **human_kwargs, **self.dqn_kwargs
         )
         self.robot_dqn = MaskedDQNAgent("agent_D_robot", obs_dim, robot_dim, self.device, **self.dqn_kwargs)
 
@@ -781,12 +851,15 @@ class RLHumanRobotAllocatorAgent:
         """One path for acting, replay TD (including next state), and offline updates."""
         if base_obs is None:
             base_obs = self.obs_encoder.encode_D(env_or_pre, task_action, pre=pre)
-        if not self.human_pair_head:
+        if not self.human_pair_head and not self.human_match_head:
             return base_obs
         pre = self.obs_encoder._resolve_pre(env_or_pre, pre)
         action_dim = int(pre["agent_action_mask"]["human"]["self_availability_mask"].numel())
-        pairs = human_task_pair_features(pre, task_action.to(self.device), action_dim)
-        return torch.cat((base_obs, pairs.flatten()))
+        if self.human_match_head:
+            feats = human_task_match_features(pre, task_action.to(self.device), action_dim)
+        else:
+            feats = human_task_pair_features(pre, task_action.to(self.device), action_dim)
+        return torch.cat((base_obs, feats.flatten()))
 
     def act(
         self,

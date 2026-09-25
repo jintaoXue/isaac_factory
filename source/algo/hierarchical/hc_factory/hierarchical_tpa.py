@@ -341,10 +341,14 @@ class HierarchicalTPA:
         self.agent_B.b_score_rl = self.b_score_rl
         self.agent_B.autoregressive = self.autoregressive
         self.agent_C = RLProcessTaskPlanningAgent(
-            self.obs_encoder, self.cuda_device, task_pair_head=bool(config.get("task_pair_head", False)), **dqn_kwargs)
+            self.obs_encoder, self.cuda_device,
+            task_pair_head=bool(config.get("task_pair_head", False)),
+            task_match_head=bool(config.get("task_match_head", False)),
+            **dqn_kwargs)
         self.agent_D = RLHumanRobotAllocatorAgent(
             self.obs_encoder, self.cuda_device,
             human_pair_head=bool(config.get("human_pair_head", False)),
+            human_match_head=bool(config.get("human_match_head", False)),
             duration_aux=bool(config.get("human_duration_aux", False)),
             duration_aux_weight=float(config.get("duration_aux_weight", 0.05)),
             duration_aux_scale=float(config.get("duration_aux_scale", 1000.0)), **dqn_kwargs
@@ -1548,10 +1552,18 @@ class HierarchicalTPA:
                     )
                 )
                 payload.update(loss_payload)
-                if self.agent_C.task_pair_head or self.agent_D.duration_aux_enabled:
+                if (
+                    self.agent_C.task_pair_head
+                    or self.agent_C.task_match_head
+                    or self.agent_D.human_pair_head
+                    or self.agent_D.human_match_head
+                    or self.agent_D.duration_aux_enabled
+                ):
                     payload.update({
                         "MetricNetwork/task_pair_head": int(self.agent_C.task_pair_head),
+                        "MetricNetwork/task_match_head": int(self.agent_C.task_match_head),
                         "MetricNetwork/human_pair_head": int(self.agent_D.human_pair_head),
+                        "MetricNetwork/human_match_head": int(self.agent_D.human_match_head),
                         "MetricNetwork/human_duration_aux": int(self.agent_D.duration_aux_enabled),
                     })
                 if self.agent_D.duration_aux is not None:

@@ -706,6 +706,8 @@ run_test_29() {
             agent.params.config.human_reward_metrics=true
             "agent.params.config.human_pair_head=${HC_HUMAN_PAIR_EVAL:-false}"
             "agent.params.config.task_pair_head=${HC_TASK_PAIR_EVAL:-false}"
+            "agent.params.config.human_match_head=${HC_HUMAN_MATCH_EVAL:-false}"
+            "agent.params.config.task_match_head=${HC_TASK_MATCH_EVAL:-false}"
             "agent.params.config.human_duration_aux=${HC_DURATION_AUX_EVAL:-false}"
             agent.params.config.parallel_producing_limit=10
             agent.params.config.max_episodic_steps=40000

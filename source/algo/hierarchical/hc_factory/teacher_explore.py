@@ -66,10 +66,15 @@ def build_frozen_teacher(student: Any) -> SimpleNamespace:
     teacher.agent_B = RLProductSelectionAgent(encoder, student.cuda_device, **kw)
     teacher.agent_B.b_score_rl = bool(getattr(student.agent_B, "b_score_rl", False))
     teacher.agent_C = RLProcessTaskPlanningAgent(
-        encoder, student.cuda_device, task_pair_head=getattr(student.agent_C, "task_pair_head", False), **kw)
+        encoder, student.cuda_device,
+        task_pair_head=getattr(student.agent_C, "task_pair_head", False),
+        task_match_head=getattr(student.agent_C, "task_match_head", False),
+        **kw)
     teacher.agent_D = RLHumanRobotAllocatorAgent(
         encoder, student.cuda_device,
-        human_pair_head=student.agent_D.human_pair_head, **kw
+        human_pair_head=student.agent_D.human_pair_head,
+        human_match_head=getattr(student.agent_D, "human_match_head", False),
+        **kw
     )
 
     teacher.agent_A.dqn = _frozen_dqn_copy(student.agent_A.dqn)

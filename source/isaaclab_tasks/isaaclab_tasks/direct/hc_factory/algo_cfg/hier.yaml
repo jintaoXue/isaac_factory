@@ -149,6 +149,10 @@ params:
     # Optional D-human pair residual; old interface/network remains the default.
     human_pair_head: false
 
+    # Match scoring (v1): dual-tower + duration-aligned speed features. Exclusive vs pair.
+    human_match_head: false
+    task_match_head: false
+
     # Independent opt-in task summary residual and supervised duration head.
     task_pair_head: false
     human_duration_aux: false

@@ -5,19 +5,15 @@ set -euo pipefail
 # 可视化使用 train.py --visualize；引擎兼容检查可设 HC_SIM_BACKEND=isaac。
 
 # 快速运行（conda activate isaac-lab，进入本仓库；默认 cuda:0、60 局）
+# 家里台式（网络改进 match）：bash run_2026_journal_experiments.sh E5-human-match cuda:0
 # 第二台：bash run_2026_journal_experiments.sh E5-human-pair-c cuda:0
 # 第三台：bash run_2026_journal_experiments.sh E5-human-pair-aux cuda:0
-# 原版本：bash run_2026_journal_experiments.sh E5-human-pair cuda:0
-# 预览：  bash run_2026_journal_experiments.sh E5-human-pair-c cuda:0 --dry-run
-# 评测 C：bash run_2026_journal_experiments.sh eval-E5-human-pair-c cuda:0
-# 评测 aux：bash run_2026_journal_experiments.sh eval-E5-human-pair-aux cuda:0
+# 原 pair：bash run_2026_journal_experiments.sh E5-human-pair cuda:0
+# 预览：  bash run_2026_journal_experiments.sh E5-human-match cuda:0 --dry-run
+# 评测 match：bash run_2026_journal_experiments.sh eval-E5-human-match cuda:0
 #
-# 默认 tag：C=c-v1，aux=aux-v1，组合=c-aux-v1，D pair=pair-formal-v1，其余=formal-v1。
-# 评测默认读取对应 tag 的训练目录、step300000；不自动挑 checkpoint。
-# 同名目录存在时拒绝覆盖；重跑可改下方默认值或用 HC_HUMAN_RUN_TAG 覆盖。
-# 可选覆盖：HC_MAX_TRAIN_EPISODES / HC_HUMAN_TEACHER_DIR / HC_LOAD_DIR / HC_LOAD_STEP。
-# 旧训练目录（包括此前自动时间戳命名的目录）评测时仍用 HC_LOAD_DIR 指定。
-# 算法与冒烟命令：docs/experiment_human.md
+# 默认 tag：match=match-v1，match-c=match-c-v1，C=c-v1，aux=aux-v1，组合=c-aux-v1，D pair=pair-formal-v1，其余=formal-v1。
+# 算法说明：docs/experiment_human.md
 
 # Hier4TPA journal entry — E0–E6 + ablations; see docs/experiment_protocol.md.
 # Usage:
@@ -72,7 +68,10 @@ usage() {
   E5-human-pair-c      D pair＋C 任务人员汇总残差
   E5-human-pair-aux    D pair＋实际完成耗时辅助学习
   E5-human-pair-c-aux  两项同时开启（先做单项实验）
+  E5-human-match       D 双塔 match 打分（工时对齐特征）＋人因奖励 ★网络改进
+  E5-human-match-c     D match＋C match 汇总
   eval-E5-human-pair-c|eval-E5-human-pair-aux|eval-E5-human-pair-c-aux 对应协议评测
+  eval-E5-human-match|eval-E5-human-match-c  match 网络协议评测
   eval-E5-human-pair | eval-E5-pair  新网络协议评测；默认对应训练目录 / step300000
   E5-human   E5-no-oru＋人因奖励；HC_HUMAN_RUN_TAG 命名；HC_HUMAN_REWARD=false 消融
   eval-E5-human  同协议 43–52×1；默认对应训练目录 / step300000；支持 --dry-run
@@ -1390,6 +1389,8 @@ human_default_run_tag() {
         E5-human-pair-c) echo c-v1 ;;
         E5-human-pair-aux) echo aux-v1 ;;
         E5-human-pair-c-aux) echo c-aux-v1 ;;
+        E5-human-match) echo match-v1 ;;
+        E5-human-match-c) echo match-c-v1 ;;
         E5-human-pair|E5-pair) echo pair-formal-v1 ;;
         *) echo formal-v1 ;;
     esac
@@ -1404,20 +1405,28 @@ run_e5_human_train() {
     [[ "${enabled}" == true || "${enabled}" == false ]] || { echo "HC_HUMAN_REWARD=true|false" >&2; return 1; }
     local variant=E5-human
     [[ "${enabled}" == true ]] || variant=E5-human-off
-    local pair_head=false task_pair=false duration_aux=false
+    local pair_head=false task_pair=false duration_aux=false match_head=false task_match=false
     if [[ "${MODE}" == E5-human-pair* || "${MODE}" == E5-pair ]]; then
         pair_head=true
         [[ "${MODE}" != E5-pair ]] || enabled=false
         variant=E5-human-pair
         [[ "${enabled}" == true ]] || variant=E5-pair
     fi
+    if [[ "${MODE}" == E5-human-match* ]]; then
+        match_head=true
+        variant=${MODE}
+    fi
     case "${MODE}" in
         E5-human-pair-c) task_pair=true; variant=${MODE} ;;
         E5-human-pair-aux) duration_aux=true; variant=${MODE} ;;
         E5-human-pair-c-aux) task_pair=true; duration_aux=true; variant=${MODE} ;;
+        E5-human-match-c) task_match=true; variant=${MODE} ;;
     esac
     if [[ "${MODE}" == E5-human-pair-* && "${enabled}" != true ]]; then
         echo "新扩展入口固定人因奖励开启；奖励消融请用 E5-pair" >&2; return 1
+    fi
+    if [[ "${MODE}" == E5-human-match* && "${enabled}" != true ]]; then
+        echo "match 入口固定人因奖励开启" >&2; return 1
     fi
     repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
     cd "${repo_root}"
@@ -1473,6 +1482,8 @@ run_e5_human_train() {
         "+agent.params.config.full_experiment_name=${variant}-${tag}"
         "agent.params.config.human_pair_head=${pair_head}"
         "agent.params.config.task_pair_head=${task_pair}"
+        "agent.params.config.human_match_head=${match_head}"
+        "agent.params.config.task_match_head=${task_match}"
         "agent.params.config.human_duration_aux=${duration_aux}"
         "agent.params.config.duration_aux_weight=${HC_DURATION_AUX_WEIGHT:-0.05}"
         "agent.params.config.duration_aux_scale=${HC_DURATION_AUX_SCALE:-1000.0}"
@@ -1519,7 +1530,7 @@ run_e5_human_train() {
         'agent.params.config.warmstart=""'
         'agent.params.config.load_name=""'
     )
-    echo "[${variant}] human_reward=${enabled} pair_head=${pair_head} task_pair=${task_pair} duration_aux=${duration_aux}; seed=42; output=${out}"
+    echo "[${variant}] human_reward=${enabled} pair=${pair_head} task_pair=${task_pair} match=${match_head} task_match=${task_match} duration_aux=${duration_aux}; seed=42; output=${out}"
     echo "[E5-human] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=Hier4TPA-${variant}-N10-S42-${tag}"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
@@ -1877,14 +1888,20 @@ run_eval_e5_human() {
     local tag="$(date +%Y%m%d_%H%M%S)_$$"
     local variant=E5-human
     export HC_HUMAN_PAIR_EVAL=false HC_TASK_PAIR_EVAL=false HC_DURATION_AUX_EVAL=false
+    export HC_HUMAN_MATCH_EVAL=false HC_TASK_MATCH_EVAL=false
     if [[ "${MODE}" == eval-E5-human-pair* || "${MODE}" == eval-E5-pair ]]; then
         variant="${MODE#eval-}"
         export HC_HUMAN_PAIR_EVAL=true
+    fi
+    if [[ "${MODE}" == eval-E5-human-match* ]]; then
+        variant="${MODE#eval-}"
+        export HC_HUMAN_MATCH_EVAL=true
     fi
     case "${MODE}" in
         eval-E5-human-pair-c) export HC_TASK_PAIR_EVAL=true ;;
         eval-E5-human-pair-aux) export HC_DURATION_AUX_EVAL=true ;;
         eval-E5-human-pair-c-aux) export HC_TASK_PAIR_EVAL=true HC_DURATION_AUX_EVAL=true ;;
+        eval-E5-human-match-c) export HC_TASK_MATCH_EVAL=true ;;
     esac
     export HC_LOAD_DIR="${load_dir}" HC_LOAD_STEP="${step}"
     export HC_TEST_SEEDS=43,44,45,46,47,48,49,50,51,52 HC_TEST_TIMES=1
@@ -1895,7 +1912,7 @@ run_eval_e5_human() {
     export HC_EVAL_OUTPUT_DIR="${load_dir}/eval_human_step${step}_${tag}"
     export HC_EVAL_KEEP_PRIOR=0
     unset HC_WANDB_RUN_ID WANDB_RUN_ID HC_WANDB_RESUME WANDB_RESUME
-    echo "[eval-${variant}] N10 K10 T40000 epsilon=0 seeds=43..52 x1; shaping OFF, human KPI ON, pair_head=${HC_HUMAN_PAIR_EVAL} task_pair=${HC_TASK_PAIR_EVAL} duration_aux=${HC_DURATION_AUX_EVAL}"
+    echo "[eval-${variant}] N10 K10 T40000 epsilon=0 seeds=43..52 x1; shaping OFF; pair=${HC_HUMAN_PAIR_EVAL} match=${HC_HUMAN_MATCH_EVAL} task_match=${HC_TASK_MATCH_EVAL}"
     echo "[eval-${variant}] load=${load_dir} step=${step}; out=${HC_EVAL_OUTPUT_DIR}"
     if [[ "${dry_run}" == --dry-run ]]; then
         echo "bash batch_train.sh 29 ${DEVICE} (fixed protocol above, existing chunked eval)"
@@ -1921,8 +1938,8 @@ case "${MODE}" in
     E4) run_e4_train "$@" ;;
     E4-no-oru|E4_no_oru) run_e4_no_oru_train "$@" ;;
     E5) run_e5_train "$@" ;;
-    E5-human|E5-human-pair|E5-pair|E5-human-pair-c|E5-human-pair-aux|E5-human-pair-c-aux) run_e5_human_train "$@" ;;
-    eval-E5-human|eval-E5-human-pair|eval-E5-pair|eval-E5-human-pair-c|eval-E5-human-pair-aux|eval-E5-human-pair-c-aux) run_eval_e5_human "$@" ;;
+    E5-human|E5-human-pair|E5-pair|E5-human-pair-c|E5-human-pair-aux|E5-human-pair-c-aux|E5-human-match|E5-human-match-c) run_e5_human_train "$@" ;;
+    eval-E5-human|eval-E5-human-pair|eval-E5-pair|eval-E5-human-pair-c|eval-E5-human-pair-aux|eval-E5-human-pair-c-aux|eval-E5-human-match|eval-E5-human-match-c) run_eval_e5_human "$@" ;;
     E5-no-oru|E5_no_oru) run_e5_no_oru_train "$@" ;;
     E6) run_e6_train "$@" ;;
     E6-no-oru|E6_no_oru) run_e6_no_oru_train "$@" ;;
