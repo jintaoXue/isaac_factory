@@ -5,17 +5,17 @@ set -euo pipefail
 # 可视化使用 train.py --visualize；引擎兼容检查可设 HC_SIM_BACKEND=isaac。
 
 # 快速运行（conda activate isaac-lab，进入本仓库；默认 cuda:0、60 局）
-# 家里台式（网络改进 match + skill strong）： 
-#   HC_HUMAN_SKILL_PROFILE=strong HC_HUMAN_RUN_TAG=match-strong-v1 \
-#     bash run_2026_journal_experiments.sh E5-human-match cuda:0
-# 人因表切换：HC_HUMAN_SKILL_PROFILE=legacy|strong（默认 legacy）；见 docs/experiment_human.md §0
+# 家里台式（match + skill strong）：
+#   HC_HUMAN_SKILL_PROFILE=strong bash run_2026_journal_experiments.sh E5-human-match cuda:0
+# 人因表：HC_HUMAN_SKILL_PROFILE=legacy|strong（默认 legacy）；见 docs/experiment_human.md §0
+# W&B / 目录名：E5-human-match-strong（可选 HC_HUMAN_RUN_TAG 仅用于防撞重跑）
 # 第二台：bash run_2026_journal_experiments.sh E5-human-pair-c cuda:0
 # 第三台：bash run_2026_journal_experiments.sh E5-human-pair-aux cuda:0
 # 原 pair：bash run_2026_journal_experiments.sh E5-human-pair cuda:0
 # 预览：  bash run_2026_journal_experiments.sh E5-human-match cuda:0 --dry-run
 # 评测 match：bash run_2026_journal_experiments.sh eval-E5-human-match cuda:0
 #
-# 默认 tag：match=match-v1，match-c=match-c-v1，C=c-v1，aux=aux-v1，组合=c-aux-v1，D pair=pair-formal-v1，其余=formal-v1。
+# 默认：目录/W&B = {入口}-{legacy|strong}；HC_HUMAN_RUN_TAG 仅作可选防撞后缀。
 # 算法说明：docs/experiment_human.md
 
 # Hier4TPA journal entry — E0–E6 + ablations; see docs/experiment_protocol.md.
@@ -1386,25 +1386,32 @@ run_e5_no_oru_train() {
     "${cmd[@]}"
 }
 
-# Human 系列默认命名；训练与评测共用，避免手动填写路径。
-human_default_run_tag() {
-    case "${1#eval-}" in
-        E5-human-pair-c) echo c-v1 ;;
-        E5-human-pair-aux) echo aux-v1 ;;
-        E5-human-pair-c-aux) echo c-aux-v1 ;;
-        E5-human-match) echo match-v1 ;;
-        E5-human-match-c) echo match-c-v1 ;;
-        E5-human-pair|E5-pair) echo pair-formal-v1 ;;
-        *) echo formal-v1 ;;
-    esac
+# Human 系列：目录 / W&B 默认为 ${variant}-${skill_profile}；HC_HUMAN_RUN_TAG 仅可选防撞后缀。
+human_run_id() {
+    # args: variant skill_profile [optional_tag]
+    local vid="$1" prof="$2" extra="${3:-}"
+    if [[ -n "${extra}" ]]; then
+        echo "${vid}-${prof}-${extra}"
+    else
+        echo "${vid}-${prof}"
+    fi
 }
 
 run_e5_human_train() {
     # P0: same backbone as E5-no-oru; separate output/name, bounded reward only.
     local repo_root load_dir dry_run="${3:-}"
-    local tag="${HC_HUMAN_RUN_TAG:-$(human_default_run_tag "${MODE}")}"
+    local tag="${HC_HUMAN_RUN_TAG:-}"
     local enabled="${HC_HUMAN_REWARD:-true}"
-    [[ "${tag}" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "Invalid HC_HUMAN_RUN_TAG" >&2; return 1; }
+    local skill_profile="${HC_HUMAN_SKILL_PROFILE:-legacy}"
+    case "${skill_profile}" in
+        strong|skill-strong-v1|strong-v1|v1-strong) skill_profile=strong ;;
+        legacy|default|v0|original|"") skill_profile=legacy ;;
+        *) echo "Invalid HC_HUMAN_SKILL_PROFILE=${HC_HUMAN_SKILL_PROFILE} (use legacy|strong)" >&2; return 1 ;;
+    esac
+    export HC_HUMAN_SKILL_PROFILE="${skill_profile}"
+    if [[ -n "${tag}" && ! "${tag}" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        echo "Invalid HC_HUMAN_RUN_TAG" >&2; return 1
+    fi
     [[ "${enabled}" == true || "${enabled}" == false ]] || { echo "HC_HUMAN_REWARD=true|false" >&2; return 1; }
     local variant=E5-human
     [[ "${enabled}" == true ]] || variant=E5-human-off
@@ -1431,12 +1438,14 @@ run_e5_human_train() {
     if [[ "${MODE}" == E5-human-match* && "${enabled}" != true ]]; then
         echo "match 入口固定人因奖励开启" >&2; return 1
     fi
+    local run_id
+    run_id="$(human_run_id "${variant}" "${skill_profile}" "${tag}")"
     repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
     cd "${repo_root}"
     load_dir="${HC_HUMAN_TEACHER_DIR:-${repo_root}/logs/rl_games/HcFactory/hier_2026-08-27_23-17-41}"
-    local out="${repo_root}/logs/rl_games/HcFactory/hier_${variant}-${tag}"
+    local out="${repo_root}/logs/rl_games/HcFactory/hier_${run_id}"
     if [[ "${dry_run}" != --dry-run && -e "${out}" ]]; then
-        echo "拒绝覆盖现有训练目录: ${out}; 请更换 HC_HUMAN_RUN_TAG" >&2
+        echo "拒绝覆盖现有训练目录: ${out}; 请设置 HC_HUMAN_RUN_TAG=... 作为防撞后缀" >&2
         return 1
     fi
     if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
@@ -1479,10 +1488,10 @@ run_e5_human_train() {
         --teacher_explore
         --autoregressive
         --wandb_activate --wandb_project HcFactory_TPA
-        --wandb_name "Hier4TPA-${variant}-N10-S42-${tag}"
+        --wandb_name "${run_id}"
         --algo_variant "${variant}"
         --ftg_thresh_phy 0.95
-        "+agent.params.config.full_experiment_name=${variant}-${tag}"
+        "+agent.params.config.full_experiment_name=${run_id}"
         "agent.params.config.human_pair_head=${pair_head}"
         "agent.params.config.task_pair_head=${task_pair}"
         "agent.params.config.human_match_head=${match_head}"
@@ -1533,8 +1542,8 @@ run_e5_human_train() {
         'agent.params.config.warmstart=""'
         'agent.params.config.load_name=""'
     )
-    echo "[${variant}] human_reward=${enabled} pair=${pair_head} task_pair=${task_pair} match=${match_head} task_match=${task_match} duration_aux=${duration_aux} skill_profile=${HC_HUMAN_SKILL_PROFILE:-legacy}; seed=42; output=${out}"
-    echo "[E5-human] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=Hier4TPA-${variant}-N10-S42-${tag}"
+    echo "[${variant}] skill_profile=${skill_profile}; run_id=${run_id}; seed=42; output=${out}"
+    echo "[${variant}] pair=${pair_head} task_pair=${task_pair} match=${match_head} task_match=${task_match} duration_aux=${duration_aux} reward=${enabled}; wandb=${run_id}"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
@@ -1883,21 +1892,29 @@ run_eval_e5_human() {
     repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
     cd "${repo_root}"
     [[ -z "${dry_run}" || "${dry_run}" == --dry-run ]] || return 1
-    local run_tag="${HC_HUMAN_RUN_TAG:-$(human_default_run_tag "${MODE}")}"
-    [[ "${run_tag}" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "Invalid HC_HUMAN_RUN_TAG" >&2; return 1; }
-    local load_dir="${HC_LOAD_DIR:-${repo_root}/logs/rl_games/HcFactory/hier_${MODE#eval-}-${run_tag}}"
+    local skill_profile="${HC_HUMAN_SKILL_PROFILE:-legacy}"
+    case "${skill_profile}" in
+        strong|skill-strong-v1|strong-v1|v1-strong) skill_profile=strong ;;
+        legacy|default|v0|original|"") skill_profile=legacy ;;
+        *) echo "Invalid HC_HUMAN_SKILL_PROFILE=${HC_HUMAN_SKILL_PROFILE} (use legacy|strong)" >&2; return 1 ;;
+    esac
+    local tag="${HC_HUMAN_RUN_TAG:-}"
+    if [[ -n "${tag}" && ! "${tag}" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        echo "Invalid HC_HUMAN_RUN_TAG" >&2; return 1
+    fi
+    local variant="${MODE#eval-}"
+    local run_id
+    run_id="$(human_run_id "${variant}" "${skill_profile}" "${tag}")"
+    local load_dir="${HC_LOAD_DIR:-${repo_root}/logs/rl_games/HcFactory/hier_${run_id}}"
     local step="${HC_LOAD_STEP:-300000}"
     [[ "${step}" =~ ^[0-9]+$ ]] || { echo "HC_LOAD_STEP 必须是整数" >&2; return 1; }
-    local tag="$(date +%Y%m%d_%H%M%S)_$$"
-    local variant=E5-human
+    local stamp="$(date +%Y%m%d_%H%M%S)_$$"
     export HC_HUMAN_PAIR_EVAL=false HC_TASK_PAIR_EVAL=false HC_DURATION_AUX_EVAL=false
     export HC_HUMAN_MATCH_EVAL=false HC_TASK_MATCH_EVAL=false
     if [[ "${MODE}" == eval-E5-human-pair* || "${MODE}" == eval-E5-pair ]]; then
-        variant="${MODE#eval-}"
         export HC_HUMAN_PAIR_EVAL=true
     fi
     if [[ "${MODE}" == eval-E5-human-match* ]]; then
-        variant="${MODE#eval-}"
         export HC_HUMAN_MATCH_EVAL=true
     fi
     case "${MODE}" in
@@ -1910,13 +1927,13 @@ run_eval_e5_human() {
     export HC_TEST_SEEDS=43,44,45,46,47,48,49,50,51,52 HC_TEST_TIMES=1
     export HC_TRAIN_N_PRODUCTS=10 HC_T_MAX_ANCHOR=64000 HC_MULTI_K=10
     export HC_HUMAN_EVAL=1 HC_EVAL_VARIANT="${variant}"
-    export HC_WANDB_NAME="Hier4TPA-${variant}-N10-step${step}-eval-${tag}"
+    export HC_WANDB_NAME="${run_id}-step${step}-eval"
     export HC_WANDB_TEST_PROJECT=HcFactory_TPA_Eval HC_WARMSTART=""
-    export HC_EVAL_OUTPUT_DIR="${load_dir}/eval_human_step${step}_${tag}"
+    export HC_EVAL_OUTPUT_DIR="${load_dir}/eval_step${step}_${stamp}"
     export HC_EVAL_KEEP_PRIOR=0
     unset HC_WANDB_RUN_ID WANDB_RUN_ID HC_WANDB_RESUME WANDB_RESUME
     echo "[eval-${variant}] N10 K10 T40000 epsilon=0 seeds=43..52 x1; shaping OFF; pair=${HC_HUMAN_PAIR_EVAL} match=${HC_HUMAN_MATCH_EVAL} task_match=${HC_TASK_MATCH_EVAL}"
-    echo "[eval-${variant}] load=${load_dir} step=${step}; out=${HC_EVAL_OUTPUT_DIR}"
+    echo "[eval-${variant}] load=${load_dir} step=${step}; wandb=${HC_WANDB_NAME}; out=${HC_EVAL_OUTPUT_DIR}"
     if [[ "${dry_run}" == --dry-run ]]; then
         echo "bash batch_train.sh 29 ${DEVICE} (fixed protocol above, existing chunked eval)"
         return 0

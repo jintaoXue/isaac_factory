@@ -2,57 +2,59 @@
 
 > E0–E6 协议见 `experiment_protocol.md`；纯逻辑仿真见 `ideal_simulation_backend.md`。
 
-训练与数值评测默认 **logic 后端**（不跑 PhysX）。教师权重：`logs/rl_games/HcFactory/hier_2026-08-27_23-17-41`，`HC_LOAD_STEP=1290000`（六件套）。目录已存在时换 `HC_HUMAN_RUN_TAG`。
+训练与数值评测默认 **logic 后端**（不跑 PhysX）。教师权重：`logs/rl_games/HcFactory/hier_2026-08-27_23-17-41`，`HC_LOAD_STEP=1290000`（六件套）。
 
-## 0. 人因 skill / 疲劳表切换（`HC_HUMAN_SKILL_PROFILE`）
+## 0. 命名 + skill 表切换
 
-两套表都保留在 `cfg_human.py`，用环境变量切换（**进程启动时生效**）：
+**W&B / 训练目录**（人因入口）：`{入口}-{legacy|strong}`  
+例：`E5-human-legacy`、`E5-human-match-strong`；磁盘为 `logs/.../hier_E5-human-match-strong`。  
+不必再写 `human-logic-v1` 之类 tag。只有目录已存在、要重开时才设 `HC_HUMAN_RUN_TAG=r2`（变成 `E5-human-legacy-r2`）。
+
+**skill 表**（`HC_HUMAN_SKILL_PROFILE`，启动时生效）：
 
 | 值 | 含义 | 专工 / 错工艺 / 物流干工艺 | 疲劳 |
 | --- | --- | --- | --- |
-| **`legacy`**（默认） | 原设定；本机 / 5090 / 服务器继续用 | `1.40` / `0.58` / `0.70` | 原 work/recover |
-| **`strong`**（别名 `skill-strong-v1`） | 拉大错派反差；**家里试用** | `1.55` / `0.42` / `0.45` | work/recover **×3** |
+| **`legacy`**（默认） | 原设定；本机 / 5090 / 服务器 | `1.40` / `0.58` / `0.70` | 原 rates |
+| **`strong`** | 拉大错派反差；**家里试用** | `1.55` / `0.42` / `0.45` | ×3 |
 
 ```bash
-# 默认 = legacy，可不写
-bash run_2026_journal_experiments.sh E5-human cuda:0
+# 本机 / 5090 / 服务器（默认 legacy）
+HC_MAX_TRAIN_EPISODES=60 bash run_2026_journal_experiments.sh E5-human cuda:0
+# → wandb: E5-human-legacy
 
-# 家里：开 strong + match
-HC_HUMAN_SKILL_PROFILE=strong \
-HC_HUMAN_RUN_TAG=match-strong-v1 HC_MAX_TRAIN_EPISODES=60 \
+# 家里
+HC_HUMAN_SKILL_PROFILE=strong HC_MAX_TRAIN_EPISODES=60 \
   bash run_2026_journal_experiments.sh E5-human-match cuda:0
+# → wandb: E5-human-match-strong
 ```
-
-注意：`legacy` 与 `strong` **不要共用同一 `HC_HUMAN_RUN_TAG` / 训练目录**；W&B 名里也应用不同 tag 区分。启动日志会打印 `skill_profile=...`。
 
 ## 1. 当前机器分工
 
 
-| 机器          | 入口                              | skill 表   | 说明                |
-| ----------- | ------------------------------- | -------- | ----------------- |
-| 本机（4090 工位） | `E5-human` + `E5-human-match-c` | legacy   | 基线奖励 + D/C match  |
-| 5090        | `E5-human-pair-c-aux`           | legacy   | D pair + C + 耗时辅助 |
-| 家里台式        | `E5-human-match`                | **strong** | D match 双塔试用      |
-| 服务器         | `E5-human-pair-aux`             | legacy   | D pair + 耗时辅助     |
+| 机器          | 入口                              | skill 表     | 说明               |
+| ----------- | ------------------------------- | ---------- | ---------------- |
+| 本机（4090 工位） | `E5-human` + `E5-human-match-c` | legacy     | 基线 + D/C match   |
+| 5090        | `E5-human-pair-c-aux`           | legacy     | D pair + C + aux |
+| 家里台式        | `E5-human-match`                | **strong** | D match 试用       |
+| 服务器         | `E5-human-pair-aux`             | legacy     | D pair + aux     |
 
 
-暂缓：`E5-human-pair`、`E5-pair`、`E5-human-pair-c`（可后补）。
+暂缓：`E5-human-pair`、`E5-pair`、`E5-human-pair-c`。
 
 ```bash
-# 本机 / 5090 / 服务器（legacy，可省略 HC_HUMAN_SKILL_PROFILE）
-HC_HUMAN_RUN_TAG=human-logic-v1 HC_MAX_TRAIN_EPISODES=60 \
-  bash run_2026_journal_experiments.sh E5-human cuda:0
-HC_HUMAN_RUN_TAG=match-c-logic-v1 HC_MAX_TRAIN_EPISODES=60 \
-  bash run_2026_journal_experiments.sh E5-human-match-c cuda:0
-HC_HUMAN_RUN_TAG=c-aux-logic-v1 HC_MAX_TRAIN_EPISODES=60 \
-  bash run_2026_journal_experiments.sh E5-human-pair-c-aux cuda:0
-HC_HUMAN_RUN_TAG=aux-logic-v1 HC_MAX_TRAIN_EPISODES=60 \
-  bash run_2026_journal_experiments.sh E5-human-pair-aux cuda:0
+# 本机
+HC_MAX_TRAIN_EPISODES=60 bash run_2026_journal_experiments.sh E5-human cuda:0
+HC_MAX_TRAIN_EPISODES=60 bash run_2026_journal_experiments.sh E5-human-match-c cuda:0
 
-# 家里（strong）
-HC_HUMAN_SKILL_PROFILE=strong \
-HC_HUMAN_RUN_TAG=match-strong-v1 HC_MAX_TRAIN_EPISODES=60 \
+# 5090
+HC_MAX_TRAIN_EPISODES=60 bash run_2026_journal_experiments.sh E5-human-pair-c-aux cuda:0
+
+# 家里
+HC_HUMAN_SKILL_PROFILE=strong HC_MAX_TRAIN_EPISODES=60 \
   bash run_2026_journal_experiments.sh E5-human-match cuda:0
+
+# 服务器
+HC_MAX_TRAIN_EPISODES=60 bash run_2026_journal_experiments.sh E5-human-pair-aux cuda:0
 ```
 
 评测（训练目录 + 预固定步数，勿用协议 seeds 挑点）：
@@ -78,11 +80,11 @@ bash run_2026_journal_experiments.sh eval-E5-human-pair-aux cuda:0
 | `E5-human-pair-c`     | 开    | 开    | 关    | 开                             |
 | `E5-human-pair-aux`   | 开    | 关    | 开    | 开                             |
 | `E5-human-pair-c-aux` | 开    | 开    | 开    | 开                             |
+| `E5-human-match`      | match 双塔 | 关 | 关 | 开 |
+| `E5-human-match-c`    | match | match 汇总 | 关 | 开 |
 
 
-底座均为 E5-no-oru：T0 热启 + 教师探索 + AR，ORU 关。Hydra：`human_aware_reward`、`human_pair_head`、`task_pair_head`、`human_duration_aux`（后三者默认 false；aux 需 D 配对开）。
-
-默认 tag：human=`formal-v1`，pair=`pair-formal-v1`，C=`c-v1`，aux=`aux-v1`，组合=`c-aux-v1`。逻辑重跑请用 `*-logic-v1` 等新 tag。
+底座均为 E5-no-oru：T0 热启 + 教师探索 + AR，ORU 关。命名见 §0（`{入口}-{legacy|strong}`）；`HC_HUMAN_RUN_TAG` 仅防撞可选。
 
 ## 3. 人因奖励（P0）
 
