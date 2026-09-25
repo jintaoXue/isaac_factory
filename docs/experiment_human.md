@@ -8,33 +8,38 @@
 
 | 机器 | 入口 | 说明 |
 |---|---|---|
-| 本机（4090 工位） | `E5-human-pair-c` | D 配对 + C 任务人员汇总 |
+| 本机（4090 工位） | `E5-human` | 原网络 + 人因奖励 |
+| 5090 | `E5-human-pair-c-aux` | D 配对 + C 汇总 + 耗时辅助 |
+| 家里台式 | `E5-human-pair-c` | D 配对 + C 汇总 |
 | 服务器 | `E5-human-pair-aux` | D 配对 + 耗时辅助 |
-| 5090 | `E5-human` | **原网络 + 人因奖励**（pair 体感一般，改跑干净奖励基线） |
-| 家里台式（可选） | `E5-human` 或空闲 | 4070；与 5090 勿抢同名目录/tag |
 
-暂缓：`E5-human-pair`（效果一般先停）、`E5-pair`（消融）、`E5-human-pair-c-aux`（等 C / aux 单项有信号再合）。
+暂缓：`E5-human-pair`、`E5-pair`（消融）。
 
 ```bash
 # 本机
+HC_HUMAN_RUN_TAG=human-logic-v1 HC_MAX_TRAIN_EPISODES=60 \
+  bash run_2026_journal_experiments.sh E5-human cuda:0
+
+# 5090
+HC_HUMAN_RUN_TAG=c-aux-logic-v1 HC_MAX_TRAIN_EPISODES=60 \
+  bash run_2026_journal_experiments.sh E5-human-pair-c-aux cuda:0
+
+# 家里
 HC_HUMAN_RUN_TAG=c-logic-v1 HC_MAX_TRAIN_EPISODES=60 \
   bash run_2026_journal_experiments.sh E5-human-pair-c cuda:0
 
 # 服务器
 HC_HUMAN_RUN_TAG=aux-logic-v1 HC_MAX_TRAIN_EPISODES=60 \
   bash run_2026_journal_experiments.sh E5-human-pair-aux cuda:0
-
-# 5090
-HC_HUMAN_RUN_TAG=human-logic-v1 HC_MAX_TRAIN_EPISODES=60 \
-  bash run_2026_journal_experiments.sh E5-human cuda:0
 ```
 
 评测（训练目录 + 预固定步数，勿用协议 seeds 挑点）：
 
 ```bash
+bash run_2026_journal_experiments.sh eval-E5-human cuda:0
+bash run_2026_journal_experiments.sh eval-E5-human-pair-c-aux cuda:0
 bash run_2026_journal_experiments.sh eval-E5-human-pair-c cuda:0
 bash run_2026_journal_experiments.sh eval-E5-human-pair-aux cuda:0
-bash run_2026_journal_experiments.sh eval-E5-human cuda:0
 # 或显式：HC_LOAD_DIR=... HC_LOAD_STEP=300000
 ```
 
