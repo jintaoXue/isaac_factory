@@ -5,16 +5,23 @@
 
 """Script to train RL agent with RL-Games."""
 
-"""Launch Isaac Sim Simulator first."""
+from __future__ import annotations
 
 import argparse
 import sys
 import os
-from isaaclab.app import AppLauncher
+# Resolve backend before any package with Isaac import side effects is loaded.
+from source.hc_backend import select_backend
+_USE_LOGIC, _requested_backend = select_backend(sys.argv[1:])
+os.environ["HC_SIM_BACKEND"] = "logic" if _USE_LOGIC else "isaac"
+if not _USE_LOGIC:
+    from isaaclab.app import AppLauncher
 import setproctitle
 
 # add argparse arguments
-parser = argparse.ArgumentParser(description="Train an RL agent with RL-Games.")
+parser = argparse.ArgumentParser(description="Train/evaluate with ideal logic simulation; --visualize enables Isaac.")
+parser.add_argument("--sim_backend", choices=("auto", "logic", "isaac"), default=_requested_backend)
+parser.add_argument("--visualize", action="store_true", help="Use Isaac Sim for visualization.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
 parser.add_argument("--video_interval", type=int, default=200, help="Interval between video recordings (in steps).")
@@ -189,7 +196,13 @@ parser.add_argument(
 )
 
 # append AppLauncher cli args
-AppLauncher.add_app_launcher_args(parser)
+if _USE_LOGIC:
+    parser.add_argument("--device", default="cuda:0")
+    parser.add_argument("--headless", action="store_true", help="Accepted for existing scripts; logic mode is always headless.")
+    parser.add_argument("--enable_cameras", action="store_true")
+    parser.add_argument("--livestream", type=int, default=0)
+else:
+    AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli, hydra_args = parser.parse_known_args()
 
@@ -260,8 +273,13 @@ if sys.platform == "win32":
         pass
 
 # launch omniverse app
-app_launcher = AppLauncher(args_cli)
-simulation_app = app_launcher.app
+if _USE_LOGIC:
+    if args_cli.distributed:
+        parser.error("Logic backend currently supports one training process per command; use separate GPU commands")
+    simulation_app = None
+else:
+    app_launcher = AppLauncher(args_cli)
+    simulation_app = app_launcher.app
 
 """Rest everything follows."""
 
@@ -272,24 +290,30 @@ import pickle
 import random
 from datetime import datetime
 
-from source.isaaclab_rl.isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnvWrapper, RlGamesGpuEnvHRTPA, RlGamesVecEnvWrapperHRTPA 
+if not _USE_LOGIC:
+    from source.isaaclab_rl.isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnvWrapper, RlGamesGpuEnvHRTPA, RlGamesVecEnvWrapperHRTPA 
 from rl_games.common import env_configurations, vecenv
-from rl_games.common.algo_observer import IsaacAlgoObserver
+from rl_games.common.algo_observer import AlgoObserver
+if not _USE_LOGIC:
+    from rl_games.common.algo_observer import IsaacAlgoObserver
 from rl_games.torch_runner import Runner
 from source.algo.hierarchical.hc_factory import flat_tpa
 from source.algo.hierarchical.hc_factory import hierarchical_tpa
 from source.algo.hierarchical.hc_factory import rule_based
 
-from isaaclab.envs import (
-    DirectMARLEnv,
-    DirectMARLEnvCfg,
-    DirectRLEnvCfg,
-    ManagerBasedRLEnvCfg,
-    multi_agent_to_single_agent,
-)
-from isaaclab.utils.assets import retrieve_file_path
-from isaaclab.utils.dict import print_dict
-from isaaclab.utils.io import dump_yaml
+if _USE_LOGIC:
+    from source.hc_logic_runtime import HcLogicVectorEnv, hydra_task_config, dump_yaml, retrieve_file_path
+else:
+    from isaaclab.envs import (
+        DirectMARLEnv,
+        DirectMARLEnvCfg,
+        DirectRLEnvCfg,
+        ManagerBasedRLEnvCfg,
+        multi_agent_to_single_agent,
+    )
+    from isaaclab.utils.assets import retrieve_file_path
+    from isaaclab.utils.dict import print_dict
+    from isaaclab.utils.io import dump_yaml
 
 
 def dump_pickle(filename: str, data) -> None:
@@ -300,12 +324,14 @@ def dump_pickle(filename: str, data) -> None:
     with open(filename, "wb") as f:
         pickle.dump(data, f)
 
-import isaaclab_tasks  # noqa: F401
-from isaaclab_tasks.utils.hydra import hydra_task_config
+if not _USE_LOGIC:
+    import isaaclab_tasks  # noqa: F401
+    from isaaclab_tasks.utils.hydra import hydra_task_config
 import wandb
 
 from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.env_asset_cfg.cfg_hc_env import HcVectorEnvCfg
-from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.hc_render import HcVideoRecorder
+if not _USE_LOGIC:
+    from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.hc_render import HcVideoRecorder
 
 @hydra_task_config(args_cli.task, args_cli.algo)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo_cfg: dict):
@@ -464,6 +490,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     algo_cfg["params"]["config"]["train_dir"] = log_root_path
     algo_cfg["params"]["config"]["full_experiment_name"] = log_dir
 
+    algo_cfg["params"]["config"]["sim_backend"] = "logic" if _USE_LOGIC else "isaac"
+
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_root_path, log_dir, "params", "env.yaml"), env_cfg)
     dump_yaml(os.path.join(log_root_path, log_dir, "params", "agent.yaml"), algo_cfg)
@@ -479,13 +507,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     env_cfg.train_cfg = algo_cfg
     if args_cli.headless:
         env_cfg.ui_window_class_type = None
-    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+    if _USE_LOGIC:
+        env = HcLogicVectorEnv(env_cfg)
+    else:
+        env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
-    # convert to single-agent instance if required by the RL algorithm
-    if isinstance(env.unwrapped, DirectMARLEnv):
-        env = multi_agent_to_single_agent(env)
+        # convert to single-agent instance if required by the RL algorithm
+        if isinstance(env.unwrapped, DirectMARLEnv):
+            env = multi_agent_to_single_agent(env)
 
-    env = RlGamesVecEnvWrapperHRTPA(env, rl_device, clip_obs, clip_actions)
+        env = RlGamesVecEnvWrapperHRTPA(env, rl_device, clip_obs, clip_actions)
 
     if args_cli.video:
         video_kwargs = {
@@ -500,20 +531,24 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     
     # register the environment to rl-games registry
     # note: in agents configuration: environment name must be "rlgpu"
-    vecenv.register(
-        "IsaacRlgWrapper", lambda config_name, num_actors, **kwargs: RlGamesGpuEnv(config_name, num_actors, **kwargs)
-    )
-    env_configurations.register("rlgpu", {"vecenv_type": "IsaacRlgWrapper", "env_creator": lambda **kwargs: env})
+    if _USE_LOGIC:
+        vecenv.register("HcLogicWrapper", lambda config_name, num_actors, **kwargs: env)
+        env_configurations.register("rlgpu_HRTPA", {"vecenv_type": "HcLogicWrapper", "env_creator": lambda **kwargs: env})
+    else:
+        vecenv.register(
+            "IsaacRlgWrapper", lambda config_name, num_actors, **kwargs: RlGamesGpuEnv(config_name, num_actors, **kwargs)
+        )
+        env_configurations.register("rlgpu", {"vecenv_type": "IsaacRlgWrapper", "env_creator": lambda **kwargs: env})
     
-    vecenv.register(
-        "RlgWrapperHRTPA", lambda config_name, num_actors, **kwargs: RlGamesGpuEnvHRTPA(config_name, num_actors, **kwargs)
-    )
-    env_configurations.register("rlgpu_HRTPA", {"vecenv_type": "RlgWrapperHRTPA", "env_creator": lambda **kwargs: env})
+        vecenv.register(
+            "RlgWrapperHRTPA", lambda config_name, num_actors, **kwargs: RlGamesGpuEnvHRTPA(config_name, num_actors, **kwargs)
+        )
+        env_configurations.register("rlgpu_HRTPA", {"vecenv_type": "RlgWrapperHRTPA", "env_creator": lambda **kwargs: env})
 
     # set number of actors into agent config
     algo_cfg["params"]["config"]["num_actors"] = env.unwrapped.num_envs
     # create runner from rl-games
-    runner = Runner(IsaacAlgoObserver())
+    runner = Runner(AlgoObserver() if _USE_LOGIC else IsaacAlgoObserver())
     # runner.algo_factory.register_builder('rl_filter', lambda **kwargs: rl_filter.SafeRlFilterAgent(**kwargs))
     runner.algo_factory.register_builder('rule_based', lambda **kwargs: rule_based.RuleBasedHierarchical(**kwargs))
     runner.algo_factory.register_builder('hier', lambda **kwargs: hierarchical_tpa.HierarchicalTPA(**kwargs))
@@ -538,6 +573,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
             run_name = str(algo_cfg["params"]["config"]["wandb_name"])
 
         wandb_cfg = dict(env_cfg.__dict__)
+        wandb_cfg["sim_backend"] = "logic" if _USE_LOGIC else "isaac"
         wandb_cfg["algo"] = algo_cfg["params"]["algo"]["name"]
         wandb_cfg["max_parallel_cd_dispatch"] = algo_cfg["params"]["config"].get(
             "max_parallel_cd_dispatch"
@@ -621,4 +657,5 @@ if __name__ == "__main__":
     # run the main function
     main()
     # close sim app
-    simulation_app.close()
+    if simulation_app is not None:
+        simulation_app.close()

@@ -1,0 +1,1476 @@
+{
+  "source_asset": "HC_import.usd",
+  "source_sha256": "644e5379ea56a4b5f9c1b4893c4b63d436e40c18f375f9f98dbc7bc8e96b19a8",
+  "description": "Authored local transforms; wxyz quaternions; no physics stepping.",
+  "poses": {
+    "/obj/HC_factory/areas_for_material/area_black_base/base_00": {
+      "position": [
+        30.687052011489868,
+        1.3820863328874111,
+        0.5367050878703594
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/areas_for_material/area_black_base/base_01": {
+      "position": [
+        22.587522864341736,
+        1.3423026539385319,
+        0.5367050878703594
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/areas_for_material/area_black_base/base_02": {
+      "position": [
+        17.643538117408752,
+        -2.0258180797100067,
+        0.36000406835228205
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/areas_for_material/area_black_base/base_03": {
+      "position": [
+        -4.6781521290540695,
+        16.155363619327545,
+        0.36000485997647047
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/areas_for_material/area_black_base/base_04": {
+      "position": [
+        -13.34083378314972,
+        16.155363619327545,
+        0.36000485997647047
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/areas_for_material/area_black_base/base_05": {
+      "position": [
+        -16.35386496782303,
+        16.155363619327545,
+        0.36000485997647047
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_00": {
+      "position": [
+        -5.55381253361702,
+        -1.9107237458229065,
+        0.5250999238342047
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_01": {
+      "position": [
+        -7.215478271245956,
+        -1.9107237458229065,
+        0.5250999238342047
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_02": {
+      "position": [
+        -8.982378989458084,
+        -1.9107237458229065,
+        0.5250999238342047
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_03": {
+      "position": [
+        -10.61723455786705,
+        -1.9107237458229065,
+        0.5250999238342047
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_04": {
+      "position": [
+        -12.343839555978775,
+        -1.9107237458229065,
+        0.5250999238342047
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_05": {
+      "position": [
+        -21.318623423576355,
+        14.861753582954407,
+        0.5251005757600069
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_06": {
+      "position": [
+        -21.318623423576355,
+        16.639353334903717,
+        0.5251006688922644
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_07": {
+      "position": [
+        -21.318623423576355,
+        18.472453951835632,
+        0.5251007154583931
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_08": {
+      "position": [
+        -27.998459339141846,
+        14.861753582954407,
+        0.5251005757600069
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_09": {
+      "position": [
+        -27.998459339141846,
+        16.639353334903717,
+        0.5251006688922644
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/areas_for_material/area_yellow_base/yellow_base_10": {
+      "position": [
+        -27.998459339141846,
+        18.472453951835632,
+        0.5251007154583931
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_00": {
+      "position": [
+        33.72357414901525,
+        -3.8811161802160052,
+        0.3
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_01": {
+      "position": [
+        33.72357414901525,
+        -3.320261205077191,
+        0.3
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_02": {
+      "position": [
+        33.11421275591245,
+        -3.88112,
+        0.3
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_03": {
+      "position": [
+        33.72357,
+        -2.267737612770626,
+        0.3
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_04": {
+      "position": [
+        30.67677,
+        -0.51596,
+        0.3
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_05": {
+      "position": [
+        30.67677,
+        -0.51596,
+        0.3
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_06": {
+      "position": [
+        30.67677,
+        -0.51596,
+        0.3
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_07": {
+      "position": [
+        30.67677,
+        -0.51596,
+        0.3
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_08": {
+      "position": [
+        30.67677,
+        -0.51596,
+        0.3
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_09": {
+      "position": [
+        30.67677,
+        -0.51596,
+        0.3
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_10": {
+      "position": [
+        30.67677,
+        -0.51596,
+        0.3
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_11": {
+      "position": [
+        30.67677,
+        -0.51596,
+        0.3
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_12": {
+      "position": [
+        30.67677,
+        -0.51596,
+        0.3
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_13": {
+      "position": [
+        30.67677,
+        -0.51596,
+        0.3
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_14": {
+      "position": [
+        30.67677,
+        -0.51596,
+        0.3
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/bending_tubes/bending_tube_15": {
+      "position": [
+        30.67677,
+        -0.51596,
+        0.3
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_00": {
+      "position": [
+        42.5528,
+        26.159722823912862,
+        1.0
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_01": {
+      "position": [
+        42.55279898643494,
+        27.012374997138977,
+        1.0000012814998627
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_02": {
+      "position": [
+        42.55279898643494,
+        27.92719006538391,
+        1.0000012814998627
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_03": {
+      "position": [
+        42.55279898643494,
+        28.913050889968872,
+        1.0000013746321201
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_04": {
+      "position": [
+        42.55279898643494,
+        29.77440357208252,
+        1.0000013746321201
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_05": {
+      "position": [
+        42.55279898643494,
+        29.77440357208252,
+        1.0000013746321201
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_06": {
+      "position": [
+        42.55279898643494,
+        29.77440357208252,
+        1.0000013746321201
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_07": {
+      "position": [
+        42.55279898643494,
+        29.77440357208252,
+        1.0000013746321201
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_08": {
+      "position": [
+        42.55279898643494,
+        29.77440357208252,
+        1.0000013746321201
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_09": {
+      "position": [
+        42.55279898643494,
+        29.77440357208252,
+        1.0000013746321201
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_10": {
+      "position": [
+        42.55279898643494,
+        29.77440357208252,
+        1.0000013746321201
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_11": {
+      "position": [
+        42.55279898643494,
+        29.77440357208252,
+        1.0000013746321201
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_12": {
+      "position": [
+        42.55279898643494,
+        29.77440357208252,
+        1.0000013746321201
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_13": {
+      "position": [
+        42.55279898643494,
+        29.77440357208252,
+        1.0000013746321201
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_14": {
+      "position": [
+        42.55279898643494,
+        29.77440357208252,
+        1.0000013746321201
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_15": {
+      "position": [
+        42.55279898643494,
+        29.77440357208252,
+        1.0000013746321201
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_raw_00": {
+      "position": [
+        30.769166350364685,
+        1.8126443321393895,
+        0.5622966215014458
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_raw_01": {
+      "position": [
+        30.769166350364685,
+        1.378731458871262,
+        0.5622966215014458
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_raw_02": {
+      "position": [
+        30.769166350364685,
+        0.9437360162424016,
+        0.5622966215014458
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_raw_03": {
+      "position": [
+        30.769166350364685,
+        1.5869176308201718,
+        0.9362723678350449
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_raw_04": {
+      "position": [
+        30.769166350364685,
+        1.1735691050576138,
+        0.9368099272251129
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_raw_05": {
+      "position": [
+        30.769166350364685,
+        1.3733117202805447,
+        1.2912902981042862
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_raw_06": {
+      "position": [
+        43.29421520233154,
+        25.349408388137817,
+        1.2912913225591183
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_raw_07": {
+      "position": [
+        43.29421520233154,
+        25.349408388137817,
+        1.2912913225591183
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_raw_08": {
+      "position": [
+        43.29421520233154,
+        25.349408388137817,
+        1.2912913225591183
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_raw_09": {
+      "position": [
+        43.29421520233154,
+        25.349408388137817,
+        1.2912913225591183
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_raw_10": {
+      "position": [
+        43.29421520233154,
+        25.349408388137817,
+        1.2912913225591183
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_raw_11": {
+      "position": [
+        43.29421520233154,
+        25.349408388137817,
+        1.2912913225591183
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_raw_12": {
+      "position": [
+        43.29421520233154,
+        25.349408388137817,
+        1.2912913225591183
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_raw_13": {
+      "position": [
+        43.29421520233154,
+        25.349408388137817,
+        1.2912913225591183
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_raw_14": {
+      "position": [
+        43.29421520233154,
+        25.349408388137817,
+        1.2912913225591183
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/cubes/cube_raw_15": {
+      "position": [
+        43.29421520233154,
+        25.349408388137817,
+        1.2912913225591183
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/hoops/hoop_00": {
+      "position": [
+        19.209715784852925,
+        -3.508118488252599,
+        0.21769546901206013
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/hoops/hoop_01": {
+      "position": [
+        19.184982155814247,
+        -2.837611512650534,
+        0.21769546901206013
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/hoops/hoop_02": {
+      "position": [
+        19.881151520457003,
+        -3.45602415288797,
+        0.21769546901206013
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/hoops/hoop_03": {
+      "position": [
+        22.58890351541709,
+        -1.1345603243233648,
+        0.21769546901206013
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/hoops/hoop_04": {
+      "position": [
+        21.421349255673086,
+        -1.1345603243233648,
+        0.21769546901206013
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/hoops/hoop_05": {
+      "position": [
+        21.421349255673086,
+        -1.1345603243233648,
+        0.21769546901206013
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/hoops/hoop_06": {
+      "position": [
+        21.421349255673086,
+        -1.1345603243233648,
+        0.21769546901206013
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/hoops/hoop_07": {
+      "position": [
+        21.421349255673086,
+        -1.1345603243233648,
+        0.21769546901206013
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/hoops/hoop_08": {
+      "position": [
+        21.421349255673086,
+        -1.1345603243233648,
+        0.21769546901206013
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/hoops/hoop_09": {
+      "position": [
+        21.421349255673086,
+        -1.1345603243233648,
+        0.21769546901206013
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/hoops/hoop_10": {
+      "position": [
+        21.421349255673086,
+        -1.1345603243233648,
+        0.21769546901206013
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/hoops/hoop_11": {
+      "position": [
+        21.421349255673086,
+        -1.1345603243233648,
+        0.21769546901206013
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/hoops/hoop_12": {
+      "position": [
+        21.421349255673086,
+        -1.1345603243233648,
+        0.21769546901206013
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/hoops/hoop_13": {
+      "position": [
+        21.421349255673086,
+        -1.1345603243233648,
+        0.21769546901206013
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/hoops/hoop_14": {
+      "position": [
+        21.421349255673086,
+        -1.1345603243233648,
+        0.21769546901206013
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/hoops/hoop_15": {
+      "position": [
+        21.421349255673086,
+        -1.1345603243233648,
+        0.21769546901206013
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/product_00": {
+      "position": [
+        29.443740844726562,
+        25.79178214073181,
+        1.615646667778492
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/product_01": {
+      "position": [
+        29.443740844726562,
+        26.793009042739868,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/product_02": {
+      "position": [
+        29.443740844726562,
+        27.96405255794525,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/product_03": {
+      "position": [
+        29.443740844726562,
+        29.024538397789,
+        1.6156470403075218
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/product_04": {
+      "position": [
+        29.443740844726562,
+        30.120006203651428,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/product_05": {
+      "position": [
+        29.443740844726562,
+        30.120006203651428,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/product_06": {
+      "position": [
+        29.443740844726562,
+        30.120006203651428,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/product_07": {
+      "position": [
+        29.443740844726562,
+        30.120006203651428,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/product_08": {
+      "position": [
+        29.443740844726562,
+        30.120006203651428,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/product_09": {
+      "position": [
+        29.443740844726562,
+        30.120006203651428,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/product_10": {
+      "position": [
+        29.443740844726562,
+        30.120006203651428,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/product_11": {
+      "position": [
+        29.443740844726562,
+        30.120006203651428,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/product_12": {
+      "position": [
+        29.443740844726562,
+        30.120006203651428,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/product_13": {
+      "position": [
+        29.443740844726562,
+        30.120006203651428,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/product_14": {
+      "position": [
+        29.443740844726562,
+        30.120006203651428,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/product_15": {
+      "position": [
+        29.443740844726562,
+        30.120006203651428,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/semi_product_00": {
+      "position": [
+        36.84290051460266,
+        25.537949800491333,
+        1.6326013952493668
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/semi_product_01": {
+      "position": [
+        36.84450089931488,
+        26.705077290534973,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/semi_product_02": {
+      "position": [
+        36.84450089931488,
+        27.810776233673096,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/semi_product_03": {
+      "position": [
+        36.84450089931488,
+        29.004967212677002,
+        1.6156470403075218
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/semi_product_04": {
+      "position": [
+        36.84450089931488,
+        29.975518584251404,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/semi_product_05": {
+      "position": [
+        36.84450089931488,
+        29.975518584251404,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/semi_product_06": {
+      "position": [
+        36.84450089931488,
+        29.975518584251404,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/semi_product_07": {
+      "position": [
+        36.84450089931488,
+        29.975518584251404,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/semi_product_08": {
+      "position": [
+        36.84450089931488,
+        29.975518584251404,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/semi_product_09": {
+      "position": [
+        36.84450089931488,
+        29.975518584251404,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/semi_product_10": {
+      "position": [
+        36.84450089931488,
+        29.975518584251404,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/semi_product_11": {
+      "position": [
+        36.84450089931488,
+        29.975518584251404,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/semi_product_12": {
+      "position": [
+        36.84450089931488,
+        29.975518584251404,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/semi_product_13": {
+      "position": [
+        36.84450089931488,
+        29.975518584251404,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/semi_product_14": {
+      "position": [
+        36.84450089931488,
+        29.975518584251404,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "/obj/HC_factory/product_water_pipe_group/products/semi_product_15": {
+      "position": [
+        36.84450089931488,
+        29.975518584251404,
+        1.615646854043007
+      ],
+      "orientation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  }
+}

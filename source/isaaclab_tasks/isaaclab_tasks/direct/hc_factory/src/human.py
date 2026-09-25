@@ -1,6 +1,11 @@
-from isaacsim.core.prims import RigidPrim
-import omni.usd
-from pxr import Usd, UsdSkel, Gf, Sdf
+from __future__ import annotations
+
+from source.hc_backend import logic_enabled
+if not logic_enabled():
+    from isaacsim.core.prims import RigidPrim
+    import omni.usd
+    from pxr import Usd, UsdSkel, Gf, Sdf
+
 import math
 from ..env_asset_cfg.cfg_human import (
     CfgHuman,
@@ -114,6 +119,8 @@ class Human:
         self.state : dict = {}
 
     def _register_skeleton(self):
+        if logic_enabled():
+            return
         meta = self.meta_registeration_info
         stage = omni.usd.get_context().get_stage()
         prim_path = meta["skeleton_prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}")
@@ -133,6 +140,8 @@ class Human:
         return
     
     def _register_rigid_prim(self):
+        if logic_enabled():
+            return
         meta = self.meta_registeration_info
         self.prim = RigidPrim(
             prim_paths_expr=meta["rigid_prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}"),

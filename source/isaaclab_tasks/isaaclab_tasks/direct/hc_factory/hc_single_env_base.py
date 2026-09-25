@@ -5,21 +5,7 @@
 
 from __future__ import annotations
 
-import isaaclab.sim as sim_utils
-# from isaaclab.assets import Articulation, ArticulationCfg
-from isaaclab.envs import DirectRLEnv, DirectRLEnvCfg
-from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sim import SimulationCfg
-from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
-from isaaclab.utils import configclass
-from isaaclab.utils.math import sample_uniform
-# from isaacsim.core.utils.nucleus import get_assets_root_path
-from isaacsim.core.utils.prims import delete_prim, get_prim_at_path, set_prim_visibility
-import isaacsim.core.utils.stage as stage_utils
-from isaacsim.core.utils.stage import add_reference_to_stage
-from isaacsim.core.utils.stage import get_current_stage
-from isaacsim.core.prims import RigidPrim, Articulation
-from isaacsim.core.api.world import World
+from source.hc_backend import logic_enabled
 
 import torch
 import copy
@@ -31,7 +17,8 @@ from .src.machine import MachineManager
 from .src.material import ProductMaterialManager
 from .src.human import HumanManager
 from .src.robot import RobotManager
-from .src.camera import CameraManager
+if not logic_enabled():
+    from .src.camera import CameraManager
 from .src.perception import PerceptionManager
 from .src.storage import StorageManager
 from .src.route import RouteManagerVectorEnv
@@ -59,7 +46,7 @@ class HcSingleEnvBase():
         self.machine_manager = MachineManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.human_manager = HumanManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.robot_manager = RobotManager(env_id=self.env_id, cuda_device=self.cuda_device)
-        self.camera_manager = CameraManager(env_id=self.env_id, cuda_device=self.cuda_device)
+        self.camera_manager = None if logic_enabled() else CameraManager(env_id=self.env_id, cuda_device=self.cuda_device)
         self.perception_manager = PerceptionManager(
             env_id=self.env_id, cuda_device=self.cuda_device, cfg=CfgPerception
         )
@@ -75,7 +62,7 @@ class HcSingleEnvBase():
         # self.route_manager = RouteManagerVectorEnv(cuda_device=self.cuda_device)
 
     def iter_managers(self):
-        return (
+        return tuple(m for m in (
             self.storage_manager,
             self.product_material_manager,
             self.human_manager,
@@ -85,7 +72,7 @@ class HcSingleEnvBase():
             self.machine_manager,
             self.task_manager,
             self.algo_hierarchical_masker,
-        )
+        ) if m is not None)
     
     # def update_task_availability_mask(self):
     #     self.machine_manager.update_task_availability_mask(self.env_state_action_dict)
@@ -112,6 +99,8 @@ class HcSingleEnvBase():
         return restore(self, ckpt)
 
     def apply_data_to_sim(self) -> None:
+        if logic_enabled():
+            return
         #articulations
         articulations : dict = self.env_state_action_dict["articulations"]
         for name, data in articulations.items():

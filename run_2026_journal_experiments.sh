@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+# 训练/数值评测默认纯逻辑后端：不启动 Isaac，不推进物理或渲染，仍逐逻辑步更新。
+# 可视化使用 train.py --visualize；引擎兼容检查可设 HC_SIM_BACKEND=isaac。
+
 # 快速运行（conda activate isaac-lab，进入本仓库；默认 cuda:0、60 局）
 # 第二台：bash run_2026_journal_experiments.sh E5-human-pair-c cuda:0
 # 第三台：bash run_2026_journal_experiments.sh E5-human-pair-aux cuda:0

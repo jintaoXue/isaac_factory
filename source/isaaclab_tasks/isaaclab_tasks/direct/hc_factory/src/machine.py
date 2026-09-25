@@ -1,4 +1,9 @@
-from isaacsim.core.prims import Articulation
+from __future__ import annotations
+
+from source.hc_backend import logic_enabled
+if not logic_enabled():
+    from isaacsim.core.prims import Articulation
+
 from abc import abstractmethod
 from ..env_asset_cfg.cfg_machine import CfgMachine
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
@@ -114,7 +119,7 @@ class Machine:
 
     def _register_articulation_animation(self):
         for obj_name, info in self.registration_infos.items():
-            articulation = Articulation(
+            articulation = None if logic_enabled() else Articulation(
                 prim_paths_expr=info["prim_paths_expr"].format(i=self.env_id),
                 name=f"env_{self.env_id}_{obj_name}",
                 reset_xform_properties=False,
@@ -394,7 +399,7 @@ class num07_gantry_group(Machine):
 
     def _register_articulation_animation(self):
         for obj_name, info in self.registration_infos.items():
-            articulation = Articulation(
+            articulation = None if logic_enabled() else Articulation(
                 prim_paths_expr=info["prim_paths_expr"].format(i=self.env_id),
                 name=f"env_{self.env_id}_{obj_name}",
                 reset_xform_properties=False,

@@ -1,4 +1,9 @@
-from isaacsim.core.prims import RigidPrim
+from __future__ import annotations
+
+from source.hc_backend import logic_enabled
+if not logic_enabled():
+    from isaacsim.core.prims import RigidPrim
+
 from ..env_asset_cfg.cfg_robot import CfgRobot, CfgRobotRegistrationInfos
 from ..env_asset_cfg.route.cfg_route import RouteOptionalInitPointsInMap, OptionalInitPointIds
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll
@@ -90,6 +95,8 @@ class Robot:
         self.state : str = None
 
     def _register_rigid_prim(self):
+        if logic_enabled():
+            return
         meta = self.meta_registeration_info
         self.prim = RigidPrim(
             prim_paths_expr=meta["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}"),

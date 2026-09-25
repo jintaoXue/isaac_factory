@@ -1,4 +1,9 @@
-from isaacsim.core.prims import RigidPrim
+from __future__ import annotations
+
+from source.hc_backend import logic_enabled
+if not logic_enabled():
+    from isaacsim.core.prims import RigidPrim
+
 from abc import abstractmethod
 from ..env_asset_cfg.cfg_material_product import CfgProductProcess, CfgProductOrder, CfgRegistrationInfos
 from ..env_asset_cfg.cfg_process_task_gallery import CfgProcessTaskGalleryInAll, CfgProcessTaskGalleryDetailedClassified
@@ -181,7 +186,7 @@ class MaterialBatch:
 
     def _register_rigid_prim(self):
         for obj_name, info in self.meta_registeration_info.items():
-            rigid_prim = RigidPrim(
+            rigid_prim = None if logic_enabled() else RigidPrim(
                 prim_paths_expr=info["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}"),
                 name=f"env_{self.env_id}_{info['name'].format(idx=f'{self.idx:02d}')}",
                 reset_xform_properties=False,
@@ -200,10 +205,14 @@ class MaterialBatch:
         for material_type, material_prim in material_prims.items():
             material_name = f"num_{self.idx:02d}_{material_type}"
             self.state["submaterials"][material_type]["storage_name"] = "disappear"
-            position = material_prim.get_local_poses()[0]
+            if logic_enabled():
+                from .static_layout import local_pose
+                info = self.meta_registeration_info[material_type]
+                position, orientation = local_pose(info["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}"), self.cuda_device)
+            else:
+                position, orientation = material_prim.get_local_poses()
             ### to set the material to underground
             position[0][2] = -100
-            orientation = material_prim.get_local_poses()[1]
             env_state_action_dict["rigid_prims"][material_name] = {
                 "object": material_prim,
                 "position": position,

@@ -1,6 +1,11 @@
-import omni.usd
-from pxr import PhysxSchema
-from isaacsim.core.prims import RigidPrim
+from __future__ import annotations
+
+from source.hc_backend import logic_enabled
+if not logic_enabled():
+    import omni.usd
+    from pxr import PhysxSchema
+    from isaacsim.core.prims import RigidPrim
+
 from ..env_asset_cfg.cfg_storage import CfgStorage, CfgResetStateTemplate,_quat_multiply, _quat_conjugate
 import json
 import torch
@@ -65,6 +70,8 @@ class Storage:
 
 
     def _register_rigid_prim(self):
+        if logic_enabled():
+            return
         if self.class_name == "GroundStorage":
             return
         meta = self.meta_registeration_info
@@ -109,7 +116,11 @@ class Storage:
         #the placement cfg is the relative poses of the storage slots to the storage base
         # trans the relative poses to the absolute poses using the storage base pose
         if self.placement_cfg["data_type"] == "relative":
-            storage_base_pose = self.prim.get_local_poses()
+            if logic_enabled():
+                from .static_layout import local_pose
+                storage_base_pose = local_pose(self.meta_registeration_info["prim_paths_expr"].format(i=self.env_id), self.cuda_device)
+            else:
+                storage_base_pose = self.prim.get_local_poses()
             storage_base_position = storage_base_pose[0].squeeze(0)
             storage_base_orientation = storage_base_pose[1].squeeze(0)
             for pose in self.placement_cfg["pose_list"]:

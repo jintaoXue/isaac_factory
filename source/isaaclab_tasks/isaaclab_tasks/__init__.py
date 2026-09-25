@@ -22,9 +22,12 @@ __version__ = ISAACLAB_TASKS_METADATA["package"]["version"]
 # Register Gym environments.
 ##
 
-from .utils import import_packages
+from source.hc_backend import logic_enabled
 
-# The blacklist is used to prevent importing configs from sub-packages
-_BLACKLIST_PKGS = ["utils", ".mdp"]
-# Import all configs in this package
-import_packages(__name__, _BLACKLIST_PKGS)
+if not logic_enabled():
+    from .utils import import_packages
+
+    # The blacklist is used to prevent importing configs from sub-packages
+    _BLACKLIST_PKGS = ["utils", ".mdp"]
+    # Import all configs in this package
+    import_packages(__name__, _BLACKLIST_PKGS)
