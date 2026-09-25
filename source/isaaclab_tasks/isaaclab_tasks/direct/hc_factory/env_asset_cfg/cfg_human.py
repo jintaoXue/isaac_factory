@@ -1,5 +1,6 @@
 
 from .cfg_hc_env import HcVectorEnvCfg
+import os
 import torch
 
 _BONE = "RL_BoneRoot"
@@ -212,6 +213,10 @@ CfgHumanRegistrationInfos = {
 # Human factors: fatigue → efficiency → duration / walk speed.
 # Makespan remains the sole RL objective; these dynamics enlarge the D-layer
 # assignment gap (specialist vs mismatched / exhausted worker).
+#
+# Switch tables with HC_HUMAN_SKILL_PROFILE:
+#   legacy | default — original 1.40 / 0.58 / fatigue rates (desk / 5090 / server)
+#   strong | skill-strong-v1 — wider skill gap + fatigue ×3 (home trial)
 # ---------------------------------------------------------------------------
 
 # η = η_min + (1-η_min) * (1-F)^α ; F > F_crit further scales η.
@@ -219,19 +224,6 @@ HUMAN_EFFICIENCY_ETA_MIN = 0.40
 HUMAN_EFFICIENCY_ALPHA = 1.4
 HUMAN_FATIGUE_CRIT = 0.80
 HUMAN_EFFICIENCY_CRIT_SCALE = 0.75
-
-# Per-worker (idx) person traits: (work_rate, recover_rate) per env step.
-# Rates follow the worker, not the current process-task name; task intensity is
-# HUMAN_SUBTASK_FATIGUE_LOAD (λ_s) multiplied onto work_rate.
-# Role labels align with HUMAN_SKILL_TASK specialists.
-# Welder (2) fatigues fastest; painter (3) recovers fastest.
-HUMAN_FATIGUE_RATES = (
-    (0.00045, 0.00018),  # 0 cutting specialist
-    (0.00032, 0.00022),  # 1 grooving specialist
-    (0.00055, 0.00012),  # 2 welding specialist
-    (0.00028, 0.00025),  # 3 paint specialist
-    (0.00038, 0.00020),  # 4 logistics specialist
-)
 
 # Subtask metabolic load λ_s (multiplies work rate). Idle / wait recover.
 HUMAN_SUBTASK_FATIGUE_LOAD = {
@@ -262,39 +254,6 @@ _HUMAN_TASK_NAMES = (
     "paint_rust_proof",
 )
 
-_SKILL_OFF_PROCESS = 0.58
-_SKILL_OFF_LOGISTIC = 0.82
-_SKILL_ON = 1.40
-
-
-def _skill_task_row(*specials: str) -> dict[str, float]:
-    row = {}
-    for name in _HUMAN_TASK_NAMES:
-        if name in specials:
-            row[name] = _SKILL_ON
-        elif name.startswith("logistic_"):
-            row[name] = _SKILL_OFF_LOGISTIC
-        else:
-            row[name] = _SKILL_OFF_PROCESS
-    return row
-
-
-# idx → process-task skill. Logistic specialist (4) is good on all haul tasks.
-HUMAN_SKILL_TASK = (
-    _skill_task_row("pipe_cutting", "logistic_for_pipe_cutting"),
-    _skill_task_row("pipe_grooving", "logistic_for_pipe_grooving"),
-    _skill_task_row(
-        "batch_spot_welding",
-        "arc_welding_root",
-        "MIG_welding_surface",
-        "logistic_for_batch_spot_welding",
-        "logistic_for_arc_welding_root",
-        "logistic_for_MIG_welding_surface",
-    ),
-    _skill_task_row("paint_rust_proof", "logistic_for_paint_rust_proof"),
-    {name: (1.35 if name.startswith("logistic_") else 0.70) for name in _HUMAN_TASK_NAMES},
-)
-
 _HUMAN_SUBTASK_NAMES = (
     "go_to_material",
     "material_on_gantry",
@@ -307,13 +266,65 @@ _HUMAN_SUBTASK_NAMES = (
 )
 
 
+def _skill_task_row(skill_on: float, skill_off_process: float, skill_off_logistic: float, *specials: str) -> dict[str, float]:
+    row = {}
+    for name in _HUMAN_TASK_NAMES:
+        if name in specials:
+            row[name] = skill_on
+        elif name.startswith("logistic_"):
+            row[name] = skill_off_logistic
+        else:
+            row[name] = skill_off_process
+    return row
+
+
 def _skill_sub_row(**overrides: float) -> dict[str, float]:
     row = {name: 1.00 for name in _HUMAN_SUBTASK_NAMES}
     row.update(overrides)
     return row
 
 
-HUMAN_SKILL_SUBTASK = (
+def _build_skill_task(skill_on: float, skill_off_process: float, skill_off_logistic: float,
+                      logistics_on: float, logistics_off_process: float):
+    return (
+        _skill_task_row(skill_on, skill_off_process, skill_off_logistic, "pipe_cutting", "logistic_for_pipe_cutting"),
+        _skill_task_row(skill_on, skill_off_process, skill_off_logistic, "pipe_grooving", "logistic_for_pipe_grooving"),
+        _skill_task_row(
+            skill_on, skill_off_process, skill_off_logistic,
+            "batch_spot_welding",
+            "arc_welding_root",
+            "MIG_welding_surface",
+            "logistic_for_batch_spot_welding",
+            "logistic_for_arc_welding_root",
+            "logistic_for_MIG_welding_surface",
+        ),
+        _skill_task_row(skill_on, skill_off_process, skill_off_logistic, "paint_rust_proof", "logistic_for_paint_rust_proof"),
+        {name: (logistics_on if name.startswith("logistic_") else logistics_off_process) for name in _HUMAN_TASK_NAMES},
+    )
+
+
+# --- Profile tables (immutable sources) ------------------------------------
+# Per-worker (idx) person traits: (work_rate, recover_rate) per env step.
+# Rates follow the worker; task intensity is HUMAN_SUBTASK_FATIGUE_LOAD.
+_HUMAN_FATIGUE_RATES_LEGACY = (
+    (0.00045, 0.00018),  # 0 cutting
+    (0.00032, 0.00022),  # 1 grooving
+    (0.00055, 0.00012),  # 2 welding
+    (0.00028, 0.00025),  # 3 paint
+    (0.00038, 0.00020),  # 4 logistics
+)
+_HUMAN_FATIGUE_RATES_STRONG = (
+    (0.00135, 0.00054),
+    (0.00096, 0.00066),
+    (0.00165, 0.00036),
+    (0.00084, 0.00075),
+    (0.00114, 0.00060),
+)
+
+_HUMAN_SKILL_TASK_LEGACY = _build_skill_task(1.40, 0.58, 0.82, 1.35, 0.70)
+_HUMAN_SKILL_TASK_STRONG = _build_skill_task(1.55, 0.42, 0.70, 1.50, 0.45)
+
+_HUMAN_SKILL_SUBTASK_LEGACY = (
     _skill_sub_row(control_machine=1.30, control_gantry=0.85),
     _skill_sub_row(control_machine=1.25, control_gantry=0.90),
     _skill_sub_row(control_machine=1.35, control_gantry=0.80),
@@ -329,6 +340,64 @@ HUMAN_SKILL_SUBTASK = (
         go_to_processing_machine=1.20,
     ),
 )
+_HUMAN_SKILL_SUBTASK_STRONG = (
+    _skill_sub_row(control_machine=1.40, control_gantry=0.80),
+    _skill_sub_row(control_machine=1.35, control_gantry=0.85),
+    _skill_sub_row(control_machine=1.45, control_gantry=0.75),
+    _skill_sub_row(control_machine=1.38, control_gantry=0.82),
+    _skill_sub_row(
+        control_machine=0.55,
+        control_gantry=1.45,
+        material_on_gantry=1.40,
+        material_on_robot=1.40,
+        material_on_goal_area=1.40,
+        go_to_material=1.25,
+        go_to_goal_area=1.25,
+        go_to_processing_machine=1.25,
+    ),
+)
+
+
+def _normalize_skill_profile(name: str | None) -> str:
+    key = (name or "legacy").strip().lower().replace("_", "-")
+    if key in ("strong", "skill-strong-v1", "strong-v1", "v1-strong"):
+        return "strong"
+    if key in ("legacy", "default", "v0", "original"):
+        return "legacy"
+    raise ValueError(
+        f"Unknown HC_HUMAN_SKILL_PROFILE={name!r}; use legacy|strong"
+    )
+
+
+def apply_human_skill_profile(profile: str | None = None) -> str:
+    """Select active fatigue/skill tables. Returns normalized profile name."""
+    global HUMAN_SKILL_PROFILE, HUMAN_FATIGUE_RATES, HUMAN_SKILL_TASK, HUMAN_SKILL_SUBTASK
+    global SKILL_EFF_CLIP_LO, SKILL_EFF_CLIP_HI, _SKILL_ON, _SKILL_OFF_PROCESS, _SKILL_OFF_LOGISTIC
+    chosen = _normalize_skill_profile(profile if profile is not None else os.environ.get("HC_HUMAN_SKILL_PROFILE", "legacy"))
+    HUMAN_SKILL_PROFILE = chosen
+    if chosen == "strong":
+        HUMAN_FATIGUE_RATES = _HUMAN_FATIGUE_RATES_STRONG
+        HUMAN_SKILL_TASK = _HUMAN_SKILL_TASK_STRONG
+        HUMAN_SKILL_SUBTASK = _HUMAN_SKILL_SUBTASK_STRONG
+        _SKILL_ON, _SKILL_OFF_PROCESS, _SKILL_OFF_LOGISTIC = 1.55, 0.42, 0.70
+        SKILL_EFF_CLIP_LO, SKILL_EFF_CLIP_HI = 0.30, 2.20
+    else:
+        HUMAN_FATIGUE_RATES = _HUMAN_FATIGUE_RATES_LEGACY
+        HUMAN_SKILL_TASK = _HUMAN_SKILL_TASK_LEGACY
+        HUMAN_SKILL_SUBTASK = _HUMAN_SKILL_SUBTASK_LEGACY
+        _SKILL_ON, _SKILL_OFF_PROCESS, _SKILL_OFF_LOGISTIC = 1.40, 0.58, 0.82
+        SKILL_EFF_CLIP_LO, SKILL_EFF_CLIP_HI = 0.35, 1.80
+    return chosen
+
+
+# Active tables (mutated by apply_human_skill_profile).
+HUMAN_SKILL_PROFILE = "legacy"
+HUMAN_FATIGUE_RATES = _HUMAN_FATIGUE_RATES_LEGACY
+HUMAN_SKILL_TASK = _HUMAN_SKILL_TASK_LEGACY
+HUMAN_SKILL_SUBTASK = _HUMAN_SKILL_SUBTASK_LEGACY
+_SKILL_ON, _SKILL_OFF_PROCESS, _SKILL_OFF_LOGISTIC = 1.40, 0.58, 0.82
+SKILL_EFF_CLIP_LO, SKILL_EFF_CLIP_HI = 0.35, 1.80
+apply_human_skill_profile()
 
 
 def human_efficiency(fatigue: float) -> float:
@@ -350,7 +419,7 @@ def human_effective_skill(human_idx: int, task_name: str | None, subtask_name: s
     s_s = 1.0
     if subtask_name:
         s_s = float(HUMAN_SKILL_SUBTASK[i].get(subtask_name, 1.0))
-    return min(1.80, max(0.35, s_t * s_s))
+    return min(SKILL_EFF_CLIP_HI, max(SKILL_EFF_CLIP_LO, s_t * s_s))
 
 
 def human_step_fatigue(human_idx: int, fatigue: float, *, idle: bool, subtask_name: str | None) -> float:

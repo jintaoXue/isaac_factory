@@ -1,90 +1,126 @@
-# 人因实验说明（奖励 / pair / match 网络）
+# 人因实验说明（奖励 / D 配对 / C 配对 / 耗时辅助）
 
 > E0–E6 协议见 `experiment_protocol.md`；纯逻辑仿真见 `ideal_simulation_backend.md`。
 
 训练与数值评测默认 **logic 后端**（不跑 PhysX）。教师权重：`logs/rl_games/HcFactory/hier_2026-08-27_23-17-41`，`HC_LOAD_STEP=1290000`（六件套）。目录已存在时换 `HC_HUMAN_RUN_TAG`。
 
+## 0. 人因 skill / 疲劳表切换（`HC_HUMAN_SKILL_PROFILE`）
+
+两套表都保留在 `cfg_human.py`，用环境变量切换（**进程启动时生效**）：
+
+| 值 | 含义 | 专工 / 错工艺 / 物流干工艺 | 疲劳 |
+| --- | --- | --- | --- |
+| **`legacy`**（默认） | 原设定；本机 / 5090 / 服务器继续用 | `1.40` / `0.58` / `0.70` | 原 work/recover |
+| **`strong`**（别名 `skill-strong-v1`） | 拉大错派反差；**家里试用** | `1.55` / `0.42` / `0.45` | work/recover **×3** |
+
+```bash
+# 默认 = legacy，可不写
+bash run_2026_journal_experiments.sh E5-human cuda:0
+
+# 家里：开 strong + match
+HC_HUMAN_SKILL_PROFILE=strong \
+HC_HUMAN_RUN_TAG=match-strong-v1 HC_MAX_TRAIN_EPISODES=60 \
+  bash run_2026_journal_experiments.sh E5-human-match cuda:0
+```
+
+注意：`legacy` 与 `strong` **不要共用同一 `HC_HUMAN_RUN_TAG` / 训练目录**；W&B 名里也应用不同 tag 区分。启动日志会打印 `skill_profile=...`。
+
 ## 1. 当前机器分工
 
-| 机器 | 入口 | 说明 |
-|---|---|---|
-| 本机（4090 工位） | `E5-human` | 原网络 + 人因奖励 |
-| 5090 | `E5-human-pair-c-aux` | D pair + C 汇总 + 耗时辅助 |
-| **家里台式** | **`E5-human-match`** | **★ 网络改进：D 双塔 match 打分** |
-| 服务器 | `E5-human-pair-aux` | D pair + 耗时辅助 |
 
-可选加跑：`E5-human-match-c`（D+C 都用 match）。暂缓：`E5-human-pair`、`E5-pair`。
+| 机器          | 入口                              | skill 表   | 说明                |
+| ----------- | ------------------------------- | -------- | ----------------- |
+| 本机（4090 工位） | `E5-human` + `E5-human-match-c` | legacy   | 基线奖励 + D/C match  |
+| 5090        | `E5-human-pair-c-aux`           | legacy   | D pair + C + 耗时辅助 |
+| 家里台式        | `E5-human-match`                | **strong** | D match 双塔试用      |
+| 服务器         | `E5-human-pair-aux`             | legacy   | D pair + 耗时辅助     |
+
+
+暂缓：`E5-human-pair`、`E5-pair`、`E5-human-pair-c`（可后补）。
 
 ```bash
-# 本机
+# 本机 / 5090 / 服务器（legacy，可省略 HC_HUMAN_SKILL_PROFILE）
 HC_HUMAN_RUN_TAG=human-logic-v1 HC_MAX_TRAIN_EPISODES=60 \
   bash run_2026_journal_experiments.sh E5-human cuda:0
-
-# 5090
+HC_HUMAN_RUN_TAG=match-c-logic-v1 HC_MAX_TRAIN_EPISODES=60 \
+  bash run_2026_journal_experiments.sh E5-human-match-c cuda:0
 HC_HUMAN_RUN_TAG=c-aux-logic-v1 HC_MAX_TRAIN_EPISODES=60 \
   bash run_2026_journal_experiments.sh E5-human-pair-c-aux cuda:0
-
-# 家里（网络改进）
-git pull origin master
-# 教师六件套放到 logs/rl_games/HcFactory/hier_2026-08-27_23-17-41/nn/
-HC_HUMAN_RUN_TAG=match-v1 HC_MAX_TRAIN_EPISODES=60 \
-  bash run_2026_journal_experiments.sh E5-human-match cuda:0
-
-# 服务器
 HC_HUMAN_RUN_TAG=aux-logic-v1 HC_MAX_TRAIN_EPISODES=60 \
   bash run_2026_journal_experiments.sh E5-human-pair-aux cuda:0
+
+# 家里（strong）
+HC_HUMAN_SKILL_PROFILE=strong \
+HC_HUMAN_RUN_TAG=match-strong-v1 HC_MAX_TRAIN_EPISODES=60 \
+  bash run_2026_journal_experiments.sh E5-human-match cuda:0
 ```
 
-评测：
+评测（训练目录 + 预固定步数，勿用协议 seeds 挑点）：
 
 ```bash
-bash run_2026_journal_experiments.sh eval-E5-human-match cuda:0
-# 或 HC_LOAD_DIR=... HC_LOAD_STEP=300000
+bash run_2026_journal_experiments.sh eval-E5-human cuda:0
+bash run_2026_journal_experiments.sh eval-E5-human-pair-c-aux cuda:0
+bash run_2026_journal_experiments.sh eval-E5-human-pair-c cuda:0
+bash run_2026_journal_experiments.sh eval-E5-human-pair-aux cuda:0
+# 或显式：HC_LOAD_DIR=... HC_LOAD_STEP=300000
 ```
 
-协议：N10/K10/T40000、seeds 43–52×1、ε=0；主指标 `MetricFullorderCore/09_mean_makespan`。
+协议：N10/K10/T40000、seeds 43–52×1、ε=0；主指标 `MetricFullorderCore/09_mean_makespan`。评测关 shaping。
 
 ## 2. 入口一览
 
-| 入口 | D | C | aux | reward |
-|---|---|---|---|---|
-| `E5-human` | 旧 | 旧 | 关 | 开 |
-| `E5-human-pair` | pair 残差 | 旧 | 关 | 开 |
-| `E5-human-pair-c` | pair | pair 汇总 | 关 | 开 |
-| `E5-human-pair-aux` | pair | 旧 | 开 | 开 |
-| `E5-human-pair-c-aux` | pair | pair | 开 | 开 |
-| **`E5-human-match`** | **match 双塔** | 旧 | 关 | 开 |
-| **`E5-human-match-c`** | **match** | **match 汇总** | 关 | 开 |
 
-Hydra：`human_match_head` / `task_match_head`（与 `human_pair_head` / `task_pair_head` **互斥**）。默认 tag：`match-v1` / `match-c-v1`。
+| 入口                    | D 配对 | C 配对 | 耗时辅助 | 人因 reward                     |
+| --------------------- | ---- | ---- | ---- | ----------------------------- |
+| `E5-human`            | 关    | 关    | 关    | 开（`HC_HUMAN_REWARD=false` 可关） |
+| `E5-human-pair`       | 开    | 关    | 关    | 开                             |
+| `E5-pair`             | 开    | 关    | 关    | 关                             |
+| `E5-human-pair-c`     | 开    | 开    | 关    | 开                             |
+| `E5-human-pair-aux`   | 开    | 关    | 开    | 开                             |
+| `E5-human-pair-c-aux` | 开    | 开    | 开    | 开                             |
 
-## 3. ★ E5-human-match 网络改进（家里跑这个）
 
-针对旧 D「全局 Q + 浅残差、特征与工时不对齐」：
+底座均为 E5-no-oru：T0 热启 + 教师探索 + AR，ORU 关。Hydra：`human_aware_reward`、`human_pair_head`、`task_pair_head`、`human_duration_aux`（后三者默认 false；aux 需 D 配对开）。
 
-1. **特征与时长对齐**：`speed = η × skill_task × skill_sub(control_machine)`，另含 `log_speed`、疲劳、速率等（10 维）。  
-2. **双塔打分**：`Q = Q_context(base) + ⟨tower_h(human), tower_c(ctx)⟩ + feat_mlp + prior·log_speed`。  
-3. **`prior_weight` 初值 = 1**：热启 T0 后立刻偏向更快工人（与旧 pair 零残差「完全等于旧 Q」不同）。  
-4. C 侧 `E5-human-match-c` 用空闲池的 max/mean speed 等做同样双塔。
+默认 tag：human=`formal-v1`，pair=`pair-formal-v1`，C=`c-v1`，aux=`aux-v1`，组合=`c-aux-v1`。逻辑重跑请用 `*-logic-v1` 等新 tag。
 
-实现：`source/algo/hierarchical/hc_factory/human_match.py`。W&B：`MetricNetwork/human_match_head`、`task_match_head`。
+## 3. 人因奖励（P0）
 
-## 4. 人因奖励（P0）
+疲劳/技能已改工时；共享完工奖对单次派工信用弱，故在**成功派工**处加小 shaping（不改 mask / 动力学）。
 
-`v(i,t)=η×skill_task`（未乘 sub；match 网络已用对齐 speed）。  
-`human_mismatch` / `overwork` / cap 同前。见 `HC_HUMAN_*` 环境变量。
+`v(i,t)=η(F_i)×skill(i,t)`（task skill，非残留 subtask skill）。  
+`g_d=clip(1-v(chosen)/max_{空闲}v, 0, 1)`。
 
-## 5. 旧 pair / aux（简述）
 
-- pair：`Q_old + MLP([z, pair8])`，末层零初始化。  
-- C-pair：空闲人 η×skill 汇总残差。  
-- aux：完成耗时 Huber，仅 pair 路径。
+| 分项               | 公式要点             | 默认                              |
+| ---------------- | ---------------- | ------------------------------- |
+| `human_mismatch` | `-λ_m Σ g_d`     | 0.05 / `HC_HUMAN_MISMATCH_COEF` |
+| `human_overwork` | 在职工人 F>0.8 的二次惩罚 | 0.01 / `HC_HUMAN_OVERWORK_COEF` |
+| `human_recovery` | 默认关              | 0 / `HC_HUMAN_RECOVERY_COEF`    |
 
-## 6. 测试
+
+限幅 `human_shaping_cap=0.04`（相对时间惩罚 −0.08/step）。看 `MetricReward/*`、`MetricHuman/ep_mismatch_rate`，最终仍看协议 makespan。
+
+## 4. D-human 配对残差
+
+`Q(s,t,h)=Q_old + MLP([encode_D(s,t), pair(t,h)])`。  
+pair 八维：fatigue、η、skill、η×skill、疲劳增长率、恢复率、可用性、存在标记。末层零初始化，热启后与旧 Q 一致。旧 ckpt 可加载；含 pair 的 ckpt 必须用 pair 系评测入口。
+
+## 5. C 头任务–人员汇总
+
+对空闲人员集 H：`φ(t)=[max v, mean v, |H|/H_tot, argmax 的 fatigue, 1(|H|>0)]`。  
+`Q_C_new = Q_C_old + MLP_C([encode_C, φ(t)]) × 1(|H|>0)`。零初始化；批次内人员占用写入 replay。
+
+## 6. 耗时辅助（D）
+
+在 D 配对共享隐层后加 Softplus 头；`y=log(1+d/1000)`，`L = L_TD + 0.05×Huber`。  
+`d` = 完成步 − 派工步（含等待，非反事实）。缓冲 2048、满 32 才训；失败/未完成不造零标签。W&B：`MetricAux/*`、`MetricNetwork/*`。
+
+## 7. 测试
 
 ```bash
 python tests/test_human_aware_reward.py
-python tests/test_human_pair.py
-python tests/test_human_extensions.py
-python tests/test_human_match.py
+python tests/test_human_extensions.py   # pair / C / aux
 ```
+
+不保证 makespan 涨点；以协议评测为准。

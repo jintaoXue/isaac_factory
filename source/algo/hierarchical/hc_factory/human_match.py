@@ -15,6 +15,10 @@ from torch import nn
 
 from .hier_networks import QNetwork
 
+# Cover both legacy [0.35,1.80] and strong [0.30,2.20] skill products.
+_MATCH_SKILL_CLIP_LO = 0.30
+_MATCH_SKILL_CLIP_HI = 2.20
+
 # fatigue, η, skill_task, skill_sub_cm, speed, log_speed, work/recover, available, exists
 MATCH_FEATURE_DIM = 10
 TASK_MATCH_FEATURE_DIM = 5
@@ -30,7 +34,7 @@ def _skill_sub_column(pre: dict, action_dim: int) -> torch.Tensor:
         subs = human["skill_subtask"].to(device).float()
         # Layout follows cfg_human._HUMAN_SUBTASK_NAMES; control_machine is last.
         if subs.ndim == 2 and subs.shape[0] >= action_dim and subs.shape[1] >= 1:
-            return subs[:action_dim, -1].clamp(0.35, 1.80)
+            return subs[:action_dim, -1].clamp(_MATCH_SKILL_CLIP_LO, _MATCH_SKILL_CLIP_HI)
     return torch.ones(action_dim, device=device, dtype=torch.float32)
 
 
@@ -58,7 +62,7 @@ def human_task_match_features(pre: dict, task_action: torch.Tensor, action_dim: 
     if float(task[0].item()) > 0.5:
         skill_t = torch.zeros_like(skill_t)
         skill_s = torch.zeros_like(skill_s)
-    speed = (eta * skill_t * skill_s).clamp(0.05, 1.80)
+    speed = (eta * skill_t * skill_s).clamp(0.05, _MATCH_SKILL_CLIP_HI)
     log_speed = torch.log(speed + _LOG_EPS)
     features = torch.stack(
         (

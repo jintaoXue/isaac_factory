@@ -5,7 +5,10 @@ set -euo pipefail
 # 可视化使用 train.py --visualize；引擎兼容检查可设 HC_SIM_BACKEND=isaac。
 
 # 快速运行（conda activate isaac-lab，进入本仓库；默认 cuda:0、60 局）
-# 家里台式（网络改进 match）：bash run_2026_journal_experiments.sh E5-human-match cuda:0
+# 家里台式（网络改进 match + skill strong）： 
+#   HC_HUMAN_SKILL_PROFILE=strong HC_HUMAN_RUN_TAG=match-strong-v1 \
+#     bash run_2026_journal_experiments.sh E5-human-match cuda:0
+# 人因表切换：HC_HUMAN_SKILL_PROFILE=legacy|strong（默认 legacy）；见 docs/experiment_human.md §0
 # 第二台：bash run_2026_journal_experiments.sh E5-human-pair-c cuda:0
 # 第三台：bash run_2026_journal_experiments.sh E5-human-pair-aux cuda:0
 # 原 pair：bash run_2026_journal_experiments.sh E5-human-pair cuda:0
@@ -1530,7 +1533,7 @@ run_e5_human_train() {
         'agent.params.config.warmstart=""'
         'agent.params.config.load_name=""'
     )
-    echo "[${variant}] human_reward=${enabled} pair=${pair_head} task_pair=${task_pair} match=${match_head} task_match=${task_match} duration_aux=${duration_aux}; seed=42; output=${out}"
+    echo "[${variant}] human_reward=${enabled} pair=${pair_head} task_pair=${task_pair} match=${match_head} task_match=${task_match} duration_aux=${duration_aux} skill_profile=${HC_HUMAN_SKILL_PROFILE:-legacy}; seed=42; output=${out}"
     echo "[E5-human] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=Hier4TPA-${variant}-N10-S42-${tag}"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
