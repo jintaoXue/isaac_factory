@@ -205,12 +205,10 @@ class MaterialBatch:
         for material_type, material_prim in material_prims.items():
             material_name = f"num_{self.idx:02d}_{material_type}"
             self.state["submaterials"][material_type]["storage_name"] = "disappear"
-            if logic_enabled():
-                from .static_layout import local_pose
-                info = self.meta_registeration_info[material_type]
-                position, orientation = local_pose(info["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}"), self.cuda_device)
-            else:
-                position, orientation = material_prim.get_local_poses()
+            # Canonical reset pose, independent of the last rendered episode/frame.
+            from .static_layout import local_pose
+            info = self.meta_registeration_info[material_type]
+            position, orientation = local_pose(info["prim_paths_expr"].format(i=self.env_id, idx=f"{self.idx:02d}"), self.cuda_device)
             ### to set the material to underground
             position[0][2] = -100
             env_state_action_dict["rigid_prims"][material_name] = {

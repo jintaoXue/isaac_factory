@@ -50,7 +50,7 @@ SingleEnvStateActionDictTemplate : dict = {
         "next_product_index": None,
         #
         "producing": [],
-        #producing_indexs, value is the index in the material batch list in material manager, 
+        #producing_indexs, value is the index in the material batch list in material manager,
         # e.g., [0, 1]
         "producing_indexs": [],
         #finished products with indexs list, e.g., "ProductWaterPipe": [0, 1, 2]
@@ -126,7 +126,7 @@ else:
         #num02_weldingRobot
         # eye: tuple[float, float, float] = (23.5, 12, 15)
         # lookat: tuple[float, float, float] = (23.5, 17, 0.5)
-    
+
         #num01
         # eye: tuple[float, float, float] = (43.5, 12, 25)
         # lookat: tuple[float, float, float] = (43.5, 17, 0.5)
@@ -179,11 +179,11 @@ else:
         # train_env_len_setting = [[4000, 4000, 4000], [1800, 1800, 1800], [1500, 1500, 1500]]
         train_env_len_setting = [[3500, 2000, 2000], [1800, 1500, 1500], [1800, 1400, 1400]]
         #max_episode_length = max_episode_length_s / (self.cfg.sim.dt * self.cfg.decimation) = 25/(1/120 * 2) = 1500 steps
-        episode_length_s = 80.0 
+        episode_length_s = 80.0
         action_space = 10
         #The real state/observation_space is complicated, settiing 2 is only for initializing gym Env
         observation_space = 2
-        state_space = 2    
+        state_space = 2
         #asset path, include machine, human, robot
         asset_path = os.path.expanduser("~") + "/work/Dataset/HC_data/final_for_isaac/HC_import.usd"
         # scene

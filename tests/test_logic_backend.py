@@ -78,6 +78,23 @@ class LogicTests(unittest.TestCase):
                                 'RouteManagerVectorEnv','MachineManager','TaskManager','AlgoHierarchicalMasker'])
         self.assertIsNone(self.env.env_list[0].camera_manager)
 
+    def test_complete_order_and_no_engine(self):
+        obs = self.env.reset()[0]
+        apply_train_order(self.env.env_list[0], n_products=1, anchor=160000)
+        completed = 0
+        for step in range(10000):
+            action = build_rule_based_action(obs, self.env.cuda_device, 10)
+            obs = self.env.step([action])[0]
+            completed += sum(e['kind']=='complete' for e in obs['rl']['duration_events'])
+            if obs['rl']['done']:
+                self.assertTrue(obs['rl']['success'])
+                self.assertEqual(completed, 7)
+                self.assertEqual(obs['time_step'], 0)
+                break
+        else:
+            self.fail('One-product production did not finish')
+        self.test_no_engine_modules_loaded()
+
     def test_no_engine_modules_loaded(self):
         forbidden={'isaaclab','isaacsim','omni','pxr','carb'}
         self.assertEqual([name for name in sys.modules if name.split('.')[0] in forbidden],[])

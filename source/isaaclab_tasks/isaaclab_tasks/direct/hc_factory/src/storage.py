@@ -116,11 +116,9 @@ class Storage:
         #the placement cfg is the relative poses of the storage slots to the storage base
         # trans the relative poses to the absolute poses using the storage base pose
         if self.placement_cfg["data_type"] == "relative":
-            if logic_enabled():
-                from .static_layout import local_pose
-                storage_base_pose = local_pose(self.meta_registeration_info["prim_paths_expr"].format(i=self.env_id), self.cuda_device)
-            else:
-                storage_base_pose = self.prim.get_local_poses()
+            # Both backends use the same authored layout; display cannot affect logic.
+            from .static_layout import local_pose
+            storage_base_pose = local_pose(self.meta_registeration_info["prim_paths_expr"].format(i=self.env_id), self.cuda_device)
             storage_base_position = storage_base_pose[0].squeeze(0)
             storage_base_orientation = storage_base_pose[1].squeeze(0)
             for pose in self.placement_cfg["pose_list"]:

@@ -291,7 +291,7 @@ import random
 from datetime import datetime
 
 if not _USE_LOGIC:
-    from source.isaaclab_rl.isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnvWrapper, RlGamesGpuEnvHRTPA, RlGamesVecEnvWrapperHRTPA 
+    from source.isaaclab_rl.isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnvWrapper, RlGamesGpuEnvHRTPA, RlGamesVecEnvWrapperHRTPA
 from rl_games.common import env_configurations, vecenv
 from rl_games.common.algo_observer import AlgoObserver
 if not _USE_LOGIC:
@@ -475,7 +475,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
     time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     algo_cfg["params"]["config"]["time_str"] = time_str
     log_dir = algo_cfg["params"]["config"].get("full_experiment_name", time_str)
-    
+
     if algo_cfg["params"]["config"]["test"]:
         if algo_cfg["params"]["config"]['env_rule_based_exploration']:
             log_dir = 'test_rule_'+ log_dir
@@ -528,7 +528,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
         print_dict(video_kwargs, nesting=4)
         env = HcVideoRecorder(env, **video_kwargs)
     # env = RlGamesVecEnvWrapper(env, rl_device, clip_obs, clip_actions)
-    
+
     # register the environment to rl-games registry
     # note: in agents configuration: environment name must be "rlgpu"
     if _USE_LOGIC:
@@ -539,7 +539,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, algo
             "IsaacRlgWrapper", lambda config_name, num_actors, **kwargs: RlGamesGpuEnv(config_name, num_actors, **kwargs)
         )
         env_configurations.register("rlgpu", {"vecenv_type": "IsaacRlgWrapper", "env_creator": lambda **kwargs: env})
-    
+
         vecenv.register(
             "RlgWrapperHRTPA", lambda config_name, num_actors, **kwargs: RlGamesGpuEnvHRTPA(config_name, num_actors, **kwargs)
         )

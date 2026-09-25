@@ -302,6 +302,9 @@ def _resize_rgb(rgb, size: int) -> torch.Tensor:
 
 
 def _cameras_enabled() -> bool:
+    import os
+    if os.environ.get("HC_SIM_BACKEND") == "logic":
+        return False
     try:
         import carb
 

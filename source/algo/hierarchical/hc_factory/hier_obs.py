@@ -12,6 +12,10 @@ from .hier_networks import StateEncoder
 
 
 def _load_preprocess():
+    from source.hc_backend import logic_enabled
+    if logic_enabled():
+        from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.src.data_preprocess_for_buffer import CFG, preprocess_for_buffer
+        return CFG, preprocess_for_buffer
     try:
         from isaaclab_tasks.direct.hc_factory.src.data_preprocess_for_buffer import (  # type: ignore
             CFG as PRE_CFG,

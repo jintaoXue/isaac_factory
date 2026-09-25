@@ -10,6 +10,10 @@ import torch.nn.functional as F
 
 
 def _human_mover_extra_dim() -> int:
+    from source.hc_backend import logic_enabled
+    if logic_enabled():
+        from source.isaaclab_tasks.isaaclab_tasks.direct.hc_factory.env_asset_cfg.cfg_human import HUMAN_MOVER_EXTRA_DIM
+        return int(HUMAN_MOVER_EXTRA_DIM)
     try:
         from isaaclab_tasks.direct.hc_factory.env_asset_cfg.cfg_human import (  # type: ignore
             HUMAN_MOVER_EXTRA_DIM,
