@@ -1,5 +1,7 @@
 # 纯理想仿真与 Isaac 可视化
 
+> 人因实验入口与机器分工见 [`experiment_human.md`](experiment_human.md)。
+
 训练和数值评测默认使用 `logic` 后端，不启动 Isaac Sim，不加载 PhysX、USD 或 Carbonite，不写场景位姿、不渲染。**每次 env.step 仍推进一个逻辑步**，没有事件跳跃、有效决策步筛选或时间加速。
 
 | 场景 | 后端 | 逻辑更新 | Isaac / 场景 |

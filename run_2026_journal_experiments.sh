@@ -17,7 +17,7 @@ set -euo pipefail
 # 同名目录存在时拒绝覆盖；重跑可改下方默认值或用 HC_HUMAN_RUN_TAG 覆盖。
 # 可选覆盖：HC_MAX_TRAIN_EPISODES / HC_HUMAN_TEACHER_DIR / HC_LOAD_DIR / HC_LOAD_STEP。
 # 旧训练目录（包括此前自动时间戳命名的目录）评测时仍用 HC_LOAD_DIR 指定。
-# 算法与冒烟命令：docs/experiment_human_extensions.md
+# 算法与冒烟命令：docs/experiment_human.md
 
 # Hier4TPA journal entry — E0–E6 + ablations; see docs/experiment_protocol.md.
 # Usage:
