@@ -12,6 +12,7 @@ from torch import nn
 from source.algo.hierarchical.hc_factory.human_match import (
     HumanMatchQNetwork,
     MATCH_FEATURE_DIM,
+    _skill_eff_clips,
     human_task_match_features,
     task_human_match_summary,
 )
@@ -91,11 +92,29 @@ class MatchTests(unittest.TestCase):
         skill_t = p["human"]["skill_task"][:5, 1]
         skill_s = p["human"]["skill_subtask"][:5, -1]
         eta = p["human"]["efficiency"][:5]
+        lo, hi = _skill_eff_clips()
+        eff = (skill_t * skill_s).clamp(lo, hi)
         torch.testing.assert_close(f[:5, 2], skill_t)
         torch.testing.assert_close(f[:5, 3], skill_s)
-        torch.testing.assert_close(f[:5, 4], eta * skill_t * skill_s)
+        torch.testing.assert_close(f[:5, 4], (eta * eff).clamp(0.05, hi))
         self.assertEqual(f[5].abs().sum(), 0)
         self.assertFalse(torch.equal(f, human_task_match_features(p, task(3), 6)))
+
+    def test_speed_clip_follows_legacy_profile(self):
+        import os
+        from source.algo.hierarchical.hc_factory.human_match import human_task_match_features as feats
+        os.environ["HC_HUMAN_SKILL_PROFILE"] = "legacy"
+        p = pre()
+        # Force specialist-scale product > 1.80
+        p["human"]["skill_task"][0] = torch.ones(12) * 1.40
+        p["human"]["skill_subtask"][0, -1] = 1.35
+        p["human"]["efficiency"][0] = 1.0
+        f = feats(p, task(2), 6)
+        self.assertLessEqual(f[0, 4].item(), 1.80 + 1e-5)
+        os.environ["HC_HUMAN_SKILL_PROFILE"] = "strong"
+        f2 = feats(p, task(2), 6)
+        self.assertGreater(f2[0, 4].item(), 1.80)
+        os.environ["HC_HUMAN_SKILL_PROFILE"] = "legacy"
 
     def test_prior_prefers_faster_worker_after_legacy_load(self):
         p = pre()

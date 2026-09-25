@@ -57,13 +57,19 @@ HC_HUMAN_SKILL_PROFILE=strong HC_MAX_TRAIN_EPISODES=60 \
 HC_MAX_TRAIN_EPISODES=60 bash run_2026_journal_experiments.sh E5-human-pair-aux cuda:0
 ```
 
-评测（训练目录 + 预固定步数，勿用协议 seeds 挑点）：
+评测（默认找新名 `hier_{入口}-{legacy|strong}`；没有则回退旧目录如 `*-logic-v1`。训 strong 时评测也要设同一 profile）：
 
 ```bash
+# legacy（本机 / 5090 / 服务器）
 bash run_2026_journal_experiments.sh eval-E5-human cuda:0
+bash run_2026_journal_experiments.sh eval-E5-human-match-c cuda:0
 bash run_2026_journal_experiments.sh eval-E5-human-pair-c-aux cuda:0
-bash run_2026_journal_experiments.sh eval-E5-human-pair-c cuda:0
 bash run_2026_journal_experiments.sh eval-E5-human-pair-aux cuda:0
+
+# 家里 strong match
+HC_HUMAN_SKILL_PROFILE=strong \
+  bash run_2026_journal_experiments.sh eval-E5-human-match cuda:0
+
 # 或显式：HC_LOAD_DIR=... HC_LOAD_STEP=300000
 ```
 
@@ -123,6 +129,7 @@ pair 八维：fatigue、η、skill、η×skill、疲劳增长率、恢复率、�
 ```bash
 python tests/test_human_aware_reward.py
 python tests/test_human_extensions.py   # pair / C / aux
+python tests/test_human_match.py
 ```
 
 不保证 makespan 涨点；以协议评测为准。

@@ -1397,6 +1397,58 @@ human_run_id() {
     fi
 }
 
+# Resolve train dir: new name first, then HC_HUMAN_RUN_TAG old style, then known legacy aliases.
+human_resolve_train_dir() {
+    local root="$1" variant="$2" skill_profile="$3" tag="${4:-}"
+    local base="${root}/logs/rl_games/HcFactory"
+    local -a candidates=()
+    candidates+=("${base}/hier_$(human_run_id "${variant}" "${skill_profile}" "${tag}")")
+    if [[ -n "${tag}" ]]; then
+        candidates+=("${base}/hier_${variant}-${tag}")
+    fi
+    case "${variant}" in
+        E5-human)
+            candidates+=(
+                "${base}/hier_E5-human-human-logic-v1"
+                "${base}/hier_E5-human-formal-v4"
+                "${base}/hier_E5-human-formal-v3"
+                "${base}/hier_E5-human-formal-v2"
+                "${base}/hier_E5-human-formal-v1"
+                "${base}/hier_E5-human-home-v1"
+            )
+            ;;
+        E5-human-match)
+            candidates+=("${base}/hier_E5-human-match-match-v1" "${base}/hier_E5-human-match-match-strong-v1")
+            ;;
+        E5-human-match-c)
+            candidates+=("${base}/hier_E5-human-match-c-match-c-logic-v1" "${base}/hier_E5-human-match-c-match-c-v1")
+            ;;
+        E5-human-pair)
+            candidates+=("${base}/hier_E5-human-pair-pair-formal-v1" "${base}/hier_E5-human-pair-pair-formal-v2")
+            ;;
+        E5-human-pair-c)
+            candidates+=("${base}/hier_E5-human-pair-c-c-v1" "${base}/hier_E5-human-pair-c-c-logic-v1")
+            ;;
+        E5-human-pair-aux)
+            candidates+=("${base}/hier_E5-human-pair-aux-aux-logic-v1" "${base}/hier_E5-human-pair-aux-aux-v1")
+            ;;
+        E5-human-pair-c-aux)
+            candidates+=("${base}/hier_E5-human-pair-c-aux-c-aux-logic-v1" "${base}/hier_E5-human-pair-c-aux-c-aux-v1")
+            ;;
+        E5-pair)
+            candidates+=("${base}/hier_E5-pair-pair-formal-v1")
+            ;;
+    esac
+    local d
+    for d in "${candidates[@]}"; do
+        if [[ -d "${d}/nn" ]]; then
+            echo "${d}"
+            return 0
+        fi
+    done
+    echo "${candidates[0]}"
+}
+
 run_e5_human_train() {
     # P0: same backbone as E5-no-oru; separate output/name, bounded reward only.
     local repo_root load_dir dry_run="${3:-}"
@@ -1905,7 +1957,13 @@ run_eval_e5_human() {
     local variant="${MODE#eval-}"
     local run_id
     run_id="$(human_run_id "${variant}" "${skill_profile}" "${tag}")"
-    local load_dir="${HC_LOAD_DIR:-${repo_root}/logs/rl_games/HcFactory/hier_${run_id}}"
+    export HC_HUMAN_SKILL_PROFILE="${skill_profile}"
+    local load_dir
+    if [[ -n "${HC_LOAD_DIR:-}" ]]; then
+        load_dir="${HC_LOAD_DIR}"
+    else
+        load_dir="$(human_resolve_train_dir "${repo_root}" "${variant}" "${skill_profile}" "${tag}")"
+    fi
     local step="${HC_LOAD_STEP:-300000}"
     [[ "${step}" =~ ^[0-9]+$ ]] || { echo "HC_LOAD_STEP 必须是整数" >&2; return 1; }
     local stamp="$(date +%Y%m%d_%H%M%S)_$$"

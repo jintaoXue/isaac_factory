@@ -9,15 +9,12 @@ duration stretch (see cfg_human / human._time_counting_subtask).
 from __future__ import annotations
 
 import math
+import os
 
 import torch
 from torch import nn
 
 from .hier_networks import QNetwork
-
-# Cover both legacy [0.35,1.80] and strong [0.30,2.20] skill products.
-_MATCH_SKILL_CLIP_LO = 0.30
-_MATCH_SKILL_CLIP_HI = 2.20
 
 # fatigue, η, skill_task, skill_sub_cm, speed, log_speed, work/recover, available, exists
 MATCH_FEATURE_DIM = 10
@@ -26,15 +23,24 @@ _LOG_EPS = 1e-3
 _SKILL_SUB_PROCESS = "control_machine"
 
 
+def _skill_eff_clips() -> tuple[float, float]:
+    """Match duration clip to cfg_human.SKILL_EFF_CLIP_* for active profile."""
+    key = (os.environ.get("HC_HUMAN_SKILL_PROFILE") or "legacy").strip().lower().replace("_", "-")
+    if key in ("strong", "skill-strong-v1", "strong-v1", "v1-strong"):
+        return 0.30, 2.20
+    return 0.35, 1.80
+
+
 def _skill_sub_column(pre: dict, action_dim: int) -> torch.Tensor:
     """Per-human skill_sub for the dominant timed process subtask."""
     human = pre["human"]
     device = human["skill_task"].device
+    lo, hi = _skill_eff_clips()
     if "skill_subtask" in human:
         subs = human["skill_subtask"].to(device).float()
         # Layout follows cfg_human._HUMAN_SUBTASK_NAMES; control_machine is last.
         if subs.ndim == 2 and subs.shape[0] >= action_dim and subs.shape[1] >= 1:
-            return subs[:action_dim, -1].clamp(_MATCH_SKILL_CLIP_LO, _MATCH_SKILL_CLIP_HI)
+            return subs[:action_dim, -1].clamp(lo, hi)
     return torch.ones(action_dim, device=device, dtype=torch.float32)
 
 
@@ -45,6 +51,7 @@ def human_task_match_features(pre: dict, task_action: torch.Tensor, action_dim: 
     skills = human["skill_task"].to(task.device).float()[:action_dim]
     if skills.shape != (action_dim, 12) or task.numel() != 13:
         raise ValueError("Match v1 requires 12 skill columns and 13 task actions (including none)")
+    lo, hi = _skill_eff_clips()
 
     def field(name: str) -> torch.Tensor:
         value = human[name].to(task.device).float().flatten()[:action_dim]
@@ -62,7 +69,9 @@ def human_task_match_features(pre: dict, task_action: torch.Tensor, action_dim: 
     if float(task[0].item()) > 0.5:
         skill_t = torch.zeros_like(skill_t)
         skill_s = torch.zeros_like(skill_s)
-    speed = (eta * skill_t * skill_s).clamp(0.05, _MATCH_SKILL_CLIP_HI)
+    # Same product clip as human_effective_skill (legacy 1.80 / strong 2.20).
+    eff = (skill_t * skill_s).clamp(lo, hi)
+    speed = (eta * eff).clamp(0.05, hi)
     log_speed = torch.log(speed + _LOG_EPS)
     features = torch.stack(
         (
@@ -96,11 +105,13 @@ def task_human_match_summary(pre: dict) -> torch.Tensor:
     result = skills.new_zeros((13, TASK_MATCH_FEATURE_DIM))
     if not valid.any():
         return result
+    lo, hi = _skill_eff_clips()
     eta = h["efficiency"].flatten().to(skills.device)[valid]
     fatigue = h["fatigue"].flatten().to(skills.device)[valid]
     skill_s = _skill_sub_column(pre, int(h["mask"].numel()))[valid]
-    # speed[t] = η * skill_task[:,t] * skill_sub_cm
-    values = eta[:, None] * skills[valid] * skill_s[:, None]
+    # speed[t] = η * clip(skill_task[:,t] * skill_sub_cm)
+    eff = (skills[valid] * skill_s[:, None]).clamp(lo, hi)
+    values = (eta[:, None] * eff).clamp(0.05, hi)
     best, indices = values.max(dim=0)
     best_fatigue = fatigue[indices]
     fraction = valid.sum().float() / exists.sum().clamp_min(1)
