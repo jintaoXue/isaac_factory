@@ -4,28 +4,33 @@
 
 训练与数值评测默认 **logic 后端**（不跑 PhysX）。教师权重：`logs/rl_games/HcFactory/hier_2026-08-27_23-17-41`，`HC_LOAD_STEP=1290000`（六件套）。
 
-## 0. 命名 + skill 表切换
+## 0. 命名 + skill 表切换（三档）
 
-**W&B / 训练目录**（人因入口）：`{入口}-{legacy|strong}`  
-例：`E5-human-legacy`、`E5-human-match-strong`；磁盘为 `logs/.../hier_E5-human-match-strong`。  
-不必再写 `human-logic-v1` 之类 tag。只有目录已存在、要重开时才设 `HC_HUMAN_RUN_TAG=r2`（变成 `E5-human-legacy-r2`）。
+**W&B / 训练目录**：`{入口}-{legacy|strong|fast}`  
+例：`E5-human-legacy`、`E5-human-match-fast`。防撞才设 `HC_HUMAN_RUN_TAG=r2`。
 
-**skill 表**（`HC_HUMAN_SKILL_PROFILE`，启动时生效）：
+**三档对比**（`HC_HUMAN_SKILL_PROFILE`；相对标称 skill=1 的机床操作）
 
-| 值 | 含义 | 专工 / 错工艺 / 物流干工艺 | 疲劳 |
-| --- | --- | --- | --- |
-| **`legacy`**（默认） | 原设定；本机 / 5090 / 服务器 | `1.40` / `0.58` / `0.70` | 原 rates |
-| **`strong`** | 拉大错派反差；**家里试用** | `1.55` / `0.42` / `0.45` | ×3 |
+| | **legacy**（默认） | **strong** | **fast**（推荐家里） |
+|--|--|--|--|
+| 设计意图 | 原表 | **错派更痛** + 疲劳快 | **专工更快**，错派只略慢 |
+| 专工 / 错工艺 / 物流干工艺 | 1.40 / 0.58 / 0.70 | 1.55 / **0.42** / 0.45 | **1.75** / 0.62 / 0.68 |
+| 子任务机床（专工 / 物流工） | ~1.3 / 0.72 | ~1.4 / **0.55** | **~1.5** / 0.85 |
+| 疲劳 work/recover | 原 | **×3** | 同 legacy |
+| clip(skill) | [0.35, 1.80] | [0.30, 2.20] | [0.35, 2.80] |
+| 对口专工时长（F=0） | ~0.55× 基准 | ~0.46× | **~0.37×（最短）** |
+| 错派时长（F=0） | ~2.5–3.6× 专工 | **~4–7× 专工** | ~2.5–3× 专工 |
+| 全局 makespan 倾向 | 中性 | 易被错派/疲劳**拉长** | 选对人时**整体偏短** |
 
 ```bash
-# 本机 / 5090 / 服务器（默认 legacy）
+# 本机 / 5090 / 服务器（legacy）
 HC_MAX_TRAIN_EPISODES=60 bash run_2026_journal_experiments.sh E5-human cuda:0
-# → wandb: E5-human-legacy
+# → E5-human-legacy
 
-# 家里
-HC_HUMAN_SKILL_PROFILE=strong HC_MAX_TRAIN_EPISODES=60 \
+# 家里（fast：往短 makespan）
+HC_HUMAN_SKILL_PROFILE=fast HC_MAX_TRAIN_EPISODES=60 \
   bash run_2026_journal_experiments.sh E5-human-match cuda:0
-# → wandb: E5-human-match-strong
+# → E5-human-match-fast
 ```
 
 ## 1. 当前机器分工
@@ -35,7 +40,7 @@ HC_HUMAN_SKILL_PROFILE=strong HC_MAX_TRAIN_EPISODES=60 \
 | ----------- | ------------------------------- | ---------- | ---------------- |
 | 本机（4090 工位） | `E5-human` + `E5-human-match-c` | legacy     | 基线 + D/C match   |
 | 5090        | `E5-human-pair-c-aux`           | legacy     | D pair + C + aux |
-| 家里台式        | `E5-human-match`                | **strong** | D match 试用       |
+| 家里台式        | `E5-human-match`                | **fast**   | D match；往短 makespan |
 | 服务器         | `E5-human-pair-aux`             | legacy     | D pair + aux     |
 
 
@@ -50,7 +55,7 @@ HC_MAX_TRAIN_EPISODES=60 bash run_2026_journal_experiments.sh E5-human-match-c c
 HC_MAX_TRAIN_EPISODES=60 bash run_2026_journal_experiments.sh E5-human-pair-c-aux cuda:0
 
 # 家里
-HC_HUMAN_SKILL_PROFILE=strong HC_MAX_TRAIN_EPISODES=60 \
+HC_HUMAN_SKILL_PROFILE=fast HC_MAX_TRAIN_EPISODES=60 \
   bash run_2026_journal_experiments.sh E5-human-match cuda:0
 
 # 服务器
@@ -66,8 +71,8 @@ bash run_2026_journal_experiments.sh eval-E5-human-match-c cuda:0
 bash run_2026_journal_experiments.sh eval-E5-human-pair-c-aux cuda:0
 bash run_2026_journal_experiments.sh eval-E5-human-pair-aux cuda:0
 
-# 家里 strong match
-HC_HUMAN_SKILL_PROFILE=strong \
+# 家里 fast match
+HC_HUMAN_SKILL_PROFILE=fast \
   bash run_2026_journal_experiments.sh eval-E5-human-match cuda:0
 
 # 或显式：HC_LOAD_DIR=... HC_LOAD_STEP=300000

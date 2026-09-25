@@ -215,8 +215,9 @@ CfgHumanRegistrationInfos = {
 # assignment gap (specialist vs mismatched / exhausted worker).
 #
 # Switch tables with HC_HUMAN_SKILL_PROFILE:
-#   legacy | default — original 1.40 / 0.58 / fatigue rates (desk / 5090 / server)
-#   strong | skill-strong-v1 — wider skill gap + fatigue ×3 (home trial)
+#   legacy — original tables (desk / 5090 / server default)
+#   strong — widen gap mainly by punishing mismatch + fatigue ×3
+#   fast   — widen gap mainly by making specialists faster; mild mismatch; legacy fatigue
 # ---------------------------------------------------------------------------
 
 # η = η_min + (1-η_min) * (1-F)^α ; F > F_crit further scales η.
@@ -323,6 +324,8 @@ _HUMAN_FATIGUE_RATES_STRONG = (
 
 _HUMAN_SKILL_TASK_LEGACY = _build_skill_task(1.40, 0.58, 0.82, 1.35, 0.70)
 _HUMAN_SKILL_TASK_STRONG = _build_skill_task(1.55, 0.42, 0.70, 1.50, 0.45)
+# fast: specialist much faster; mismatch only mildly below 1.0 (short-makespan oriented).
+_HUMAN_SKILL_TASK_FAST = _build_skill_task(1.75, 0.62, 0.88, 1.65, 0.68)
 
 _HUMAN_SKILL_SUBTASK_LEGACY = (
     _skill_sub_row(control_machine=1.30, control_gantry=0.85),
@@ -356,16 +359,34 @@ _HUMAN_SKILL_SUBTASK_STRONG = (
         go_to_processing_machine=1.25,
     ),
 )
+_HUMAN_SKILL_SUBTASK_FAST = (
+    _skill_sub_row(control_machine=1.50, control_gantry=0.90),
+    _skill_sub_row(control_machine=1.45, control_gantry=0.92),
+    _skill_sub_row(control_machine=1.55, control_gantry=0.88),
+    _skill_sub_row(control_machine=1.48, control_gantry=0.90),
+    _skill_sub_row(
+        control_machine=0.85,
+        control_gantry=1.50,
+        material_on_gantry=1.40,
+        material_on_robot=1.40,
+        material_on_goal_area=1.40,
+        go_to_material=1.25,
+        go_to_goal_area=1.25,
+        go_to_processing_machine=1.25,
+    ),
+)
 
 
 def _normalize_skill_profile(name: str | None) -> str:
     key = (name or "legacy").strip().lower().replace("_", "-")
     if key in ("strong", "skill-strong-v1", "strong-v1", "v1-strong"):
         return "strong"
+    if key in ("fast", "skill-fast-v1", "fast-v1", "optimistic", "short"):
+        return "fast"
     if key in ("legacy", "default", "v0", "original"):
         return "legacy"
     raise ValueError(
-        f"Unknown HC_HUMAN_SKILL_PROFILE={name!r}; use legacy|strong"
+        f"Unknown HC_HUMAN_SKILL_PROFILE={name!r}; use legacy|strong|fast"
     )
 
 
@@ -381,6 +402,13 @@ def apply_human_skill_profile(profile: str | None = None) -> str:
         HUMAN_SKILL_SUBTASK = _HUMAN_SKILL_SUBTASK_STRONG
         _SKILL_ON, _SKILL_OFF_PROCESS, _SKILL_OFF_LOGISTIC = 1.55, 0.42, 0.70
         SKILL_EFF_CLIP_LO, SKILL_EFF_CLIP_HI = 0.30, 2.20
+    elif chosen == "fast":
+        HUMAN_FATIGUE_RATES = _HUMAN_FATIGUE_RATES_LEGACY
+        HUMAN_SKILL_TASK = _HUMAN_SKILL_TASK_FAST
+        HUMAN_SKILL_SUBTASK = _HUMAN_SKILL_SUBTASK_FAST
+        _SKILL_ON, _SKILL_OFF_PROCESS, _SKILL_OFF_LOGISTIC = 1.75, 0.62, 0.88
+        # Allow specialist product ~1.75×1.55 ≈ 2.71
+        SKILL_EFF_CLIP_LO, SKILL_EFF_CLIP_HI = 0.35, 2.80
     else:
         HUMAN_FATIGUE_RATES = _HUMAN_FATIGUE_RATES_LEGACY
         HUMAN_SKILL_TASK = _HUMAN_SKILL_TASK_LEGACY

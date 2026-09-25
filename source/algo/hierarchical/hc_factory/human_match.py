@@ -28,6 +28,8 @@ def _skill_eff_clips() -> tuple[float, float]:
     key = (os.environ.get("HC_HUMAN_SKILL_PROFILE") or "legacy").strip().lower().replace("_", "-")
     if key in ("strong", "skill-strong-v1", "strong-v1", "v1-strong"):
         return 0.30, 2.20
+    if key in ("fast", "skill-fast-v1", "fast-v1", "optimistic", "short"):
+        return 0.35, 2.80
     return 0.35, 1.80
 
 
