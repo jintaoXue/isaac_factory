@@ -18,7 +18,7 @@ spec.loader.exec_module(module)
 HumanAwareReward = module.HumanAwareReward
 # Execute the real human-factor constants/functions, excluding simulator asset setup.
 text = (ENV / 'env_asset_cfg/cfg_human.py').read_text()
-physics = {}
+physics = {'os': __import__('os')}
 exec(text[text.index('HUMAN_EFFICIENCY_ETA_MIN ='):text.index('# Static privileged obs')], physics)
 skill, efficiency = physics['human_effective_skill'], physics['human_efficiency']
 

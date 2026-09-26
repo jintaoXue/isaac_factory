@@ -3,9 +3,11 @@
 > **现行实验协议**（原 `t0_finetuning_research_plan.md`）。旧版 T0–T4 / +RHC 看板见 `docs/experiment_protocol_old.md`。  
 > 入口：`./run_2026_journal_experiments.sh <实验名> [cuda:0] [--dry-run]`。  
 > **已接入口：** E0 / E1 / E1.5 / E2 / E2.5 / E3 / E3-no-oru / E3.5 / E4 / E4-no-oru / E5 / E5-no-oru / E6 / E6-no-oru / TEACHER。  
+> **G 系列（gap 动力学，新人因主线）：** `G0`–`G4`（`G0` 新教师 / `G1` 无教师 / `G2` no-oru / `G3` 人因 / `G4` match）—— 详见 `docs/experiment_human.md` §G。勿把 `HC_HUMAN_SKILL_PROFILE=gap` 挂在 E*/T0 上。  
 > **仅命名 / stub：** `E6-no-guide` / `E6-no-hier` / `E6-no-ar` / `E6-plus-*` / `E2-random-data`（调用会提示未实现）。
 
-**目标：固定 N=10，从同一个 T0 checkpoint 出发，在有限新增预算下改善 makespan 与成功率。**
+**目标：固定 N=10，从同一个 T0 checkpoint 出发，在有限新增预算下改善 makespan 与成功率。**  
+（gap 环境请改用 G 系列自建教师，不要复用本节 legacy T0。）
 
 **论文主线：教师经验复用 → 教师引导探索 → 层级信用分配 → 自回归决策改进 → 完整组合。** 重点验证各机制如何改善层级协作；组合本身不等于已证明的新颖性。
 

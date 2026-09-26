@@ -5,21 +5,22 @@ set -euo pipefail
 # 可视化使用 train.py --visualize；引擎兼容检查可设 HC_SIM_BACKEND=isaac。
 
 # 快速运行（conda activate isaac-lab，进入本仓库；默认 cuda:0、60 局）
-# 家里台式（match + skill strong）：
-#   HC_HUMAN_SKILL_PROFILE=fast bash run_2026_journal_experiments.sh E5-human-match cuda:0
-# 人因表：HC_HUMAN_SKILL_PROFILE=legacy|strong|fast|gap（默认 legacy）；见 docs/experiment_human.md §0
-# W&B / 目录名：E5-human-match-gap（可选 HC_HUMAN_RUN_TAG 仅用于防撞重跑）
-# 第二台：bash run_2026_journal_experiments.sh E5-human-pair-c cuda:0
-# 第三台：bash run_2026_journal_experiments.sh E5-human-pair-aux cuda:0
-# 原 pair：bash run_2026_journal_experiments.sh E5-human-pair cuda:0
-# 预览：  bash run_2026_journal_experiments.sh E5-human-match cuda:0 --dry-run
-# 评测 match：bash run_2026_journal_experiments.sh eval-E5-human-match cuda:0
 #
-# 默认：目录/W&B = {入口}-{legacy|strong|fast|gap}；HC_HUMAN_RUN_TAG 仅作可选防撞后缀。
-# 算法说明：docs/experiment_human.md
-
-# Hier4TPA journal entry — E0–E6 + ablations; see docs/experiment_protocol.md.
+# === G 系列（gap 动力学；序号 G0–G4）===
+#   G0                hard 基线（gap；无教师）
+#   G0-human-match    同 scratch + 人因奖励 + D match（无教师）
+#   G1 / G2 / G3      可选：无教师 AR / G0 热启 no-oru / 仅人因
+#   eval-G0 / eval-G0-human-match
+# Usage 也支持 G0|G0-human-match
+# gap 禁止挂在 E*/T0 上；见 docs/experiment_human.md §G
+#
+# === E 系列（legacy 动力学；旧协议）===
+#   HC_HUMAN_SKILL_PROFILE=fast bash run_2026_journal_experiments.sh E5-human-match cuda:0
+# W&B / 目录：E 人因 = {入口}-{profile}；G = Hier4TPA-G{n}-N10-S42 / hier_G{n}
+#
+# Hier4TPA journal entry — E0–E6 + G0–G4；见 docs/experiment_protocol.md / experiment_human.md.
 # Usage:
+#   ./run_2026_journal_experiments.sh G0|G0-human-match [cuda:0]
 #   ./run_2026_journal_experiments.sh E0 [cuda:0] [--dry-run]
 #   ./run_2026_journal_experiments.sh E1|…|E5|E5-no-oru|E6|E6-no-oru [cuda:0] [--dry-run]
 #   ./run_2026_journal_experiments.sh TEACHER [cuda:0]
@@ -40,17 +41,109 @@ export HC_WANDB_BASELINE_PROJECT="${HC_WANDB_BASELINE_PROJECT:-${HC_WANDB_TEST_P
 export HC_TEST_SEEDS="${HC_TEST_SEEDS:-43,44,45,46,47,48,49,50,51,52}"
 export HC_TEST_TIMES="${HC_TEST_TIMES:-1}"
 export HC_CATALOG_TAG="${HC_CATALOG_TAG:-T1_random_ep20}"
-# E1–E6 微调默认 60；T0/T1 hard 见 batch_train HC_MAX_HARD_EPISODES=100
+# E1–E6 微调默认 60；T0/T1 hard 与 G0-human-match* 默认 100
+_HC_USER_MAX_TRAIN_EPISODES="${HC_MAX_TRAIN_EPISODES-}"
 export HC_MAX_TRAIN_EPISODES="${HC_MAX_TRAIN_EPISODES:-60}"
 export HC_MAX_HARD_EPISODES="${HC_MAX_HARD_EPISODES:-100}"
+# G0-human-match*（含旧别名 G5-human-match*）未显式设预算时用 100，与 G0 hard 对齐
+if [[ ( "${MODE}" == G0-human* || "${MODE}" == G5-human-match* ) && -z "${_HC_USER_MAX_TRAIN_EPISODES}" ]]; then
+    export HC_MAX_TRAIN_EPISODES=100
+fi
 
 EVAL_STEPS="${HC_EVAL_STEPS:-}"
+
+# --- G series helpers (gap dynamics; separate from legacy E*/T0) -----------------
+g_normalize_profile() {
+    local key="${1:-legacy}"
+    key="$(echo "${key}" | tr '[:upper:]' '[:lower:]' | tr '_' '-')"
+    case "${key}" in
+        gap|strong-fast|contrast|hybrid|sharp) echo gap ;;
+        strong|skill-strong-v1|strong-v1|v1-strong) echo strong ;;
+        fast|skill-fast-v1|fast-v1|optimistic|short) echo fast ;;
+        legacy|default|v0|original|"") echo legacy ;;
+        *) echo "${key}" ;;
+    esac
+}
+
+g_reject_gap_on_e_series() {
+    local prof
+    prof="$(g_normalize_profile "${HC_HUMAN_SKILL_PROFILE:-legacy}")"
+    [[ "${prof}" == gap ]] || return 0
+    case "${MODE}" in
+        G*|eval-G*) return 0 ;;
+        E*|eval-E*|T0|T1|T1R|T1RH|TEACHER|teacher|E2-collect)
+            echo "错误: HC_HUMAN_SKILL_PROFILE=gap 只能用于 G 系列（G0–G4 / eval-G*）。" >&2
+            echo "      当前 mode=${MODE} 属于 legacy E/T 协议；请改用对应 G* 入口，勿把 gap 挂在 E* 上。" >&2
+            return 1
+            ;;
+    esac
+    return 0
+}
+
+g_teacher_dir() {
+    local repo_root="$1"
+    echo "${HC_G_TEACHER_DIR:-${repo_root}/logs/rl_games/HcFactory/hier_G0}"
+}
+
+g_resolve_teacher_step() {
+    # Prefer HC_G_LOAD_STEP / HC_LOAD_STEP; else latest state_encoder_step_*.pth under teacher dir.
+    local load_dir="$1"
+    local step="${HC_G_LOAD_STEP:-${HC_LOAD_STEP:-}}"
+    if [[ -n "${step}" ]]; then
+        echo "${step}"
+        return 0
+    fi
+    local latest
+    latest="$(ls -1 "${load_dir}/nn"/state_encoder_step_*.pth 2>/dev/null \
+        | sed -n 's/.*_step_\([0-9]*\)\.pth/\1/p' | sort -n | tail -1 || true)"
+    if [[ -z "${latest}" ]]; then
+        echo "错误: 无法解析 G 教师 step；请先跑 G0，或设 HC_G_LOAD_STEP=..." >&2
+        return 1
+    fi
+    echo "${latest}"
+}
+
+g_wandb_train_name() {
+    # args: short_id  → Hier4TPA-{id}-N10-S42
+    echo "Hier4TPA-${1}-N10-S42"
+}
+
+g_source_wandb_env() {
+    local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
+    if [[ -f "${local_env}" ]]; then
+        set -a
+        # shellcheck disable=SC1090
+        source "${local_env}"
+        set +a
+    fi
+    if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
+        export WANDB_API_KEY="${HC_WANDB_API_KEY}"
+    fi
+    export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
+    export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
+}
+
+g_check_device() {
+    if [[ ! "${DEVICE}" =~ ^cuda:[0-9]+$ && "${DEVICE}" != cpu ]]; then
+        echo "错误: 设备需为 cuda:N 或 cpu" >&2
+        return 1
+    fi
+}
 
 usage() {
     cat <<EOF
 用法: $0 <mode> [cuda:N]
 
-训练（主推版本）:
+G 系列（gap 动力学；序号 G0–G4，勿与 E* 混用）:
+  G0                 hard 基线（gap；无教师；默认 ${HC_MAX_HARD_EPISODES:-100} ep）
+  G0-human-match     同 scratch + 人因奖励 + D match（无教师；默认 100 ep）
+  G0-human-match-c   同上 + C match 汇总（无教师；默认 100 ep）
+  G1                 无教师热启：AR + 低 lr（可选）
+  G2                 G0 热启 + 教师探索 + AR（可选对照）
+  G3                 G2 + 仅人因奖励（可选）
+  eval-G0|eval-G0-human-match|eval-G0-human-match-c|eval-G1|eval-G2|eval-G3  协议评测
+
+训练（E 系列 / legacy 动力学）:
   T0      hard train
   T1      explore → ORU + hard
   T1R     ORU + PER + Dueling（复用 catalog）
@@ -1451,10 +1544,22 @@ human_resolve_train_dir() {
 
 run_e5_human_train() {
     # P0: same backbone as E5-no-oru; separate output/name, bounded reward only.
-    local repo_root load_dir dry_run="${3:-}"
+    # G0-human*: gap + match/reward, NO teacher (same scratch spirit as G0).
+    # G3/G4: gap + G0 warmstart + teacher_explore + AR.
+    local repo_root load_dir dry_run="${3:-}" teacher_step=1290000 wandb_name
     local tag="${HC_HUMAN_RUN_TAG:-}"
     local enabled="${HC_HUMAN_REWARD:-true}"
+    local g_series=false
+    local g0_scratch=false
     local skill_profile="${HC_HUMAN_SKILL_PROFILE:-legacy}"
+    if [[ "${MODE}" == G0-human* ]]; then
+        g_series=true
+        g0_scratch=true
+        skill_profile=gap
+    elif [[ "${MODE}" == G3 || "${MODE}" == G4 || "${MODE}" == G4-c ]]; then
+        g_series=true
+        skill_profile=gap
+    fi
     case "${skill_profile}" in
         strong|skill-strong-v1|strong-v1|v1-strong) skill_profile=strong ;;
         fast|skill-fast-v1|fast-v1|optimistic|short) skill_profile=fast ;;
@@ -1462,6 +1567,10 @@ run_e5_human_train() {
         legacy|default|v0|original|"") skill_profile=legacy ;;
         *) echo "Invalid HC_HUMAN_SKILL_PROFILE=${HC_HUMAN_SKILL_PROFILE} (use legacy|strong|fast|gap)" >&2; return 1 ;;
     esac
+    if [[ "${g_series}" != true && "${skill_profile}" == gap ]]; then
+        echo "错误: gap 请用 G0-human-match / G3 / G4，不要设 HC_HUMAN_SKILL_PROFILE=gap 跑 E5-human*" >&2
+        return 1
+    fi
     export HC_HUMAN_SKILL_PROFILE="${skill_profile}"
     if [[ -n "${tag}" && ! "${tag}" =~ ^[A-Za-z0-9_-]+$ ]]; then
         echo "Invalid HC_HUMAN_RUN_TAG" >&2; return 1
@@ -1476,7 +1585,7 @@ run_e5_human_train() {
         variant=E5-human-pair
         [[ "${enabled}" == true ]] || variant=E5-pair
     fi
-    if [[ "${MODE}" == E5-human-match* ]]; then
+    if [[ "${MODE}" == E5-human-match* || "${MODE}" == G0-human-match* || "${MODE}" == G4 || "${MODE}" == G4-c ]]; then
         match_head=true
         variant=${MODE}
     fi
@@ -1484,19 +1593,54 @@ run_e5_human_train() {
         E5-human-pair-c) task_pair=true; variant=${MODE} ;;
         E5-human-pair-aux) duration_aux=true; variant=${MODE} ;;
         E5-human-pair-c-aux) task_pair=true; duration_aux=true; variant=${MODE} ;;
-        E5-human-match-c) task_match=true; variant=${MODE} ;;
+        E5-human-match-c|G0-human-match-c|G4-c) task_match=true; variant=${MODE} ;;
+        G0-human-match) variant=G0-human-match ;;
+        G3) variant=G3 ;;
+        G4) variant=G4 ;;
     esac
     if [[ "${MODE}" == E5-human-pair-* && "${enabled}" != true ]]; then
         echo "新扩展入口固定人因奖励开启；奖励消融请用 E5-pair" >&2; return 1
     fi
-    if [[ "${MODE}" == E5-human-match* && "${enabled}" != true ]]; then
+    if [[ "${MODE}" == *human-match* && "${enabled}" != true ]]; then
         echo "match 入口固定人因奖励开启" >&2; return 1
     fi
     local run_id
-    run_id="$(human_run_id "${variant}" "${skill_profile}" "${tag}")"
+    if [[ "${g_series}" == true ]]; then
+        if [[ -n "${tag}" ]]; then
+            run_id="${variant}-${tag}"
+        else
+            run_id="${variant}"
+        fi
+        wandb_name="$(g_wandb_train_name "${run_id}")"
+    else
+        run_id="$(human_run_id "${variant}" "${skill_profile}" "${tag}")"
+        wandb_name="${run_id}"
+    fi
     repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
     cd "${repo_root}"
-    load_dir="${HC_HUMAN_TEACHER_DIR:-${repo_root}/logs/rl_games/HcFactory/hier_2026-08-27_23-17-41}"
+    load_dir=""
+    teacher_step=""
+    if [[ "${g0_scratch}" == true ]]; then
+        : # no teacher / no warmstart
+    elif [[ "${g_series}" == true ]]; then
+        # Never fall back to HC_HUMAN_TEACHER_DIR (legacy E/T0).
+        load_dir="${HC_G_TEACHER_DIR:-$(g_teacher_dir "${repo_root}")}"
+        if [[ -d "${load_dir}/nn" ]]; then
+            teacher_step="$(g_resolve_teacher_step "${load_dir}")" || return 1
+        elif [[ "${dry_run}" == --dry-run ]]; then
+            teacher_step="${HC_G_LOAD_STEP:-${HC_LOAD_STEP:-0}}"
+        else
+            echo "错误: 缺少 G 教师目录: ${load_dir}（请先跑 G0；可用 HC_G_TEACHER_DIR 覆盖）" >&2
+            return 1
+        fi
+        if [[ "${load_dir}" == *hier_2026-08-27_23-17-41* ]]; then
+            echo "错误: G 系列禁止使用 legacy T0 教师目录: ${load_dir}" >&2
+            return 1
+        fi
+    else
+        load_dir="${HC_HUMAN_TEACHER_DIR:-${repo_root}/logs/rl_games/HcFactory/hier_2026-08-27_23-17-41}"
+        teacher_step=1290000
+    fi
     local out="${repo_root}/logs/rl_games/HcFactory/hier_${run_id}"
     if [[ "${dry_run}" != --dry-run && -e "${out}" ]]; then
         echo "拒绝覆盖现有训练目录: ${out}; 请设置 HC_HUMAN_RUN_TAG=... 作为防撞后缀" >&2
@@ -1507,7 +1651,7 @@ run_e5_human_train() {
         return 1
     fi
     if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
-        echo "用法: $0 E5-human [cuda:N] [--dry-run]" >&2
+        echo "用法: $0 E5-human|G0-human-match [cuda:N] [--dry-run]" >&2
         return 1
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
@@ -1523,81 +1667,136 @@ run_e5_human_train() {
     fi
     export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
     export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
-    if [[ "${dry_run}" != --dry-run ]]; then
+    if [[ "${g0_scratch}" != true && "${dry_run}" != --dry-run ]]; then
         local head
         for head in state_encoder agent_A agent_B agent_C agent_D_human agent_D_robot; do
-            [[ -s "${load_dir}/nn/${head}_step_1290000.pth" ]] || {
-                echo "缺少教师模型: ${load_dir}/nn/${head}_step_1290000.pth" >&2; return 1;
+            [[ -s "${load_dir}/nn/${head}_step_${teacher_step}.pth" ]] || {
+                echo "缺少教师模型: ${load_dir}/nn/${head}_step_${teacher_step}.pth" >&2; return 1;
             }
         done
     fi
     export HC_WARMSTART=""
     unset HC_WANDB_RUN_ID WANDB_RUN_ID HC_WANDB_RESUME WANDB_RESUME
+    local max_ep="${HC_MAX_TRAIN_EPISODES}"
+    # G0-human*：与 G0 hard 同预算口径（默认已是 100）
+    if [[ "${g0_scratch}" == true ]]; then
+        max_ep="${HC_MAX_TRAIN_EPISODES:-${HC_MAX_HARD_EPISODES}}"
+    fi
     local -a cmd=(
         python train.py --task HRTPaHC-v1 --algo hier
         --device "${DEVICE}" --num_envs 1 --headless --seed 42
         --train_n_products 10 --max_parallel_cd_dispatch 10
-        --max_sim_episodes "${HC_MAX_TRAIN_EPISODES}"
-        --load_dir "${load_dir}" --load_step 1290000
-        --teacher_explore
-        --autoregressive
-        --wandb_activate --wandb_project HcFactory_TPA
-        --wandb_name "${run_id}"
-        --algo_variant "${variant}"
-        --ftg_thresh_phy 0.95
-        "+agent.params.config.full_experiment_name=${run_id}"
-        "agent.params.config.human_pair_head=${pair_head}"
-        "agent.params.config.task_pair_head=${task_pair}"
-        "agent.params.config.human_match_head=${match_head}"
-        "agent.params.config.task_match_head=${task_match}"
-        "agent.params.config.human_duration_aux=${duration_aux}"
-        "agent.params.config.duration_aux_weight=${HC_DURATION_AUX_WEIGHT:-0.05}"
-        "agent.params.config.duration_aux_scale=${HC_DURATION_AUX_SCALE:-1000.0}"
-        "agent.params.config.human_aware_reward=${enabled}"
-        agent.params.config.human_reward_metrics=true
-        "agent.params.config.human_mismatch_coef=${HC_HUMAN_MISMATCH_COEF:-0.05}"
-        "agent.params.config.human_overwork_coef=${HC_HUMAN_OVERWORK_COEF:-0.01}"
-        "agent.params.config.human_recovery_coef=${HC_HUMAN_RECOVERY_COEF:-0.0}"
-        "agent.params.config.human_fatigue_threshold=${HC_HUMAN_FATIGUE_THRESHOLD:-0.8}"
-        "agent.params.config.human_shaping_cap=${HC_HUMAN_SHAPING_CAP:-0.04}"
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
-        agent.params.config.parallel_producing_limit=10
-        agent.params.config.c_forbid_none_mode=always
-        agent.params.config.curriculum=false
-        agent.params.config.explore=false
-        agent.params.config.explore_catalog=false
-        agent.params.config.catalog_collect=false
-        agent.params.config.oru=false
-        agent.params.config.teacher_explore=true
-        agent.params.config.autoregressive=true
-        agent.params.config.teacher_explore_ratio_start=1.0
-        agent.params.config.teacher_explore_ratio_end=0.0
-        agent.params.config.teacher_explore_decay_env_steps=300000
-        agent.params.config.ar_n_candidates=4
-        agent.params.config.ar_softmax_temperature=1.0
-        agent.params.config.ar_eps_scale_A=0.5
-        agent.params.config.ar_eps_scale_B=0.5
-        agent.params.config.ar_eps_scale_C=1.0
-        agent.params.config.ar_eps_scale_D=1.0
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
-        agent.params.config.noisy_net=false
-        agent.params.config.hierarchical_credit=false
-        agent.params.config.b_score_rl=false
-        agent.params.config.env_rule_based_exploration=false
-        agent.params.config.learning_rate=2.0e-5
-        agent.params.config.encoder_learning_rate=1.0e-5
-        agent.params.config.late_learning_rate=2.0e-5
-        agent.params.config.late_encoder_learning_rate=1.0e-5
-        agent.params.config.epsilon_start=0.05
-        agent.params.config.epsilon_end=0.05
-        agent.params.config.epsilon_decay_steps=1
-        'agent.params.config.warmstart=""'
-        'agent.params.config.load_name=""'
+        --max_sim_episodes "${max_ep}"
     )
+    if [[ "${g0_scratch}" == true ]]; then
+        # Scratch under gap: no load / no teacher_explore / no AR (fair vs G0).
+        cmd+=(
+            --wandb_activate --wandb_project HcFactory_TPA
+            --wandb_name "${wandb_name}"
+            --algo_variant "${variant}"
+            --ftg_thresh_phy 0.95
+            "+agent.params.config.full_experiment_name=${run_id}"
+            "agent.params.config.human_pair_head=${pair_head}"
+            "agent.params.config.task_pair_head=${task_pair}"
+            "agent.params.config.human_match_head=${match_head}"
+            "agent.params.config.task_match_head=${task_match}"
+            "agent.params.config.human_duration_aux=${duration_aux}"
+            "agent.params.config.duration_aux_weight=${HC_DURATION_AUX_WEIGHT:-0.05}"
+            "agent.params.config.duration_aux_scale=${HC_DURATION_AUX_SCALE:-1000.0}"
+            "agent.params.config.human_aware_reward=${enabled}"
+            agent.params.config.human_reward_metrics=true
+            "agent.params.config.human_mismatch_coef=${HC_HUMAN_MISMATCH_COEF:-0.05}"
+            "agent.params.config.human_overwork_coef=${HC_HUMAN_OVERWORK_COEF:-0.01}"
+            "agent.params.config.human_recovery_coef=${HC_HUMAN_RECOVERY_COEF:-0.0}"
+            "agent.params.config.human_fatigue_threshold=${HC_HUMAN_FATIGUE_THRESHOLD:-0.8}"
+            "agent.params.config.human_shaping_cap=${HC_HUMAN_SHAPING_CAP:-0.04}"
+            agent.params.config.t_max_anchor=64000
+            agent.params.config.max_episodic_steps=40000
+            agent.params.config.parallel_producing_limit=10
+            agent.params.config.c_forbid_none_mode=always
+            agent.params.config.curriculum=false
+            agent.params.config.explore=false
+            agent.params.config.explore_catalog=false
+            agent.params.config.catalog_collect=false
+            agent.params.config.oru=false
+            agent.params.config.teacher_explore=false
+            agent.params.config.autoregressive=false
+            agent.params.config.prioritized_replay=false
+            agent.params.config.dueling_dqn=false
+            agent.params.config.noisy_net=false
+            agent.params.config.hierarchical_credit=false
+            agent.params.config.b_score_rl=false
+            agent.params.config.env_rule_based_exploration=false
+            'agent.params.config.warmstart=""'
+            'agent.params.config.load_name=""'
+        )
+    else
+        cmd+=(
+            --load_dir "${load_dir}" --load_step "${teacher_step}"
+            --teacher_explore
+            --autoregressive
+            --wandb_activate --wandb_project HcFactory_TPA
+            --wandb_name "${wandb_name}"
+            --algo_variant "${variant}"
+            --ftg_thresh_phy 0.95
+            "+agent.params.config.full_experiment_name=${run_id}"
+            "agent.params.config.human_pair_head=${pair_head}"
+            "agent.params.config.task_pair_head=${task_pair}"
+            "agent.params.config.human_match_head=${match_head}"
+            "agent.params.config.task_match_head=${task_match}"
+            "agent.params.config.human_duration_aux=${duration_aux}"
+            "agent.params.config.duration_aux_weight=${HC_DURATION_AUX_WEIGHT:-0.05}"
+            "agent.params.config.duration_aux_scale=${HC_DURATION_AUX_SCALE:-1000.0}"
+            "agent.params.config.human_aware_reward=${enabled}"
+            agent.params.config.human_reward_metrics=true
+            "agent.params.config.human_mismatch_coef=${HC_HUMAN_MISMATCH_COEF:-0.05}"
+            "agent.params.config.human_overwork_coef=${HC_HUMAN_OVERWORK_COEF:-0.01}"
+            "agent.params.config.human_recovery_coef=${HC_HUMAN_RECOVERY_COEF:-0.0}"
+            "agent.params.config.human_fatigue_threshold=${HC_HUMAN_FATIGUE_THRESHOLD:-0.8}"
+            "agent.params.config.human_shaping_cap=${HC_HUMAN_SHAPING_CAP:-0.04}"
+            agent.params.config.t_max_anchor=64000
+            agent.params.config.max_episodic_steps=40000
+            agent.params.config.parallel_producing_limit=10
+            agent.params.config.c_forbid_none_mode=always
+            agent.params.config.curriculum=false
+            agent.params.config.explore=false
+            agent.params.config.explore_catalog=false
+            agent.params.config.catalog_collect=false
+            agent.params.config.oru=false
+            agent.params.config.teacher_explore=true
+            agent.params.config.autoregressive=true
+            agent.params.config.teacher_explore_ratio_start=1.0
+            agent.params.config.teacher_explore_ratio_end=0.0
+            agent.params.config.teacher_explore_decay_env_steps=300000
+            agent.params.config.ar_n_candidates=4
+            agent.params.config.ar_softmax_temperature=1.0
+            agent.params.config.ar_eps_scale_A=0.5
+            agent.params.config.ar_eps_scale_B=0.5
+            agent.params.config.ar_eps_scale_C=1.0
+            agent.params.config.ar_eps_scale_D=1.0
+            agent.params.config.prioritized_replay=false
+            agent.params.config.dueling_dqn=false
+            agent.params.config.noisy_net=false
+            agent.params.config.hierarchical_credit=false
+            agent.params.config.b_score_rl=false
+            agent.params.config.env_rule_based_exploration=false
+            agent.params.config.learning_rate=2.0e-5
+            agent.params.config.encoder_learning_rate=1.0e-5
+            agent.params.config.late_learning_rate=2.0e-5
+            agent.params.config.late_encoder_learning_rate=1.0e-5
+            agent.params.config.epsilon_start=0.05
+            agent.params.config.epsilon_end=0.05
+            agent.params.config.epsilon_decay_steps=1
+            'agent.params.config.warmstart=""'
+            'agent.params.config.load_name=""'
+        )
+    fi
     echo "[${variant}] skill_profile=${skill_profile}; run_id=${run_id}; seed=42; output=${out}"
-    echo "[${variant}] pair=${pair_head} task_pair=${task_pair} match=${match_head} task_match=${task_match} duration_aux=${duration_aux} reward=${enabled}; wandb=${run_id}"
+    if [[ "${g0_scratch}" == true ]]; then
+        echo "[${variant}] NO teacher (scratch like G0); pair=${pair_head} match=${match_head} task_match=${task_match} reward=${enabled}; max_ep=${max_ep}; wandb=${wandb_name}"
+    else
+        echo "[${variant}] teacher=${load_dir} step=${teacher_step}; pair=${pair_head} task_pair=${task_pair} match=${match_head} task_match=${task_match} duration_aux=${duration_aux} reward=${enabled}; wandb=${wandb_name}"
+    fi
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
@@ -1947,6 +2146,12 @@ run_eval_e5_human() {
     cd "${repo_root}"
     [[ -z "${dry_run}" || "${dry_run}" == --dry-run ]] || return 1
     local skill_profile="${HC_HUMAN_SKILL_PROFILE:-legacy}"
+    local g_series=false
+    local variant="${MODE#eval-}"
+    if [[ "${variant}" == G0-human* || "${variant}" == G3 || "${variant}" == G4 || "${variant}" == G4-c ]]; then
+        g_series=true
+        skill_profile=gap
+    fi
     case "${skill_profile}" in
         strong|skill-strong-v1|strong-v1|v1-strong) skill_profile=strong ;;
         fast|skill-fast-v1|fast-v1|optimistic|short) skill_profile=fast ;;
@@ -1954,21 +2159,37 @@ run_eval_e5_human() {
         legacy|default|v0|original|"") skill_profile=legacy ;;
         *) echo "Invalid HC_HUMAN_SKILL_PROFILE=${HC_HUMAN_SKILL_PROFILE} (use legacy|strong|fast|gap)" >&2; return 1 ;;
     esac
+    if [[ "${g_series}" != true && "${skill_profile}" == gap ]]; then
+        echo "错误: gap 评测请用 eval-G0-human-match / eval-G3 / eval-G4" >&2
+        return 1
+    fi
     local tag="${HC_HUMAN_RUN_TAG:-}"
     if [[ -n "${tag}" && ! "${tag}" =~ ^[A-Za-z0-9_-]+$ ]]; then
         echo "Invalid HC_HUMAN_RUN_TAG" >&2; return 1
     fi
-    local variant="${MODE#eval-}"
     local run_id
-    run_id="$(human_run_id "${variant}" "${skill_profile}" "${tag}")"
+    if [[ "${g_series}" == true ]]; then
+        if [[ -n "${tag}" ]]; then
+            run_id="${variant}-${tag}"
+        else
+            run_id="${variant}"
+        fi
+    else
+        run_id="$(human_run_id "${variant}" "${skill_profile}" "${tag}")"
+    fi
     export HC_HUMAN_SKILL_PROFILE="${skill_profile}"
     local load_dir
     if [[ -n "${HC_LOAD_DIR:-}" ]]; then
         load_dir="${HC_LOAD_DIR}"
+    elif [[ "${g_series}" == true ]]; then
+        load_dir="${repo_root}/logs/rl_games/HcFactory/hier_${run_id}"
     else
         load_dir="$(human_resolve_train_dir "${repo_root}" "${variant}" "${skill_profile}" "${tag}")"
     fi
     local step="${HC_LOAD_STEP:-300000}"
+    if [[ "${g_series}" == true && -z "${HC_LOAD_STEP:-}" && -d "${load_dir}/nn" ]]; then
+        step="$(g_resolve_teacher_step "${load_dir}")" || step=300000
+    fi
     [[ "${step}" =~ ^[0-9]+$ ]] || { echo "HC_LOAD_STEP 必须是整数" >&2; return 1; }
     local stamp="$(date +%Y%m%d_%H%M%S)_$$"
     export HC_HUMAN_PAIR_EVAL=false HC_TASK_PAIR_EVAL=false HC_DURATION_AUX_EVAL=false
@@ -1976,20 +2197,24 @@ run_eval_e5_human() {
     if [[ "${MODE}" == eval-E5-human-pair* || "${MODE}" == eval-E5-pair ]]; then
         export HC_HUMAN_PAIR_EVAL=true
     fi
-    if [[ "${MODE}" == eval-E5-human-match* ]]; then
+    if [[ "${MODE}" == eval-E5-human-match* || "${MODE}" == eval-G0-human-match* || "${MODE}" == eval-G4 || "${MODE}" == eval-G4-c ]]; then
         export HC_HUMAN_MATCH_EVAL=true
     fi
     case "${MODE}" in
         eval-E5-human-pair-c) export HC_TASK_PAIR_EVAL=true ;;
         eval-E5-human-pair-aux) export HC_DURATION_AUX_EVAL=true ;;
         eval-E5-human-pair-c-aux) export HC_TASK_PAIR_EVAL=true HC_DURATION_AUX_EVAL=true ;;
-        eval-E5-human-match-c) export HC_TASK_MATCH_EVAL=true ;;
+        eval-E5-human-match-c|eval-G0-human-match-c|eval-G4-c) export HC_TASK_MATCH_EVAL=true ;;
     esac
     export HC_LOAD_DIR="${load_dir}" HC_LOAD_STEP="${step}"
     export HC_TEST_SEEDS=43,44,45,46,47,48,49,50,51,52 HC_TEST_TIMES=1
     export HC_TRAIN_N_PRODUCTS=10 HC_T_MAX_ANCHOR=64000 HC_MULTI_K=10
     export HC_HUMAN_EVAL=1 HC_EVAL_VARIANT="${variant}"
-    export HC_WANDB_NAME="${run_id}-step${step}-eval"
+    if [[ "${g_series}" == true ]]; then
+        export HC_WANDB_NAME="Hier4TPA-${run_id}-N10-S42-step${step}-eval"
+    else
+        export HC_WANDB_NAME="${run_id}-step${step}-eval"
+    fi
     export HC_WANDB_TEST_PROJECT=HcFactory_TPA_Eval HC_WARMSTART=""
     export HC_EVAL_OUTPUT_DIR="${load_dir}/eval_step${step}_${stamp}"
     export HC_EVAL_KEEP_PRIOR=0
@@ -2008,7 +2233,359 @@ run_eval_e5_human() {
     bash batch_train.sh 29 "${DEVICE}"
 }
 
+run_g0_train() {
+    # Gap dynamics hard train → new teacher (legacy T0 role).
+    local repo_root dry_run="${3:-}" run_id=G0 out wandb_name
+    repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
+    cd "${repo_root}"
+    g_check_device || return 1
+    if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
+        echo "用法: $0 G0 [cuda:N] [--dry-run]" >&2
+        return 1
+    fi
+    export HC_HUMAN_SKILL_PROFILE=gap
+    out="${repo_root}/logs/rl_games/HcFactory/hier_${run_id}"
+    wandb_name="$(g_wandb_train_name "${run_id}")"
+    if [[ "${dry_run}" != --dry-run && -e "${out}" ]]; then
+        echo "拒绝覆盖现有训练目录: ${out}；请移走或改名后再跑" >&2
+        return 1
+    fi
+    if [[ "${dry_run}" != --dry-run ]]; then
+        g_source_wandb_env
+    else
+        export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
+        export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
+    fi
+    export HC_WARMSTART=""
+    unset HC_WANDB_RUN_ID WANDB_RUN_ID HC_WANDB_RESUME WANDB_RESUME
+    local -a cmd=(
+        python train.py --task HRTPaHC-v1 --algo hier
+        --device "${DEVICE}" --num_envs 1 --headless --seed 42
+        --train_n_products 10 --max_parallel_cd_dispatch 10
+        --max_sim_episodes "${HC_MAX_HARD_EPISODES}"
+        --wandb_activate --wandb_project HcFactory_TPA
+        --wandb_name "${wandb_name}"
+        --algo_variant T0
+        --ftg_thresh_phy 0.95
+        "+agent.params.config.full_experiment_name=${run_id}"
+        agent.params.config.t_max_anchor=64000
+        agent.params.config.max_episodic_steps=40000
+        agent.params.config.parallel_producing_limit=10
+        agent.params.config.c_forbid_none_mode=always
+        agent.params.config.curriculum=false
+        agent.params.config.explore=false
+        agent.params.config.explore_catalog=false
+        agent.params.config.catalog_collect=false
+        agent.params.config.oru=false
+        agent.params.config.teacher_explore=false
+        agent.params.config.autoregressive=false
+        agent.params.config.prioritized_replay=false
+        agent.params.config.dueling_dqn=false
+        agent.params.config.noisy_net=false
+        agent.params.config.hierarchical_credit=false
+        agent.params.config.b_score_rl=false
+        agent.params.config.env_rule_based_exploration=false
+        'agent.params.config.warmstart=""'
+        'agent.params.config.load_name=""'
+    )
+    echo "[G0] skill_profile=gap; hard train (new teacher); max_ep=${HC_MAX_HARD_EPISODES}; out=${out}"
+    echo "[G0] wandb=${wandb_name}; scratch under gap（无教师）；可与 G0-human-match 并行"
+    if [[ "${dry_run}" == --dry-run ]]; then
+        printf '%q ' "${cmd[@]}"
+        printf '\n'
+        return 0
+    fi
+    "${cmd[@]}"
+}
+
+run_g1_train() {
+    # No teacher warmstart; E5-no-oru-like AR + low lr, 60ep under gap.
+    local repo_root dry_run="${3:-}" run_id=G1 out wandb_name
+    repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
+    cd "${repo_root}"
+    g_check_device || return 1
+    if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
+        echo "用法: $0 G1 [cuda:N] [--dry-run]" >&2
+        return 1
+    fi
+    export HC_HUMAN_SKILL_PROFILE=gap
+    out="${repo_root}/logs/rl_games/HcFactory/hier_${run_id}"
+    wandb_name="$(g_wandb_train_name "${run_id}")"
+    if [[ "${dry_run}" != --dry-run && -e "${out}" ]]; then
+        echo "拒绝覆盖现有训练目录: ${out}" >&2
+        return 1
+    fi
+    if [[ "${dry_run}" != --dry-run ]]; then
+        g_source_wandb_env
+    else
+        export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
+        export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
+    fi
+    export HC_WARMSTART=""
+    unset HC_WANDB_RUN_ID WANDB_RUN_ID HC_WANDB_RESUME WANDB_RESUME
+    local -a cmd=(
+        python train.py --task HRTPaHC-v1 --algo hier
+        --device "${DEVICE}" --num_envs 1 --headless --seed 42
+        --train_n_products 10 --max_parallel_cd_dispatch 10
+        --max_sim_episodes "${HC_MAX_TRAIN_EPISODES}"
+        --autoregressive
+        --wandb_activate --wandb_project HcFactory_TPA
+        --wandb_name "${wandb_name}"
+        --algo_variant G1
+        --ftg_thresh_phy 0.95
+        "+agent.params.config.full_experiment_name=${run_id}"
+        agent.params.config.t_max_anchor=64000
+        agent.params.config.max_episodic_steps=40000
+        agent.params.config.parallel_producing_limit=10
+        agent.params.config.c_forbid_none_mode=always
+        agent.params.config.curriculum=false
+        agent.params.config.explore=false
+        agent.params.config.explore_catalog=false
+        agent.params.config.catalog_collect=false
+        agent.params.config.oru=false
+        agent.params.config.teacher_explore=false
+        agent.params.config.autoregressive=true
+        agent.params.config.ar_n_candidates=4
+        agent.params.config.ar_softmax_temperature=1.0
+        agent.params.config.ar_eps_scale_A=0.5
+        agent.params.config.ar_eps_scale_B=0.5
+        agent.params.config.ar_eps_scale_C=1.0
+        agent.params.config.ar_eps_scale_D=1.0
+        agent.params.config.prioritized_replay=false
+        agent.params.config.dueling_dqn=false
+        agent.params.config.noisy_net=false
+        agent.params.config.hierarchical_credit=false
+        agent.params.config.b_score_rl=false
+        agent.params.config.env_rule_based_exploration=false
+        agent.params.config.learning_rate=2.0e-5
+        agent.params.config.encoder_learning_rate=1.0e-5
+        agent.params.config.late_learning_rate=2.0e-5
+        agent.params.config.late_encoder_learning_rate=1.0e-5
+        agent.params.config.epsilon_start=0.05
+        agent.params.config.epsilon_end=0.05
+        agent.params.config.epsilon_decay_steps=1
+        'agent.params.config.warmstart=""'
+        'agent.params.config.load_name=""'
+    )
+    echo "[G1] skill_profile=gap; NO teacher load/explore; AR; max_ep=${HC_MAX_TRAIN_EPISODES}; out=${out}"
+    echo "[G1] wandb=${wandb_name}"
+    if [[ "${dry_run}" == --dry-run ]]; then
+        printf '%q ' "${cmd[@]}"
+        printf '\n'
+        return 0
+    fi
+    "${cmd[@]}"
+}
+
+run_eval_g_plain() {
+    # Protocol eval for G0/G1/G2 train dirs (gap; no match heads).
+    local repo_root load_dir step dry_run="${3:-}" wandb_name variant
+    variant="${MODE#eval-}"
+    repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
+    cd "${repo_root}"
+    g_check_device || return 1
+    if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
+        echo "用法: $0 eval-G0|eval-G1|eval-G2 [cuda:N] [--dry-run]" >&2
+        return 1
+    fi
+    export HC_HUMAN_SKILL_PROFILE=gap
+    if [[ -n "${HC_LOAD_DIR:-}" ]]; then
+        load_dir="${HC_LOAD_DIR}"
+    elif [[ "${variant}" == G0 ]]; then
+        load_dir="$(g_teacher_dir "${repo_root}")"
+    else
+        load_dir="${repo_root}/logs/rl_games/HcFactory/hier_${variant}"
+    fi
+    if [[ ! -d "${load_dir}/nn" ]]; then
+        echo "错误: 缺少训练目录: ${load_dir}（请先跑 ${variant}）" >&2
+        return 1
+    fi
+    step="$(g_resolve_teacher_step "${load_dir}")" || return 1
+    wandb_name="Hier4TPA-${variant}-N10-S42-step${step}-eval"
+    if [[ "${dry_run}" != --dry-run ]]; then
+        g_source_wandb_env
+        local head
+        for head in state_encoder agent_A agent_B agent_C agent_D_human agent_D_robot; do
+            [[ -s "${load_dir}/nn/${head}_step_${step}.pth" ]] || {
+                echo "缺少权重: ${load_dir}/nn/${head}_step_${step}.pth" >&2; return 1;
+            }
+        done
+    else
+        export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
+        export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
+    fi
+    export HC_WARMSTART=""
+    local -a cmd=(
+        python train.py --task HRTPaHC-v1 --algo hier
+        --device "${DEVICE}" --num_envs 1 --headless --seed 42
+        --test --test_times "${HC_TEST_TIMES}" --test_seeds "${HC_TEST_SEEDS}"
+        --test_epsilon 0 --train_n_products 10 --max_parallel_cd_dispatch 10
+        --load_dir "${load_dir}" --load_step "${step}"
+        --wandb_activate --wandb_project HcFactory_TPA_Eval
+        --wandb_name "${wandb_name}"
+        --ftg_thresh_phy 0.95
+        --seed 42
+        agent.params.config.t_max_anchor=64000
+        agent.params.config.max_episodic_steps=40000
+        agent.params.config.parallel_producing_limit=10
+        agent.params.config.c_forbid_none_mode=always
+        agent.params.config.curriculum=false
+        agent.params.config.explore=false
+        agent.params.config.explore_catalog=false
+        agent.params.config.catalog_collect=false
+        agent.params.config.oru=false
+        agent.params.config.prioritized_replay=false
+        agent.params.config.dueling_dqn=false
+        agent.params.config.noisy_net=false
+        agent.params.config.hierarchical_credit=false
+        agent.params.config.b_score_rl=false
+        agent.params.config.env_rule_based_exploration=false
+        'agent.params.config.warmstart=""'
+        'agent.params.config.load_name=""'
+    )
+    echo "[eval-${variant}] gap; N10/K10/T40000 ε=0; seeds=43..52; step=${step}"
+    echo "[eval-${variant}] load_dir=${load_dir}; wandb=${wandb_name}"
+    if [[ "${dry_run}" == --dry-run ]]; then
+        printf '%q ' "${cmd[@]}"
+        printf '\n'
+        return 0
+    fi
+    "${cmd[@]}"
+}
+
+run_g2_train() {
+    # E5-no-oru recipe under gap, warmstart from G0.
+    local repo_root load_dir step dry_run="${3:-}" run_id=G2 out wandb_name
+    repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
+    cd "${repo_root}"
+    g_check_device || return 1
+    if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
+        echo "用法: $0 G2 [cuda:N] [--dry-run]" >&2
+        return 1
+    fi
+    export HC_HUMAN_SKILL_PROFILE=gap
+    load_dir="$(g_teacher_dir "${repo_root}")"
+    out="${repo_root}/logs/rl_games/HcFactory/hier_${run_id}"
+    wandb_name="$(g_wandb_train_name "${run_id}")"
+    if [[ "${dry_run}" != --dry-run && -e "${out}" ]]; then
+        echo "拒绝覆盖现有训练目录: ${out}" >&2
+        return 1
+    fi
+    if [[ -d "${load_dir}/nn" ]]; then
+        step="$(g_resolve_teacher_step "${load_dir}")" || return 1
+    elif [[ "${dry_run}" == --dry-run ]]; then
+        step="${HC_G_LOAD_STEP:-${HC_LOAD_STEP:-0}}"
+    else
+        echo "错误: 缺少 G 教师目录: ${load_dir}（请先跑 G0）" >&2
+        return 1
+    fi
+    if [[ "${dry_run}" != --dry-run ]]; then
+        g_source_wandb_env
+        local head
+        for head in state_encoder agent_A agent_B agent_C agent_D_human agent_D_robot; do
+            [[ -s "${load_dir}/nn/${head}_step_${step}.pth" ]] || {
+                echo "缺少教师模型: ${load_dir}/nn/${head}_step_${step}.pth" >&2; return 1;
+            }
+        done
+    else
+        export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
+        export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
+    fi
+    export HC_WARMSTART=""
+    unset HC_WANDB_RUN_ID WANDB_RUN_ID HC_WANDB_RESUME WANDB_RESUME
+    local -a cmd=(
+        python train.py --task HRTPaHC-v1 --algo hier
+        --device "${DEVICE}" --num_envs 1 --headless --seed 42
+        --train_n_products 10 --max_parallel_cd_dispatch 10
+        --max_sim_episodes "${HC_MAX_TRAIN_EPISODES}"
+        --load_dir "${load_dir}" --load_step "${step}"
+        --teacher_explore
+        --autoregressive
+        --wandb_activate --wandb_project HcFactory_TPA
+        --wandb_name "${wandb_name}"
+        --algo_variant G2
+        --ftg_thresh_phy 0.95
+        "+agent.params.config.full_experiment_name=${run_id}"
+        agent.params.config.t_max_anchor=64000
+        agent.params.config.max_episodic_steps=40000
+        agent.params.config.parallel_producing_limit=10
+        agent.params.config.c_forbid_none_mode=always
+        agent.params.config.curriculum=false
+        agent.params.config.explore=false
+        agent.params.config.explore_catalog=false
+        agent.params.config.catalog_collect=false
+        agent.params.config.oru=false
+        agent.params.config.teacher_explore=true
+        agent.params.config.autoregressive=true
+        agent.params.config.teacher_explore_ratio_start=1.0
+        agent.params.config.teacher_explore_ratio_end=0.0
+        agent.params.config.teacher_explore_decay_env_steps=300000
+        agent.params.config.ar_n_candidates=4
+        agent.params.config.ar_softmax_temperature=1.0
+        agent.params.config.ar_eps_scale_A=0.5
+        agent.params.config.ar_eps_scale_B=0.5
+        agent.params.config.ar_eps_scale_C=1.0
+        agent.params.config.ar_eps_scale_D=1.0
+        agent.params.config.prioritized_replay=false
+        agent.params.config.dueling_dqn=false
+        agent.params.config.noisy_net=false
+        agent.params.config.hierarchical_credit=false
+        agent.params.config.b_score_rl=false
+        agent.params.config.env_rule_based_exploration=false
+        agent.params.config.learning_rate=2.0e-5
+        agent.params.config.encoder_learning_rate=1.0e-5
+        agent.params.config.late_learning_rate=2.0e-5
+        agent.params.config.late_encoder_learning_rate=1.0e-5
+        agent.params.config.epsilon_start=0.05
+        agent.params.config.epsilon_end=0.05
+        agent.params.config.epsilon_decay_steps=1
+        'agent.params.config.warmstart=""'
+        'agent.params.config.load_name=""'
+    )
+    echo "[G2] gap; warmstart G0 step=${step}; teacher_explore+AR; max_ep=${HC_MAX_TRAIN_EPISODES}"
+    echo "[G2] load=${load_dir}; out=${out}; wandb=${wandb_name}"
+    if [[ "${dry_run}" == --dry-run ]]; then
+        printf '%q ' "${cmd[@]}"
+        printf '\n'
+        return 0
+    fi
+    "${cmd[@]}"
+}
+
+g_reject_gap_on_e_series || exit 1
+
 case "${MODE}" in
+    G0) run_g0_train "$@" ;;
+    G1) run_g1_train "$@" ;;
+    G2) run_g2_train "$@" ;;
+    G0-human-match|G0-human-match-c|G3|G4|G4-c) run_e5_human_train "$@" ;;
+    eval-G0|eval-G1|eval-G2) run_eval_g_plain "$@" ;;
+    eval-G0-human-match|eval-G0-human-match-c|eval-G3|eval-G4|eval-G4-c) run_eval_e5_human "$@" ;;
+    # legacy aliases → numbered G series
+    G-hard|G_hard)
+        echo "[journal] 已改名: G-hard → G0" >&2
+        MODE=G0; run_g0_train "$@"
+        ;;
+    G-scratch|G_scratch)
+        echo "[journal] 已改名: G-scratch → G1" >&2
+        MODE=G1; run_g1_train "$@"
+        ;;
+    G5-no-oru|G5_no_oru)
+        echo "[journal] 已改名: G5-no-oru → G2" >&2
+        MODE=G2; run_g2_train "$@"
+        ;;
+    G5-human)
+        echo "[journal] 已改名: G5-human → G3" >&2
+        MODE=G3; run_e5_human_train "$@"
+        ;;
+    G5-human-match)
+        echo "[journal] 已改名: G5-human-match → G0-human-match" >&2
+        MODE=G0-human-match; run_e5_human_train "$@"
+        ;;
+    G5-human-match-c)
+        echo "[journal] 已改名: G5-human-match-c → G0-human-match-c" >&2
+        MODE=G0-human-match-c; run_e5_human_train "$@"
+        ;;
     E0) run_e0_eval "$@" ;;
     E1) run_e1_train "$@" ;;
     E1.5|E1_5) run_e1_5_train "$@" ;;

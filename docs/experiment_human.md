@@ -2,16 +2,38 @@
 
 > E0–E6 协议见 `experiment_protocol.md`；纯逻辑仿真见 `ideal_simulation_backend.md`。
 
-训练与数值评测默认 **logic 后端**（不跑 PhysX）。教师权重：`logs/rl_games/HcFactory/hier_2026-08-27_23-17-41`，`HC_LOAD_STEP=1290000`（六件套）。
+训练与数值评测默认 **logic 后端**（不跑 PhysX）。
 
-## 0. 命名 + skill 表切换（四档）
+## G. gap 动力学新系列（主推，序号 G0–G4）
 
-**W&B / 训练目录**：`{入口}-{legacy|strong|fast|gap}`  
-例：`E5-human-legacy`、`E5-human-match-fast`、`E5-human-match-c-gap`。防撞才设 `HC_HUMAN_RUN_TAG=r2`。
+旧 E/T0 教师在 **legacy** 表上训成；直接热启到 **gap** 不公平。gap 实验请走 **G0–G4**（脚本会拒绝把 `HC_HUMAN_SKILL_PROFILE=gap` 挂在 E*/T0 上）。
+
+| 入口 | 含义 | 目录 / W&B |
+|--|--|--|
+| **G0** | gap hard 新教师/基线（对位旧 T0；默认 100 ep；**无教师**） | `hier_G0` / `Hier4TPA-G0-N10-S42` |
+| **G0-human-match** | 同 G0 的 scratch 配方 + 人因奖励 + D match（**无教师**；默认 100 ep） | `hier_G0-human-match` / `Hier4TPA-G0-human-match-N10-S42` |
+| G1 / G2 / G3 | 可选：无教师 AR / G0 热启 no-oru / 仅人因 | `hier_G1` … |
+
+评测：`eval-G0`、`eval-G0-human-match`（seeds 43–52）。
+
+```bash
+# 两台可并行（都不依赖教师权重）
+bash run_2026_journal_experiments.sh G0 cuda:0
+bash run_2026_journal_experiments.sh G0-human-match cuda:0
+```
+
+教师目录可用 `HC_G_TEACHER_DIR`（默认 `hier_G0`）覆盖。
+
+## 0. E 系列命名 + skill 表（legacy 动力学）
+
+旧协议仍用 legacy 教师：`logs/rl_games/HcFactory/hier_2026-08-27_23-17-41`，`HC_LOAD_STEP=1290000`。
+
+**W&B / 训练目录**：`{入口}-{legacy|strong|fast}`  
+例：`E5-human-legacy`、`E5-human-match-fast`。防撞才设 `HC_HUMAN_RUN_TAG=r2`。**不要**再写 `*-gap` 挂在 E* 上。
 
 **四档对比**（`HC_HUMAN_SKILL_PROFILE`；相对标称 skill=1 的机床操作）
 
-| | **legacy**（默认） | **strong** | **fast** | **gap**（拉开差距） |
+| | **legacy**（默认，E 系列） | **strong** | **fast** | **gap**（仅 G 系列） |
 |--|--|--|--|--|
 | 设计意图 | 原表 | **错派更痛** + 疲劳快 | **专工更快**，错派只略慢 | **专工更快 + 错派更痛 + 疲劳×2** |
 | 专工 / 错工艺 / 物流干工艺 | 1.40 / 0.58 / 0.70 | 1.55 / **0.42** / 0.45 | **1.75** / 0.62 / 0.68 | **1.75** / **0.42** / **0.45** |
@@ -23,69 +45,37 @@
 | 全局 makespan 倾向 | 中性 | 易被错派/疲劳**拉长** | 选对人时**整体偏短** | 选对更短、选错更长 |
 
 ```bash
-# 本机 / 5090 / 服务器（legacy）
+# E 系列（legacy 教师 / legacy 或 fast 表）
 HC_MAX_TRAIN_EPISODES=60 bash run_2026_journal_experiments.sh E5-human cuda:0
-# → E5-human-legacy
-
-# 家里（fast：往短 makespan）
-HC_HUMAN_SKILL_PROFILE=fast HC_MAX_TRAIN_EPISODES=60 \
-  bash run_2026_journal_experiments.sh E5-human-match cuda:0
-# → E5-human-match-fast
-
-# 拉开差距（gap = fast 专工 + strong 错派/疲劳）
-HC_HUMAN_SKILL_PROFILE=gap HC_MAX_TRAIN_EPISODES=60 \
-  bash run_2026_journal_experiments.sh E5-human-match-c cuda:0
-# → E5-human-match-c-gap
-```
-
-## 1. 当前机器分工
-
-
-| 机器          | 入口                              | skill 表     | 说明               |
-| ----------- | ------------------------------- | ---------- | ---------------- |
-| 本机（4090 工位） | `E5-human` + `E5-human-match-c` | legacy     | 基线 + D/C match   |
-| 5090        | `E5-human-pair-c-aux`           | legacy     | D pair + C + aux |
-| 家里台式        | `E5-human-match`                | **fast**   | D match；往短 makespan |
-| 服务器         | `E5-human-pair-aux`             | legacy     | D pair + aux     |
-
-
-暂缓：`E5-human-pair`、`E5-pair`、`E5-human-pair-c`。
-
-```bash
-# 本机
-HC_MAX_TRAIN_EPISODES=60 bash run_2026_journal_experiments.sh E5-human cuda:0
-HC_MAX_TRAIN_EPISODES=60 bash run_2026_journal_experiments.sh E5-human-match-c cuda:0
-
-# 5090
-HC_MAX_TRAIN_EPISODES=60 bash run_2026_journal_experiments.sh E5-human-pair-c-aux cuda:0
-
-# 家里
 HC_HUMAN_SKILL_PROFILE=fast HC_MAX_TRAIN_EPISODES=60 \
   bash run_2026_journal_experiments.sh E5-human-match cuda:0
 
-# 服务器
-HC_MAX_TRAIN_EPISODES=60 bash run_2026_journal_experiments.sh E5-human-pair-aux cuda:0
+# gap → 必须 G0–G4（见 §G）
 ```
 
-评测（默认找新名 `hier_{入口}-{legacy|strong}`；没有则回退旧目录如 `*-logic-v1`。训 strong 时评测也要设同一 profile）：
+## 1. 当前机器分工（G 系列开工）
+
+
+| 机器          | 入口                | 说明            |
+| ----------- | ----------------- | ------------- |
+| 本机（4090 工位） | `G0`              | gap 新教师       |
+| 5090        | `G1`              | no-teacher 并行 |
+| （G0 完成后）   | `eval-G0` → `G2` / `G4` | 评测与对照 |
+
+
+E 系列旧分工可归档；暂缓 pair 系。
+
+评测（E 系列；训 strong/fast 时评测也要同一 profile）：
 
 ```bash
-# legacy（本机 / 5090 / 服务器）
 bash run_2026_journal_experiments.sh eval-E5-human cuda:0
-bash run_2026_journal_experiments.sh eval-E5-human-match-c cuda:0
-bash run_2026_journal_experiments.sh eval-E5-human-pair-c-aux cuda:0
-bash run_2026_journal_experiments.sh eval-E5-human-pair-aux cuda:0
-
-# 家里 fast match
 HC_HUMAN_SKILL_PROFILE=fast \
   bash run_2026_journal_experiments.sh eval-E5-human-match cuda:0
-
-# 或显式：HC_LOAD_DIR=... HC_LOAD_STEP=300000
 ```
 
 协议：N10/K10/T40000、seeds 43–52×1、ε=0；主指标 `MetricFullorderCore/09_mean_makespan`。评测关 shaping。
 
-## 2. 入口一览
+## 2. 入口一览（E 系列）
 
 
 | 入口                    | D 配对 | C 配对 | 耗时辅助 | 人因 reward                     |
@@ -100,7 +90,7 @@ HC_HUMAN_SKILL_PROFILE=fast \
 | `E5-human-match-c`    | match | match 汇总 | 关 | 开 |
 
 
-底座均为 E5-no-oru：T0 热启 + 教师探索 + AR，ORU 关。命名见 §0（`{入口}-{legacy|strong}`）；`HC_HUMAN_RUN_TAG` 仅防撞可选。
+底座均为 E5-no-oru：T0 热启 + 教师探索 + AR，ORU 关。命名见 §0；`HC_HUMAN_RUN_TAG` 仅防撞可选。
 
 ## 3. 人因奖励（P0）
 
