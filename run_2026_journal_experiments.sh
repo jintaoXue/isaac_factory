@@ -80,9 +80,37 @@ g_reject_gap_on_e_series() {
     return 0
 }
 
+g_latest_run_dir() {
+    # Newest among hier_${base} and hier_${base}-v* (mtime). Empty if none.
+    local repo_root="$1" base="$2"
+    local log_root="${repo_root}/logs/rl_games/HcFactory"
+    local best="" best_t=-1 t d
+    shopt -s nullglob
+    for d in "${log_root}/hier_${base}" "${log_root}/hier_${base}-v"*; do
+        [[ -d "${d}" ]] || continue
+        t="$(stat -c %Y "${d}" 2>/dev/null || echo -1)"
+        if (( t >= best_t )); then
+            best_t=${t}
+            best="${d}"
+        fi
+    done
+    shopt -u nullglob
+    echo "${best}"
+}
+
 g_teacher_dir() {
     local repo_root="$1"
-    echo "${HC_G_TEACHER_DIR:-${repo_root}/logs/rl_games/HcFactory/hier_G0}"
+    if [[ -n "${HC_G_TEACHER_DIR:-}" ]]; then
+        echo "${HC_G_TEACHER_DIR}"
+        return 0
+    fi
+    local latest
+    latest="$(g_latest_run_dir "${repo_root}" G0)"
+    if [[ -n "${latest}" ]]; then
+        echo "${latest}"
+    else
+        echo "${repo_root}/logs/rl_games/HcFactory/hier_G0"
+    fi
 }
 
 g_resolve_teacher_step() {
@@ -107,6 +135,32 @@ g_wandb_train_name() {
     # args: short_id  → Hier4TPA-{id}-N10-S42
     echo "Hier4TPA-${1}-N10-S42"
 }
+
+
+g_alloc_run_id() {
+    # Unused run id under logs/rl_games/HcFactory/hier_*.
+    # Bare name if free; else ${base}-v1, -v2, ... Explicit HC_RUN_TAG / HC_HUMAN_RUN_TAG pins suffix.
+    local base="$1"
+    local repo_root="${2:?g_alloc_run_id needs repo_root}"
+    local log_root="${repo_root}/logs/rl_games/HcFactory"
+    local tag="${HC_RUN_TAG:-${HC_HUMAN_RUN_TAG:-}}"
+    local n
+    mkdir -p "${log_root}"
+    if [[ -n "${tag}" ]]; then
+        echo "${base}-${tag}"
+        return 0
+    fi
+    if [[ ! -e "${log_root}/hier_${base}" ]]; then
+        echo "${base}"
+        return 0
+    fi
+    n=1
+    while [[ -e "${log_root}/hier_${base}-v${n}" ]]; do
+        n=$((n + 1))
+    done
+    echo "${base}-v${n}"
+}
+
 
 
 
@@ -1649,20 +1703,35 @@ run_e5_human_train() {
     if [[ "${MODE}" == *human-match* && "${enabled}" != true ]]; then
         echo "match 入口固定人因奖励开启" >&2; return 1
     fi
+    repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
+    cd "${repo_root}"
     local run_id
     if [[ "${g_series}" == true ]]; then
         if [[ -n "${tag}" ]]; then
             run_id="${variant}-${tag}"
         else
-            run_id="${variant}"
+            run_id="$(g_alloc_run_id "${variant}" "${repo_root}")"
         fi
         wandb_name="$(g_wandb_train_name "${run_id}")"
     else
-        run_id="$(human_run_id "${variant}" "${skill_profile}" "${tag}")"
+        if [[ -n "${tag}" ]]; then
+            run_id="$(human_run_id "${variant}" "${skill_profile}" "${tag}")"
+        else
+            run_id="$(g_alloc_run_id "$(human_run_id "${variant}" "${skill_profile}")" "${repo_root}")"
+        fi
         wandb_name="${run_id}"
     fi
-    repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
-    cd "${repo_root}"
+    if [[ -z "${tag}" ]]; then
+        local _base_expect
+        if [[ "${g_series}" == true ]]; then
+            _base_expect="${variant}"
+        else
+            _base_expect="$(human_run_id "${variant}" "${skill_profile}")"
+        fi
+        if [[ "${run_id}" != "${_base_expect}" ]]; then
+            echo "[${variant}] 目录已占用 → 自动使用 run_id=${run_id}"
+        fi
+    fi
     load_dir=""
     teacher_step=""
     if [[ "${g0_scratch}" == true ]]; then
@@ -2289,11 +2358,15 @@ run_g0_train() {
         return 1
     fi
     export HC_HUMAN_SKILL_PROFILE=gap
+    run_id="$(g_alloc_run_id G0 "${repo_root}")"
     out="${repo_root}/logs/rl_games/HcFactory/hier_${run_id}"
     wandb_name="$(g_wandb_train_name "${run_id}")"
     if [[ "${dry_run}" != --dry-run && -e "${out}" ]]; then
-        echo "拒绝覆盖现有训练目录: ${out}；请移走或改名后再跑" >&2
+        echo "拒绝覆盖现有训练目录: ${out}；请改 HC_RUN_TAG / HC_HUMAN_RUN_TAG 或移走目录" >&2
         return 1
+    fi
+    if [[ "${run_id}" != G0 ]]; then
+        echo "[G0] 目录已占用 → 自动使用 run_id=${run_id}"
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
         g_source_wandb_env
@@ -2354,11 +2427,15 @@ run_g1_train() {
         return 1
     fi
     export HC_HUMAN_SKILL_PROFILE=gap
+    run_id="$(g_alloc_run_id G1 "${repo_root}")"
     out="${repo_root}/logs/rl_games/HcFactory/hier_${run_id}"
     wandb_name="$(g_wandb_train_name "${run_id}")"
     if [[ "${dry_run}" != --dry-run && -e "${out}" ]]; then
-        echo "拒绝覆盖现有训练目录: ${out}" >&2
+        echo "拒绝覆盖现有训练目录: ${out}；请改 HC_RUN_TAG / HC_HUMAN_RUN_TAG 或移走目录" >&2
         return 1
+    fi
+    if [[ "${run_id}" != G1 ]]; then
+        echo "[G1] 目录已占用 → 自动使用 run_id=${run_id}"
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
         g_source_wandb_env
@@ -2439,7 +2516,10 @@ run_eval_g_plain() {
     elif [[ "${variant}" == G0 ]]; then
         load_dir="$(g_teacher_dir "${repo_root}")"
     else
-        load_dir="${repo_root}/logs/rl_games/HcFactory/hier_${variant}"
+        load_dir="$(g_latest_run_dir "${repo_root}" "${variant}")"
+        if [[ -z "${load_dir}" ]]; then
+            load_dir="${repo_root}/logs/rl_games/HcFactory/hier_${variant}"
+        fi
     fi
     if [[ ! -d "${load_dir}/nn" ]]; then
         echo "错误: 缺少训练目录: ${load_dir}（请先跑 ${variant}）" >&2
@@ -2510,11 +2590,15 @@ run_g2_train() {
     fi
     export HC_HUMAN_SKILL_PROFILE=gap
     load_dir="$(g_teacher_dir "${repo_root}")"
+    run_id="$(g_alloc_run_id G2 "${repo_root}")"
     out="${repo_root}/logs/rl_games/HcFactory/hier_${run_id}"
     wandb_name="$(g_wandb_train_name "${run_id}")"
     if [[ "${dry_run}" != --dry-run && -e "${out}" ]]; then
-        echo "拒绝覆盖现有训练目录: ${out}" >&2
+        echo "拒绝覆盖现有训练目录: ${out}；请改 HC_RUN_TAG / HC_HUMAN_RUN_TAG 或移走目录" >&2
         return 1
+    fi
+    if [[ "${run_id}" != G2 ]]; then
+        echo "[G2] 目录已占用 → 自动使用 run_id=${run_id}"
     fi
     if [[ -d "${load_dir}/nn" ]]; then
         step="$(g_resolve_teacher_step "${load_dir}")" || return 1

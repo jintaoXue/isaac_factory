@@ -26,7 +26,7 @@ bash run_2026_journal_experiments.sh G0 cuda:0
 bash run_2026_journal_experiments.sh G0-human-match cuda:0
 ```
 
-教师目录可用 `HC_G_TEACHER_DIR`（默认 `hier_G0`）覆盖。
+目录已存在时自动加后缀 **`-v1`、`-v2`…**（如 `hier_G0-v1` / `Hier4TPA-G0-v1-N10-S42`）；手动指定用 `HC_RUN_TAG` 或 `HC_HUMAN_RUN_TAG`。教师默认取最新的 `hier_G0` / `hier_G0-v*`（可用 `HC_G_TEACHER_DIR` 覆盖）。
 
 ## 0. E 系列命名 + skill 表（legacy 动力学）
 
