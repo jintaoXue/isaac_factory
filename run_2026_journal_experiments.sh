@@ -8,10 +8,12 @@ set -euo pipefail
 #
 # === G 系列（gap 动力学；序号 G0–G4）===
 #   G0                hard 基线（gap；无教师）
+#   G0-greedy         从零训练；固定贪心人分配，其余沿用 G0
 #   G0-human-match    同 scratch + 人因奖励 + D match（无教师）
 #   G1 / G2 / G3      可选：无教师 AR / G0 热启 no-oru / 仅人因
 #   eval-G0 / eval-G0-human-match
-# Usage 也支持 G0|G0-human-match
+#   diag-G0-greedy     一键成对诊断：同一 G0 checkpoint 的 RL 与贪心人分配
+# Usage 也支持 G0|G0-greedy|G0-human-match
 # gap 禁止挂在 E*/T0 上；见 docs/experiment_human.md §G
 #
 # === E 系列（legacy 动力学；旧协议）===
@@ -20,7 +22,7 @@ set -euo pipefail
 #
 # Journal entry — E0–E6 + G0–G4；见 docs/experiment_protocol.md / experiment_human.md.
 # Usage:
-#   ./run_2026_journal_experiments.sh G0|G0-human-match [cuda:0]
+#   ./run_2026_journal_experiments.sh G0|G0-greedy|G0-human-match [cuda:0]
 #   ./run_2026_journal_experiments.sh E0 [cuda:0] [--dry-run]
 #   ./run_2026_journal_experiments.sh E1|…|E5|E5-no-oru|E6|E6-no-oru [cuda:0] [--dry-run]
 #   ./run_2026_journal_experiments.sh TEACHER [cuda:0]
@@ -235,11 +237,13 @@ usage() {
 
 G 系列（gap 动力学；序号 G0–G4，勿与 E* 混用）:
   G0                 hard 基线（gap；无教师；默认 ${HC_MAX_HARD_EPISODES:-100} ep）
+  G0-greedy          同 G0，人 D 固定 η×skill 贪心（不训人头；默认 100 ep）
   G0-human-match     同 scratch + 人因奖励 + D match（无教师；默认 100 ep）
   G0-human-match-c   同上 + C match 汇总（无教师；默认 100 ep）
   G1                 无教师热启：AR + 低 lr（可选）
   G2                 G0 热启 + 教师探索 + AR（可选对照）
   G3                 G2 + 仅人因奖励（可选）
+  diag-G0-greedy      同一 G0 checkpoint 连跑 RL/贪心人分配（独立 seeds；无需训练）
   eval-G0|eval-G0-human-match|eval-G0-human-match-c|eval-G1|eval-G2|eval-G3  协议评测
 
 训练（E 系列 / legacy 动力学）:
@@ -2349,24 +2353,27 @@ run_eval_e5_human() {
 
 run_g0_train() {
     # Gap dynamics hard train → new teacher (legacy T0 role).
-    local repo_root dry_run="${3:-}" run_id=G0 out wandb_name
+    local repo_root dry_run="${3:-}" run_id out wandb_name base_id=G0 human_policy=rl algo_variant=T0
+    if [[ "${MODE}" == G0-greedy ]]; then
+        base_id=G0-greedy; human_policy=greedy; algo_variant=G0-greedy
+    fi
     repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
     cd "${repo_root}"
     g_check_device || return 1
     if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
-        echo "用法: $0 G0 [cuda:N] [--dry-run]" >&2
+        echo "用法: $0 G0|G0-greedy [cuda:N] [--dry-run]" >&2
         return 1
     fi
     export HC_HUMAN_SKILL_PROFILE=gap
-    run_id="$(g_alloc_run_id G0 "${repo_root}")"
+    run_id="$(g_alloc_run_id "${base_id}" "${repo_root}")"
     out="${repo_root}/logs/rl_games/HcFactory/hier_${run_id}"
     wandb_name="$(g_wandb_train_name "${run_id}")"
     if [[ "${dry_run}" != --dry-run && -e "${out}" ]]; then
         echo "拒绝覆盖现有训练目录: ${out}；请改 HC_RUN_TAG / HC_HUMAN_RUN_TAG 或移走目录" >&2
         return 1
     fi
-    if [[ "${run_id}" != G0 ]]; then
-        echo "[G0] 目录已占用 → 自动使用 run_id=${run_id}"
+    if [[ "${run_id}" != "${base_id}" ]]; then
+        echo "[${base_id}] 目录已占用 → 自动使用 run_id=${run_id}"
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
         g_source_wandb_env
@@ -2383,13 +2390,18 @@ run_g0_train() {
         --max_sim_episodes "${HC_MAX_HARD_EPISODES}"
         --wandb_activate --wandb_project HcFactory_TPA
         --wandb_name "${wandb_name}"
-        --algo_variant T0
+        --algo_variant "${algo_variant}"
         --ftg_thresh_phy 0.95
         "+agent.params.config.full_experiment_name=${run_id}"
         agent.params.config.t_max_anchor="$(g_horizon_anchor)"
         agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
+        agent.params.config.human_policy="${human_policy}"
+        agent.params.config.greedy_human_eval=false
+        agent.params.config.human_aware_reward=false
+        agent.params.config.human_pair_head=false
+        agent.params.config.human_match_head=false
         agent.params.config.curriculum=false
         agent.params.config.explore=false
         agent.params.config.explore_catalog=false
@@ -2406,8 +2418,8 @@ run_g0_train() {
         'agent.params.config.warmstart=""'
         'agent.params.config.load_name=""'
     )
-    echo "[G0] skill_profile=gap; hard train (new teacher); max_ep=${HC_MAX_HARD_EPISODES}; out=${out}"
-    echo "[G0] wandb=${wandb_name}; scratch under gap（无教师）；可与 G0-human-match 并行"
+    echo "[${base_id}] skill_profile=gap; hard train (new teacher); max_ep=${HC_MAX_HARD_EPISODES}; out=${out}"
+    echo "[${base_id}] wandb=${wandb_name}; scratch under gap（无教师）；human_policy=${human_policy}；可与 G0-human-match 并行"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
@@ -2501,13 +2513,14 @@ run_g1_train() {
 
 run_eval_g_plain() {
     # Protocol eval for G0/G1/G2 train dirs (gap; no match heads).
-    local repo_root load_dir step dry_run="${3:-}" wandb_name variant
+    local repo_root load_dir step dry_run="${3:-}" wandb_name variant human_policy=rl
     variant="${MODE#eval-}"
+    [[ "${variant}" != G0-greedy ]] || human_policy=greedy
     repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
     cd "${repo_root}"
     g_check_device || return 1
     if [[ -n "${dry_run}" && "${dry_run}" != --dry-run ]] || (( $# > 3 )); then
-        echo "用法: $0 eval-G0|eval-G1|eval-G2 [cuda:N] [--dry-run]" >&2
+        echo "用法: $0 eval-G0|eval-G0-greedy|eval-G1|eval-G2 [cuda:N] [--dry-run]" >&2
         return 1
     fi
     export HC_HUMAN_SKILL_PROFILE=gap
@@ -2522,11 +2535,18 @@ run_eval_g_plain() {
         fi
     fi
     if [[ ! -d "${load_dir}/nn" ]]; then
-        echo "错误: 缺少训练目录: ${load_dir}（请先跑 ${variant}）" >&2
-        return 1
+        if [[ "${dry_run}" == --dry-run ]]; then
+            load_dir="${load_dir:-${repo_root}/logs/rl_games/HcFactory/hier_${variant}}"
+            step="${HC_G_LOAD_STEP:-${HC_LOAD_STEP:-0}}"
+            echo "[eval-${variant}] dry-run：尚无训练目录，使用占位 load=${load_dir} step=${step}"
+        else
+            echo "错误: 缺少训练目录: ${load_dir}（请先跑 ${variant}）" >&2
+            return 1
+        fi
+    else
+        step="$(g_resolve_teacher_step "${load_dir}")" || return 1
     fi
-    step="$(g_resolve_teacher_step "${load_dir}")" || return 1
-    wandb_name="${variant}-N10-S42-step${step}-eval"
+    wandb_name="${HC_G_DIAG_NAME:-${variant}-N10-S42-step${step}-eval}"
     if [[ "${dry_run}" != --dry-run ]]; then
         g_source_wandb_env
         local head
@@ -2554,6 +2574,8 @@ run_eval_g_plain() {
         agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
+        agent.params.config.human_policy="${human_policy}"
+        agent.params.config.greedy_human_eval="${HC_G_GREEDY_EVAL:-false}"
         agent.params.config.curriculum=false
         agent.params.config.explore=false
         agent.params.config.explore_catalog=false
@@ -2568,7 +2590,7 @@ run_eval_g_plain() {
         'agent.params.config.warmstart=""'
         'agent.params.config.load_name=""'
     )
-    echo "[eval-${variant}] gap; N10/K10/T40000 ε=0; seeds=43..52; step=${step}"
+    echo "[eval-${variant}] gap; N10/K10/T$(g_horizon_steps) ε=0; seeds=${HC_TEST_SEEDS} x${HC_TEST_TIMES}; step=${step}"
     echo "[eval-${variant}] load_dir=${load_dir}; wandb=${wandb_name}"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
@@ -2681,14 +2703,49 @@ run_g2_train() {
     "${cmd[@]}"
 }
 
+run_g0_greedy_diagnostic() (
+    # Subshell: keep protocol defaults and caller environment intact.
+    local repo_root load_dir step candidate head complete
+    repo_root=$(cd -- "$(dirname -- "$0")" && pwd)
+    load_dir="${HC_LOAD_DIR:-$(g_teacher_dir "${repo_root}")}"
+    step="${HC_G_LOAD_STEP:-${HC_LOAD_STEP:-}}"
+    if [[ -z "${step}" ]]; then
+        # Training can still be writing the latest checkpoint. Use the latest complete set.
+        while read -r candidate; do
+            complete=true
+            for head in state_encoder agent_A agent_B agent_C agent_D_human agent_D_robot; do
+                [[ -s "${load_dir}/nn/${head}_step_${candidate}.pth" ]] || complete=false
+            done
+            if [[ "${complete}" == true ]]; then step="${candidate}"; break; fi
+        done < <(find "${load_dir}/nn" -maxdepth 1 -name 'state_encoder_step_*.pth' -printf '%f\n' 2>/dev/null | sed -n 's/.*_step_\([0-9]*\)\.pth/\1/p' | sort -rn)
+    fi
+    if [[ -z "${step}" ]]; then
+        echo "错误: 尚无完整 G0 checkpoint；等待训练保存六个权重后再运行。" >&2
+        return 1
+    fi
+    export HC_LOAD_DIR="${load_dir}" HC_G_LOAD_STEP="${step}"
+    export HC_TEST_SEEDS="${HC_DIAG_SEEDS:-9001,9002,9003,9004,9005,9006,9007,9008,9009,9010}"
+    export HC_TEST_TIMES=1
+    unset HC_EVAL_OUTPUT_DIR HC_EVAL_APPEND HC_EVAL_EPISODE_OFFSET HC_EVAL_TOTAL_EPISODES HC_EVAL_ALL_SEEDS
+    unset WANDB_RUN_ID WANDB_RESUME
+    local tag="$(basename "${load_dir}")-step${step}-$(date +%Y%m%d-%H%M%S)-$$"
+    MODE=eval-G0
+    echo "[G0 diagnostic] 同一 checkpoint 连跑 RL / greedy-human；独立诊断 seeds=${HC_TEST_SEEDS}"
+    export HC_G_GREEDY_EVAL=false HC_G_DIAG_NAME="${tag}-diag-RL"
+    run_eval_g_plain "$@" || return $?
+    export HC_G_GREEDY_EVAL=true HC_G_DIAG_NAME="${tag}-diag-greedy-human"
+    run_eval_g_plain "$@"
+)
+
 g_reject_gap_on_e_series || exit 1
 
 case "${MODE}" in
-    G0) run_g0_train "$@" ;;
+    G0|G0-greedy) run_g0_train "$@" ;;
     G1) run_g1_train "$@" ;;
     G2) run_g2_train "$@" ;;
     G0-human-match|G0-human-match-c|G3|G4|G4-c) run_e5_human_train "$@" ;;
-    eval-G0|eval-G1|eval-G2) run_eval_g_plain "$@" ;;
+    diag-G0-greedy) run_g0_greedy_diagnostic "$@" ;;
+    eval-G0|eval-G0-greedy|eval-G1|eval-G2) run_eval_g_plain "$@" ;;
     eval-G0-human-match|eval-G0-human-match-c|eval-G3|eval-G4|eval-G4-c) run_eval_e5_human "$@" ;;
     # legacy aliases → numbered G series
     G-hard|G_hard)

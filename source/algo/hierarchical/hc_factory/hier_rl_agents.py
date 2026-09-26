@@ -429,10 +429,15 @@ class MaskedDQNAgent:
             arch = "human_pair_v1"
         else:
             arch = "legacy"
-        torch.save({"q_net": self.q_net.state_dict(), "name": self.name, "architecture": arch}, path)
+        payload = {"q_net": self.q_net.state_dict(), "name": self.name, "architecture": arch}
+        if self.name == "agent_D_human":
+            payload["human_policy"] = getattr(self, "fixed_human_policy", "rl")
+        torch.save(payload, path)
 
     def load(self, path: str) -> None:
         checkpoint = torch.load(path, map_location=self.device, weights_only=True)
+        if checkpoint.get("human_policy") == "greedy" and getattr(self, "fixed_human_policy", "rl") != "greedy":
+            raise RuntimeError("This checkpoint uses fixed greedy humans; set human_policy=greedy for evaluation")
         state = _migrate_q_net_state_dict(checkpoint["q_net"], self.q_net)
         if isinstance(self.q_net, (HumanMatchQNetwork, HumanPairQNetwork)):
             self.q_net.load_compatible_state_dict(state)
@@ -805,7 +810,8 @@ class RLHumanRobotAllocatorAgent:
     ACTION_KEY = "human_robot_allocation"
 
     def __init__(self, obs_encoder, device: torch.device, *, human_pair_head: bool = False,
-                 human_match_head: bool = False,
+                 human_match_head: bool = False, greedy_human_eval: bool = False,
+                 human_policy: str = "rl",
                  duration_aux=False, duration_aux_weight=0.05, duration_aux_scale=1000.0, **dqn_kwargs):
         if human_pair_head and human_match_head:
             raise ValueError("human_pair_head and human_match_head are mutually exclusive")
@@ -817,6 +823,12 @@ class RLHumanRobotAllocatorAgent:
         self.duration_aux = DurationAuxReplay(weight=duration_aux_weight, scale=duration_aux_scale) if duration_aux else None
         self.human_pair_head = bool(human_pair_head)
         self.human_match_head = bool(human_match_head)
+        self.greedy_human_eval = bool(greedy_human_eval)
+        if human_policy not in ("rl", "greedy"):
+            raise ValueError("human_policy must be rl or greedy")
+        if human_policy == "greedy" and (human_pair_head or human_match_head or duration_aux):
+            raise ValueError("Fixed greedy human policy cannot train human neural extensions")
+        self.human_policy = human_policy
         self.obs_encoder = obs_encoder
         self.device = device
         self.human_dqn: MaskedDQNAgent | None = None
@@ -846,6 +858,11 @@ class RLHumanRobotAllocatorAgent:
             **human_kwargs, **self.dqn_kwargs
         )
         self.robot_dqn = MaskedDQNAgent("agent_D_robot", obs_dim, robot_dim, self.device, **self.dqn_kwargs)
+        # Keep the checkpoint interface, but never fit this unused human head.
+        self.human_dqn.fixed_human_policy = self.human_policy
+        if self.human_policy == "greedy":
+            self.human_dqn.q_net.requires_grad_(False)
+            self.human_dqn.target_net.requires_grad_(False)
 
     def encode_human_obs(self, env_or_pre, task_action, *, pre=None, base_obs=None):
         """One path for acting, replay TD (including next state), and offline updates."""
@@ -913,11 +930,20 @@ class RLHumanRobotAllocatorAgent:
             }
 
         obs = self.obs_encoder.encode_D(env_state_action_dict, process_task_planning_action, pre=pre)
-        return {
-            "human": self.human_dqn.act_tensor(
+        if self.greedy_human_eval or self.human_policy == "greedy":
+            from .greedy_human import greedy_human_action
+
+            human = greedy_human_action(
+                self.obs_encoder._resolve_pre(env_state_action_dict, pre),
+                process_task_planning_action, human_mask,
+            )
+        else:
+            human = self.human_dqn.act_tensor(
                 self.encode_human_obs(env_state_action_dict, process_task_planning_action, pre=pre, base_obs=obs),
-                human_mask, epsilon
-            ),
+                human_mask, epsilon,
+            )
+        return {
+            "human": human,
             "robot": self.robot_dqn.act_tensor(obs, robot_mask, epsilon),
         }
 
@@ -954,7 +980,7 @@ class RLHumanRobotAllocatorAgent:
 
         human_loss = None
         robot_loss = None
-        if action["human"].sum() > 0:
+        if self.human_policy == "rl" and action["human"].sum() > 0:
             self.human_dqn.store_pre(
                 env_state_action_dict,
                 one_hot_to_index(action["human"]),

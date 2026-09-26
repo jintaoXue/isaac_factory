@@ -150,6 +150,8 @@ params:
     human_pair_head: false
 
     # Match scoring (v1): dual-tower + duration-aligned speed features. Exclusive vs pair.
+    human_policy: rl  # rl | greedy (fixed at both training and evaluation)
+    greedy_human_eval: false  # Test only: replace D-human with eta * task-skill rule.
     human_match_head: false
     task_match_head: false
 

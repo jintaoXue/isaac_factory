@@ -12,6 +12,7 @@
 |--|--|--|
 | **G0** | gap hard 新教师/基线（对位旧 T0；默认 100 ep；**无教师**） | `hier_G0` / `G0-N10-S42` |
 | **G0-human-match** | 同 G0 的 scratch 配方 + 人因奖励 + D match（**无教师**；默认 100 ep） | `hier_G0-human-match` / `G0-human-match-N10-S42` |
+| **G0-greedy** | 同 G0 scratch，但人 D 固定 η×skill 贪心（不训人头） | `hier_G0-greedy` / `G0-greedy-N10-S42` |
 | G1 / G2 / G3 | 可选：无教师 AR / G0 热启 no-oru / 仅人因 | `hier_G1` … |
 
 **G 系列节奏（相对旧 E/T）：** 疲劳 strong/gap **×1.5**（不再 ×2）；静态加工时 /1.5；AGV/人 waypoints 与龙门 `move_speed` ×1.5；horizon **T=35000**（`t_max_anchor=56000`）。E 系列仍 T=40000。gap 早期 makespan 曾到 ~28k（legacy 人因 ~15–18k），上述缩放把墙钟与截断风险压回可训区间。
@@ -27,6 +28,8 @@ bash run_2026_journal_experiments.sh G0-human-match cuda:0
 ```
 
 目录已存在时自动加后缀 **`-v1`、`-v2`…**（如 `hier_G0-v1` / `G0-v1-N10-S42`）；手动指定用 `HC_RUN_TAG` 或 `HC_HUMAN_RUN_TAG`。教师默认取最新的 `hier_G0` / `hier_G0-v*`（可用 `HC_G_TEACHER_DIR` 覆盖）。
+
+固定人分配对照见 [`experiment_greedy_human.md`](experiment_greedy_human.md)（`G0-greedy` / `eval-G0-greedy` / `diag-G0-greedy`）。
 
 ## 0. E 系列命名 + skill 表（legacy 动力学）
 

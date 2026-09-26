@@ -168,6 +168,7 @@ class HierarchicalTPA:
         "G1": (False, False, 1.0, 1.0, False, False, True),
         "G2": (False, False, 1.0, 1.0, True, False, True),
         "G3": (False, False, 1.0, 1.0, True, False, True),
+        "G0-greedy": (False, False, 1.0, 1.0, False, False, False),
         "G0-human-match": (False, False, 1.0, 1.0, False, False, False),
         "G0-human-match-c": (False, False, 1.0, 1.0, False, False, False),
         "G4": (False, False, 1.0, 1.0, True, False, True),
@@ -355,8 +356,16 @@ class HierarchicalTPA:
             task_pair_head=bool(config.get("task_pair_head", False)),
             task_match_head=bool(config.get("task_match_head", False)),
             **dqn_kwargs)
+        greedy_human_eval = bool(config.get("greedy_human_eval", False))
+        if greedy_human_eval and not bool(config.get("test", False)):
+            raise ValueError("greedy_human_eval is evaluation-only; use --test")
+        human_policy = str(config.get("human_policy", "rl"))
+        if human_policy == "greedy" and (config.get("oru") or config.get("teacher_explore")):
+            raise ValueError("Fixed greedy baseline requires oru=false and teacher_explore=false")
         self.agent_D = RLHumanRobotAllocatorAgent(
             self.obs_encoder, self.cuda_device,
+            greedy_human_eval=greedy_human_eval,
+            human_policy=human_policy,
             human_pair_head=bool(config.get("human_pair_head", False)),
             human_match_head=bool(config.get("human_match_head", False)),
             duration_aux=bool(config.get("human_duration_aux", False)),
@@ -676,6 +685,7 @@ class HierarchicalTPA:
             episodes_per_seed=episodes_per_seed,
             epsilon=eval_epsilon,
             checkpoint=getattr(self, "_checkpoint_path", None),
+            extra={"greedy_human_eval": self.agent_D.greedy_human_eval, "human_policy": self.agent_D.human_policy},
         )
         json_path, summary_path = save_eval_results(output_dir, payload)
         print_eval_summary(payload["summary"], "hier")
@@ -1562,6 +1572,7 @@ class HierarchicalTPA:
                     )
                 )
                 payload.update(loss_payload)
+                payload["MetricPolicy/human_greedy"] = int(self.agent_D.human_policy == "greedy")
                 if (
                     self.agent_C.task_pair_head
                     or self.agent_C.task_match_head
