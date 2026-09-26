@@ -30,6 +30,8 @@ def _skill_eff_clips() -> tuple[float, float]:
         return 0.30, 2.20
     if key in ("fast", "skill-fast-v1", "fast-v1", "optimistic", "short"):
         return 0.35, 2.80
+    if key in ("gap", "strong-fast", "contrast", "hybrid", "sharp"):
+        return 0.30, 2.80
     return 0.35, 1.80
 
 

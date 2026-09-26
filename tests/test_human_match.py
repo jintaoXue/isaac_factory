@@ -114,6 +114,12 @@ class MatchTests(unittest.TestCase):
         os.environ["HC_HUMAN_SKILL_PROFILE"] = "strong"
         f2 = feats(p, task(2), 6)
         self.assertGreater(f2[0, 4].item(), 1.80)
+        os.environ["HC_HUMAN_SKILL_PROFILE"] = "gap"
+        p["human"]["skill_task"][0] = torch.ones(12) * 1.75
+        p["human"]["skill_subtask"][0, -1] = 1.55
+        f3 = feats(p, task(2), 6)
+        self.assertGreater(f3[0, 4].item(), 2.20)
+        self.assertLessEqual(f3[0, 4].item(), 2.80 + 1e-5)
         os.environ["HC_HUMAN_SKILL_PROFILE"] = "legacy"
 
     def test_prior_prefers_faster_worker_after_legacy_load(self):

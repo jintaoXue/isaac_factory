@@ -216,8 +216,9 @@ CfgHumanRegistrationInfos = {
 #
 # Switch tables with HC_HUMAN_SKILL_PROFILE:
 #   legacy — original tables (desk / 5090 / server default)
-#   strong — widen gap mainly by punishing mismatch + fatigue ×3
+#   strong — widen gap mainly by punishing mismatch + fatigue ×2
 #   fast   — widen gap mainly by making specialists faster; mild mismatch; legacy fatigue
+#   gap    — combine: fast specialists + strong mismatch/fatigue (largest assignment contrast)
 # ---------------------------------------------------------------------------
 
 # η = η_min + (1-η_min) * (1-F)^α ; F > F_crit further scales η.
@@ -315,17 +316,19 @@ _HUMAN_FATIGUE_RATES_LEGACY = (
     (0.00038, 0.00020),  # 4 logistics
 )
 _HUMAN_FATIGUE_RATES_STRONG = (
-    (0.00135, 0.00054),
-    (0.00096, 0.00066),
-    (0.00165, 0.00036),
-    (0.00084, 0.00075),
-    (0.00114, 0.00060),
+    (0.00090, 0.00036),  # ×2 legacy
+    (0.00064, 0.00044),
+    (0.00110, 0.00024),
+    (0.00056, 0.00050),
+    (0.00076, 0.00040),
 )
 
 _HUMAN_SKILL_TASK_LEGACY = _build_skill_task(1.40, 0.58, 0.82, 1.35, 0.70)
 _HUMAN_SKILL_TASK_STRONG = _build_skill_task(1.55, 0.42, 0.70, 1.50, 0.45)
 # fast: specialist much faster; mismatch only mildly below 1.0 (short-makespan oriented).
 _HUMAN_SKILL_TASK_FAST = _build_skill_task(1.75, 0.62, 0.88, 1.65, 0.68)
+# gap: fast on-skill + strong off-skill (correct → shorter; mismatch → much longer).
+_HUMAN_SKILL_TASK_GAP = _build_skill_task(1.75, 0.42, 0.70, 1.65, 0.45)
 
 _HUMAN_SKILL_SUBTASK_LEGACY = (
     _skill_sub_row(control_machine=1.30, control_gantry=0.85),
@@ -375,6 +378,23 @@ _HUMAN_SKILL_SUBTASK_FAST = (
         go_to_processing_machine=1.25,
     ),
 )
+# gap: fast specialist machine skill + strong logistics-on-process punish.
+_HUMAN_SKILL_SUBTASK_GAP = (
+    _skill_sub_row(control_machine=1.50, control_gantry=0.80),
+    _skill_sub_row(control_machine=1.45, control_gantry=0.85),
+    _skill_sub_row(control_machine=1.55, control_gantry=0.75),
+    _skill_sub_row(control_machine=1.48, control_gantry=0.82),
+    _skill_sub_row(
+        control_machine=0.55,
+        control_gantry=1.50,
+        material_on_gantry=1.40,
+        material_on_robot=1.40,
+        material_on_goal_area=1.40,
+        go_to_material=1.25,
+        go_to_goal_area=1.25,
+        go_to_processing_machine=1.25,
+    ),
+)
 
 
 def _normalize_skill_profile(name: str | None) -> str:
@@ -383,10 +403,12 @@ def _normalize_skill_profile(name: str | None) -> str:
         return "strong"
     if key in ("fast", "skill-fast-v1", "fast-v1", "optimistic", "short"):
         return "fast"
+    if key in ("gap", "strong-fast", "contrast", "hybrid", "sharp"):
+        return "gap"
     if key in ("legacy", "default", "v0", "original"):
         return "legacy"
     raise ValueError(
-        f"Unknown HC_HUMAN_SKILL_PROFILE={name!r}; use legacy|strong|fast"
+        f"Unknown HC_HUMAN_SKILL_PROFILE={name!r}; use legacy|strong|fast|gap"
     )
 
 
@@ -409,6 +431,13 @@ def apply_human_skill_profile(profile: str | None = None) -> str:
         _SKILL_ON, _SKILL_OFF_PROCESS, _SKILL_OFF_LOGISTIC = 1.75, 0.62, 0.88
         # Allow specialist product ~1.75×1.55 ≈ 2.71
         SKILL_EFF_CLIP_LO, SKILL_EFF_CLIP_HI = 0.35, 2.80
+    elif chosen == "gap":
+        HUMAN_FATIGUE_RATES = _HUMAN_FATIGUE_RATES_STRONG
+        HUMAN_SKILL_TASK = _HUMAN_SKILL_TASK_GAP
+        HUMAN_SKILL_SUBTASK = _HUMAN_SKILL_SUBTASK_GAP
+        _SKILL_ON, _SKILL_OFF_PROCESS, _SKILL_OFF_LOGISTIC = 1.75, 0.42, 0.70
+        # Same hi as fast (1.75×1.55); lo as strong for deep mismatch.
+        SKILL_EFF_CLIP_LO, SKILL_EFF_CLIP_HI = 0.30, 2.80
     else:
         HUMAN_FATIGUE_RATES = _HUMAN_FATIGUE_RATES_LEGACY
         HUMAN_SKILL_TASK = _HUMAN_SKILL_TASK_LEGACY

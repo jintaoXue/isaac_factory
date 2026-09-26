@@ -7,15 +7,15 @@ set -euo pipefail
 # 快速运行（conda activate isaac-lab，进入本仓库；默认 cuda:0、60 局）
 # 家里台式（match + skill strong）：
 #   HC_HUMAN_SKILL_PROFILE=fast bash run_2026_journal_experiments.sh E5-human-match cuda:0
-# 人因表：HC_HUMAN_SKILL_PROFILE=legacy|strong|fast（默认 legacy）；见 docs/experiment_human.md §0
-# W&B / 目录名：E5-human-match-strong（可选 HC_HUMAN_RUN_TAG 仅用于防撞重跑）
+# 人因表：HC_HUMAN_SKILL_PROFILE=legacy|strong|fast|gap（默认 legacy）；见 docs/experiment_human.md §0
+# W&B / 目录名：E5-human-match-gap（可选 HC_HUMAN_RUN_TAG 仅用于防撞重跑）
 # 第二台：bash run_2026_journal_experiments.sh E5-human-pair-c cuda:0
 # 第三台：bash run_2026_journal_experiments.sh E5-human-pair-aux cuda:0
 # 原 pair：bash run_2026_journal_experiments.sh E5-human-pair cuda:0
 # 预览：  bash run_2026_journal_experiments.sh E5-human-match cuda:0 --dry-run
 # 评测 match：bash run_2026_journal_experiments.sh eval-E5-human-match cuda:0
 #
-# 默认：目录/W&B = {入口}-{legacy|strong|fast}；HC_HUMAN_RUN_TAG 仅作可选防撞后缀。
+# 默认：目录/W&B = {入口}-{legacy|strong|fast|gap}；HC_HUMAN_RUN_TAG 仅作可选防撞后缀。
 # 算法说明：docs/experiment_human.md
 
 # Hier4TPA journal entry — E0–E6 + ablations; see docs/experiment_protocol.md.
@@ -1458,8 +1458,9 @@ run_e5_human_train() {
     case "${skill_profile}" in
         strong|skill-strong-v1|strong-v1|v1-strong) skill_profile=strong ;;
         fast|skill-fast-v1|fast-v1|optimistic|short) skill_profile=fast ;;
+        gap|strong-fast|contrast|hybrid|sharp) skill_profile=gap ;;
         legacy|default|v0|original|"") skill_profile=legacy ;;
-        *) echo "Invalid HC_HUMAN_SKILL_PROFILE=${HC_HUMAN_SKILL_PROFILE} (use legacy|strong|fast)" >&2; return 1 ;;
+        *) echo "Invalid HC_HUMAN_SKILL_PROFILE=${HC_HUMAN_SKILL_PROFILE} (use legacy|strong|fast|gap)" >&2; return 1 ;;
     esac
     export HC_HUMAN_SKILL_PROFILE="${skill_profile}"
     if [[ -n "${tag}" && ! "${tag}" =~ ^[A-Za-z0-9_-]+$ ]]; then
@@ -1949,8 +1950,9 @@ run_eval_e5_human() {
     case "${skill_profile}" in
         strong|skill-strong-v1|strong-v1|v1-strong) skill_profile=strong ;;
         fast|skill-fast-v1|fast-v1|optimistic|short) skill_profile=fast ;;
+        gap|strong-fast|contrast|hybrid|sharp) skill_profile=gap ;;
         legacy|default|v0|original|"") skill_profile=legacy ;;
-        *) echo "Invalid HC_HUMAN_SKILL_PROFILE=${HC_HUMAN_SKILL_PROFILE} (use legacy|strong|fast)" >&2; return 1 ;;
+        *) echo "Invalid HC_HUMAN_SKILL_PROFILE=${HC_HUMAN_SKILL_PROFILE} (use legacy|strong|fast|gap)" >&2; return 1 ;;
     esac
     local tag="${HC_HUMAN_RUN_TAG:-}"
     if [[ -n "${tag}" && ! "${tag}" =~ ^[A-Za-z0-9_-]+$ ]]; then
