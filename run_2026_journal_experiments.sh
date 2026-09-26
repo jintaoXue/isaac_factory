@@ -16,9 +16,9 @@ set -euo pipefail
 #
 # === E 系列（legacy 动力学；旧协议）===
 #   HC_HUMAN_SKILL_PROFILE=fast bash run_2026_journal_experiments.sh E5-human-match cuda:0
-# W&B / 目录：E 人因 = {入口}-{profile}；G = Hier4TPA-G{n}-N10-S42 / hier_G{n}
+# W&B / 目录：E 人因 = {入口}-{profile}；G = G{n}-N10-S42 / hier_G{n}
 #
-# Hier4TPA journal entry — E0–E6 + G0–G4；见 docs/experiment_protocol.md / experiment_human.md.
+# Journal entry — E0–E6 + G0–G4；见 docs/experiment_protocol.md / experiment_human.md.
 # Usage:
 #   ./run_2026_journal_experiments.sh G0|G0-human-match [cuda:0]
 #   ./run_2026_journal_experiments.sh E0 [cuda:0] [--dry-run]
@@ -132,8 +132,8 @@ g_resolve_teacher_step() {
 }
 
 g_wandb_train_name() {
-    # args: short_id  → Hier4TPA-{id}-N10-S42
-    echo "Hier4TPA-${1}-N10-S42"
+    # args: short_id  → {id}-N10-S42
+    echo "${1}-N10-S42"
 }
 
 
@@ -380,7 +380,7 @@ run_e0_eval() {
         --test_epsilon 0 --train_n_products 10 --max_parallel_cd_dispatch 10
         --load_dir "${load_dir}" --load_step 1290000
         --wandb_activate --wandb_project HcFactory_TPA_Eval
-        --wandb_name Hier4TPA-E0-N10-S42-step1290000-eval
+        --wandb_name E0-N10-S42-step1290000-eval
         --ftg_thresh_phy 0.95
         --seed 42
         agent.params.config.t_max_anchor="$(g_horizon_anchor)"
@@ -451,7 +451,7 @@ run_e1_train() {
         --max_sim_episodes "${HC_MAX_TRAIN_EPISODES}"
         --load_dir "${load_dir}" --load_step 1290000
         --wandb_activate --wandb_project HcFactory_TPA
-        --wandb_name Hier4TPA-E1-N10-S42
+        --wandb_name E1-N10-S42
         --algo_variant E1
         --ftg_thresh_phy 0.95
         agent.params.config.t_max_anchor="$(g_horizon_anchor)"
@@ -480,7 +480,7 @@ run_e1_train() {
         'agent.params.config.load_name=""'
     )
     echo "[E1] warmstart step=1290000; N=10 K=10 T=40000; lr_q=2e-5 lr_enc=1e-5 eps=0.05; seed=42"
-    echo "[E1] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; project=HcFactory_TPA; wandb=Hier4TPA-E1-N10-S42"
+    echo "[E1] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; project=HcFactory_TPA; wandb=E1-N10-S42"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
@@ -529,7 +529,7 @@ run_e1_5_train() {
         --max_sim_episodes "${HC_MAX_TRAIN_EPISODES}"
         --load_dir "${load_dir}" --load_step 1290000
         --wandb_activate --wandb_project HcFactory_TPA
-        --wandb_name Hier4TPA-E1.5-N10-S42
+        --wandb_name E1.5-N10-S42
         --algo_variant E1.5
         --ftg_thresh_phy 0.95
         agent.params.config.t_max_anchor="$(g_horizon_anchor)"
@@ -561,7 +561,7 @@ run_e1_5_train() {
         'agent.params.config.load_name=""'
     )
     echo "[E1.5] E1 + credit A×2.0 B×1.5 (no b_score); seed=42"
-    echo "[E1.5] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=Hier4TPA-E1.5-N10-S42"
+    echo "[E1.5] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=E1.5-N10-S42"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
@@ -630,7 +630,7 @@ run_e2_train() {
         --load_dir "${load_dir}" --load_step 1290000
         --oru
         --wandb_activate --wandb_project HcFactory_TPA
-        --wandb_name Hier4TPA-E2-N10-S42
+        --wandb_name E2-N10-S42
         --algo_variant E2
         --ftg_thresh_phy 0.95
         agent.params.config.t_max_anchor="$(g_horizon_anchor)"
@@ -662,7 +662,7 @@ run_e2_train() {
         'agent.params.config.load_name=""'
     )
     echo "[E2] E1 warmstart + ORU; catalog=${catalog_root}; mix_start=0.25; seed=42"
-    echo "[E2] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; project=HcFactory_TPA; wandb=Hier4TPA-E2-N10-S42"
+    echo "[E2] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; project=HcFactory_TPA; wandb=E2-N10-S42"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
@@ -729,7 +729,7 @@ run_e2_5_train() {
         --load_dir "${load_dir}" --load_step 1290000
         --oru
         --wandb_activate --wandb_project HcFactory_TPA
-        --wandb_name Hier4TPA-E2.5-N10-S42
+        --wandb_name E2.5-N10-S42
         --algo_variant E2.5
         --ftg_thresh_phy 0.95
         agent.params.config.t_max_anchor="$(g_horizon_anchor)"
@@ -764,7 +764,7 @@ run_e2_5_train() {
         'agent.params.config.load_name=""'
     )
     echo "[E2.5] E2 + credit A×2.0 B×1.5 (no b_score); catalog=${catalog_root}; seed=42"
-    echo "[E2.5] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=Hier4TPA-E2.5-N10-S42"
+    echo "[E2.5] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=E2.5-N10-S42"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
@@ -832,7 +832,7 @@ run_e3_train() {
         --oru
         --teacher_explore
         --wandb_activate --wandb_project HcFactory_TPA
-        --wandb_name Hier4TPA-E3-N10-S42
+        --wandb_name E3-N10-S42
         --algo_variant E3
         --ftg_thresh_phy 0.95
         agent.params.config.t_max_anchor="$(g_horizon_anchor)"
@@ -868,7 +868,7 @@ run_e3_train() {
         'agent.params.config.load_name=""'
     )
     echo "[E3] E2 + teacher_explore; catalog=${catalog_root}; teacher_ratio 1→0 / 300k env steps; seed=42"
-    echo "[E3] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; project=HcFactory_TPA; wandb=Hier4TPA-E3-N10-S42"
+    echo "[E3] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; project=HcFactory_TPA; wandb=E3-N10-S42"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
@@ -936,7 +936,7 @@ run_e3_5_train() {
         --oru
         --teacher_explore
         --wandb_activate --wandb_project HcFactory_TPA
-        --wandb_name Hier4TPA-E3.5-N10-S42
+        --wandb_name E3.5-N10-S42
         --algo_variant E3.5
         --ftg_thresh_phy 0.95
         agent.params.config.t_max_anchor="$(g_horizon_anchor)"
@@ -975,7 +975,7 @@ run_e3_5_train() {
         'agent.params.config.load_name=""'
     )
     echo "[E3.5] E3 + credit A×2.0 B×1.5 (no b_score); catalog=${catalog_root}; seed=42"
-    echo "[E3.5] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=Hier4TPA-E3.5-N10-S42"
+    echo "[E3.5] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=E3.5-N10-S42"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
@@ -1045,7 +1045,7 @@ run_e4_train() {
         --hierarchical_credit
         --b_score_rl
         --wandb_activate --wandb_project HcFactory_TPA
-        --wandb_name Hier4TPA-E4-N10-S42
+        --wandb_name E4-N10-S42
         --algo_variant E4
         --ftg_thresh_phy 0.95
         agent.params.config.t_max_anchor="$(g_horizon_anchor)"
@@ -1084,7 +1084,7 @@ run_e4_train() {
         'agent.params.config.load_name=""'
     )
     echo "[E4] E3 + hier_credit + b_score_rl; A×2.0 B×1.5; catalog=${catalog_root}; seed=42"
-    echo "[E4] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; project=HcFactory_TPA; wandb=Hier4TPA-E4-N10-S42"
+    echo "[E4] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; project=HcFactory_TPA; wandb=E4-N10-S42"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
@@ -1132,7 +1132,7 @@ run_e3_no_oru_train() {
         --load_dir "${load_dir}" --load_step 1290000
         --teacher_explore
         --wandb_activate --wandb_project HcFactory_TPA
-        --wandb_name Hier4TPA-E3-no-oru-N10-S42
+        --wandb_name E3-no-oru-N10-S42
         --algo_variant E3-no-oru
         --ftg_thresh_phy 0.95
         agent.params.config.t_max_anchor="$(g_horizon_anchor)"
@@ -1165,7 +1165,7 @@ run_e3_no_oru_train() {
         'agent.params.config.load_name=""'
     )
     echo "[E3-no-oru] E1 + teacher_explore; oru=false (no catalog); seed=42"
-    echo "[E3-no-oru] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=Hier4TPA-E3-no-oru-N10-S42"
+    echo "[E3-no-oru] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=E3-no-oru-N10-S42"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
@@ -1215,7 +1215,7 @@ run_e4_no_oru_train() {
         --hierarchical_credit
         --b_score_rl
         --wandb_activate --wandb_project HcFactory_TPA
-        --wandb_name Hier4TPA-E4-no-oru-N10-S42
+        --wandb_name E4-no-oru-N10-S42
         --algo_variant E4-no-oru
         --ftg_thresh_phy 0.95
         agent.params.config.t_max_anchor="$(g_horizon_anchor)"
@@ -1251,7 +1251,7 @@ run_e4_no_oru_train() {
         'agent.params.config.load_name=""'
     )
     echo "[E4-no-oru] E4 without ORU; teacher_explore+hier_credit+b_score; seed=42"
-    echo "[E4-no-oru] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=Hier4TPA-E4-no-oru-N10-S42"
+    echo "[E4-no-oru] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=E4-no-oru-N10-S42"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
@@ -1320,7 +1320,7 @@ run_e5_train() {
         --teacher_explore
         --autoregressive
         --wandb_activate --wandb_project HcFactory_TPA
-        --wandb_name Hier4TPA-E5-N10-S42
+        --wandb_name E5-N10-S42
         --algo_variant E5
         --ftg_thresh_phy 0.95
         agent.params.config.t_max_anchor="$(g_horizon_anchor)"
@@ -1363,7 +1363,7 @@ run_e5_train() {
         'agent.params.config.load_name=""'
     )
     echo "[E5] E3 + autoregressive (layered ε + cand=4); no hier_credit/b_score; catalog=${catalog_root}; seed=42"
-    echo "[E5] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=Hier4TPA-E5-N10-S42"
+    echo "[E5] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=E5-N10-S42"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
@@ -1434,7 +1434,7 @@ run_e6_train() {
         --hierarchical_credit
         --b_score_rl
         --wandb_activate --wandb_project HcFactory_TPA
-        --wandb_name Hier4TPA-E6-N10-S42
+        --wandb_name E6-N10-S42
         --algo_variant E6
         --ftg_thresh_phy 0.95
         agent.params.config.t_max_anchor="$(g_horizon_anchor)"
@@ -1480,7 +1480,7 @@ run_e6_train() {
         'agent.params.config.load_name=""'
     )
     echo "[E6] E5+E4 full method (AR+hier_credit+b_score); catalog=${catalog_root}; seed=42"
-    echo "[E6] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=Hier4TPA-E6-N10-S42"
+    echo "[E6] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=E6-N10-S42"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
@@ -1529,7 +1529,7 @@ run_e5_no_oru_train() {
         --teacher_explore
         --autoregressive
         --wandb_activate --wandb_project HcFactory_TPA
-        --wandb_name Hier4TPA-E5-no-oru-N10-S42
+        --wandb_name E5-no-oru-N10-S42
         --algo_variant E5-no-oru
         --ftg_thresh_phy 0.95
         agent.params.config.t_max_anchor="$(g_horizon_anchor)"
@@ -1569,7 +1569,7 @@ run_e5_no_oru_train() {
         'agent.params.config.load_name=""'
     )
     echo "[E5-no-oru] E5 without ORU; teacher_explore+AR; seed=42"
-    echo "[E5-no-oru] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=Hier4TPA-E5-no-oru-N10-S42"
+    echo "[E5-no-oru] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=E5-no-oru-N10-S42"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
@@ -1961,7 +1961,7 @@ run_e6_no_oru_train() {
         --hierarchical_credit
         --b_score_rl
         --wandb_activate --wandb_project HcFactory_TPA
-        --wandb_name Hier4TPA-E6-no-oru-N10-S42
+        --wandb_name E6-no-oru-N10-S42
         --algo_variant E6-no-oru
         --ftg_thresh_phy 0.95
         agent.params.config.t_max_anchor="$(g_horizon_anchor)"
@@ -2004,7 +2004,7 @@ run_e6_no_oru_train() {
         'agent.params.config.load_name=""'
     )
     echo "[E6-no-oru] E6 without ORU; AR+hier_credit+b_score+teacher_explore; seed=42"
-    echo "[E6-no-oru] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=Hier4TPA-E6-no-oru-N10-S42"
+    echo "[E6-no-oru] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; wandb=E6-no-oru-N10-S42"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
         printf '\n'
@@ -2081,7 +2081,7 @@ run_eval_5090_panel() {
         export HC_LOAD_DIR="${load_dir}"
         export HC_LOAD_STEP="${step}"
         export HC_EVAL_VARIANT="${variant}"
-        export HC_WANDB_NAME="Hier4TPA-${variant}-N10-S42-step${step}-eval"
+        export HC_WANDB_NAME="${variant}-N10-S42-step${step}-eval"
         EVAL_STEPS=""
         run_hier_eval_for_n 10
     done
@@ -2123,7 +2123,7 @@ run_eval_job_panel() {
         export HC_LOAD_DIR="${load_dir}"
         export HC_LOAD_STEP="${step}"
         export HC_EVAL_VARIANT="${variant}"
-        export HC_WANDB_NAME="Hier4TPA-${variant}-N10-S42-step${step}-eval"
+        export HC_WANDB_NAME="${variant}-N10-S42-step${step}-eval"
         EVAL_STEPS=""
         run_hier_eval_for_n 10
     done
@@ -2325,7 +2325,7 @@ run_eval_e5_human() {
     export HC_TRAIN_N_PRODUCTS=10 HC_T_MAX_ANCHOR=64000 HC_MULTI_K=10
     export HC_HUMAN_EVAL=1 HC_EVAL_VARIANT="${variant}"
     if [[ "${g_series}" == true ]]; then
-        export HC_WANDB_NAME="Hier4TPA-${run_id}-N10-S42-step${step}-eval"
+        export HC_WANDB_NAME="${run_id}-N10-S42-step${step}-eval"
     else
         export HC_WANDB_NAME="${run_id}-step${step}-eval"
     fi
@@ -2526,7 +2526,7 @@ run_eval_g_plain() {
         return 1
     fi
     step="$(g_resolve_teacher_step "${load_dir}")" || return 1
-    wandb_name="Hier4TPA-${variant}-N10-S42-step${step}-eval"
+    wandb_name="${variant}-N10-S42-step${step}-eval"
     if [[ "${dry_run}" != --dry-run ]]; then
         g_source_wandb_env
         local head

@@ -18,7 +18,7 @@
 
 ## 1. Hier4TPA 主线（E 系列训练）
 
-项目：`HcFactory_TPA`，命名 `Hier4TPA-*`。
+项目：`HcFactory_TPA`，命名原为 `Hier4TPA-*`；**新跑统一无前缀**：`{实验名}-N10-S42`。下表仍记历史 run 名。
 
 ### 4090 工位（`/home/xue/work/isaac_factory`）
 

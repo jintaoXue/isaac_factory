@@ -87,7 +87,7 @@ ORU 与 guide 都用教师，但一个改 **batch**，一个改 **动作**；用
 
 E2 = E1 热启设定 + `--oru` 读教师库  
 `env_checkpoints/policy_explore/N10_T40000__E2_teacher_ep50/offline_replay`  
-（可用 `HC_EXPLORE_CATALOG_DIR` / `HC_TEACHER_EPISODES` 覆盖）。`oru_mix_start=0.25`（约 25% 教师 + 75% 在线），`oru_warmup_updates=0`（自动 warmup）。wandb：`Hier4TPA-E2-N10-S42`。
+（可用 `HC_EXPLORE_CATALOG_DIR` / `HC_TEACHER_EPISODES` 覆盖）。`oru_mix_start=0.25`（约 25% 教师 + 75% 在线），`oru_warmup_updates=0`（自动 warmup）。wandb：`E2-N10-S42`。
 
 ## E3 运行入口
 
@@ -96,7 +96,7 @@ E2 = E1 热启设定 + `--oru` 读教师库
 ./run_2026_journal_experiments.sh E3 cuda:0
 ```
 
-E3 = E2 全套 + `--teacher_explore`：ε 探索分支上，以衰减的教师比例选冻结 T0 贪心动作，其余为 mask 合法随机；利用分支仍用学生 ε=0。默认 `teacher_explore_ratio` 1→0 / 300k env steps。wandb：`Hier4TPA-E3-N10-S42`。预算同 E1/E2（`HC_MAX_TRAIN_EPISODES`，默认 60）。**协议纯净 E3 不含信用缩放**（关 H → A=B=1.0）。
+E3 = E2 全套 + `--teacher_explore`：ε 探索分支上，以衰减的教师比例选冻结 T0 贪心动作，其余为 mask 合法随机；利用分支仍用学生 ε=0。默认 `teacher_explore_ratio` 1→0 / 300k env steps。wandb：`E3-N10-S42`。预算同 E1/E2（`HC_MAX_TRAIN_EPISODES`，默认 60）。**协议纯净 E3 不含信用缩放**（关 H → A=B=1.0）。
 
 ## E3-no-oru（优先消融：去掉教师数据）
 
@@ -105,7 +105,7 @@ E3 = E2 全套 + `--teacher_explore`：ε 探索分支上，以衰减的教师�
 ```
 
 **E3-no-oru = E1 + 教师探索，不开 ORU**（不需要教师 offline 库）。用于回答：教师探索收益是否依赖 ORU。  
-wandb：`Hier4TPA-E3-no-oru-N10-S42`。对照：`E3`（有 ORU）/ `E1`（两者都无）。
+wandb：`E3-no-oru-N10-S42`。对照：`E3`（有 ORU）/ `E1`（两者都无）。
 
 同族接口（已接）：
 - **`E4-no-oru`** = E4 去掉 ORU（保留教师探索 + 层级学习）
@@ -130,9 +130,9 @@ wandb：`Hier4TPA-E3-no-oru-N10-S42`。对照：`E3`（有 ORU）/ `E1`（两者
 
 历史污染跑已改名归档：  
 
-- `m3nz6opg` → `Hier4TPA-E1.5-N10-S42`  
-- `2mq6zow7`（30ep）/ `zvjalw62`（60ep 重跑）→ `Hier4TPA-E2.5-N10-S42`  
-- `31rt1h7i` → `Hier4TPA-E3.5-N10-S42`
+- `m3nz6opg` → `E1.5-N10-S42`  
+- `2mq6zow7`（30ep）/ `zvjalw62`（60ep 重跑）→ `E2.5-N10-S42`  
+- `31rt1h7i` → `E3.5-N10-S42`
 
 （本地有落盘的 E1.5/E3.5 已同步 `params`/`metrics`/`RELABEL.md`；E2 主要在远端 W&B。）
 
@@ -142,7 +142,7 @@ wandb：`Hier4TPA-E3-no-oru-N10-S42`。对照：`E3`（有 ORU）/ `E1`（两者
 ./run_2026_journal_experiments.sh E4 cuda:0
 ```
 
-E4 = E3 全套 + `--hierarchical_credit` + `--b_score_rl`：A/B 决策奖励缩放（默认 A×2.0、B×1.5），B 排序探索率减半。关闭 H 时缩放强制为 1.0（不再被 YAML 误开）。wandb：`Hier4TPA-E4-N10-S42`。预算同 E1–E3。
+E4 = E3 全套 + `--hierarchical_credit` + `--b_score_rl`：A/B 决策奖励缩放（默认 A×2.0、B×1.5），B 排序探索率减半。关闭 H 时缩放强制为 1.0（不再被 YAML 误开）。wandb：`E4-N10-S42`。预算同 E1–E3。
 
 ## 开关契约（防静默泄漏）
 
@@ -185,8 +185,8 @@ E4 = E3 全套 + `--hierarchical_credit` + `--b_score_rl`：A/B 决策奖励缩�
 
 | 编号     | 设置                                                    | wandb 名                 |
 | ------ | ----------------------------------------------------- | ----------------------- |
-| **E5** | **E3 + 仅自回归**（分层 ε、步内候选采样）；**不含** E4 的层级信用 / B-score | `Hier4TPA-E5-N10-S42` |
-| **E6** | **E5 + E4** = E3 + 自回归 + 层级学习（完整方法）                   | `Hier4TPA-E6-N10-S42` |
+| **E5** | **E3 + 仅自回归**（分层 ε、步内候选采样）；**不含** E4 的层级信用 / B-score | `E5-N10-S42` |
+| **E6** | **E5 + E4** = E3 + 自回归 + 层级学习（完整方法）                   | `E6-N10-S42` |
 
 **AR 实现约定（已接）：**
 
@@ -254,7 +254,7 @@ E0 只评测；E1–E6 分别从同一个 T0 checkpoint 初始化，教师固定
 
 完整方法有效后，优先补 `no-oru` / `no-guide` / `no-hier`；三个 `plus` 最多先选一个。不做全组合搜索，不做去热启动的从零训练消融。
 
-**W&B / 输出目录统一格式：** `Hier4TPA-{实验名}-N{产品数}-S{训练种子}`，例如 `Hier4TPA-E3-N10-S42`、`Hier4TPA-E3-no-oru-N10-S42`。评测加 `-eval`；重复运行可加 `-r2`。checkpoint 来源、教师版本和详细超参数放配置中。旧实验保留原名，新旧对应以表为准。
+**W&B 统一格式：** `{实验名}-N{产品数}-S{训练种子}`，例如 `E3-N10-S42`、`G0-v1-N10-S42`（**不再**加 `Hier4TPA-` 前缀）。本地目录仍为 `hier_{实验名}`。评测加 `-eval`；重复运行可加 `-r2`。checkpoint 来源、教师版本和详细超参数放配置中。旧实验保留原名，新旧对应以表为准。
 
 ## 3. 最小实施约定
 

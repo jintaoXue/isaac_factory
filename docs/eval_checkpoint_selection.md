@@ -197,7 +197,7 @@ ls -lh logs/rl_games/HcFactory/hier_2026-09-17_06-43-17/nn/*_step_750000.pth
 # 预览
 ./run_2026_journal_experiments.sh eval-E5 cuda:0 --dry-run
 
-# 正式（默认 chunk=5，但仍是**一条** W&B run：Hier4TPA-E5-…-eval）
+# 正式（默认 chunk=5，但仍是**一条** W&B run：E5-…-eval）
 ./run_2026_journal_experiments.sh eval-E5 cuda:0
 ```
 
@@ -207,7 +207,7 @@ ls -lh logs/rl_games/HcFactory/hier_2026-09-17_06-43-17/nn/*_step_750000.pth
 BASE=logs/rl_games/HcFactory/hier_2026-09-17_06-43-17
 export HC_TEST_SEEDS=43,44,45,46,47,48,49,50,51,52 HC_TEST_TIMES=1 HC_EVAL_SEED_CHUNK=2
 HC_LOAD_DIR=$BASE HC_LOAD_STEP=750000 HC_EVAL_VARIANT=E5 \
-HC_WANDB_NAME=Hier4TPA-E5-N10-S42-step750000-eval \
+HC_WANDB_NAME=E5-N10-S42-step750000-eval \
   ./run_2026_journal_experiments.sh hier-eval-n10 cuda:0
 ```
 
@@ -230,5 +230,5 @@ HC_WANDB_NAME=Hier4TPA-E5-N10-S42-step750000-eval \
 ## 注意
 
 - **训练最优 ≠ 评测最优**：E2/E6 最优点偏早，latest 会差一截；正式表必须报所选 step。  
-- 评测表汇总时看单条 `Hier4TPA-*-eval` run 的 10 局（chunk 续写到同一记录）。  
+- 评测表汇总时看单条 `*-eval` run 的 10 局（chunk 续写到同一记录）。  
 - 重算可用 W&B history：`Train/step` + `MetricFullorderCore/05_makespan`，再按 §规则对齐 5000。
