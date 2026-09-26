@@ -109,6 +109,24 @@ g_wandb_train_name() {
 }
 
 
+
+g_rainbow_per() {
+    # G series: enable PER (Rainbow). E/T stay off for protocol comparability.
+    local mode="${1:-${MODE:-}}"
+    case "${mode}" in
+        G*|eval-G*|G-hard*|G5-*) echo true ;;
+        *) echo false ;;
+    esac
+}
+
+g_rainbow_dueling() {
+    local mode="${1:-${MODE:-}}"
+    case "${mode}" in
+        G*|eval-G*|G-hard*|G5-*) echo true ;;
+        *) echo false ;;
+    esac
+}
+
 g_horizon_anchor() {
     # G series: actual T=35000 under N10 (t_max_anchor 56000 × 10/16).
     # E/T protocol stays T=40000 (anchor 64000). Override: HC_G_T_MAX_ANCHOR / HC_G_MAX_EPISODIC_STEPS.
@@ -320,8 +338,8 @@ run_e0_eval() {
         agent.params.config.explore_catalog=false
         agent.params.config.catalog_collect=false
         agent.params.config.oru=false
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.hierarchical_credit=false
         agent.params.config.b_score_rl=false
@@ -391,8 +409,8 @@ run_e1_train() {
         agent.params.config.explore_catalog=false
         agent.params.config.catalog_collect=false
         agent.params.config.oru=false
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.hierarchical_credit=false
         agent.params.config.b_score_rl=false
@@ -469,8 +487,8 @@ run_e1_5_train() {
         agent.params.config.explore_catalog=false
         agent.params.config.catalog_collect=false
         agent.params.config.oru=false
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.hierarchical_credit=true
         agent.params.config.b_score_rl=false
@@ -573,8 +591,8 @@ run_e2_train() {
         "agent.params.config.explore_catalog_dir=${catalog_root}"
         agent.params.config.oru_mix_start=0.25
         agent.params.config.oru_warmup_updates=0
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.hierarchical_credit=false
         agent.params.config.b_score_rl=false
@@ -677,8 +695,8 @@ run_e2_5_train() {
         "agent.params.config.explore_catalog_dir=${catalog_root}"
         agent.params.config.oru_mix_start=0.25
         agent.params.config.oru_warmup_updates=0
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.env_rule_based_exploration=false
         agent.params.config.learning_rate=2.0e-5
@@ -779,8 +797,8 @@ run_e3_train() {
         agent.params.config.teacher_explore_ratio_start=1.0
         agent.params.config.teacher_explore_ratio_end=0.0
         agent.params.config.teacher_explore_decay_env_steps=300000
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.hierarchical_credit=false
         agent.params.config.b_score_rl=false
@@ -888,8 +906,8 @@ run_e3_5_train() {
         agent.params.config.teacher_explore_ratio_start=1.0
         agent.params.config.teacher_explore_ratio_end=0.0
         agent.params.config.teacher_explore_decay_env_steps=300000
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.env_rule_based_exploration=false
         agent.params.config.learning_rate=2.0e-5
@@ -997,8 +1015,8 @@ run_e4_train() {
         agent.params.config.teacher_explore_ratio_start=1.0
         agent.params.config.teacher_explore_ratio_end=0.0
         agent.params.config.teacher_explore_decay_env_steps=300000
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.env_rule_based_exploration=false
         agent.params.config.learning_rate=2.0e-5
@@ -1076,8 +1094,8 @@ run_e3_no_oru_train() {
         agent.params.config.teacher_explore_ratio_start=1.0
         agent.params.config.teacher_explore_ratio_end=0.0
         agent.params.config.teacher_explore_decay_env_steps=300000
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.hierarchical_credit=false
         agent.params.config.b_score_rl=false
@@ -1164,8 +1182,8 @@ run_e4_no_oru_train() {
         agent.params.config.teacher_explore_ratio_start=1.0
         agent.params.config.teacher_explore_ratio_end=0.0
         agent.params.config.teacher_explore_decay_env_steps=300000
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.env_rule_based_exploration=false
         agent.params.config.learning_rate=2.0e-5
@@ -1274,8 +1292,8 @@ run_e5_train() {
         agent.params.config.ar_eps_scale_B=0.5
         agent.params.config.ar_eps_scale_C=1.0
         agent.params.config.ar_eps_scale_D=1.0
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.hierarchical_credit=false
         agent.params.config.b_score_rl=false
@@ -1393,8 +1411,8 @@ run_e6_train() {
         agent.params.config.ar_eps_scale_B=0.5
         agent.params.config.ar_eps_scale_C=1.0
         agent.params.config.ar_eps_scale_D=1.0
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.env_rule_based_exploration=false
         agent.params.config.learning_rate=2.0e-5
@@ -1480,8 +1498,8 @@ run_e5_no_oru_train() {
         agent.params.config.ar_eps_scale_B=0.5
         agent.params.config.ar_eps_scale_C=1.0
         agent.params.config.ar_eps_scale_D=1.0
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.hierarchical_credit=false
         agent.params.config.b_score_rl=false
@@ -1748,8 +1766,8 @@ run_e5_human_train() {
             agent.params.config.oru=false
             agent.params.config.teacher_explore=false
             agent.params.config.autoregressive=false
-            agent.params.config.prioritized_replay=false
-            agent.params.config.dueling_dqn=false
+            agent.params.config.prioritized_replay="$(g_rainbow_per)"
+            agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
             agent.params.config.noisy_net=false
             agent.params.config.hierarchical_credit=false
             agent.params.config.b_score_rl=false
@@ -1801,8 +1819,8 @@ run_e5_human_train() {
             agent.params.config.ar_eps_scale_B=0.5
             agent.params.config.ar_eps_scale_C=1.0
             agent.params.config.ar_eps_scale_D=1.0
-            agent.params.config.prioritized_replay=false
-            agent.params.config.dueling_dqn=false
+            agent.params.config.prioritized_replay="$(g_rainbow_per)"
+            agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
             agent.params.config.noisy_net=false
             agent.params.config.hierarchical_credit=false
             agent.params.config.b_score_rl=false
@@ -1902,8 +1920,8 @@ run_e6_no_oru_train() {
         agent.params.config.ar_eps_scale_B=0.5
         agent.params.config.ar_eps_scale_C=1.0
         agent.params.config.ar_eps_scale_D=1.0
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.env_rule_based_exploration=false
         agent.params.config.learning_rate=2.0e-5
@@ -2306,8 +2324,8 @@ run_g0_train() {
         agent.params.config.oru=false
         agent.params.config.teacher_explore=false
         agent.params.config.autoregressive=false
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.hierarchical_credit=false
         agent.params.config.b_score_rl=false
@@ -2378,8 +2396,8 @@ run_g1_train() {
         agent.params.config.ar_eps_scale_B=0.5
         agent.params.config.ar_eps_scale_C=1.0
         agent.params.config.ar_eps_scale_D=1.0
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.hierarchical_credit=false
         agent.params.config.b_score_rl=false
@@ -2461,8 +2479,8 @@ run_eval_g_plain() {
         agent.params.config.explore_catalog=false
         agent.params.config.catalog_collect=false
         agent.params.config.oru=false
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.hierarchical_credit=false
         agent.params.config.b_score_rl=false
@@ -2553,8 +2571,8 @@ run_g2_train() {
         agent.params.config.ar_eps_scale_B=0.5
         agent.params.config.ar_eps_scale_C=1.0
         agent.params.config.ar_eps_scale_D=1.0
-        agent.params.config.prioritized_replay=false
-        agent.params.config.dueling_dqn=false
+        agent.params.config.prioritized_replay="$(g_rainbow_per)"
+        agent.params.config.dueling_dqn="$(g_rainbow_dueling)"
         agent.params.config.noisy_net=false
         agent.params.config.hierarchical_credit=false
         agent.params.config.b_score_rl=false

@@ -16,6 +16,8 @@
 
 **G 系列节奏（相对旧 E/T）：** 疲劳 strong/gap **×1.5**（不再 ×2）；静态加工时 /1.5；AGV/人 waypoints 与龙门 `move_speed` ×1.5；horizon **T=35000**（`t_max_anchor=56000`）。E 系列仍 T=40000。gap 早期 makespan 曾到 ~28k（legacy 人因 ~15–18k），上述缩放把墙钟与截断风险压回可训区间。
 
+**G 系列 Rainbow：** 默认开 **Double + PER + Dueling**（`noisy` 仍关）；E/T 入口保持关 PER/Dueling，与旧协议可比。Dueling 改 Q 结构，中途打开需**清目录重训**，不能热加载旧非 dueling ckpt。
+
 评测：`eval-G0`、`eval-G0-human-match`（seeds 43–52）。
 
 ```bash
