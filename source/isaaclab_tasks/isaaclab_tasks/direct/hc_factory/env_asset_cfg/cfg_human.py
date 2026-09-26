@@ -187,7 +187,7 @@ _HETERO_HUMAN_CFG = {
         "orientation": torch.tensor([0.7071, 0, 0, 0.7071]),
     },
     # Route waypoints advanced per env step (4x baseline map sampling).
-    "waypoints_per_step": 8,
+    "waypoints_per_step": 12,  # was 8; ×1.5 factory tempo
     "animation_cfg": {
         "joints": _HUMAN_JOINTS,
         "animations": _HUMAN_ANIMATIONS,
@@ -216,9 +216,9 @@ CfgHumanRegistrationInfos = {
 #
 # Switch tables with HC_HUMAN_SKILL_PROFILE:
 #   legacy — original tables (desk / 5090 / server default)
-#   strong — widen gap mainly by punishing mismatch + fatigue ×2
+#   strong — widen gap mainly by punishing mismatch + fatigue ×1.5
 #   fast   — widen gap mainly by making specialists faster; mild mismatch; legacy fatigue
-#   gap    — combine: fast specialists + strong mismatch/fatigue (largest assignment contrast)
+#   gap    — combine: fast specialists + strong mismatch/fatigue ×1.5
 # ---------------------------------------------------------------------------
 
 # η = η_min + (1-η_min) * (1-F)^α ; F > F_crit further scales η.
@@ -316,11 +316,11 @@ _HUMAN_FATIGUE_RATES_LEGACY = (
     (0.00038, 0.00020),  # 4 logistics
 )
 _HUMAN_FATIGUE_RATES_STRONG = (
-    (0.00090, 0.00036),  # ×2 legacy
-    (0.00064, 0.00044),
-    (0.00110, 0.00024),
-    (0.00056, 0.00050),
-    (0.00076, 0.00040),
+    (0.000675, 0.000270),  # ×1.5 legacy
+    (0.000480, 0.000330),
+    (0.000825, 0.000180),
+    (0.000420, 0.000375),
+    (0.000570, 0.000300),
 )
 
 _HUMAN_SKILL_TASK_LEGACY = _build_skill_task(1.40, 0.58, 0.82, 1.35, 0.70)

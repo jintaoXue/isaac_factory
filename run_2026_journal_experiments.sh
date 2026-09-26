@@ -108,6 +108,33 @@ g_wandb_train_name() {
     echo "Hier4TPA-${1}-N10-S42"
 }
 
+
+g_horizon_anchor() {
+    # G series: actual T=35000 under N10 (t_max_anchor 56000 × 10/16).
+    # E/T protocol stays T=40000 (anchor 64000). Override: HC_G_T_MAX_ANCHOR / HC_G_MAX_EPISODIC_STEPS.
+    local mode="${1:-${MODE:-}}"
+    case "${mode}" in
+        G*|eval-G*|G-hard*|G5-*)
+            echo "${HC_G_T_MAX_ANCHOR:-56000}"
+            ;;
+        *)
+            echo 64000
+            ;;
+    esac
+}
+
+g_horizon_steps() {
+    local mode="${1:-${MODE:-}}"
+    case "${mode}" in
+        G*|eval-G*|G-hard*|G5-*)
+            echo "${HC_G_MAX_EPISODIC_STEPS:-35000}"
+            ;;
+        *)
+            echo 40000
+            ;;
+    esac
+}
+
 g_source_wandb_env() {
     local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
     if [[ -f "${local_env}" ]]; then
@@ -284,8 +311,8 @@ run_e0_eval() {
         --wandb_name Hier4TPA-E0-N10-S42-step1290000-eval
         --ftg_thresh_phy 0.95
         --seed 42
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false
@@ -355,8 +382,8 @@ run_e1_train() {
         --wandb_name Hier4TPA-E1-N10-S42
         --algo_variant E1
         --ftg_thresh_phy 0.95
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false
@@ -433,8 +460,8 @@ run_e1_5_train() {
         --wandb_name Hier4TPA-E1.5-N10-S42
         --algo_variant E1.5
         --ftg_thresh_phy 0.95
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false
@@ -534,8 +561,8 @@ run_e2_train() {
         --wandb_name Hier4TPA-E2-N10-S42
         --algo_variant E2
         --ftg_thresh_phy 0.95
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false
@@ -633,8 +660,8 @@ run_e2_5_train() {
         --wandb_name Hier4TPA-E2.5-N10-S42
         --algo_variant E2.5
         --ftg_thresh_phy 0.95
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false
@@ -736,8 +763,8 @@ run_e3_train() {
         --wandb_name Hier4TPA-E3-N10-S42
         --algo_variant E3
         --ftg_thresh_phy 0.95
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false
@@ -840,8 +867,8 @@ run_e3_5_train() {
         --wandb_name Hier4TPA-E3.5-N10-S42
         --algo_variant E3.5
         --ftg_thresh_phy 0.95
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false
@@ -949,8 +976,8 @@ run_e4_train() {
         --wandb_name Hier4TPA-E4-N10-S42
         --algo_variant E4
         --ftg_thresh_phy 0.95
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false
@@ -1036,8 +1063,8 @@ run_e3_no_oru_train() {
         --wandb_name Hier4TPA-E3-no-oru-N10-S42
         --algo_variant E3-no-oru
         --ftg_thresh_phy 0.95
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false
@@ -1119,8 +1146,8 @@ run_e4_no_oru_train() {
         --wandb_name Hier4TPA-E4-no-oru-N10-S42
         --algo_variant E4-no-oru
         --ftg_thresh_phy 0.95
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false
@@ -1224,8 +1251,8 @@ run_e5_train() {
         --wandb_name Hier4TPA-E5-N10-S42
         --algo_variant E5
         --ftg_thresh_phy 0.95
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false
@@ -1338,8 +1365,8 @@ run_e6_train() {
         --wandb_name Hier4TPA-E6-N10-S42
         --algo_variant E6
         --ftg_thresh_phy 0.95
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false
@@ -1433,8 +1460,8 @@ run_e5_no_oru_train() {
         --wandb_name Hier4TPA-E5-no-oru-N10-S42
         --algo_variant E5-no-oru
         --ftg_thresh_phy 0.95
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false
@@ -1710,8 +1737,8 @@ run_e5_human_train() {
             "agent.params.config.human_recovery_coef=${HC_HUMAN_RECOVERY_COEF:-0.0}"
             "agent.params.config.human_fatigue_threshold=${HC_HUMAN_FATIGUE_THRESHOLD:-0.8}"
             "agent.params.config.human_shaping_cap=${HC_HUMAN_SHAPING_CAP:-0.04}"
-            agent.params.config.t_max_anchor=64000
-            agent.params.config.max_episodic_steps=40000
+            agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+            agent.params.config.max_episodic_steps="$(g_horizon_steps)"
             agent.params.config.parallel_producing_limit=10
             agent.params.config.c_forbid_none_mode=always
             agent.params.config.curriculum=false
@@ -1754,8 +1781,8 @@ run_e5_human_train() {
             "agent.params.config.human_recovery_coef=${HC_HUMAN_RECOVERY_COEF:-0.0}"
             "agent.params.config.human_fatigue_threshold=${HC_HUMAN_FATIGUE_THRESHOLD:-0.8}"
             "agent.params.config.human_shaping_cap=${HC_HUMAN_SHAPING_CAP:-0.04}"
-            agent.params.config.t_max_anchor=64000
-            agent.params.config.max_episodic_steps=40000
+            agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+            agent.params.config.max_episodic_steps="$(g_horizon_steps)"
             agent.params.config.parallel_producing_limit=10
             agent.params.config.c_forbid_none_mode=always
             agent.params.config.curriculum=false
@@ -1850,8 +1877,8 @@ run_e6_no_oru_train() {
         --wandb_name Hier4TPA-E6-no-oru-N10-S42
         --algo_variant E6-no-oru
         --ftg_thresh_phy 0.95
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false
@@ -2268,8 +2295,8 @@ run_g0_train() {
         --algo_variant T0
         --ftg_thresh_phy 0.95
         "+agent.params.config.full_experiment_name=${run_id}"
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false
@@ -2334,8 +2361,8 @@ run_g1_train() {
         --algo_variant G1
         --ftg_thresh_phy 0.95
         "+agent.params.config.full_experiment_name=${run_id}"
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false
@@ -2425,8 +2452,8 @@ run_eval_g_plain() {
         --wandb_name "${wandb_name}"
         --ftg_thresh_phy 0.95
         --seed 42
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false
@@ -2506,8 +2533,8 @@ run_g2_train() {
         --algo_variant G2
         --ftg_thresh_phy 0.95
         "+agent.params.config.full_experiment_name=${run_id}"
-        agent.params.config.t_max_anchor=64000
-        agent.params.config.max_episodic_steps=40000
+        agent.params.config.t_max_anchor="$(g_horizon_anchor)"
+        agent.params.config.max_episodic_steps="$(g_horizon_steps)"
         agent.params.config.parallel_producing_limit=10
         agent.params.config.c_forbid_none_mode=always
         agent.params.config.curriculum=false

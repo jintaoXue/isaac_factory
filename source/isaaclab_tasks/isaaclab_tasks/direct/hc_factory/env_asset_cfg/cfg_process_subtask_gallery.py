@@ -1,15 +1,16 @@
 import copy
 from .cfg_machine import CfgMachine
 
+# Static timed subtasks shortened by factory tempo 1.5× (was 25/100).
 CfgSubtaskPredefinedTimeGallery = {
    "go_to_material": None,
-   "material_on_gantry": 25,
-   "control_gantry": 25,
-   "material_on_robot": 25,
+   "material_on_gantry": 17,
+   "control_gantry": 17,
+   "material_on_robot": 17,
    "go_to_goal_area": None,
-   "material_on_goal_area": 25,
+   "material_on_goal_area": 17,
    "go_to_processing_machine": None,
-   "control_machine": 100,
+   "control_machine": 67,
    "wait": None,
    "done": None,
 }

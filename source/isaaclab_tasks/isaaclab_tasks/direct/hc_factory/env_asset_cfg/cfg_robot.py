@@ -62,8 +62,8 @@ CfgRobot = {
             _AGV_FOOTPRINT_LOCAL_BOUNDS
         ),
         # Route waypoints advanced per env step; loaded moves at half unloaded speed.
-        "waypoints_per_step_unloaded": 8,
-        "waypoints_per_step_loaded": 4,
+        "waypoints_per_step_unloaded": 12,  # was 8; ×1.5
+        "waypoints_per_step_loaded": 6,  # was 4; ×1.5
         "loaded_subtasks": ("carry_to_goal_area",),
     }
 }
