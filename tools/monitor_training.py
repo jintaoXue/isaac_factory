@@ -58,7 +58,8 @@ KERNEL_PATTERNS = re.compile(
     r"Xid|NVRM|soft lockup|hard LOCKUP|Out of memory|Killed process|"
     r"GPU has fallen|Resetting GPU|watchdog: BUG|hung_task|blocked for more than|"
     r"modeset|Failed to grab modeset|gnome-shell|Xorg.*segfault|"
-    r"NVRM: Xid|drm:.*failure|amdgpu.*ring",
+    r"NVRM: Xid|drm:.*failure|amdgpu.*ring|"
+    r"Oops:|BUG: unable to handle|irq/\d+-nvidia|nvidia_isr|rm_isr",
     re.IGNORECASE,
 )
 
@@ -732,7 +733,8 @@ def evaluate_flags(
                         sample.flags.append(f"TRAIN_STALL_pid{proc.pid}")
             prev_cpu[proc.pid] = proc.cpu_total_jiffies
 
-    # Display compositor stall — strongest historical freeze signal on this desk.
+    # Display compositor stall. Idle S/I sleep with flat jiffies is normal — only
+    # flag uninterruptible D, or runnable R that makes no CPU progress (true hang).
     for proc in sample.display_procs:
         key = proc.pid
         if proc.state == "D":
@@ -740,10 +742,13 @@ def evaluate_flags(
         prev = prev_cpu.get(key)
         if prev is None or proc.cpu_total_jiffies > prev:
             display_stall_counts[key] = 0
-        else:
+        elif proc.state == "R":
             display_stall_counts[key] = display_stall_counts.get(key, 0) + 1
             if display_stall_counts[key] >= display_stall_intervals:
                 sample.flags.append(f"DISPLAY_STALL_pid{proc.pid}")
+        else:
+            # S/I/T… sleeping compositor: not a freeze signal by itself.
+            display_stall_counts[key] = 0
         prev_cpu[key] = proc.cpu_total_jiffies
 
     # Train log growth (metrics.jsonl / stdout log).
@@ -762,6 +767,9 @@ def evaluate_flags(
 
 def classify_hypothesis(sample: Sample) -> str:
     flags = set(sample.flags)
+    joined = " ".join(sample.kernel_hits).lower()
+    if "irq/" in joined and "nvidia" in joined and ("oops" in joined or "bug:" in joined):
+        return "nvidia_irq_oops"
     if "NVIDIA_XID" in flags or "MODESET" in flags or "DISPLAY_KERNEL" in flags:
         return "display_nvidia_path"
     if any(f.startswith("DISPLAY_STALL") for f in flags) or any(
@@ -888,8 +896,11 @@ def main() -> int:
         flush=True,
     )
     print(
-        "[monitor_training] freeze tips: look for hypothesis=display_* / NVIDIA_XID / "
-        "DISPLAY_STALL; TRAIN_CPU_IDLE alone is often normal on logic backend.",
+        "[monitor_training] freeze tips: look for hypothesis=nvidia_irq_oops / "
+        "display_nvidia_path / DISPLAY_D_STATE / NVIDIA_XID. "
+        "Idle gnome/Xorg (S state) is no longer flagged as DISPLAY_STALL. "
+        "TRAIN_CPU_IDLE alone is often normal on logic backend. "
+        "Closing GNOME does not remove CUDA/NVIDIA IRQ risk on the same GPU.",
         flush=True,
     )
 
@@ -910,9 +921,25 @@ def main() -> int:
             prev_sys_cpu = cur_sys
 
             log_bytes, log_mtime = train_log_stat(train_log)
-            # Re-discover if auto and missing.
-            if train_log is None and args.auto_train_log and n % 10 == 0:
-                train_log = discover_train_log(repo)
+            # Re-discover if auto and missing, or stuck on a stale metrics file
+            # while a newer hier_* run is actively writing (common after G0-vN retag).
+            if args.auto_train_log and n % 10 == 0:
+                newest = discover_train_log(repo)
+                if train_log is None:
+                    train_log = newest
+                elif newest is not None and newest != train_log:
+                    try:
+                        if newest.stat().st_mtime > (log_mtime or 0) + 30:
+                            print(
+                                f"[monitor_training] switch train_log {train_log} -> {newest}",
+                                flush=True,
+                            )
+                            train_log = newest
+                            log_bytes, log_mtime = train_log_stat(train_log)
+                            log_stall_count[0] = 0
+                            prev_log_bytes[0] = log_bytes
+                    except OSError:
+                        pass
 
             load1, load5, load15 = _read_loadavg()
             sample = Sample(
