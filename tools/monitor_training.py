@@ -12,6 +12,10 @@ Usage:
   python tools/monitor_training.py --pid 12345 --interval 10 --watch-display \\
       --train-log logs/rl_games/HcFactory/hier_G0/metrics.jsonl
   python tools/monitor_training.py --freeze-hunt   # shorter interval + display watch
+
+Driver-centric fields (nvidia-smi): driver/CUDA version, pstate, display_active,
+clocks + throttle reasons, PCIe link, persistence, and pmon G/C clients. JSONL
+keeps the full snapshot; the text line summarizes drv/cuda/thr/cli.
 """
 
 from __future__ import annotations
@@ -104,14 +108,64 @@ class ProcSnapshot:
 class GpuSnapshot:
     index: int
     name: str
+    driver_version: str | None
     temp_c: float | None
+    fan_pct: float | None
     gpu_util_pct: float | None
     mem_util_pct: float | None
     mem_used_mb: float | None
     mem_total_mb: float | None
     power_w: float | None
+    power_limit_w: float | None
     persistence: str | None = None
     pstate: str | None = None
+    compute_mode: str | None = None
+    display_active: str | None = None
+    display_mode: str | None = None
+    clock_graphics_mhz: float | None = None
+    clock_sm_mhz: float | None = None
+    clock_mem_mhz: float | None = None
+    clock_sm_max_mhz: float | None = None
+    clock_mem_max_mhz: float | None = None
+    pcie_gen: float | None = None
+    pcie_width: float | None = None
+    # Throttle bits from nvidia-smi (gpu_idle Active is normal at low load).
+    throttle_hw_thermal: bool | None = None
+    throttle_hw_power: bool | None = None
+    throttle_sw_power: bool | None = None
+    throttle_sw_thermal: bool | None = None
+    throttle_hw_slowdown: bool | None = None
+    throttle_app_clocks: bool | None = None
+    throttle_gpu_idle: bool | None = None
+    throttle_summary: str = ""
+
+
+@dataclass
+class GpuClientProc:
+    """One nvidia-smi pmon row (C=compute, G=graphics)."""
+
+    gpu: int
+    pid: int
+    kind: str
+    sm_pct: float | None
+    mem_pct: float | None
+    enc_pct: float | None
+    dec_pct: float | None
+    name: str
+
+
+@dataclass
+class NvidiaHostInfo:
+    """Host-level driver / module snapshot (refreshed periodically)."""
+
+    driver_version: str = ""
+    cuda_version: str = ""
+    nvrm_version: str = ""
+    module_version: str = ""
+    modules: list[str] = field(default_factory=list)
+    persistenced_running: bool | None = None
+    nvidia_smi_ok: bool = True
+    nvidia_smi_error: str = ""
 
 
 @dataclass
@@ -138,6 +192,8 @@ class Sample:
     loadavg_5: float = 0.0
     loadavg_15: float = 0.0
     gpus: list[GpuSnapshot] = field(default_factory=list)
+    gpu_clients: list[GpuClientProc] = field(default_factory=list)
+    nvidia_host: NvidiaHostInfo = field(default_factory=NvidiaHostInfo)
     procs: list[ProcSnapshot] = field(default_factory=list)
     display_procs: list[ProcSnapshot] = field(default_factory=list)
     kernel_hits: list[str] = field(default_factory=list)
@@ -210,47 +266,227 @@ def _parse_float(text: str) -> float | None:
         return None
 
 
-def query_gpus() -> list[GpuSnapshot]:
-    proc = _run(
-        [
-            "nvidia-smi",
-            "--query-gpu=index,name,temperature.gpu,utilization.gpu,utilization.memory,"
-            "memory.used,memory.total,power.draw,persistence_mode,pstate",
-            "--format=csv,noheader,nounits",
-        ]
+def _parse_throttle_active(text: str) -> bool | None:
+    text = text.strip().lower()
+    if not text or text in {"[n/a]", "n/a"}:
+        return None
+    if text in {"active", "yes", "true", "1"}:
+        return True
+    if text in {"not active", "inactive", "no", "false", "0"}:
+        return False
+    return None
+
+
+def _throttle_summary(gpu: GpuSnapshot) -> str:
+    bits: list[str] = []
+    mapping = (
+        ("hw_thermal", gpu.throttle_hw_thermal),
+        ("hw_power", gpu.throttle_hw_power),
+        ("sw_power", gpu.throttle_sw_power),
+        ("sw_thermal", gpu.throttle_sw_thermal),
+        ("hw_slowdown", gpu.throttle_hw_slowdown),
+        ("app_clocks", gpu.throttle_app_clocks),
+        ("idle", gpu.throttle_gpu_idle),
     )
-    if proc.returncode != 0:
-        # Older drivers may lack persistence_mode/pstate — fall back.
+    for name, val in mapping:
+        if val is True:
+            bits.append(name)
+    return ",".join(bits) if bits else "none"
+
+
+# Full driver-centric query (570+). Fall back if some fields are unavailable.
+_GPU_QUERY_FULL = (
+    "index,name,driver_version,persistence_mode,pstate,compute_mode,"
+    "display_active,display_mode,temperature.gpu,fan.speed,"
+    "utilization.gpu,utilization.memory,memory.used,memory.total,"
+    "power.draw,power.limit,"
+    "clocks.current.graphics,clocks.current.sm,clocks.current.memory,"
+    "clocks.max.sm,clocks.max.memory,"
+    "clocks_throttle_reasons.hw_thermal_slowdown,"
+    "clocks_throttle_reasons.hw_power_brake_slowdown,"
+    "clocks_throttle_reasons.sw_power_cap,"
+    "clocks_throttle_reasons.sw_thermal_slowdown,"
+    "clocks_throttle_reasons.hw_slowdown,"
+    "clocks_throttle_reasons.applications_clocks_setting,"
+    "clocks_throttle_reasons.gpu_idle,"
+    "pcie.link.gen.current,pcie.link.width.current"
+)
+_GPU_QUERY_BASIC = (
+    "index,name,temperature.gpu,utilization.gpu,utilization.memory,"
+    "memory.used,memory.total,power.draw,persistence_mode,pstate"
+)
+
+
+def query_gpus() -> tuple[list[GpuSnapshot], str]:
+    """Return (gpus, error). error non-empty when nvidia-smi failed entirely."""
+    proc = _run(
+        ["nvidia-smi", f"--query-gpu={_GPU_QUERY_FULL}", "--format=csv,noheader,nounits"]
+    )
+    full = proc.returncode == 0 and bool(proc.stdout.strip())
+    if not full:
+        err = (proc.stderr or proc.stdout or "nvidia-smi full query failed").strip()[:240]
         proc = _run(
-            [
-                "nvidia-smi",
-                "--query-gpu=index,name,temperature.gpu,utilization.gpu,utilization.memory,"
-                "memory.used,memory.total,power.draw",
-                "--format=csv,noheader,nounits",
-            ]
+            ["nvidia-smi", f"--query-gpu={_GPU_QUERY_BASIC}", "--format=csv,noheader,nounits"]
         )
-        if proc.returncode != 0:
-            return []
+        if proc.returncode != 0 or not proc.stdout.strip():
+            return [], err or (proc.stderr or "nvidia-smi failed").strip()[:240]
+
     gpus: list[GpuSnapshot] = []
     for line in proc.stdout.strip().splitlines():
         parts = [p.strip() for p in line.split(",")]
-        if len(parts) < 8:
-            continue
-        gpus.append(
-            GpuSnapshot(
+        if full:
+            if len(parts) < 30:
+                continue
+            gpu = GpuSnapshot(
                 index=int(parts[0]),
                 name=parts[1],
-                temp_c=_parse_float(parts[2]),
-                gpu_util_pct=_parse_float(parts[3]),
-                mem_util_pct=_parse_float(parts[4]),
-                mem_used_mb=_parse_float(parts[5]),
-                mem_total_mb=_parse_float(parts[6]),
-                power_w=_parse_float(parts[7]),
-                persistence=parts[8] if len(parts) > 8 else None,
-                pstate=parts[9] if len(parts) > 9 else None,
+                driver_version=parts[2] or None,
+                persistence=parts[3] or None,
+                pstate=parts[4] or None,
+                compute_mode=parts[5] or None,
+                display_active=parts[6] or None,
+                display_mode=parts[7] or None,
+                temp_c=_parse_float(parts[8]),
+                fan_pct=_parse_float(parts[9]),
+                gpu_util_pct=_parse_float(parts[10]),
+                mem_util_pct=_parse_float(parts[11]),
+                mem_used_mb=_parse_float(parts[12]),
+                mem_total_mb=_parse_float(parts[13]),
+                power_w=_parse_float(parts[14]),
+                power_limit_w=_parse_float(parts[15]),
+                clock_graphics_mhz=_parse_float(parts[16]),
+                clock_sm_mhz=_parse_float(parts[17]),
+                clock_mem_mhz=_parse_float(parts[18]),
+                clock_sm_max_mhz=_parse_float(parts[19]),
+                clock_mem_max_mhz=_parse_float(parts[20]),
+                throttle_hw_thermal=_parse_throttle_active(parts[21]),
+                throttle_hw_power=_parse_throttle_active(parts[22]),
+                throttle_sw_power=_parse_throttle_active(parts[23]),
+                throttle_sw_thermal=_parse_throttle_active(parts[24]),
+                throttle_hw_slowdown=_parse_throttle_active(parts[25]),
+                throttle_app_clocks=_parse_throttle_active(parts[26]),
+                throttle_gpu_idle=_parse_throttle_active(parts[27]),
+                pcie_gen=_parse_float(parts[28]),
+                pcie_width=_parse_float(parts[29]),
+            )
+            gpu.throttle_summary = _throttle_summary(gpu)
+            gpus.append(gpu)
+        else:
+            if len(parts) < 8:
+                continue
+            gpus.append(
+                GpuSnapshot(
+                    index=int(parts[0]),
+                    name=parts[1],
+                    driver_version=None,
+                    temp_c=_parse_float(parts[2]),
+                    fan_pct=None,
+                    gpu_util_pct=_parse_float(parts[3]),
+                    mem_util_pct=_parse_float(parts[4]),
+                    mem_used_mb=_parse_float(parts[5]),
+                    mem_total_mb=_parse_float(parts[6]),
+                    power_w=_parse_float(parts[7]),
+                    power_limit_w=None,
+                    persistence=parts[8] if len(parts) > 8 else None,
+                    pstate=parts[9] if len(parts) > 9 else None,
+                )
+            )
+    return gpus, ""
+
+
+def _pmon_metric_token(text: str) -> bool:
+    return text in {"-", "[N/A]", "N/A"} or text.replace(".", "", 1).isdigit()
+
+
+def query_gpu_clients() -> list[GpuClientProc]:
+    """Sample nvidia-smi pmon once; captures G (graphics) vs C (compute) clients."""
+    proc = _run(["nvidia-smi", "pmon", "-c", "1"], timeout=20.0)
+    if proc.returncode != 0:
+        return []
+    clients: list[GpuClientProc] = []
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        # Layout: gpu pid type sm mem enc dec [jpg ofa] command...
+        if len(parts) < 8:
+            continue
+        try:
+            gpu = int(parts[0])
+            pid = int(parts[1])
+        except ValueError:
+            continue
+        kind = parts[2].upper()
+        if kind not in {"C", "G", "C+G"}:
+            continue
+        if len(parts) >= 10 and all(_pmon_metric_token(parts[i]) for i in range(3, 9)):
+            name_i = 9
+        else:
+            name_i = 7
+        clients.append(
+            GpuClientProc(
+                gpu=gpu,
+                pid=pid,
+                kind=kind,
+                sm_pct=_parse_float(parts[3]),
+                mem_pct=_parse_float(parts[4]),
+                enc_pct=_parse_float(parts[5]),
+                dec_pct=_parse_float(parts[6]),
+                name=" ".join(parts[name_i:])[:80],
             )
         )
-    return gpus
+    return clients
+
+
+def query_nvidia_host() -> NvidiaHostInfo:
+    """Driver/module/CUDA snapshot for freeze forensics."""
+    info = NvidiaHostInfo()
+    try:
+        mod_ver = Path("/sys/module/nvidia/version").read_text(encoding="utf-8").strip()
+        info.module_version = mod_ver
+        info.driver_version = mod_ver
+    except OSError:
+        pass
+    try:
+        nvrm = Path("/proc/driver/nvidia/version").read_text(encoding="utf-8").splitlines()
+        if nvrm:
+            info.nvrm_version = nvrm[0].strip()[:200]
+            m = re.search(r"Kernel Module\s+(\d+\.\d+(?:\.\d+)?)", info.nvrm_version)
+            if m and not info.driver_version:
+                info.driver_version = m.group(1)
+    except OSError:
+        pass
+
+    mods: list[str] = []
+    try:
+        for line in Path("/proc/modules").read_text(encoding="utf-8").splitlines():
+            name = line.split()[0]
+            if name.startswith("nvidia") or name in {"drm", "drm_kms_helper"}:
+                mods.append(name)
+    except OSError:
+        pass
+    info.modules = mods
+
+    pd = _run(["systemctl", "is-active", "nvidia-persistenced"], timeout=5)
+    if pd.returncode == 0 or pd.stdout.strip() in {"active", "inactive", "failed"}:
+        info.persistenced_running = pd.stdout.strip() == "active"
+    else:
+        info.persistenced_running = bool(_run(["pgrep", "-x", "nvidia-persistenced"]).stdout.strip())
+
+    # CUDA Version is not a --query-gpu field; scrape nvidia-smi -q header.
+    q = _run(["nvidia-smi", "-q"], timeout=25.0)
+    if q.returncode != 0:
+        info.nvidia_smi_ok = False
+        info.nvidia_smi_error = (q.stderr or q.stdout or "nvidia-smi -q failed").strip()[:240]
+        return info
+    for line in q.stdout.splitlines():
+        if "Driver Version" in line and ":" in line:
+            info.driver_version = line.split(":", 1)[1].strip() or info.driver_version
+        elif "CUDA Version" in line and ":" in line:
+            info.cuda_version = line.split(":", 1)[1].strip()
+            break
+    return info
 
 
 def _proc_cmdline(pid: int) -> str:
@@ -541,6 +777,8 @@ def sample_to_dict(sample: Sample) -> dict[str, Any]:
         "session_type": sample.session_type,
         "graphical_active": sample.graphical_active,
         "gpus": [asdict(g) for g in sample.gpus],
+        "gpu_clients": [asdict(c) for c in sample.gpu_clients],
+        "nvidia_host": asdict(sample.nvidia_host),
         "procs": [asdict(p) for p in sample.procs],
         "display_procs": [asdict(p) for p in sample.display_procs],
         "train_log_bytes": sample.train_log_bytes,
@@ -554,13 +792,32 @@ def sample_to_dict(sample: Sample) -> dict[str, Any]:
 
 
 def format_line(sample: Sample) -> str:
+    host = sample.nvidia_host
+    drv = host.driver_version or (sample.gpus[0].driver_version if sample.gpus else "")
     gpu_parts = []
     for g in sample.gpus:
-        persist = f" pm={g.persistence}" if g.persistence else ""
+        thr = g.throttle_summary or "none"
+        # Omit idle-only throttle noise from the one-line summary.
+        if thr == "idle":
+            thr = "idle"
+        clk = ""
+        if g.clock_sm_mhz is not None:
+            clk = f" sm={g.clock_sm_mhz:.0f}"
+            if g.clock_sm_max_mhz:
+                clk += f"/{g.clock_sm_max_mhz:.0f}"
+        disp = ""
+        if g.display_active:
+            disp = f" disp={g.display_active}"
+        pl = f"/{g.power_limit_w:.0f}" if g.power_limit_w else ""
         gpu_parts.append(
             f"GPU{g.index} {g.mem_used_mb}/{g.mem_total_mb}MB util={g.gpu_util_pct}% "
-            f"T={g.temp_c}C P={g.power_w}W{persist}"
+            f"T={g.temp_c}C P={g.power_w}W{pl} {g.pstate or '?'} thr={thr}{clk}{disp}"
         )
+    n_g = sum(1 for c in sample.gpu_clients if "G" in c.kind)
+    n_c = sum(1 for c in sample.gpu_clients if "C" in c.kind)
+    client_names = ",".join(
+        f"{c.kind}:{Path(c.name.split()[0]).name if c.name else '?'}" for c in sample.gpu_clients[:6]
+    )
     proc_parts = [
         f"pid={p.pid}[{p.state}] rss={p.rss_mb}MB cpuJ={p.cpu_total_jiffies}"
         + (f" w={p.wchan}" if p.wchan else "")
@@ -574,17 +831,25 @@ def format_line(sample: Sample) -> str:
     bits = [
         f"[{sample.ts}] flags={flags}",
         f"hyp={sample.hypothesis or '-'}",
-        f"mem={sample.mem.mem_used_pct:.1f}%",
-        f"swap={sample.mem.swap_used_kb // 1024}MB",
-        f"load={sample.loadavg_1:.2f}",
-        f"D={sample.d_state_count}",
+        f"drv={drv or '?'}",
     ]
+    if host.cuda_version:
+        bits.append(f"cuda={host.cuda_version}")
+    bits.extend(
+        [
+            f"mem={sample.mem.mem_used_pct:.1f}%",
+            f"swap={sample.mem.swap_used_kb // 1024}MB",
+            f"load={sample.loadavg_1:.2f}",
+            f"D={sample.d_state_count}",
+        ]
+    )
     if sample.iowait_pct is not None:
         bits.append(f"iowait={sample.iowait_pct:.1f}%")
     if sample.graphical_active is not None:
         bits.append(f"gui={'on' if sample.graphical_active else 'off'}")
     if sample.train_log_bytes is not None:
         bits.append(f"log={sample.train_log_bytes}B")
+    bits.append(f"cli=G{n_g}/C{n_c}")
     line = (
         " ".join(bits)
         + " | "
@@ -592,6 +857,8 @@ def format_line(sample: Sample) -> str:
         + " | train: "
         + (" ; ".join(proc_parts) if proc_parts else "none")
     )
+    if client_names:
+        line += " | gpucli: " + client_names
     if disp_parts:
         line += " | disp: " + ",".join(disp_parts)
     if sample.kernel_hits:
@@ -669,6 +936,8 @@ def evaluate_flags(
     if sample.kernel_hits:
         sample.flags.append("KERNEL_ALERT")
         joined = " ".join(sample.kernel_hits).lower()
+        if "irq/" in joined and "nvidia" in joined and ("oops" in joined or "bug:" in joined):
+            sample.flags.append("NVIDIA_IRQ_OOPS")
         if "xid" in joined or "nvrm" in joined:
             sample.flags.append("NVIDIA_XID")
         if "soft lockup" in joined or "hard lockup" in joined:
@@ -682,6 +951,13 @@ def evaluate_flags(
 
     if sample.xorg_hits:
         sample.flags.append("XORG_ALERT")
+
+    if not sample.nvidia_host.nvidia_smi_ok or (
+        not sample.gpus and sample.nvidia_host.nvidia_smi_error
+    ):
+        sample.flags.append("NVIDIA_SMI_FAIL")
+        if sample.nvidia_host.nvidia_smi_error:
+            sample.notes.append(f"nvidia-smi: {sample.nvidia_host.nvidia_smi_error}")
 
     if sample.mem.mem_used_pct >= mem_warn_pct:
         sample.flags.append(f"MEM_HIGH_{sample.mem.mem_used_pct:.0f}pct")
@@ -697,6 +973,14 @@ def evaluate_flags(
     if sample.graphical_active:
         sample.notes.append("graphical.target active (display path shares GPU)")
 
+    n_g = sum(1 for c in sample.gpu_clients if "G" in c.kind)
+    n_c = sum(1 for c in sample.gpu_clients if "C" in c.kind)
+    if n_g and n_c:
+        sample.flags.append(f"GPU_G_AND_C_clients_G{n_g}_C{n_c}")
+        sample.notes.append("graphics+compute clients share GPU (desk freeze risk)")
+    elif n_g and sample.procs:
+        sample.flags.append(f"DISPLAY_ACTIVE_WITH_TRAIN_G{n_g}")
+
     for gpu in sample.gpus:
         if gpu.mem_used_mb is not None and gpu.mem_total_mb:
             pct = 100.0 * gpu.mem_used_mb / gpu.mem_total_mb
@@ -707,6 +991,33 @@ def evaluate_flags(
             sample.flags.append(f"GPU_HOT_{gpu.temp_c:.0f}C")
         if gpu.persistence and gpu.persistence.lower() in {"disabled", "off"}:
             sample.notes.append(f"gpu{gpu.index} persistence={gpu.persistence}")
+        if gpu.display_active and gpu.display_active.lower() == "enabled" and sample.procs:
+            sample.notes.append(f"gpu{gpu.index} display_active=Enabled with train")
+        # Real throttle (ignore idle-only).
+        bad_thr = []
+        if gpu.throttle_hw_thermal:
+            bad_thr.append("hw_thermal")
+        if gpu.throttle_hw_power:
+            bad_thr.append("hw_power")
+        if gpu.throttle_sw_power:
+            bad_thr.append("sw_power")
+        if gpu.throttle_sw_thermal:
+            bad_thr.append("sw_thermal")
+        if gpu.throttle_hw_slowdown:
+            bad_thr.append("hw_slowdown")
+        if bad_thr:
+            sample.flags.append(f"THROTTLE_gpu{gpu.index}_{'+'.join(bad_thr)}")
+        # PCIe gen often stays low for light display clients; only note with compute/train.
+        if (
+            gpu.pcie_gen is not None
+            and gpu.pcie_gen < 3
+            and n_c
+            and gpu.gpu_util_pct is not None
+            and gpu.gpu_util_pct >= 40
+        ):
+            sample.notes.append(
+                f"gpu{gpu.index} PCIe gen={gpu.pcie_gen:.0f} under compute load (expect Gen4 on 4090)"
+            )
 
     if len(vram_history) >= 20:
         window = list(vram_history)[-20:]
@@ -768,10 +1079,18 @@ def evaluate_flags(
 def classify_hypothesis(sample: Sample) -> str:
     flags = set(sample.flags)
     joined = " ".join(sample.kernel_hits).lower()
-    if "irq/" in joined and "nvidia" in joined and ("oops" in joined or "bug:" in joined):
+    if "NVIDIA_IRQ_OOPS" in flags or (
+        "irq/" in joined and "nvidia" in joined and ("oops" in joined or "bug:" in joined)
+    ):
         return "nvidia_irq_oops"
+    if "NVIDIA_SMI_FAIL" in flags:
+        return "nvidia_smi_dead"
+    if "DRIVER_VERSION_CHANGED" in flags:
+        return "driver_changed_mid_run"
     if "NVIDIA_XID" in flags or "MODESET" in flags or "DISPLAY_KERNEL" in flags:
         return "display_nvidia_path"
+    if any(f.startswith("THROTTLE_") for f in flags):
+        return "gpu_throttled"
     if any(f.startswith("DISPLAY_STALL") for f in flags) or any(
         f.startswith("DISPLAY_D_STATE") for f in flags
     ):
@@ -790,6 +1109,10 @@ def classify_hypothesis(sample: Sample) -> str:
         return "train_idle_or_slow"  # common for logic backend; not necessarily freeze
     if "TRAIN_PROC_MISSING" in flags:
         return "train_exited"
+    if any(f.startswith("GPU_G_AND_C") for f in flags) or any(
+        f.startswith("DISPLAY_ACTIVE_WITH_TRAIN") for f in flags
+    ):
+        return "gui_plus_train_risk"
     if sample.graphical_active and sample.procs:
         return "gui_plus_train_risk"  # historical desk freeze combo
     return "ok"
@@ -883,6 +1206,8 @@ def main() -> int:
     prev_sys_cpu: SystemCpu | None = None
     log_stall_count = [0]
     prev_log_bytes: list[int | None] = [None]
+    nvidia_host = query_nvidia_host()
+    seen_driver = nvidia_host.driver_version
 
     repo = Path(__file__).resolve().parents[1]
     train_log: Path | None = Path(args.train_log) if args.train_log else None
@@ -896,8 +1221,15 @@ def main() -> int:
         flush=True,
     )
     print(
+        f"[monitor_training] driver={nvidia_host.driver_version or '?'} "
+        f"cuda={nvidia_host.cuda_version or '?'} "
+        f"persistenced={'on' if nvidia_host.persistenced_running else 'off'} "
+        f"modules={','.join(nvidia_host.modules) or '?'}",
+        flush=True,
+    )
+    print(
         "[monitor_training] freeze tips: look for hypothesis=nvidia_irq_oops / "
-        "display_nvidia_path / DISPLAY_D_STATE / NVIDIA_XID. "
+        "nvidia_smi_dead / display_nvidia_path / GPU_G_AND_C / THROTTLE_* / NVIDIA_XID. "
         "Idle gnome/Xorg (S state) is no longer flagged as DISPLAY_STALL. "
         "TRAIN_CPU_IDLE alone is often normal on logic backend. "
         "Closing GNOME does not remove CUDA/NVIDIA IRQ risk on the same GPU.",
@@ -941,6 +1273,15 @@ def main() -> int:
                     except OSError:
                         pass
 
+            # Refresh host driver snapshot every ~10 samples (and on first tick).
+            if n == 0 or n % 10 == 0:
+                nvidia_host = query_nvidia_host()
+            gpus, gpu_err = query_gpus()
+            if gpu_err and not gpus:
+                nvidia_host.nvidia_smi_ok = False
+                nvidia_host.nvidia_smi_error = gpu_err
+            gpu_clients = query_gpu_clients()
+
             load1, load5, load15 = _read_loadavg()
             sample = Sample(
                 ts=ts,
@@ -949,7 +1290,9 @@ def main() -> int:
                 loadavg_1=load1,
                 loadavg_5=load5,
                 loadavg_15=load15,
-                gpus=query_gpus(),
+                gpus=gpus,
+                gpu_clients=gpu_clients,
+                nvidia_host=nvidia_host,
                 procs=procs,
                 display_procs=display_procs,
                 kernel_hits=kernel.poll(),
@@ -962,6 +1305,16 @@ def main() -> int:
                 session_type=session_type,
                 graphical_active=graphical,
             )
+            cur_drv = (
+                nvidia_host.driver_version
+                or (gpus[0].driver_version if gpus else "")
+                or ""
+            )
+            if seen_driver and cur_drv and cur_drv != seen_driver:
+                sample.flags.append("DRIVER_VERSION_CHANGED")
+                sample.notes.append(f"driver {seen_driver} -> {cur_drv}")
+            if cur_drv:
+                seen_driver = cur_drv
             evaluate_flags(
                 sample,
                 prev_cpu,

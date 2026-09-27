@@ -4,6 +4,9 @@
 # train.py renames itself via setproctitle (e.g. HcFactory-hier-xjt), so match that
 # instead of "train.py" once the process has started.
 #
+# Captures driver-centric nvidia-smi fields (driver/CUDA, throttle, display_active,
+# clocks, pmon G/C clients) into outputs/train_monitor/monitor_*.{log,jsonl}.
+#
 # Examples:
 #   ./tools/monitor_training.sh
 #   ./tools/monitor_training.sh "HcFactory-" 15
@@ -31,4 +34,5 @@ python tools/monitor_training.py \
   --interval "$INTERVAL" \
   --output-dir outputs/train_monitor \
   --watch-display \
+  --auto-train-log \
   "${EXTRA[@]}"

@@ -209,14 +209,35 @@ g_horizon_steps() {
     esac
 }
 
+g_load_wandb_local_env() {
+    # Safe KEY=VALUE loader (no `source`): avoids `KEY= value` running the key as a command.
+    local local_env="${1:-${HC_WANDB_LOCAL_ENV:-.wandb_local.env}}"
+    local line key val
+    [[ -f "${local_env}" ]] || return 0
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+        line="${line%$'\r'}"
+        [[ -z "${line}" || "${line}" =~ ^[[:space:]]*# ]] && continue
+        [[ "${line}" == *=* ]] || continue
+        key="${line%%=*}"
+        val="${line#*=}"
+        key="${key#"${key%%[![:space:]]*}"}"
+        key="${key%"${key##*[![:space:]]}"}"
+        val="${val#"${val%%[![:space:]]*}"}"
+        val="${val%"${val##*[![:space:]]}"}"
+        if [[ "${val}" =~ ^\".*\"$ || "${val}" =~ ^\'.*\'$ ]]; then
+            val="${val:1:${#val}-2}"
+        fi
+        case "${key}" in
+            HC_WANDB_API_KEY|WANDB_API_KEY|HC_WANDB_ENTITY|WANDB_ENTITY|HC_WANDB_MODE|WANDB_MODE)
+                printf -v "${key}" '%s' "${val}"
+                export "${key}"
+                ;;
+        esac
+    done < "${local_env}"
+}
+
 g_source_wandb_env() {
-    local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
-    if [[ -f "${local_env}" ]]; then
-        set -a
-        # shellcheck disable=SC1090
-        source "${local_env}"
-        set +a
-    fi
+    g_load_wandb_local_env "${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
     if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
         export WANDB_API_KEY="${HC_WANDB_API_KEY}"
     fi
@@ -363,15 +384,7 @@ run_e0_eval() {
     fi
     # Account configuration only; never print credentials.
     if [[ "${dry_run}" != --dry-run ]]; then
-        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
-        if [[ -f "${local_env}" ]]; then
-            set -a
-            source "${local_env}"
-            set +a
-        fi
-        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
-            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
-        fi
+        g_source_wandb_env
     fi
     export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
     export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
@@ -432,15 +445,7 @@ run_e1_train() {
         return 1
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
-        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
-        if [[ -f "${local_env}" ]]; then
-            set -a
-            source "${local_env}"
-            set +a
-        fi
-        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
-            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
-        fi
+        g_source_wandb_env
     fi
     export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
     export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
@@ -508,15 +513,7 @@ run_e1_5_train() {
         return 1
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
-        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
-        if [[ -f "${local_env}" ]]; then
-            set -a
-            source "${local_env}"
-            set +a
-        fi
-        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
-            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
-        fi
+        g_source_wandb_env
     fi
     export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
     export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
@@ -604,15 +601,7 @@ run_e2_train() {
         return 1
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
-        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
-        if [[ -f "${local_env}" ]]; then
-            set -a
-            source "${local_env}"
-            set +a
-        fi
-        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
-            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
-        fi
+        g_source_wandb_env
     fi
     export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
     export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
@@ -703,15 +692,7 @@ run_e2_5_train() {
         return 1
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
-        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
-        if [[ -f "${local_env}" ]]; then
-            set -a
-            source "${local_env}"
-            set +a
-        fi
-        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
-            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
-        fi
+        g_source_wandb_env
     fi
     export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
     export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
@@ -805,15 +786,7 @@ run_e3_train() {
         return 1
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
-        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
-        if [[ -f "${local_env}" ]]; then
-            set -a
-            source "${local_env}"
-            set +a
-        fi
-        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
-            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
-        fi
+        g_source_wandb_env
     fi
     export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
     export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
@@ -909,15 +882,7 @@ run_e3_5_train() {
         return 1
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
-        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
-        if [[ -f "${local_env}" ]]; then
-            set -a
-            source "${local_env}"
-            set +a
-        fi
-        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
-            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
-        fi
+        g_source_wandb_env
     fi
     export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
     export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
@@ -1016,15 +981,7 @@ run_e4_train() {
         return 1
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
-        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
-        if [[ -f "${local_env}" ]]; then
-            set -a
-            source "${local_env}"
-            set +a
-        fi
-        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
-            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
-        fi
+        g_source_wandb_env
     fi
     export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
     export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
@@ -1112,15 +1069,7 @@ run_e3_no_oru_train() {
         return 1
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
-        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
-        if [[ -f "${local_env}" ]]; then
-            set -a
-            source "${local_env}"
-            set +a
-        fi
-        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
-            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
-        fi
+        g_source_wandb_env
     fi
     export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
     export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
@@ -1193,15 +1142,7 @@ run_e4_no_oru_train() {
         return 1
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
-        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
-        if [[ -f "${local_env}" ]]; then
-            set -a
-            source "${local_env}"
-            set +a
-        fi
-        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
-            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
-        fi
+        g_source_wandb_env
     fi
     export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
     export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
@@ -1292,15 +1233,7 @@ run_e5_train() {
         return 1
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
-        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
-        if [[ -f "${local_env}" ]]; then
-            set -a
-            source "${local_env}"
-            set +a
-        fi
-        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
-            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
-        fi
+        g_source_wandb_env
     fi
     export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
     export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
@@ -1404,15 +1337,7 @@ run_e6_train() {
         return 1
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
-        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
-        if [[ -f "${local_env}" ]]; then
-            set -a
-            source "${local_env}"
-            set +a
-        fi
-        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
-            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
-        fi
+        g_source_wandb_env
     fi
     export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
     export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
@@ -1508,15 +1433,7 @@ run_e5_no_oru_train() {
         return 1
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
-        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
-        if [[ -f "${local_env}" ]]; then
-            set -a
-            source "${local_env}"
-            set +a
-        fi
-        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
-            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
-        fi
+        g_source_wandb_env
     fi
     export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
     export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
@@ -1773,15 +1690,7 @@ run_e5_human_train() {
         return 1
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
-        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
-        if [[ -f "${local_env}" ]]; then
-            set -a
-            source "${local_env}"
-            set +a
-        fi
-        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
-            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
-        fi
+        g_source_wandb_env
     fi
     export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
     export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"
@@ -1938,15 +1847,7 @@ run_e6_no_oru_train() {
         return 1
     fi
     if [[ "${dry_run}" != --dry-run ]]; then
-        local local_env="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
-        if [[ -f "${local_env}" ]]; then
-            set -a
-            source "${local_env}"
-            set +a
-        fi
-        if [[ -n "${HC_WANDB_API_KEY:-}" ]]; then
-            export WANDB_API_KEY="${HC_WANDB_API_KEY}"
-        fi
+        g_source_wandb_env
     fi
     export WANDB_ENTITY="${HC_WANDB_ENTITY:-${WANDB_ENTITY:-rl-driving}}"
     export WANDB_MODE="${HC_WANDB_MODE:-${WANDB_MODE:-online}}"

@@ -123,14 +123,36 @@ export WANDB_HTTP_TIMEOUT="${WANDB_HTTP_TIMEOUT:-90}"
 export WANDB_INIT_TIMEOUT="${WANDB_INIT_TIMEOUT:-120}"
 HC_WANDB_SYNC="${HC_WANDB_SYNC:-1}"
 
-# 仅加载本仓库私有配置（不写系统 ~/.netrc，不影响同机其他人）
+# 仅加载本仓库私有配置（不写系统 ~/.netrc，不影响同机其他人）。
+# 用 KEY=VALUE 解析，不用 source —— 避免 `KEY= value` 把 key 当成命令执行。
 HC_WANDB_LOCAL_ENV="${HC_WANDB_LOCAL_ENV:-.wandb_local.env}"
 if [ -f "${HC_WANDB_LOCAL_ENV}" ]; then
-    # shellcheck disable=SC1090
-    set -a
-    # shellcheck source=/dev/null
-    . "${HC_WANDB_LOCAL_ENV}"
-    set +a
+    while IFS= read -r _hc_line || [ -n "${_hc_line}" ]; do
+        _hc_line="${_hc_line%$'\r'}"
+        case "${_hc_line}" in
+            ''|\#*) continue ;;
+        esac
+        case "${_hc_line}" in
+            *=*) ;;
+            *) continue ;;
+        esac
+        _hc_key="${_hc_line%%=*}"
+        _hc_val="${_hc_line#*=}"
+        _hc_key="${_hc_key#"${_hc_key%%[![:space:]]*}"}"
+        _hc_key="${_hc_key%"${_hc_key##*[![:space:]]}"}"
+        _hc_val="${_hc_val#"${_hc_val%%[![:space:]]*}"}"
+        _hc_val="${_hc_val%"${_hc_val##*[![:space:]]}"}"
+        case "${_hc_val}" in
+            \"*\"|\'*\') _hc_val="${_hc_val:1:${#_hc_val}-2}" ;;
+        esac
+        case "${_hc_key}" in
+            HC_WANDB_API_KEY|WANDB_API_KEY|HC_WANDB_ENTITY|WANDB_ENTITY|HC_WANDB_MODE|WANDB_MODE)
+                printf -v "${_hc_key}" '%s' "${_hc_val}"
+                export "${_hc_key}"
+                ;;
+        esac
+    done < "${HC_WANDB_LOCAL_ENV}"
+    unset _hc_line _hc_key _hc_val
     echo "[wandb] loaded local env: ${HC_WANDB_LOCAL_ENV}"
 fi
 if [ -n "${HC_WANDB_API_KEY:-}" ]; then
@@ -138,6 +160,9 @@ if [ -n "${HC_WANDB_API_KEY:-}" ]; then
 fi
 if [ -n "${HC_WANDB_ENTITY:-}" ]; then
     export WANDB_ENTITY="${HC_WANDB_ENTITY}"
+fi
+if [ -n "${HC_WANDB_MODE:-}" ]; then
+    export WANDB_MODE="${HC_WANDB_MODE}"
 fi
 echo "[wandb] mode=${WANDB_MODE} entity=${WANDB_ENTITY:-"(default login)"} sync_after_job=${HC_WANDB_SYNC} (metrics.jsonl always local)"
 
