@@ -1,0 +1,36 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand*\HyPL@Entry[1]{}
+\HyPL@Entry{0<</S/D>>}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Experimental Setup}{1}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}Task and evaluation protocol}{1}{subsection.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.2}Data splits and experiment families}{1}{subsection.1.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Experiment families and protocol boundaries. Episode counts are train/validation/test.}}{1}{table.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.3}Selection of the retained main-model family}{1}{subsection.1.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Earlier \texttt  {12\_2} versus protocol-aligned \texttt  {12\_3}. The retained family is selected by validation behavior and protocol consistency, not by a single test cell.}}{1}{table.2}\protected@file@percent }
+\newlabel{tab:model-selection}{{2}{1}{Earlier \texttt {12\_2} versus protocol-aligned \texttt {12\_3}. The retained family is selected by validation behavior and protocol consistency, not by a single test cell}{table.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces All recorded auxiliary test metrics for the non-retained \texttt  {12\_2} family.}}{2}{table.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Main-Model Results}{3}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Station-level bottleneck prediction}{3}{subsection.2.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Final BNPDFormer (\texttt  {12\_3}) station-level results. Validation values are from the selected epoch; test uses the frozen checkpoint and threshold.}}{3}{table.4}\protected@file@percent }
+\newlabel{tab:main-event}{{4}{3}{Final BNPDFormer (\texttt {12\_3}) station-level results. Validation values are from the selected epoch; test uses the frozen checkpoint and threshold}{table.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Remaining time and cause classification}{3}{subsection.2.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Final BNPDFormer auxiliary-head results. Remaining-time MAE is measured in minutes.}}{3}{table.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Final BNPDFormer per-class cause recall on test. The final two classes have no test support.}}{3}{table.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Ablation Studies}{4}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}No-clustering mixed-disturbance experiment}{4}{subsection.3.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces No-clustering mixed-data event metrics. Start10 and Start15 use the ungated validation best because the precision/recall gate did not open.}}{4}{table.7}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces All recorded no-clustering mixed-data auxiliary metrics. Remain, weighted remain, primary remain, duration, and start errors are in minutes.}}{4}{table.8}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces No-clustering mixed-data per-class cause recall on test (four supported classes).}}{4}{table.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Graph and station-group structure ablations}{5}{subsection.3.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces Complete validation and test event metrics for the structure ablations. ``Report F1'' is the strict station-plus-start metric.}}{6}{table.10}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {11}{\ignorespaces Complete remaining-time and cause metrics for the structure ablations.}}{7}{table.11}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {12}{\ignorespaces Complete per-class cause recall for the full model and structure ablations on test.}}{8}{table.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Comparison with B4 and B5}{10}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Comparable setup and limitations}{10}{subsection.4.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {13}{\ignorespaces All official B4/B5 validation metrics. Values in parentheses are strict or station hits over upcoming support.}}{11}{table.13}\protected@file@percent }
+\newlabel{tab:b45-val}{{13}{11}{All official B4/B5 validation metrics. Values in parentheses are strict or station hits over upcoming support}{table.13}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {14}{\ignorespaces All recorded B4/B5 training and auxiliary validation metrics. Remain MAE is middle-progress-weighted and retained in window units.}}{12}{table.14}\protected@file@percent }
+\newlabel{tab:b45-train}{{14}{12}{All recorded B4/B5 training and auxiliary validation metrics. Remain MAE is middle-progress-weighted and retained in window units}{table.14}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Overall Discussion and Validity Boundaries}{12}{section.5}\protected@file@percent }
+\gdef \@abspage@last{12}

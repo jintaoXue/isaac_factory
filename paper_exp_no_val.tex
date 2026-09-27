@@ -1,0 +1,666 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=15mm]{geometry}
+\usepackage{fontspec}
+\usepackage{xeCJK}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{siunitx}
+\usepackage{caption}
+\usepackage{pdflscape}
+\usepackage{graphicx}
+\usepackage{array}
+\usepackage{xurl}
+\usepackage[hidelinks]{hyperref}
+
+\setmainfont{Times New Roman}
+\setsansfont{Arial}
+\setCJKmainfont{Microsoft YaHei}
+\setCJKmonofont{Microsoft YaHei}
+\sisetup{detect-weight=true,table-number-alignment=center}
+\captionsetup{font=small,labelfont=bf,skip=4pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+\setlength{\tabcolsep}{4pt}
+\pagestyle{plain}
+\sloppy
+
+\newcommand{\uprep}{$R_{\mathrm{up}}^{\mathrm{rep}}$}
+\newcommand{\upwho}{$R_{\mathrm{up}}^{\mathrm{who}}$}
+\newcommand{\onwho}{$R_{\mathrm{on}}^{\mathrm{who}}$}
+\newcommand{\na}{---}
+\newcommand{\zh}[1]{\par\noindent{\small #1}\par}
+
+\begin{document}
+
+\begin{center}
+{\LARGE\bfseries Experiments / 实验}\\[4pt]
+{\large BNPDFormer Test Results and Ablation Studies}\\[2pt]
+{\large BNPDFormer 测试集结果与消融实验}
+\end{center}
+
+The experiments report BNPDFormer on the Min8 task at Start$\leq5$,
+Start$\leq10$, and Start$\leq15$. Station identification, cause classification,
+and remaining-time estimation are kept separate. Later sections remove the
+graph, station-group embedding, delay pattern, or split will head, omit
+process-heuristic labels and clustering, and compare B4 and B5 on the same
+three start caps.
+\zh{实验报告 BNPDFormer 在 Min8 任务、Start$\leq5/10/15$ 三档上的结果。工位识别、原因分类和剩余时间估计分开给出。后续各节分别去掉图结构、工位分组嵌入、延迟 pattern 或拆分的 will 头，去掉过程启发式标签和聚类，并在同样三个 Start 档位上与 B4、B5 对照。}
+
+\section{Data and Protocol / 数据与实验协议}
+
+\subsection{Task and Evaluation Protocol / 任务与评测协议}
+The experiments evaluate station-level bottleneck-event prediction at three start
+horizons, Start$\leq 5$, Start$\leq 10$, and Start$\leq 15$ min, while requiring
+each target event to last at least eight minutes (Min8). The model observes a
+30-min history and evaluates a 20-grid future label range at a one-minute
+resolution. An \emph{ongoing} target is already active at the last history grid;
+an \emph{upcoming} target starts after the observation boundary.
+\zh{实验在三个起始时间范围内评估工位级瓶颈事件预测：Start$\leq5$、Start$\leq10$ 和 Start$\leq15$ 分钟，同时要求每个目标事件至少持续 8 分钟（Min8）。模型观察 30 分钟历史，并以 1 分钟为时间分辨率，在未来 20 个网格的标签范围内进行评测。若目标在历史序列最后一个网格已经发生，则记为进行中（ongoing）；若目标在观测边界之后才开始，则记为即将发生（upcoming）。}
+
+The station-identification metrics are \texttt{will15}/\texttt{who} precision,
+recall, and F1. The name \texttt{will15} is retained by the implementation but
+refers to the active Start cap, rather than always denoting a fixed 15-min task.
+The stricter report metric counts a true positive only when the station is
+correct and $|\hat{s}-s|\leq 3$ min. Thus, \upwho measures station detection,
+whereas \uprep additionally enforces start-time tolerance. Remaining-order-time
+and event-duration errors are reported as mean absolute error (MAE; lower is
+better). Process-cause performance is reported by accuracy, macro recall, and
+per-class recall.
+\zh{工位识别指标包括 \texttt{will15}/\texttt{who} 的精确率、召回率和 F1。代码沿用了 \texttt{will15} 这一名称，但该指标实际对应当前采用的 Start 上限，并不总是表示固定的 15 分钟任务。更严格的 report 指标只有在工位预测正确且 $|\hat{s}-s|\leq3$ 分钟时才计为真阳性。因此，\upwho 衡量是否识别出正确工位，而 \uprep 还额外要求起始时间满足容差。订单剩余时间和事件持续时间采用平均绝对误差（MAE，越低越好）；过程原因识别则报告准确率、宏平均召回率和逐类别召回率。}
+
+All model and threshold decisions use validation data. The selected checkpoint
+and threshold are then frozen for test evaluation. Results from different Start
+caps are not pooled because their positive sets and upcoming denominators differ.
+All reported runs use seed 42; consequently, no claim of statistical
+significance is made.
+\zh{所有模型选择和阈值选择均只使用验证集。确定 checkpoint 和阈值后，将二者冻结并用于测试集评测。由于不同 Start 上限对应的正例集合和 upcoming 分母不同，因此不合并不同 Start 档位的结果。所有实验均只使用 seed 42，所以本文不声称结果具有统计显著性。}
+
+\subsection{Data Splits and Experiment Families / 数据划分与实验系列}
+Two main-model settings share the BNPDFormer backbone. Separate report
+fine-tuning selects each Start cap on its own. Sequential station fine-tuning
+continues from the previous cap and selects on station F1. The full list of
+changed settings is in Section~3.
+\zh{两组主模型设置使用同一个 BNPDFormer 骨干。分档报告微调按 Start 档位分别选模。顺序工位微调沿用上一档 checkpoint，并按工位 F1 选模。具体改动列在第 3 节。}
+\begin{center}
+\captionof{table}{Experiment families and protocol boundaries; episode counts are train/validation/test. / 实验系列及协议边界；episode 数依次为训练/验证/测试。}
+\small
+\resizebox{\textwidth}{!}{
+\begin{tabular}{llllll}
+\toprule
+Family & Dataset & Episodes & Main selection metric & Training budget & Test status \\
+\midrule
+Sequential station (retained)
+ & \texttt{dense\_i1} & 140/28/36
+ & validation \texttt{will15\_f1} & 100 epochs, patience 40 & evaluated \\
+Separate report
+ & \texttt{dense\_i1} & 140/28/36
+ & validation \texttt{report\_f1} & 100 epochs, patience 100 & evaluated \\
+No heuristic labels or clustering
+ & \texttt{dense\_i1\_mix} & 166/37/45
+ & validation \texttt{will15\_f1} & 100 epochs, patience 40 & evaluated \\
+Structure ablations
+ & \texttt{dense\_i1} & 140/28/36
+ & validation \texttt{will15\_f1} & 50 epochs, from scratch & evaluated \\
+B4 BTGCN / B5 BSTAN
+ & fixed 208-episode set & 138/30/40
+ & validation \texttt{will15\_f1} & 100 epochs, patience 40 & test unused \\
+\bottomrule
+\end{tabular}}
+\end{center}
+
+\section{Implementation Details / 实现细节}
+The BNPDFormer encoder contains five blocks with an embedding dimension of 80
+and an eight-dimensional Laplacian positional encoding. Graph, semantic, and
+temporal attention use 2, 2, and 4 heads, respectively; these are separate
+attention modules and should not be described as a single eight-head module.
+The event head has hidden dimension 80. Training uses batch size 16, a 30-min
+input history, one-minute windows, and a 20-grid future label range.
+\zh{BNPDFormer 编码器包含 5 个块，嵌入维度为 80，并使用 8 维拉普拉斯位置编码。图注意力、语义注意力和时间注意力分别使用 2、2 和 4 个头；它们属于不同的注意力模块，因此不能表述为一个统一的“8 头注意力模块”。事件预测头的隐藏维度为 80。训练 batch size 为 16，输入历史长度为 30 分钟，时间窗口为 1 分钟，未来标签范围为 20 个网格。}
+
+Optimization uses AdamW with a fine-tuning learning rate of $5\times10^{-5}$,
+weight decay $0.05$, cosine learning-rate decay, and minimum learning rate
+$10^{-6}$. The final runs allow at most 100 epochs and use early-stopping
+patience 40. Event-positive windows are oversampled by a factor of 4. The model
+is initialized from the earlier recall-oriented
+\texttt{dense\_i1\_a1\_prefix8} checkpoint, unfreezes the last five encoder
+blocks and occupancy decoder, and jointly optimizes event, occupancy,
+remaining-time, and cause objectives. STGNPP and the legacy
+\texttt{score}/\texttt{will}/\texttt{mark}/\texttt{tts} heads are disabled in
+the retained configuration.
+\zh{优化器采用 AdamW，微调学习率为 $5\times10^{-5}$，权重衰减为 $0.05$，使用余弦学习率衰减，最低学习率为 $10^{-6}$。最终实验最多训练 100 个 epoch，早停 patience 为 40；事件正例窗口按 4 倍过采样。模型从较早的召回导向 checkpoint \texttt{dense\_i1\_a1\_prefix8} 初始化，解冻最后 5 个编码器块和占用解码器，并联合优化事件、占用、剩余时间和原因任务。最终配置关闭 STGNPP，以及旧版 \texttt{score}/\texttt{will}/\texttt{mark}/\texttt{tts} 预测头。}
+
+The retained setting is sequential station fine-tuning, configured by
+\path{FactoryBN_dense_12_3_start{5,10,15}_min8_opt.json}.
+Its runner loads the prefix8 checkpoint at Start$\leq5$, then warm-starts
+Start$\leq10$ from the Start$\leq5$ checkpoint and Start$\leq15$ from
+Start$\leq10$. Checkpoint selection uses validation station F1. The threshold
+is chosen on validation and then frozen.
+\zh{保留的设置是顺序工位微调，配置为 \texttt{FactoryBN\_dense\_12\_3\_start\{5,10,15\}\_min8\_opt.json}。训练脚本在 Start$\leq5$ 加载 prefix8 checkpoint，再让 Start$\leq10$ 从 Start$\leq5$ 热启动，Start$\leq15$ 从 Start$\leq10$ 热启动。选模使用验证集工位 F1。阈值在验证集上确定后冻结。}
+
+\section{Main Results / 主实验结果}
+\subsection{Separate Report Fine-tuning and Sequential Station Fine-tuning / 分档报告微调与顺序工位微调}
+The two settings use the same BNPDFormer, the same \texttt{dense\_i1} split,
+and the same Min8 task. Separate report fine-tuning is
+\path{FactoryBN_dense_12_2_start{5,10,15}_min8_ep100.json}.
+Each Start cap loads the prefix8 checkpoint on its own and keeps the parent
+recipe: checkpoints are chosen by strict \texttt{report\_f1}, patience is 100,
+and an ongoing station is lifted to the report threshold only when its
+predicted duration is at least eight minutes. Sequential station fine-tuning
+extends that Start$\leq5$ file. \path{run_start_horizon_min8_ep100.py} still
+starts Start$\leq5$ from prefix8, then passes the previous best checkpoint to
+the next cap. Selection changes to station \texttt{will15\_f1}.
+\zh{两组设置使用同一个 BNPDFormer、同一份 \texttt{dense\_i1} 划分和同一个 Min8 任务。分档报告微调对应 \texttt{FactoryBN\_dense\_12\_2\_start\{5,10,15\}\_min8\_ep100.json}。每个 Start 档位各自加载 prefix8 checkpoint，并保留父配置：按严格 \texttt{report\_f1} 选模，patience 为 100；进行中工位只有在预测持续时间不少于 8 分钟时，才会被抬到报告阈值。顺序工位微调继承该 Start$\leq5$ 配置。\texttt{run\_start\_horizon\_min8\_ep100.py} 仍让 Start$\leq5$ 从 prefix8 开始，再把上一档最优 checkpoint 传给下一档。选模改为工位 \texttt{will15\_f1}。}
+
+Both settings already share the validation gate $P\geq0.80$ and $R\geq0.70$,
+split will heads, forced ongoing decisions, and the occupancy/upcoming union.
+The parent upcoming positive weight is 8 and the far-start positive weight is
+unset, so it stays 0. Events whose labeled start is within five minutes then
+receive the shared near-start weight 6, which replaces the upcoming weight.
+The weights 9/10/11 and the far-start loss boost of 2 therefore reach only
+events that start later than five minutes. They do not change the Start$\leq5$
+positive-class weights.
+\zh{两边都已经带有验证集门槛 $P\geq0.80$、$R\geq0.70$、拆分的 will 头、进行中强制判定，以及占用与 upcoming 的并集。父配置的 upcoming 正例权重是 8，远起点正例权重没有设置，因此保持为 0。标注起点在 5 分钟以内的事件会改用两边共用的近起点权重 6，并覆盖 upcoming 权重。所以 9/10/11 这组权重和 2 倍远起点损失只作用在起点晚于 5 分钟的事件上，不改变 Start$\leq5$ 的正例权重。}
+
+\begin{center}
+\captionof{table}{Training and selection differences. Unlisted fields are inherited unchanged. / 训练与选模差异。未列出的字段沿用父配置，没有改动。}
+\label{tab:recipe-diff}
+\scriptsize
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lll}
+\toprule
+Item & Separate report fine-tuning & Sequential station fine-tuning \\
+\midrule
+Initialization & each cap from prefix8 & Start$\leq5$ from prefix8, then $5\rightarrow10\rightarrow15$ \\
+Checkpoint metric & \texttt{report\_f1} & \texttt{will15\_f1} \\
+Patience & 100 & 40 \\
+Upcoming / far positive weight & 8 / 0 at all caps & 9/9, 10/10, 11/11 \\
+Far-start loss boost & 1 & 2, only if start $>5$ min \\
+False-positive weight, hard multiplier & 2.4, 2.0 & 2.5, 2.2 \\
+Ongoing duration requirement & on & off \\
+Remaining-time loss & $w=0.35$, uniform & $w=0.5$, progress floor 0.25, power 1.5 \\
+Threshold candidates & 0.55--0.98, uneven & 0.45--0.90 step 0.05, plus 0.94 \\
+\bottomrule
+\end{tabular}}
+\end{center}
+
+Table~\ref{tab:model-selection} reports test performance for the checkpoints
+selected under the stated protocol. Sequential station fine-tuning is retained
+as one consistent recipe across all three Start caps; test results are not used
+to switch recipes between horizons.
+\zh{表~\ref{tab:model-selection} 仅报告按上述协议选出的 checkpoint 在测试集上的表现。三个 Start 档位统一保留顺序工位微调，不依据各档测试结果切换训练配方。}
+
+\begin{center}
+\captionof{table}{Selected checkpoints of the two fine-tuning settings. / 两种微调设置的入选 checkpoint。}
+\label{tab:model-selection}
+\scriptsize
+\resizebox{\textwidth}{!}{
+\begin{tabular}{llrrrrrrrr}
+\toprule
+Start & Setting & Test $P$ & Test $R$ & F1$_{\mathrm{who}}$ &
+F1$_{\mathrm{rep}}$ & \uprep & \onwho & Best ep. \\
+\midrule
+$\leq5$  & Separate report & .832 & .808 & .820 & .819 & .542 & .923 & 33 \\
+$\leq5$  & Sequential station & .794 & .817 & .805 & .804 & .539 & .937 & 39 \\
+\midrule
+$\leq10$ & Separate report & .750 & .763 & .757 & .751 & .550 & .923 & 83 \\
+$\leq10$ & Sequential station & .806 & .761 & .783 & .778 & .528 & .936 & 41 \\
+\midrule
+$\leq15$ & Separate report & .772 & .716 & .743 & .741 & .489 & .925 & 37 \\
+$\leq15$ & Sequential station & .806 & .742 & .772 & .768 & .534 & .925 & 42 \\
+\bottomrule
+\end{tabular}}
+\end{center}
+
+The separate-report Start$\leq5$ test station F1 is $0.820$, above the
+sequential setting's $0.805$. At Start$\leq10$ and Start$\leq15$, the
+sequential setting has higher test F1. The retained numbers in the following
+tables are the sequential station fine-tuning runs.
+\zh{分档报告微调在 Start$\leq5$ 的测试工位 F1 为 $0.820$，高于顺序工位微调的 $0.805$。Start$\leq10$ 和 Start$\leq15$ 上，顺序工位微调的测试 F1 更高。后面各表中的保留结果来自顺序工位微调。}
+
+\begin{center}
+\captionof{table}{Separate report fine-tuning station-timing test metrics. / 分档报告微调的工位时间测试指标。}
+\scriptsize
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lrrrrrrrr}
+\toprule
+Start & Dur. MAE & Start MAE & F1@1 & F1@2 & F1@3 &
+\upwho & Threshold & $n_{\rm up}/n_{\rm on}/n_{\rm all}$ \\
+\midrule
+$\leq5$  & 1.93 & .13 & .801 & .814 & .819 & .545 & .90 & 336/766/1102 \\
+$\leq10$ & 1.77 & .24 & .730 & .749 & .751 & .560 & .88 & 604/768/1372 \\
+$\leq15$ & 1.88 & .28 & .706 & .735 & .741 & .489 & .94 & 708/770/1478 \\
+\bottomrule
+\end{tabular}}
+\end{center}
+
+\begin{center}
+\captionof{table}{Separate report fine-tuning remaining-time results; MAE is in minutes. / 分档报告微调的剩余时间结果；MAE 单位为分钟。}
+\scriptsize
+\begin{tabular}{lr}
+\toprule
+Start & Test remain MAE \\
+\midrule
+$\leq5$  & 10.64 \\
+$\leq10$ &  9.61 \\
+$\leq15$ & 10.20 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\captionof{table}{Separate report fine-tuning cause-classification results. / 分档报告微调的原因分类结果。}
+\scriptsize
+\begin{tabular}{lrrr}
+\toprule
+Start & Test accuracy & Test macro & Support \\
+\midrule
+$\leq5$  & .965 & .969 & 579 \\
+$\leq10$ & .965 & .970 & 579 \\
+$\leq15$ & .969 & .974 & 579 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The train-derived majority-class accuracy is $0.409$. All three separate
+report runs completed 100 epochs.
+\zh{依据训练集得到的多数类基线准确率为 $0.409$。三组分档报告微调均训练满 100 个 epoch。}
+
+\clearpage
+\subsection{Final Main-Model Performance / 最终主模型表现}
+\subsubsection{Station-Level Bottleneck Prediction / 工位级瓶颈预测}
+\begin{center}
+\captionof{table}{Sequential station fine-tuning test results using the frozen checkpoint and threshold. / 顺序工位微调的测试集结果；使用冻结的 checkpoint 和阈值。}
+\label{tab:main-event}
+\scriptsize
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lrrrrrrrrrr}
+\toprule
+Start & $P$ & $R$ & F1$_{\mathrm{who}}$ & F1$_{\mathrm{rep}}$ &
+\uprep & \onwho & $n_{\mathrm{up}}$ & $n_{\mathrm{on}}$ & $n_{\mathrm{all}}$ & Epoch \\
+\midrule
+$\leq5$  & .794 & .817 & \bfseries .805 & .804 & .539 & .937 & 336 & 766 & 1102 & 39 \\
+$\leq10$ & .806 & .761 & \bfseries .783 & .778 & .528 & .936 & 604 & 768 & 1372 & 41 \\
+$\leq15$ & .806 & .742 & \bfseries .772 & .768 & .534 & .925 & 708 & 770 & 1478 & 42 \\
+\bottomrule
+\end{tabular}}
+\end{center}
+
+The test station-level F1 decreases from $0.805$ to $0.772$ as the task includes
+more distant upcoming events. Ongoing recall remains between $0.925$ and $0.937$,
+whereas upcoming report recall remains around $0.53$. For Start$\leq15$, the
+upcoming bucket recalls are $0.574$ for Start$\leq5$, $0.522$ for starts 6--10,
+and $0.433$ for starts above 10 min. This identifies distant early warning,
+rather than ongoing detection, as the principal limitation.
+\zh{随着任务纳入更远的 upcoming 事件，测试集工位级 F1 从 $0.805$ 下降到 $0.772$。进行中召回率保持在 $0.925$--$0.937$，而 upcoming 严格报告召回率约为 $0.53$。在 Start$\leq15$ 设置下，Start$\leq5$、6--10 分钟以及大于 10 分钟三个 upcoming 桶的召回率分别为 $0.574$、$0.522$ 和 $0.433$。这说明主要限制是远距离提前预警能力，而不是进行中事件检测。}
+
+\subsubsection{Remaining-Time Prediction / 剩余时间预测}
+\begin{center}
+\captionof{table}{Sequential station fine-tuning remaining-order-time results; MAE is in minutes. / 顺序工位微调的订单剩余时间结果；MAE 单位为分钟。}
+\scriptsize
+\begin{tabular}{lr}
+\toprule
+Start & Test remain MAE \\
+\midrule
+$\leq5$  & 10.9 \\
+$\leq10$ & 11.2 \\
+$\leq15$ &  9.7 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Test remaining-time MAE is $10.9$, $11.2$, and $9.7$ minutes at
+Start$\leq5/10/15$. The error does not grow with the station-prediction
+horizon: the Start$\leq15$ checkpoint is the most accurate of the three.
+\zh{Start$\leq5/10/15$ 的测试集剩余时间 MAE 分别为 $10.9$、$11.2$ 和 $9.7$ 分钟。该误差并不随工位预测范围变长而上升：Start$\leq15$ 的 checkpoint 在三档中最准确。}
+
+\subsubsection{Cause Classification / 瓶颈原因分类}
+\begin{center}
+\captionof{table}{Sequential station fine-tuning cause-classification results. / 顺序工位微调的瓶颈原因分类结果。}
+\scriptsize
+\begin{tabular}{lrrr}
+\toprule
+Start & Test accuracy & Test macro recall & Support \\
+\midrule
+$\leq5$  & .965 & .967 & 579 \\
+$\leq10$ & .962 & .965 & 579 \\
+$\leq15$ & .974 & .978 & 579 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\captionof{table}{Sequential station fine-tuning per-class cause recall on test; the final two classes have no test support. / 顺序工位微调的测试集逐类别原因召回率；最后两类在测试集中无样本。}
+\scriptsize
+\begin{tabular}{lrrrrrr}
+\toprule
+Start & Transport delay & Material shortage & Starved upstream &
+Queue buildup & Blocked downstream & High utilization \\
+\midrule
+$\leq5$  & .941 & .976 & .966 & .984 & no support & no support \\
+$\leq10$ & .926 & .988 & .962 & .984 & no support & no support \\
+$\leq15$ & .978 & .988 & .962 & .984 & no support & no support \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The cause head has four supported classes out of six configured classes.
+The majority-class baseline is derived from train only and equals $0.409$.
+Test accuracy stays between $0.962$ and $0.974$, well above that baseline.
+The unsupported classes are retained in the table to make the support boundary
+explicit rather than inflating a six-class claim.
+\zh{原因识别头虽然配置了 6 个类别，但只有 4 个类别拥有有效样本。多数类基线只依据训练集确定，其准确率为 $0.409$。测试准确率保持在 $0.962$--$0.974$，明显高于该基线。表中仍保留两个无测试样本的类别，以明确支持度边界，避免将实际四类有效评测夸大为完整六类评测。}
+
+\clearpage
+\section{Ablation Studies / 消融实验}
+
+\subsection{Ablation without Process-Heuristic Labels and Clustering / 未加入过程启发式标签与聚类的消融}
+This ablation removes two components of the full method: the process-heuristic
+labels and the clustering algorithm. It is trained from
+\texttt{FactoryBN\_dense\_mix\_start\{5,10,15\}\_min8\_opt.json} on
+\texttt{dense\_i1\_mix} (248 episodes, split 166/37/45). Selection uses
+validation \texttt{will15\_f1}, and the warm-start order is
+Start5$\rightarrow$Start10$\rightarrow$Start15. Start$\leq10/15$ use the
+ungated validation best because the precision gate did not open.
+\zh{该消融去掉完整方法中的两项组成：过程启发式标签和聚类算法。实验使用 \texttt{FactoryBN\_dense\_mix\_start\{5,10,15\}\_min8\_opt.json}，在 \texttt{dense\_i1\_mix}（248 个 episode，划分 166/37/45）上训练，以验证集 \texttt{will15\_f1} 选模，并按 Start5$\rightarrow$Start10$\rightarrow$Start15 顺序热启动。Start$\leq10/15$ 的精确率门槛未开启，因此采用无门槛验证集最优 checkpoint。}
+
+\subsubsection{Station-Level Bottleneck Prediction / 工位级瓶颈预测}
+\begin{center}
+\captionof{table}{Station-level metrics without process-heuristic labels and clustering. / 未加入过程启发式标签与聚类时的工位级指标。}
+\scriptsize
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lrrrrrrrrrrrr}
+\toprule
+Start & $P_{\mathrm{rep}}$ & $R_{\mathrm{rep}}$ & F1$_{\mathrm{rep}}$ &
+$P_{\mathrm{who}}$ & $R_{\mathrm{who}}$ & F1$_{\mathrm{who}}$ &
+\uprep & \upwho & \onwho & Support $n_{\rm up}/n_{\rm on}/n_{\rm all}$ &
+Best/total ep. \\
+\midrule
+$\leq5$  & .772 & .701 & .735 & .774 & .702 & .737 & .299 & .301 & .888 & 562/1216/1778 & 1/41 \\
+\midrule
+$\leq10$ & .684 & .613 & .646 & .697 & .625 & .659 & .324 & .344 & .855 & 1000/1221/2221 & 58/98 \\
+\midrule
+$\leq15$ & .697 & .586 & .637 & .704 & .592 & .643 & .320 & .325 & .847 & 1168/1222/2390 & 30/70 \\
+\bottomrule
+\end{tabular}}
+\end{center}
+
+Test report F1 falls to $.735/.646/.637$ at Start$\leq5/10/15$, which is
+$.069/.132/.131$ below the retained model ($.804/.778/.768$). Upcoming report
+recall also falls to $.299/.324/.320$. Station timing on the same checkpoints
+is duration MAE $2.54/2.18/2.26$ min, start MAE $.13/.27/.22$ min, and
+F1@1/2/3 equal to $.712/.729/.735$, $.626/.643/.646$, and $.623/.636/.637$.
+\zh{Start$\leq5/10/15$ 的测试 report F1 降至 $.735/.646/.637$，比保留模型的 $.804/.778/.768$ 分别低 $.069/.132/.131$。Upcoming 严格召回率也降至 $.299/.324/.320$。同一 checkpoint 的工位时间指标为：持续时间 MAE $2.54/2.18/2.26$ 分钟，起点 MAE $.13/.27/.22$ 分钟，F1@1/2/3 分别为 $.712/.729/.735$、$.626/.643/.646$ 和 $.623/.636/.637$。}
+
+\subsubsection{Remaining-Time Prediction / 剩余时间预测}
+\begin{center}
+\captionof{table}{Remaining-time results without process-heuristic labels and clustering; MAE is in minutes. / 未加入过程启发式标签与聚类时的剩余时间结果；MAE 单位为分钟。}
+\scriptsize
+\begin{tabular}{lrrr}
+\toprule
+Start & Test MAE & Test MAE$_w$ & Test primary \\
+\midrule
+$\leq5$  & 11.85 & 9.71 & 9.56 \\
+$\leq10$ & 10.95 & 9.12 & 9.77 \\
+$\leq15$ & 10.92 & 9.03 & 9.57 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+MAE$_w$ is the progress-weighted global error and ``primary'' is the configured
+middle-progress weighted error. Neither replaces the unweighted MAE. Test MAE
+is higher than the retained model at Start$\leq5$ and Start$\leq15$
+($11.85$ versus $10.9$, and $10.92$ versus $9.7$) and slightly lower at
+Start$\leq10$ ($10.95$ versus $11.2$).
+\zh{MAE$_w$ 是按生产进度加权的全局误差，“primary”是配置指定的中段进度加权误差；二者都不替代未加权 MAE。测试 MAE 在 Start$\leq5$ 和 Start$\leq15$ 高于保留模型（$11.85$ 对 $10.9$，$10.92$ 对 $9.7$），在 Start$\leq10$ 略低（$10.95$ 对 $11.2$）。}
+
+\subsubsection{Cause Classification / 瓶颈原因分类}
+\begin{center}
+\captionof{table}{Cause-classification results without process-heuristic labels and clustering. / 未加入过程启发式标签与聚类时的原因分类结果。}
+\scriptsize
+\begin{tabular}{lrrr}
+\toprule
+Start & Test accuracy & Test macro & Support \\
+\midrule
+$\leq5$  & .944 & .964 & 964 \\
+$\leq10$ & .924 & .940 & 964 \\
+$\leq15$ & .940 & .956 & 964 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\captionof{table}{Per-class cause recall on test without process-heuristic labels and clustering. / 未加入过程启发式标签与聚类时的测试集逐类别原因召回率。}
+\scriptsize
+\begin{tabular}{lrrrr}
+\toprule
+Start & Transport delay & Material shortage & Starved upstream & Queue buildup \\
+\midrule
+$\leq5$  & .962 & .989 & .906 & 1.000 \\
+$\leq10$ & .928 & .956 & .893 & .984 \\
+$\leq15$ & .943 & .978 & .910 & .995 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The train-derived majority baseline on this split is $0.495$. Test accuracy
+($.944/.924/.940$) remains far above that baseline, but it is below the retained
+model ($.965/.962/.974$). Together with the station-level drop, the arm shows
+that leaving out process-heuristic labels and clustering weakens both event
+detection and cause classification.
+\zh{该划分上由训练集得到的多数类基线为 $0.495$。测试准确率（$.944/.924/.940$）仍远高于该基线，但低于保留模型（$.965/.962/.974$）。结合工位级下降，该消融表明：不加入过程启发式标签和聚类，会同时削弱事件检测和原因分类。}
+
+\clearpage
+\subsection{Model-Structure Ablations / 模型结构消融}
+The \texttt{nograph} arm sets \texttt{graph\_mode=identity}, removing graph
+edges. The \texttt{nogroup} arm removes station-group/semantic-group embedding.
+\texttt{nopattern} disables the delayed pattern injection in the geographic
+attention keys. \texttt{nosplit} uses one shared event-will head for upcoming
+and ongoing bottlenecks (\texttt{split\_will\_heads=false}); decode-time
+forcing of ongoing events is left unchanged. All four arms use the same
+\texttt{dense\_i1} split as the final model. Start$\leq5$ is trained from
+scratch for at most 50 epochs with an empty \texttt{init\_ckpt}; Start$\leq10$
+and Start$\leq15$ warm-start from the previous arm checkpoint. This budget
+differs from the warm-started 100-epoch full model and is reported as a
+limitation of causal interpretation.
+\zh{\texttt{nograph} 将 \texttt{graph\_mode} 设为 \texttt{identity}，从而移除图边；\texttt{nogroup} 移除工位分组/语义分组嵌入；\texttt{nopattern} 关闭地理注意力键中的延迟 pattern 注入；\texttt{nosplit} 让 upcoming 与 ongoing 共用一个事件 will 头（\texttt{split\_will\_heads=false}），解码时对 ongoing 的强制保持不变。四组消融都使用与最终模型相同的 \texttt{dense\_i1} 划分。Start$\leq5$ 以空 \texttt{init\_ckpt} 从头训练，上限 50 个 epoch；Start$\leq10$ 和 Start$\leq15$ 从上一级 checkpoint 热启动。该预算不同于热启动且最多训练 100 个 epoch 的完整模型，因此这是解释消融因果效果时必须保留的限制。}
+
+\subsubsection{Station-Level Bottleneck Prediction / 工位级瓶颈预测}
+\begin{center}
+\captionof{table}{Structure-ablation station metrics at Start$\leq5$; Report F1 requires a correct station and a start error within 3 min. / Start$\leq5$ 结构消融工位指标；Report F1 要求工位正确且起点误差不超过 3 分钟。}
+\scriptsize
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lrrrrrrrrrr}
+\toprule
+Arm & $P$ & $R$ & F1$_{\mathrm{who}}$ & F1$_{\mathrm{rep}}$ &
+\uprep & \onwho & $n_{\rm up}$ & $n_{\rm on}$ & $n_{\rm all}$ & Best ep. \\
+\midrule
+Full       & .794 & .817 & .805 & .804 & .539 & .937 & 336 & 766 & 1102 & 39 \\
+No graph   & .832 & .678 & .747 & .746 & .101 & .930 & 336 & 766 & 1102 & 19 \\
+No group   & .766 & .756 & .761 & .753 & .307 & .941 & 336 & 766 & 1102 & 28 \\
+No pattern & .799 & .698 & .748 & .745 & .158 & .935 & 336 & 766 & 1102 & 15 \\
+No split   & .750 & .706 & .729 & .727 & .185 & .935 & 336 & 766 & 1102 & 15 \\
+\bottomrule
+\end{tabular}}
+\end{center}
+
+\begin{center}
+\captionof{table}{Structure-ablation station metrics at Start$\leq10$. / Start$\leq10$ 结构消融工位指标。}
+\scriptsize
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lrrrrrrrrrr}
+\toprule
+Arm & $P$ & $R$ & F1$_{\mathrm{who}}$ & F1$_{\mathrm{rep}}$ &
+\uprep & \onwho & $n_{\rm up}$ & $n_{\rm on}$ & $n_{\rm all}$ & Best ep. \\
+\midrule
+Full       & .806 & .761 & .783 & .778 & .528 & .936 & 604 & 768 & 1372 & 41 \\
+No graph   & .821 & .539 & .651 & .649 & .065 & .909 & 604 & 768 & 1372 & 9 \\
+No group   & .605 & .745 & .668 & .651 & .445 & .947 & 604 & 768 & 1372 & 44 \\
+No pattern & .555 & .625 & .607 & .588 & .235 & .934 & 604 & 768 & 1372 & 28 \\
+No split   & .546 & .618 & .599 & .580 & .204 & .947 & 604 & 768 & 1372 & 33 \\
+\bottomrule
+\end{tabular}}
+\end{center}
+
+\begin{center}
+\captionof{table}{Structure-ablation station metrics at Start$\leq15$. / Start$\leq15$ 结构消融工位指标。}
+\scriptsize
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lrrrrrrrrrr}
+\toprule
+Arm & $P$ & $R$ & F1$_{\mathrm{who}}$ & F1$_{\mathrm{rep}}$ &
+\uprep & \onwho & $n_{\rm up}$ & $n_{\rm on}$ & $n_{\rm all}$ & Best ep. \\
+\midrule
+Full       & .806 & .742 & .772 & .768 & .534 & .925 & 708 & 770 & 1478 & 42 \\
+No graph   & .851 & .482 & .616 & .612 & .037 & .887 & 708 & 770 & 1478 & 11 \\
+No group   & .567 & .690 & .623 & .604 & .395 & .922 & 708 & 770 & 1478 & 50 \\
+No pattern & .539 & .681 & .616 & .601 & .397 & .947 & 708 & 770 & 1478 & 42 \\
+No split   & .539 & .641 & .607 & .586 & .309 & .951 & 708 & 770 & 1478 & 47 \\
+\bottomrule
+\end{tabular}}
+\end{center}
+
+\subsubsection{Remaining-Time Prediction / 剩余时间预测}
+\begin{center}
+\captionof{table}{Remaining-time MAE (minutes) for the structure ablations. / 结构消融的剩余时间 MAE（分钟）。}
+\scriptsize
+\begin{tabular}{llr}
+\toprule
+Arm & Start & Test MAE \\
+\midrule
+Full       & $\leq5$ & 10.9 \\
+No graph   & $\leq5$ & 17.0 \\
+No group   & $\leq5$ & 12.7 \\
+No pattern & $\leq5$ & 18.6 \\
+No split   & $\leq5$ & 18.9 \\
+\midrule
+Full       & $\leq10$ & 11.2 \\
+No graph   & $\leq10$ & 23.3 \\
+No group   & $\leq10$ & 11.6 \\
+No pattern & $\leq10$ & 13.4 \\
+No split   & $\leq10$ & 14.4 \\
+\midrule
+Full       & $\leq15$ & 9.7 \\
+No graph   & $\leq15$ & 20.8 \\
+No group   & $\leq15$ & 10.6 \\
+No pattern & $\leq15$ & 11.1 \\
+No split   & $\leq15$ & 13.8 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{Cause Classification / 瓶颈原因分类}
+\begin{center}
+\captionof{table}{Cause-classification metrics for the structure ablations. / 结构消融的原因分类指标。}
+\scriptsize
+\resizebox{\textwidth}{!}{
+\begin{tabular}{llrrrrr}
+\toprule
+Arm & Start & Test accuracy & Test macro recall & Majority baseline & Support \\
+\midrule
+Full       & $\leq5$  & .965 & .967 & .409 & 579 \\
+No graph   & $\leq5$  & .876 & .889 & .409 & 579 \\
+No group   & $\leq5$  & .943 & .955 & .409 & 579 \\
+No pattern & $\leq5$  & .732 & .734 & .409 & 579 \\
+No split   & $\leq5$  & .853 & .874 & .409 & 579 \\
+\midrule
+Full       & $\leq10$ & .962 & .965 & .409 & 579 \\
+No graph   & $\leq10$ & .734 & .746 & .409 & 579 \\
+No group   & $\leq10$ & .938 & .953 & .409 & 579 \\
+No pattern & $\leq10$ & .793 & .805 & .409 & 579 \\
+No split   & $\leq10$ & .869 & .884 & .409 & 579 \\
+\midrule
+Full       & $\leq15$ & .974 & .978 & .409 & 579 \\
+No graph   & $\leq15$ & .794 & .787 & .409 & 579 \\
+No group   & $\leq15$ & .938 & .949 & .409 & 579 \\
+No pattern & $\leq15$ & .843 & .850 & .409 & 579 \\
+No split   & $\leq15$ & .869 & .890 & .409 & 579 \\
+\bottomrule
+\end{tabular}}
+\end{center}
+
+\begin{landscape}
+\begin{center}
+\captionof{table}{Complete per-class cause recall for the full model and structure ablations on test. / 完整模型与结构消融在测试集上的逐类别原因召回率。}
+\scriptsize
+\begin{tabular}{llrrrrrr}
+\toprule
+Arm & Start & Transport delay & Material shortage & Starved upstream &
+Queue buildup & Blocked downstream & High utilization \\
+\midrule
+Full     & $\leq5$  & .941 & .976 & .966 & .984 & no support & no support \\
+No graph & $\leq5$  & .971 & 1.000 & .852 & .734 & no support & no support \\
+No group & $\leq5$  & .956 & 1.000 & .911 & .952 & no support & no support \\
+No pattern & $\leq5$  & .993 & 1.000 & .797 & .145 & no support & no support \\
+No split   & $\leq5$  & .934 & 1.000 & .806 & .758 & no support & no support \\
+\midrule
+Full     & $\leq10$ & .926 & .988 & .962 & .984 & no support & no support \\
+No graph & $\leq10$ & .993 & .963 & .738 & .290 & no support & no support \\
+No group & $\leq10$ & .956 & 1.000 & .890 & .968 & no support & no support \\
+No pattern & $\leq10$ & .941 & 1.000 & .802 & .476 & no support & no support \\
+No split   & $\leq10$ & .831 & 1.000 & .857 & .847 & no support & no support \\
+\midrule
+Full     & $\leq15$ & .978 & .988 & .962 & .984 & no support & no support \\
+No graph & $\leq15$ & .993 & .988 & .878 & .290 & no support & no support \\
+No group & $\leq15$ & .926 & 1.000 & .911 & .960 & no support & no support \\
+No pattern & $\leq15$ & .971 & 1.000 & .857 & .573 & no support & no support \\
+No split   & $\leq15$ & .875 & 1.000 & .823 & .863 & no support & no support \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{landscape}
+
+Removing graph structure causes the largest and most consistent degradation,
+especially for upcoming recall, remaining-time MAE, and queue-buildup recall.
+Removing group embeddings and delayed pattern injection also lowers station F1
+at every horizon. The \texttt{nopattern} test report-F1 drops are
+$.059/.190/.167$, and its queue-buildup recall is substantially lower.
+Sharing one will head (\texttt{nosplit}) drops test report F1 by
+$.077/.198/.182$. Upcoming report recall falls to $.185/.204/.309$, while
+ongoing recall stays above $.93$. Remaining-time MAE rises to
+$18.9/14.4/13.8$ minutes. Cause accuracy stays high ($.853/.869/.869$) because
+the cause head is unchanged; the damage is concentrated in station detection.
+The precision gate does not open for \texttt{nogroup},
+\texttt{nopattern}, or \texttt{nosplit}; their checkpoints therefore use the
+predefined fallback selection rule. The \texttt{nogroup} Start$\leq15$
+checkpoint is the final epoch (50), so it did not plateau within the assigned
+budget.
+\zh{移除图结构造成最大且最一致的性能下降，尤其体现在 upcoming 召回率、剩余时间 MAE 和 queue-buildup 类召回率上。移除工位分组嵌入和延迟 pattern 注入也会降低三个 Start 档位的工位 F1。\texttt{nopattern} 的测试 report-F1 分别下降 $.059/.190/.167$，且 queue-buildup 类召回率明显降低。共用一个 will 头（\texttt{nosplit}）使测试 report F1 下降 $.077/.198/.182$，upcoming 严格召回率降至 $.185/.204/.309$，而 ongoing 召回率仍高于 $.93$。剩余时间 MAE 升至 $18.9/14.4/13.8$ 分钟。原因准确率仍较高（$.853/.869/.869$），因为原因头没有改动，损失集中在工位检测。\texttt{nogroup}、\texttt{nopattern} 和 \texttt{nosplit} 均未开启精确率门槛，因此按预先规定的 fallback 规则选取 checkpoint。\texttt{nogroup} 的 Start$\leq15$ checkpoint 位于最后一个 epoch（50），说明该实验在给定预算内尚未进入平台期。}
+
+The planned \texttt{nosem} arm
+(\texttt{ablation\_nosem\_start5\_seed42}) aborted before epoch 1 because a
+convolution weight had shape \texttt{[0,80,1,1]}; consequently, it has no valid
+metrics. This failed arm is reported rather than silently excluded.
+\zh{计划中的 \texttt{nosem} 实验（\texttt{ablation\_nosem\_start5\_seed42}）在第 1 个 epoch 之前即终止，原因是卷积权重形状为 \texttt{[0,80,1,1]}，因此没有有效指标。本文明确报告该失败实验，而不是将其静默删除。}
+
+\clearpage
+\section{Baseline Comparison / 基线对比}
+
+B4 (BTGCN) and B5 (BSTAN) use a different episode split, and their held-out
+test episodes have not been evaluated. Consequently, this test-only report
+does not present a numerical baseline ranking. Their training and model-
+selection results are intentionally omitted; a direct comparison should be
+added only after both baselines are evaluated on a compatible test protocol.
+\zh{B4（BTGCN）和 B5（BSTAN）使用不同的 episode 划分，且尚未评测其留出的测试 episode。因此，本测试集版本不报告基线数值排名，并有意省略其训练与选模结果。只有在两个基线按兼容的测试协议完成评测后，才应加入直接比较。}
+
+\subsection{Overall Discussion and Validity Boundaries / 总体讨论与有效性边界}
+The retained sequential station fine-tuning reaches test station-level F1 of
+$0.805/0.783/0.772$ and strict upcoming recall of
+$0.539/0.528/0.534$ for Start$\leq5/10/15$. The graph, station-group, pattern,
+and shared-head ablations all reduce station F1. Graph removal nearly
+eliminates upcoming recall at long horizons, and the shared will head cuts
+upcoming report recall to $0.185/0.204/0.309$. Leaving out process-heuristic
+labels and clustering lowers test report F1 to $0.735/0.646/0.637$. Cause
+classification and remaining-time estimation are reported separately from
+station identification; neither is folded into the station F1.
+\zh{保留的顺序工位微调在 Start$\leq5/10/15$ 三档上的测试集工位级 F1 分别为 $0.805/0.783/0.772$，严格 upcoming 召回率分别为 $0.539/0.528/0.534$。移除图结构、工位分组、延迟 pattern，或让 upcoming 与 ongoing 共用 will 头，都会降低工位 F1。移除图结构几乎使长预测范围的 upcoming 召回能力消失；共用 will 头则把 upcoming 严格召回率降到 $0.185/0.204/0.309$。不加入过程启发式标签和聚类时，测试 report F1 降至 $0.735/0.646/0.637$。原因分类和剩余时间估计与工位识别分开报告，不并入工位 F1。}
+
+Four validity limits must accompany these results. First, all runs use one seed,
+so uncertainty and significance are unknown. Second, B4/B5 currently have no
+test result and use a different episode split, so no numerical baseline ranking
+is presented. Third, the structure ablations use a smaller,
+from-scratch budget than the warm-started full model. Fourth, the present results use only one dataset realization and do not
+establish robustness to a changed factory layout or disturbance distribution.
+These boundaries are stated explicitly rather than hidden by a pooled score.
+\zh{这些结果必须同时说明四项有效性限制。第一，所有实验只使用一个随机种子，因此无法估计不确定性或统计显著性。第二，B4/B5 尚无测试集结果，且采用不同的 episode 划分，因此不报告基线数值排名。第三，结构消融采用比完整模型更小的、从头训练的预算。第四，当前结果只覆盖一份数据实现，尚不能证明模型能稳健适应工厂布局或扰动分布变化。本文明确说明这些边界，而不是用一个混合总分掩盖差异。}
+
+\end{document}

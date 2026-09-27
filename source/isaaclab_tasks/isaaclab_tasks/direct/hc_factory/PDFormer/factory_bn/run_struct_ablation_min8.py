@@ -22,6 +22,7 @@ ARMS = {
     "nogroup": "FactoryBN_dense_struct_nogroup_start{start}_min8.json",
     "nosem": "FactoryBN_dense_struct_nosem_start{start}_min8.json",
     "nopattern": "FactoryBN_dense_struct_nopattern_start{start}_min8.json",
+    "nosplit": "FactoryBN_dense_struct_nosplit_start{start}_min8.json",
     "full": "FactoryBN_dense_12_3_start{start}_min8_opt.json",
 }
 DEFAULT_ARMS = ("nograph", "nogroup", "nosem", "nopattern")
