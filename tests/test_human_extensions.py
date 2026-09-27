@@ -158,7 +158,7 @@ class ExtensionTests(unittest.TestCase):
         # Execute real manager methods without importing Isaac/Omniverse.
         path = ROOT/'source/isaaclab_tasks/isaaclab_tasks/direct/hc_factory/src/task_progress_manager.py'
         cls = next(n for n in ast.parse(path.read_text()).body if isinstance(n,ast.ClassDef) and n.name=='TaskManager')
-        wanted = {'_duration_event','update_new_task_record','step_task_records'}
+        wanted = {'_duration_event','prepare_new_task_record','update_new_task_record','step_task_records'}
         methods = [n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name in wanted]
         tree = ast.fix_missing_locations(ast.Module(body=[ast.ClassDef(name='Manager',bases=[],keywords=[],body=methods,decorator_list=[])],type_ignores=[]))
         scope = dict(copy=copy,CfgProcessTaskGalleryDetailedClassified={'p':{'t':{}}},find_workstation_index_for_task=lambda *a:0,finalize_material_batch_task_done=lambda *a:None)

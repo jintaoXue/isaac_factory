@@ -28,6 +28,8 @@ class Transition:
     next_obs: torch.Tensor | None = None
     # 1-based episode index for teacher/offline subsetting (None = unmarked).
     episode_id: int | None = None
+    # Opt-in R replay; appended to preserve legacy positional construction.
+    next_context: torch.Tensor | None = None
 
 
 class ReplayBuffer:

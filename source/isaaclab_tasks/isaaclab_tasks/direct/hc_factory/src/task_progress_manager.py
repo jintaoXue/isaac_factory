@@ -83,6 +83,7 @@ class TaskManager:
     def configure_human_reward(self, config):
         self.human_reward = HumanAwareReward(config, human_effective_skill, human_efficiency)
         self.duration_events_enabled = bool(config.get("human_duration_aux", False))
+        self.dispatch_feedback = bool(config.get("decision_consistent", False))
 
     def reset(self, env_state_action_dict) -> dict:
         self.human_reward.reset()
@@ -116,6 +117,8 @@ class TaskManager:
         }
 
     def step(self, env_state_action_dict: dict) -> dict:
+        if self.dispatch_feedback:
+            env_state_action_dict.setdefault("rl", {})["dispatch_outcomes"] = []
         if self.duration_events_enabled:
             env_state_action_dict.setdefault("rl", {})["duration_events"] = []
 
@@ -124,7 +127,7 @@ class TaskManager:
         action = env_state_action_dict.get("action") or {}
         dispatch_list = action.get("dispatch_list")
         if dispatch_list:
-            for item in dispatch_list:
+            for dispatch_index, item in enumerate(dispatch_list):
                 new_task_record = copy.deepcopy(TaskRecordTemplate)
                 if not self.decode_dispatch_item(env_state_action_dict, item, new_task_record):
                     continue
@@ -135,7 +138,13 @@ class TaskManager:
                         item["human_robot_allocation"], env_state_action_dict, new_task_record
                     )
                     # May return False (no AGV / preferred gantry busy) — skip, retry later.
-                    self.update_new_task_record(env_state_action_dict, new_task_record)
+                    accepted = self.update_new_task_record(env_state_action_dict, new_task_record)
+                    if self.dispatch_feedback:
+                        env_state_action_dict["rl"]["dispatch_outcomes"].append({
+                            "index": dispatch_index, "accepted": bool(accepted),
+                            "human_index": new_task_record.get("human_index"),
+                            "robot_index": new_task_record.get("robot_index"),
+                        })
         else:
             new_task_record = copy.deepcopy(TaskRecordTemplate)
             if self.decode_action_product_selection(env_state_action_dict, new_task_record):
@@ -343,7 +352,8 @@ class TaskManager:
             new_task_record,
         )
 
-    def update_new_task_record(self, env_state_action_dict, new_task_record: dict):
+    def prepare_new_task_record(self, env_state_action_dict, new_task_record: dict):
+        """Fill a private record and check start feasibility without reserving resources."""
         assert new_task_record["human"] != None, "Human availablity should be check by mask before the task can be selected"
         assert new_task_record["product_index"] not in env_state_action_dict["progress"]["ongoing_task_records"], "The product index should not be in the ongoing task records"
         assert new_task_record["task"] != "none", "The task should not be none"
@@ -375,6 +385,11 @@ class TaskManager:
                 return False
             new_task_record["chosen_gantry_index"] = chosen_gantry_index
 
+        return True
+
+    def update_new_task_record(self, env_state_action_dict, new_task_record: dict):
+        if not self.prepare_new_task_record(env_state_action_dict, new_task_record):
+            return False
         env_state_action_dict["progress"]["ongoing_task_records"][new_task_record["product_index"]] = new_task_record
         self._duration_event(env_state_action_dict, new_task_record, "start")
         self.human_reward.on_assignment(env_state_action_dict, new_task_record)

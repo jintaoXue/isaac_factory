@@ -35,6 +35,11 @@ set -euo pipefail
 # Stub: E6-no-guide|E6-no-hier|E6-no-ar|E2-random-data|…
 
 MODE="${1:-}"
+# R has an independent recipe; legacy G/E defaults below remain unchanged.
+case "${MODE}" in
+    R0|R1|R2|R2-*|eval-R0|eval-R1|eval-R2|eval-R2-*)
+        exec python "$(dirname -- "$0")/tools/run_r_series.py" "$@" ;;
+esac
 DEVICE="${2:-cuda:0}"
 
 export HC_WANDB_TRAIN_PROJECT="${HC_WANDB_TRAIN_PROJECT:-HcFactory_TPA}"

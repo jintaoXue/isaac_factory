@@ -222,6 +222,8 @@ class HierarchicalTPA:
     def __init__(self, base_name, params):
         config = params["config"]
         self.config = config
+        self.decision_consistent = bool(config.get("decision_consistent", False))
+        self.decision_replay = None
         self.env_config = config.get("env_config", {})
         # Align with HcVectorEnvCfg.scene.num_envs (default 3)
         self.num_actors = int(config.get("num_actors", 3))
@@ -373,6 +375,10 @@ class HierarchicalTPA:
             duration_aux_scale=float(config.get("duration_aux_scale", 1000.0)), **dqn_kwargs
         )
         self._apply_ar_to_agents(sample_at_act=True)
+        if self.decision_consistent:
+            from .decision_consistent import DecisionReplay, validate_config
+            validate_config(config)
+            self.decision_replay = DecisionReplay(self)
 
         self.oru: ORUController | None = None
         self._oru_enabled = bool(config.get("oru", False)) and not bool(
@@ -720,6 +726,9 @@ class HierarchicalTPA:
         self, env_state_action_dict: dict, epsilon: float, pre: dict | None = None
     ) -> tuple[dict, dict]:
         from .hierarchical_dispatch import build_hier_rl_action
+        if self.decision_consistent:
+            from .decision_consistent import build_decision_action
+            return build_decision_action(env_state_action_dict, self, epsilon), {"explore_mode": "R"}
 
         self._apply_ar_to_agents(sample_at_act=True)
         agents = self
@@ -1150,6 +1159,9 @@ class HierarchicalTPA:
         if self.agent_D.robot_dqn is not None:
             self.agent_D.robot_dqn.save(os.path.join(self.nn_dir, f"agent_D_robot_step_{step}.pth"))
 
+        if self.decision_replay is not None:
+            self.decision_replay.save(self.nn_dir, step)
+
     def train(self):
         if self.config.get("test"):
             return self.test()
@@ -1212,6 +1224,8 @@ class HierarchicalTPA:
             do_learn = crossed_interval(last_learned_env_steps, next_env_step, self.learn_interval)
             learn_event = False
             for env_id, action in enumerate(actions):
+                if self.decision_consistent:
+                    continue
                 if not self._had_meaningful_decision(action):
                     continue
                 old = pending_decisions[env_id]
@@ -1279,6 +1293,11 @@ class HierarchicalTPA:
                 else:
                     episode_n_finished[env_id] += int(rl_step.get("n_product_finished", 0) or 0)
                 next_pre = self.obs_encoder.preprocess(next_obs[env_id])
+                if self.decision_replay is not None:
+                    self.decision_replay.observe(
+                        env_id, actions[env_id], next_obs[env_id].get("rl", {}),
+                        reward, done, restored=restored,
+                    )
                 pending = pending_decisions[env_id]
                 if pending is not None and not restored:
                     pending["reward"] += pending["discount"] * reward
@@ -1436,6 +1455,8 @@ class HierarchicalTPA:
                     ):
                         stop = True
 
+            if self.decision_replay is not None and do_learn:
+                learn_event = self.decision_replay.learn()
             if do_learn and learn_event:
                 last_learned_env_steps = env_step
 
@@ -1572,6 +1593,8 @@ class HierarchicalTPA:
                     )
                 )
                 payload.update(loss_payload)
+                if self.decision_replay is not None:
+                    payload.update(self.decision_replay.metrics())
                 payload["MetricPolicy/human_greedy"] = int(self.agent_D.human_policy == "greedy")
                 if (
                     self.agent_C.task_pair_head

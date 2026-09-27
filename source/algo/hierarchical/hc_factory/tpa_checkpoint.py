@@ -67,6 +67,8 @@ def load_hier_checkpoint(hier_agent, config: dict, checkpoint_path: str | None =
         print(f"[Hier] no checkpoint step found under {nn_dir}")
         return None
 
+    from .decision_consistent import check_checkpoint
+    check_checkpoint(hier_agent, nn_dir, step)
     enc_path = os.path.join(nn_dir, f"state_encoder_step_{step}.pth")
     if os.path.isfile(enc_path):
         state = torch.load(enc_path, map_location=hier_agent.cuda_device, weights_only=True)
@@ -90,6 +92,8 @@ def load_hier_checkpoint(hier_agent, config: dict, checkpoint_path: str | None =
             dqn.load(path)
             print(f"[Hier] loaded {fname}: {path}")
 
+    if getattr(hier_agent, "decision_replay", None) is not None:
+        hier_agent.decision_replay.reset_target()
     return enc_path if os.path.isfile(enc_path) else nn_dir
 
 

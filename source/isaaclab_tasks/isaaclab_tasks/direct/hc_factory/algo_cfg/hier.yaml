@@ -8,6 +8,8 @@ params:
     clip_actions: 1.0
 
   config:
+    decision_consistent: false
+    decision_target_encoder: false
     name: HcFactory
     env_name: rlgpu_HRTPA
     device: 'cuda:0'

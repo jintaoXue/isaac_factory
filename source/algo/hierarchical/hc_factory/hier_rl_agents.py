@@ -330,6 +330,8 @@ class MaskedDQNAgent:
         *,
         offline_buffer: ReplayBuffer | PrioritizedReplayBuffer | None = None,
         mix_ratio: float = 0.0,
+        next_encode_fn=None,
+        target_encode_fn=None,
     ) -> torch.Tensor | None:
         sampled = self._sample_train_batch(offline_buffer=offline_buffer, mix_ratio=mix_ratio)
         if sampled is None:
@@ -340,7 +342,10 @@ class MaskedDQNAgent:
         obs_batch = self._encode_batch(batch, encode_fn, use_next=False)
         action_batch = torch.tensor([t.action for t in batch], dtype=torch.long, device=self.device)
         reward_batch = torch.tensor([t.reward for t in batch], dtype=torch.float32, device=self.device)
-        next_obs_batch = self._encode_batch(batch, encode_fn, use_next=True)
+        with torch.no_grad():
+            next_obs_batch = self._encode_batch(batch, next_encode_fn or encode_fn, use_next=True)
+            target_obs_batch = (self._encode_batch(batch, target_encode_fn, use_next=True)
+                                if target_encode_fn is not None else next_obs_batch)
         mask_batch = torch.stack([t.mask for t in batch]).to(self.device)
         next_mask_batch = torch.stack([t.next_mask for t in batch]).to(self.device)
         done_batch = torch.tensor([t.done for t in batch], dtype=torch.float32, device=self.device)
@@ -357,11 +362,11 @@ class MaskedDQNAgent:
             next_q_online[next_mask_batch == 0] = -float("inf")
             if self.double_dqn:
                 best_actions = next_q_online.argmax(dim=1, keepdim=True)
-                next_q_target = self.target_net(next_obs_batch)
+                next_q_target = self.target_net(target_obs_batch)
                 next_q_target[next_mask_batch == 0] = -float("inf")
                 max_next_q = next_q_target.gather(1, best_actions).squeeze(1)
             else:
-                next_q_target = self.target_net(next_obs_batch)
+                next_q_target = self.target_net(target_obs_batch)
                 next_q_target[next_mask_batch == 0] = -float("inf")
                 max_next_q = next_q_target.max(dim=1).values
             max_next_q[torch.isinf(max_next_q)] = 0.0

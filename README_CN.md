@@ -522,3 +522,7 @@ python .../perception.py eval --task subtask \
 - [Isaac Sim Livestream 客户端](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/manual_livestream_clients.html)
 - 开发笔记：`coding_note.md`
 - 论文 / 实验笔记：`2026_Journal_Paper.md`
+
+### R 系列：动作与回放一致性
+
+保留原 G/E 算法，新增 R0/R1/R2 和独立 reward 消融。设计、训练及评估命令见 [R 系列实验说明](docs/experiment_r_series.md)，问题依据见 [训练诊断归档](docs/rl_diagnosis_2026-09-27.md)。
