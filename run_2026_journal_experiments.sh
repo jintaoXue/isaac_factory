@@ -189,29 +189,13 @@ g_rainbow_dueling() {
 }
 
 g_horizon_anchor() {
-    # G series: actual T=35000 under N10 (t_max_anchor 56000 × 10/16).
-    # E/T protocol stays T=40000 (anchor 64000). Override: HC_G_T_MAX_ANCHOR / HC_G_MAX_EPISODIC_STEPS.
-    local mode="${1:-${MODE:-}}"
-    case "${mode}" in
-        G*|eval-G*|G-hard*|G5-*)
-            echo "${HC_G_T_MAX_ANCHOR:-56000}"
-            ;;
-        *)
-            echo 64000
-            ;;
-    esac
+    # E/G/T share one horizon: N10 T=25000, N16 T=40000 (anchor × N/16).
+    # Override: HC_G_T_MAX_ANCHOR / HC_G_MAX_EPISODIC_STEPS.
+    echo "${HC_G_T_MAX_ANCHOR:-40000}"
 }
 
 g_horizon_steps() {
-    local mode="${1:-${MODE:-}}"
-    case "${mode}" in
-        G*|eval-G*|G-hard*|G5-*)
-            echo "${HC_G_MAX_EPISODIC_STEPS:-35000}"
-            ;;
-        *)
-            echo 40000
-            ;;
-    esac
+    echo "${HC_G_MAX_EPISODIC_STEPS:-25000}"
 }
 
 g_load_wandb_local_env() {
@@ -310,7 +294,7 @@ G 系列（gap 动力学；序号 G0–G4，勿与 E* 混用）:
 
 评测:
   E0 [cuda:N] [--dry-run]
-          固定 step1290000，N10/K10/T40000，评测 seed 43–52 各 1 局，epsilon=0
+          固定 step1290000，N10/K10/T25000，评测 seed 43–52 各 1 局，epsilon=0
           权重：logs/rl_games/HcFactory/hier_2026-08-27_23-17-41
   eval-T0 | eval-T1 | eval-T1R | eval-T1RH
           需 HC_LOAD_DIR；可选 HC_LOAD_STEP / HC_EVAL_STEPS
@@ -423,9 +407,9 @@ run_e0_eval() {
         'agent.params.config.warmstart=""'
         'agent.params.config.load_name=""'
     )
-    # Horizon: 64000 * 10 / 16 = 40000. Keep anchor=64000.
+    # Horizon: anchor 40000 × 10/16 = 25000. N16 stays 40000.
     # Eval seeds 43–52 × HC_TEST_TIMES (default 1). Train convention remains S42.
-    echo "[E0] N=10 K=10 dispatch=10 T=40000 epsilon=0; eval_seeds=43..52 x${HC_TEST_TIMES}; step=1290000"
+    echo "[E0] N=10 K=10 dispatch=10 T=25000 epsilon=0; eval_seeds=43..52 x${HC_TEST_TIMES}; step=1290000"
     echo "[E0] load_dir=${load_dir}; project=HcFactory_TPA_Eval"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
@@ -493,7 +477,7 @@ run_e1_train() {
         'agent.params.config.warmstart=""'
         'agent.params.config.load_name=""'
     )
-    echo "[E1] warmstart step=1290000; N=10 K=10 T=40000; lr_q=2e-5 lr_enc=1e-5 eps=0.05; seed=42"
+    echo "[E1] warmstart step=1290000; N=10 K=10 T=25000; lr_q=2e-5 lr_enc=1e-5 eps=0.05; seed=42"
     echo "[E1] max_sim_episodes=${HC_MAX_TRAIN_EPISODES}; load_dir=${load_dir}; project=HcFactory_TPA; wandb=E1-N10-S42"
     if [[ "${dry_run}" == --dry-run ]]; then
         printf '%q ' "${cmd[@]}"
@@ -2232,7 +2216,7 @@ run_eval_e5_human() {
     esac
     export HC_LOAD_DIR="${load_dir}" HC_LOAD_STEP="${step}"
     export HC_TEST_SEEDS=43,44,45,46,47,48,49,50,51,52 HC_TEST_TIMES=1
-    export HC_TRAIN_N_PRODUCTS=10 HC_T_MAX_ANCHOR=64000 HC_MULTI_K=10
+    export HC_TRAIN_N_PRODUCTS=10 HC_T_MAX_ANCHOR=40000 HC_MULTI_K=10
     export HC_HUMAN_EVAL=1 HC_EVAL_VARIANT="${variant}"
     if [[ "${g_series}" == true ]]; then
         export HC_WANDB_NAME="${run_id}-N10-S42-step${step}-eval"
@@ -2243,7 +2227,7 @@ run_eval_e5_human() {
     export HC_EVAL_OUTPUT_DIR="${load_dir}/eval_step${step}_${stamp}"
     export HC_EVAL_KEEP_PRIOR=0
     unset HC_WANDB_RUN_ID WANDB_RUN_ID HC_WANDB_RESUME WANDB_RESUME
-    echo "[eval-${variant}] N10 K10 T40000 epsilon=0 seeds=43..52 x1; shaping OFF; pair=${HC_HUMAN_PAIR_EVAL} match=${HC_HUMAN_MATCH_EVAL} task_match=${HC_TASK_MATCH_EVAL}"
+    echo "[eval-${variant}] N10 K10 T25000 epsilon=0 seeds=43..52 x1; shaping OFF; pair=${HC_HUMAN_PAIR_EVAL} match=${HC_HUMAN_MATCH_EVAL} task_match=${HC_TASK_MATCH_EVAL}"
     echo "[eval-${variant}] load=${load_dir} step=${step}; wandb=${HC_WANDB_NAME}; out=${HC_EVAL_OUTPUT_DIR}"
     if [[ "${dry_run}" == --dry-run ]]; then
         echo "bash batch_train.sh 29 ${DEVICE} (fixed protocol above, existing chunked eval)"

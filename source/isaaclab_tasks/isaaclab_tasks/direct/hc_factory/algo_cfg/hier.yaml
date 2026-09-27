@@ -18,7 +18,7 @@ params:
 
     # Overridden by train.py from --num_envs / env.num_envs
     num_actors: 1
-    max_episodic_steps: 64000
+    max_episodic_steps: 25000
     state_dim: 256
 
     # Per-simulation-step discount used as gamma ** decision_duration.
@@ -107,7 +107,7 @@ params:
     warmstart: ''
     curriculum: False
     curriculum_start_stage: 0
-    t_max_anchor: 64000
+    t_max_anchor: 40000
     # ORU (E2+): offline warmup then decaying mix into online hard train.
     # Ablation *-no-oru: keep oru=False (journal forces this; no catalog required).
     oru: False

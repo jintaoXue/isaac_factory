@@ -8,7 +8,7 @@ class HcLogicEnvCfg:
     human_number_upper_bound = 6
     robot_upper_bound = 4
     material_batch_upper_bound = 16
-    max_episodic_steps = 64000
+    max_episodic_steps = 40000
     rl_step_penalty = 0.08
     rl_finish_bonus = 2.0
     rl_task_bonus = 0.1

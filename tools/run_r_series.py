@@ -63,7 +63,8 @@ def command(mode, device, env, dry_run=False):
         argv += ['--wandb_activate', '--wandb_project',
                  env.get('HC_WANDB_TEST_PROJECT' if evaluation else 'HC_WANDB_TRAIN_PROJECT',
                          'HcFactory_TPA_Eval' if evaluation else 'HcFactory_TPA')]
-    knobs.update(dict(t_max_anchor=56000, max_episodic_steps=35000, parallel_producing_limit=10,
+    # N10 T=25000; N16 uses the same per-product budget (anchor 40000 → 40000).
+    knobs.update(dict(t_max_anchor=40000, max_episodic_steps=25000, parallel_producing_limit=10,
         c_forbid_none_mode='always', prioritized_replay=True, dueling_dqn=True,
         gamma=.9999, decision_reward_scale=.01, learning_rate=.0001, encoder_learning_rate=.0001,
         epsilon_start=1., epsilon_end=.05, epsilon_decay_steps=1500000,
@@ -107,7 +108,7 @@ def main():
         argv = command(args.mode, args.device, env, args.dry_run)
     except ValueError as exc:
         parser.error(str(exc))
-    print('[R] gap / N10 / K10 / T35000; evaluation epsilon=0; reward ablations are separate', flush=True)
+    print('[R] gap / N10 / K10 / T25000; evaluation epsilon=0; reward ablations are separate', flush=True)
     if args.dry_run:
         print(shlex.join(argv))
         return

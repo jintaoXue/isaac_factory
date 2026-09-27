@@ -11,8 +11,8 @@ HC_TEST_TIMES="${HC_TEST_TIMES:-1}"
 HC_TEST_SEEDS="${HC_TEST_SEEDS:-43,44,45,46,47,48,49,50,51,52}"
 HC_TRAIN_N_PRODUCTS="${HC_TRAIN_N_PRODUCTS:-16}"
 HC_MULTI_K="${HC_MULTI_K:-10}"
-# 全订单 anchor：N=16 的 T_max；N=10 = round(anchor/16)*10（fatigue 后默认 4× 旧 16000/10000）
-HC_T_MAX_ANCHOR="${HC_T_MAX_ANCHOR:-64000}"
+# 全订单 anchor：N=16 的 T_max；N=10 = round(anchor/16)*10。E/G/R 统一为 N10=25000、N16=40000。
+HC_T_MAX_ANCHOR="${HC_T_MAX_ANCHOR:-40000}"
 HC_PER_T_MAX=$(( (HC_T_MAX_ANCHOR + 8) / 16 ))
 HC_T_MAX_N10=$(( HC_PER_T_MAX * 10 ))
 HC_T_MAX_N16="${HC_T_MAX_ANCHOR}"
@@ -735,7 +735,7 @@ run_test_29() {
             "agent.params.config.task_match_head=${HC_TASK_MATCH_EVAL:-false}"
             "agent.params.config.human_duration_aux=${HC_DURATION_AUX_EVAL:-false}"
             agent.params.config.parallel_producing_limit=10
-            agent.params.config.max_episodic_steps=40000
+            agent.params.config.max_episodic_steps="${HC_T_MAX_N10}"
             agent.params.config.curriculum=false
             agent.params.config.oru=false
             agent.params.config.teacher_explore=false
