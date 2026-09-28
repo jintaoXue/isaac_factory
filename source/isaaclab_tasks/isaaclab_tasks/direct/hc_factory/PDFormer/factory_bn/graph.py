@@ -94,6 +94,7 @@ def build_factory_adjacency(
     ``mode``
     --------
     factory: process chain + family + buffer + agent↔machine + same-type agents
+    factory_within_type: factory graph with every cross-type edge removed
     identity: self-loops only (no spatial structure)
     chain: process chain + sibling workstations
     same_type: cliques within each resource type
@@ -103,11 +104,11 @@ def build_factory_adjacency(
     types = resource_types or [""] * n
     adj = np.zeros((n, n), dtype=np.float64)
     kind = str(mode or "factory").strip().lower()
-    if kind not in {"factory", "identity", "chain", "same_type"}:
+    if kind not in {"factory", "factory_within_type", "identity", "chain", "same_type"}:
         raise ValueError(f"unknown graph mode: {mode!r}")
 
     if kind != "identity":
-        if kind in {"factory", "chain"}:
+        if kind in {"factory", "factory_within_type", "chain"}:
             chain = [rid for rid in PROCESS_CHAIN if rid in idx]
             for a, b in zip(chain, chain[1:]):
                 _add_undirected(adj, idx[a], idx[b], 1.0)
@@ -122,7 +123,7 @@ def build_factory_adjacency(
                         if a != b and a in idx and b in idx:
                             _add_undirected(adj, idx[a], idx[b], 0.8)
 
-        if kind == "factory":
+        if kind in {"factory", "factory_within_type"}:
             for rid, i in idx.items():
                 if not rid.startswith("storage_"):
                     continue
@@ -160,6 +161,12 @@ def build_factory_adjacency(
                     for b in members:
                         if a != b:
                             _add_undirected(adj, a, b, 0.5)
+
+    if kind == "factory_within_type":
+        for i in range(n):
+            for j in range(n):
+                if str(types[i]) != str(types[j]):
+                    adj[i, j] = 0.0
 
     np.fill_diagonal(adj, 1.0)
     return adj

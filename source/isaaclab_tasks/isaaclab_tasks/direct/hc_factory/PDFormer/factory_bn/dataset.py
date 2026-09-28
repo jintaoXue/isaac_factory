@@ -17,6 +17,7 @@ from factory_bn.cause_cluster import (
     seed_cluster_ids,
 )
 from factory_bn.causes import ROOT_CAUSE_CLASSES
+from factory_bn.graph import semantic_distance_matrix
 from factory_bn.remain import (
     PRECURSOR_DIM,
     PRECURSOR_FAR_WINDOWS,
@@ -121,10 +122,20 @@ class FactoryBNWindowDataset(Dataset):
         samples: list[dict[str, Any]],
         feature_scaler: Scaler,
         score_scaler: Scaler,
+        observed_node_mask: np.ndarray | None = None,
+        masked_feature_indices: list[int] | None = None,
     ):
         self.samples = samples
         self.feature_scaler = feature_scaler
         self.score_scaler = score_scaler
+        self.observed_node_mask = (
+            None
+            if observed_node_mask is None
+            else torch.as_tensor(np.asarray(observed_node_mask, dtype=bool))
+        )
+        self.masked_feature_indices = [
+            int(i) for i in (masked_feature_indices or [])
+        ]
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -152,6 +163,17 @@ class FactoryBNWindowDataset(Dataset):
             "surv_mask": torch.from_numpy(s["surv_mask"]),
             "phase": torch.from_numpy(s["phase"]),
         }
+        if self.observed_node_mask is not None:
+            hidden = ~self.observed_node_mask
+            for key in ("event_idx", "event_dur", "event_mask", "inter_tau"):
+                item[key] = item[key].clone()
+            item["X"][:, hidden, :] = 0.0
+            item["event_idx"][hidden] = -1
+            item["event_dur"][hidden] = 0.0
+            item["event_mask"][hidden] = 0.0
+            item["inter_tau"][hidden] = 0.0
+        if self.masked_feature_indices:
+            item["X"][..., self.masked_feature_indices] = 0.0
         if "remain_mask" in s:
             item["remain_mask"] = torch.from_numpy(np.asarray(s["remain_mask"], dtype=np.float32))
             item["y_hot"] = torch.from_numpy(np.asarray(s["y_hot"], dtype=np.float32))
@@ -163,6 +185,9 @@ class FactoryBNWindowDataset(Dataset):
             n_hist = int(item["X"].shape[1])
             hist_last = np.zeros((n_hist,), dtype=np.float32)
         item["hist_last_hot"] = torch.from_numpy(np.asarray(hist_last, dtype=np.float32))
+        if self.observed_node_mask is not None:
+            item["hist_last_hot"] = item["hist_last_hot"].clone()
+            item["hist_last_hot"][~self.observed_node_mask] = 0.0
         if "occ_node_mask" in s:
             item["occ_node_mask"] = torch.from_numpy(
                 np.asarray(s["occ_node_mask"], dtype=np.float32)
@@ -191,14 +216,28 @@ class FactoryBNWindowDataset(Dataset):
             n_hist = int(item["X"].shape[1])
             prec = np.zeros((n_hist, PRECURSOR_DIM), dtype=np.float32)
         item["precursor"] = torch.from_numpy(np.asarray(prec, dtype=np.float32))
+        if self.observed_node_mask is not None:
+            hidden = ~self.observed_node_mask
+            for key in ("hist_cluster", "hist_cluster_prev", "hist_tpm", "precursor"):
+                item[key] = item[key].clone()
+            item["hist_cluster"][hidden] = -1
+            item["hist_cluster_prev"][hidden] = -1
+            item["hist_tpm"][hidden] = 0.0
+            item["precursor"][hidden] = 0.0
         if "y_x" in s:
             y_x_raw = np.asarray(s["y_x"], dtype=np.float32)
             item["y_x"] = torch.from_numpy(self.feature_scaler.transform(y_x_raw))
+            if self.observed_node_mask is not None:
+                item["y_x"][:, ~self.observed_node_mask, :] = 0.0
+            if self.masked_feature_indices:
+                item["y_x"][..., self.masked_feature_indices] = 0.0
             # FEATURE_COLS active_pct_s (0–1). Travel is not occupancy y.
             if y_x_raw.ndim == 3 and y_x_raw.shape[-1] > 4:
                 item["agv_drive"] = torch.from_numpy(
                     (y_x_raw[..., 4] >= 0.5).astype(np.float32)
                 )
+                if self.observed_node_mask is not None:
+                    item["agv_drive"][:, ~self.observed_node_mask] = 0.0
         if "y_cluster" in s:
             item["y_cluster"] = torch.from_numpy(np.asarray(s["y_cluster"], dtype=np.int64))
         return item
@@ -814,6 +853,8 @@ def build_dataloaders(
     min_episode_jobs_total: float = 0.0,
     train_only_contains: list[str] | None = None,
     train_mode: str = "supervised",
+    observed_resource_types: list[str] | None = None,
+    masked_feature_indices: list[int] | None = None,
 ) -> tuple[DataLoader, DataLoader, DataLoader, dict[str, Any]]:
     bundle = load_factory_bn_bundle(data_dir)
     all_episodes = list(bundle["episodes"])
@@ -872,6 +913,26 @@ def build_dataloaders(
         test_samples = list(val_samples)
 
     x_cat = np.stack([s["x"] for s in train_samples], axis=0)
+    observed_types = {
+        str(x).strip().lower() for x in (observed_resource_types or []) if str(x).strip()
+    }
+    observed_node_mask: np.ndarray | None = None
+    masked_features = sorted({int(i) for i in (masked_feature_indices or [])})
+    feature_dim = int(x_cat.shape[-1])
+    if any(i < 0 or i >= feature_dim for i in masked_features):
+        raise ValueError(
+            f"masked_feature_indices must be within [0,{feature_dim - 1}]"
+        )
+    if observed_types:
+        resource_types = [str(x).strip().lower() for x in bundle["resource_types"]]
+        unknown = observed_types - set(resource_types)
+        if unknown:
+            raise ValueError(f"unknown observed_resource_types: {sorted(unknown)}")
+        observed_node_mask = np.asarray(
+            [name in observed_types for name in resource_types], dtype=bool
+        )
+        if not bool(observed_node_mask.any()):
+            raise ValueError("observed_resource_types masks every node")
     if remain_to_jobs_done:
         chunks = [
             s["y_score"][np.asarray(s["remain_mask"]) > 0.5]
@@ -881,15 +942,46 @@ def build_dataloaders(
         y_cat = np.concatenate(chunks, axis=0) if chunks else np.stack([s["y_score"] for s in train_samples], axis=0)
     else:
         y_cat = np.stack([s["y_score"] for s in train_samples], axis=0)
-    feature_scaler = _fit_scaler(x_cat)
+    feature_fit = (
+        x_cat[:, :, observed_node_mask, :]
+        if observed_node_mask is not None
+        else x_cat
+    )
+    feature_scaler = _fit_scaler(feature_fit)
     score_scaler = _fit_scaler(y_cat)
     cause_w, cause_counts, cause_majority = _cause_stats(
         train_samples, len(bundle["cause_classes"])
     )
 
-    train_ds = FactoryBNWindowDataset(train_samples, feature_scaler, score_scaler)
-    val_ds = FactoryBNWindowDataset(val_samples, feature_scaler, score_scaler)
-    test_ds = FactoryBNWindowDataset(test_samples, feature_scaler, score_scaler)
+    train_ds = FactoryBNWindowDataset(
+        train_samples, feature_scaler, score_scaler, observed_node_mask,
+        masked_features,
+    )
+    val_ds = FactoryBNWindowDataset(
+        val_samples, feature_scaler, score_scaler, observed_node_mask,
+        masked_features,
+    )
+    test_ds = FactoryBNWindowDataset(
+        test_samples, feature_scaler, score_scaler, observed_node_mask,
+        masked_features,
+    )
+
+    pattern_windows = x_cat
+    sem_mx = bundle["sem_mx"]
+    if observed_node_mask is not None:
+        pattern_windows = x_cat.copy()
+        pattern_windows[:, :, ~observed_node_mask, :] = feature_scaler.mean
+        sem_series = pattern_windows.reshape(
+            -1, pattern_windows.shape[-2], pattern_windows.shape[-1]
+        )
+        sem_mx = semantic_distance_matrix(sem_series).astype(np.float32)
+    if masked_features:
+        pattern_windows = pattern_windows.copy()
+        pattern_windows[..., masked_features] = feature_scaler.mean[masked_features]
+        sem_series = pattern_windows.reshape(
+            -1, pattern_windows.shape[-2], pattern_windows.shape[-1]
+        )
+        sem_mx = semantic_distance_matrix(sem_series).astype(np.float32)
 
     loaders = (
         DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers),
@@ -902,7 +994,7 @@ def build_dataloaders(
         "output_dim": 1,
         "adj_mx": bundle["adj_mx"],
         "sh_mx": bundle["sh_mx"],
-        "sem_mx": bundle["sem_mx"],
+        "sem_mx": sem_mx,
         "resource_ids": bundle["resource_ids"],
         "resource_types": bundle["resource_types"],
         "feature_scaler": feature_scaler,
@@ -928,7 +1020,10 @@ def build_dataloaders(
         "window_size_s": window_size,
         "horizon_windows": horizon_windows,
         "horizon_s": float(horizon_s),
-        "train_feature_windows": x_cat,
+        "train_feature_windows": pattern_windows,
+        "observed_resource_types": sorted(observed_types),
+        "observed_node_mask": observed_node_mask,
+        "masked_feature_indices": masked_features,
         "max_hist_events": max_hist_events,
         "n_event_positive_train": int(sum(s["next_mask"].sum() for s in train_samples)),
         "n_event_surv_train": int(sum(s["surv_mask"].sum() for s in train_samples)),

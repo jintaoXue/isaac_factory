@@ -1,0 +1,9 @@
+{
+  "extends": "FactoryBN_dense_entity_full_start5_min8.json",
+  "save_dir": "libcity/cache/model_cache/dense_i1_entity_machineonly_start5_min8_cold_ep50",
+  "observed_resource_types": ["machine"],
+  "masked_feature_indices": [13, 14, 15, 17, 26],
+  "graph_mode": "factory_within_type",
+  "mask_cross_type_attention": true,
+  "wandb_name": "dense_i1_entity_machineonly_start5_min8_cold_ep50"
+}

@@ -766,6 +766,45 @@ def _epoch_loop(
                         best_rep["report_threshold_used"] = float(event_report_threshold)
                     out.update(best_rep)
                     used_thr = float(best_rep["report_threshold_used"])
+                    resource_types = [
+                        str(x).strip().lower()
+                        for x in (getattr(model, "data_feature", {}) or {}).get(
+                            "resource_types"
+                        )
+                        or []
+                    ]
+                    subset_masks = {
+                        "machine": np.asarray(
+                            [name == "machine" for name in resource_types],
+                            dtype=np.float32,
+                        ),
+                        "logistics": np.asarray(
+                            [
+                                name in {"gantry", "transport_robot"}
+                                for name in resource_types
+                            ],
+                            dtype=np.float32,
+                        ),
+                    }
+                    for subset_name, subset_mask in subset_masks.items():
+                        if subset_mask.size != y_cat.shape[2] or not subset_mask.any():
+                            continue
+                        subset_rep = station_report_metrics(
+                            y_cat,
+                            will_np,
+                            start_np,
+                            dur_np,
+                            r_cat,
+                            np.asarray(o_cat) * subset_mask,
+                            threshold=used_thr,
+                            **{
+                                **report_kw,
+                                "force_to": max(float(force_to or 0.0), used_thr),
+                            },
+                        )
+                        for key, value in subset_rep.items():
+                            if isinstance(value, (int, float, np.integer, np.floating)):
+                                out[f"{subset_name}_{key}"] = float(value)
                     for tol in (1, 2, 3):
                         tol_kw = dict(report_kw)
                         tol_kw["start_tol_windows"] = tol
@@ -869,7 +908,23 @@ def train(cfg: dict[str, Any]) -> Path:
         min_episode_jobs_total=float(cfg.get("min_episode_jobs_total", 0.0)),
         train_only_contains=list(cfg.get("train_only_contains") or []),
         train_mode=str(cfg.get("train_mode") or "supervised"),
+        observed_resource_types=list(cfg.get("observed_resource_types") or []),
+        masked_feature_indices=list(cfg.get("masked_feature_indices") or []),
     )
+    observed_types = list(data_feature.get("observed_resource_types") or [])
+    masked_features = list(data_feature.get("masked_feature_indices") or [])
+    if observed_types or masked_features:
+        raw_mask = data_feature.get("observed_node_mask")
+        observed_mask = (
+            np.asarray(raw_mask, dtype=bool)
+            if raw_mask is not None
+            else np.ones(int(data_feature["num_nodes"]), dtype=bool)
+        )
+        print(
+            f"[train] observed_resource_types={observed_types or 'all'} "
+            f"observed_nodes={int(observed_mask.sum())}/{int(observed_mask.size)} "
+            f"masked_feature_indices={masked_features}"
+        )
     oversample = float(cfg.get("oversample_event_windows", 0) or 0)
     oversample_up = float(cfg.get("oversample_upcoming_windows", 0) or 0)
     if oversample > 1.0 or oversample_up > 1.0:
@@ -1012,6 +1067,10 @@ def train(cfg: dict[str, Any]) -> Path:
     best_ckpt = -1.0
     best_val_loss = float("inf")
     best_path = save_dir / "BNPDFormer_best.pt"
+    best_cause_macro = -1.0
+    best_remain_primary = float("inf")
+    best_cause_path = save_dir / "BNPDFormer_best_cause.pt"
+    best_remain_path = save_dir / "BNPDFormer_best_remain.pt"
     stale = 0
     last_epoch = 0
     epoch_log: list[dict[str, Any]] = []
@@ -1034,6 +1093,9 @@ def train(cfg: dict[str, Any]) -> Path:
                 "sem_mx": data_feature["sem_mx"],
                 "feature_scaler_mean": data_feature["feature_scaler"].mean,
                 "feature_scaler_std": data_feature["feature_scaler"].std,
+                "observed_resource_types": data_feature.get("observed_resource_types"),
+                "observed_node_mask": data_feature.get("observed_node_mask"),
+                "masked_feature_indices": data_feature.get("masked_feature_indices"),
                 "score_scaler_mean": data_feature["score_scaler"].mean,
                 "score_scaler_std": data_feature["score_scaler"].std,
                 "remain_to_jobs_done": bool(cfg.get("remain_to_jobs_done", True)),
@@ -1117,6 +1179,7 @@ def train(cfg: dict[str, Any]) -> Path:
         ) -> None:
             nonlocal optimizer, scheduler, best_mae, best_hot_f1, best_ckpt
             nonlocal best_val_loss, stale, last_epoch
+            nonlocal best_cause_macro, best_remain_primary
             stale = 0
             for step in range(1, n_epochs + 1):
                 t0 = time.time()
@@ -1134,6 +1197,16 @@ def train(cfg: dict[str, Any]) -> Path:
                 if scheduler is not None:
                     scheduler.step()
                 dt = time.time() - t0
+                cause_macro_now = float(va.get("cause_macro_recall", -1.0))
+                if np.isfinite(cause_macro_now) and cause_macro_now > best_cause_macro + 1e-6:
+                    best_cause_macro = cause_macro_now
+                    torch.save(_ckpt_payload(step, va), best_cause_path)
+                remain_now = float(
+                    va.get("remain_len_mae_primary", va.get("remain_len_mae", float("inf")))
+                )
+                if np.isfinite(remain_now) and remain_now < best_remain_primary - 1e-6:
+                    best_remain_primary = remain_now
+                    torch.save(_ckpt_payload(step, va), best_remain_path)
                 last_epoch = step
                 lr_now = float(optimizer.param_groups[0]["lr"])
                 epoch_log.append(
@@ -1590,6 +1663,41 @@ def train(cfg: dict[str, Any]) -> Path:
             hot_eval_threshold=hot_eval_threshold,
             **event_eval_kw,
         )
+
+        def _test_aux_checkpoint(path: Path) -> tuple[int, dict[str, float]] | None:
+            if not path.is_file():
+                return None
+            try:
+                aux_ckpt = torch.load(path, map_location=device, weights_only=False)
+            except TypeError:
+                aux_ckpt = torch.load(path, map_location=device)
+            model.load_state_dict(aux_ckpt["model"])
+            metrics = _epoch_loop(
+                model,
+                test_loader,
+                None,
+                device,
+                train=False,
+                cause_majority=cause_majority,
+                hot_eval_threshold=hot_eval_threshold,
+                **event_eval_kw,
+            )
+            return int(aux_ckpt.get("epoch") or 0), metrics
+
+        cause_selected = _test_aux_checkpoint(best_cause_path)
+        remain_selected = _test_aux_checkpoint(best_remain_path)
+        if cause_selected is not None:
+            print(
+                f"[test-cause-selected] epoch={cause_selected[0]} "
+                f"acc={cause_selected[1].get('cause_acc', 0):.3f} "
+                f"macro={cause_selected[1].get('cause_macro_recall', 0):.3f}"
+            )
+        if remain_selected is not None:
+            print(
+                f"[test-remain-selected] epoch={remain_selected[0]} "
+                f"mae={remain_selected[1].get('remain_len_mae', 0):.2f} "
+                f"primary={remain_selected[1].get('remain_len_mae_primary', 0):.2f}"
+            )
         print(
             f"[test] loss={te['loss']:.4f} score_mae={te.get('score_mae', 0):.4f} "
             f"will_f1={te.get('will_f1', 0):.3f} will_p={te.get('will_precision', 0):.3f} "
@@ -1636,6 +1744,24 @@ def train(cfg: dict[str, Any]) -> Path:
                     "val_best_loss": best_val_loss,
                     "best_epoch": int(ckpt.get("epoch") or 0),
                     "test": te,
+                    "cause_selected": (
+                        {
+                            "best_epoch": cause_selected[0],
+                            "val_best_macro_recall": best_cause_macro,
+                            "test": cause_selected[1],
+                        }
+                        if cause_selected is not None
+                        else None
+                    ),
+                    "remain_selected": (
+                        {
+                            "best_epoch": remain_selected[0],
+                            "val_best_primary_mae": best_remain_primary,
+                            "test": remain_selected[1],
+                        }
+                        if remain_selected is not None
+                        else None
+                    ),
                     "n_train_windows_used": int(train_windows.shape[0]),
                     "split_by": str(data_feature.get("split_by") or "episode"),
                     "n_train_episodes": int(data_feature.get("n_train_episodes") or 0),

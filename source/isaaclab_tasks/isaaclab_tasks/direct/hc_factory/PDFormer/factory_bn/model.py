@@ -656,8 +656,9 @@ class BNPDFormer(nn.Module):
                 if 0 <= i < int(w.numel()):
                     w[i] = 0.0
             self.cause_class_weight.copy_(w)
+        resource_types = [str(t) for t in data_feature.get("resource_types") or []]
         for name, mask in occupancy_type_node_masks(
-            [str(t) for t in data_feature.get("resource_types") or []],
+            resource_types,
             self.num_nodes,
             [str(x) for x in data_feature.get("resource_ids") or []],
         ).items():
@@ -672,12 +673,38 @@ class BNPDFormer(nn.Module):
 
         geo_mask = torch.zeros(self.num_nodes, self.num_nodes)
         geo_mask[sh_mx >= self.far_mask_delta] = 1
-        self.register_buffer("geo_mask", geo_mask.bool())
 
         sem_mask = torch.ones(self.num_nodes, self.num_nodes)
-        nn_idx = np.argsort(sem_mx, axis=1)[:, : self.dtw_delta]
-        for i in range(self.num_nodes):
-            sem_mask[i, nn_idx[i]] = 0
+        mask_cross_type = bool(config.get("mask_cross_type_attention", False))
+        if mask_cross_type:
+            for i in range(self.num_nodes):
+                type_i = resource_types[i] if i < len(resource_types) else ""
+                candidates = np.asarray(
+                    [
+                        j
+                        for j in range(self.num_nodes)
+                        if (resource_types[j] if j < len(resource_types) else "") == type_i
+                    ],
+                    dtype=np.int64,
+                )
+                order = np.argsort(np.asarray(sem_mx)[i, candidates])
+                sem_mask[i, candidates[order[: self.dtw_delta]]] = 0
+        else:
+            nn_idx = np.argsort(sem_mx, axis=1)[:, : self.dtw_delta]
+            for i in range(self.num_nodes):
+                sem_mask[i, nn_idx[i]] = 0
+        if mask_cross_type:
+            cross_type = torch.zeros(self.num_nodes, self.num_nodes, dtype=torch.bool)
+            for i in range(self.num_nodes):
+                for j in range(self.num_nodes):
+                    type_i = resource_types[i] if i < len(resource_types) else ""
+                    type_j = resource_types[j] if j < len(resource_types) else ""
+                    cross_type[i, j] = type_i != type_j
+            geo_mask[cross_type] = 1
+            sem_mask[cross_type] = 1
+        sem_mask.fill_diagonal_(0)
+        geo_mask.fill_diagonal_(0)
+        self.register_buffer("geo_mask", geo_mask.bool())
         self.register_buffer("sem_mask", sem_mask.bool())
 
         self.register_buffer(
