@@ -61,7 +61,7 @@ DISPLAY_MATCHES = (
 KERNEL_PATTERNS = re.compile(
     r"Xid|NVRM|soft lockup|hard LOCKUP|Out of memory|Killed process|"
     r"GPU has fallen|Resetting GPU|watchdog: BUG|hung_task|blocked for more than|"
-    r"modeset|Failed to grab modeset|gnome-shell|Xorg.*segfault|"
+    r"modeset|Failed to grab modeset|gnome-shell|segfault|general protection fault|"
     r"NVRM: Xid|drm:.*failure|amdgpu.*ring|"
     r"Oops:|BUG: unable to handle|irq/\d+-nvidia|nvidia_isr|rm_isr",
     re.IGNORECASE,

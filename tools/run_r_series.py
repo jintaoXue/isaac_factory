@@ -5,8 +5,12 @@ import json
 import os
 from pathlib import Path
 import shlex
-import subprocess
 import sys
+
+if __package__:
+    from .training_supervisor import supervise
+else:
+    from training_supervisor import supervise
 
 ROOT = Path(__file__).resolve().parents[1]
 VARIANTS = ('R0', 'R1', 'R2', 'R2-mismatch', 'R2-fatigue', 'R2-both', 'R2-greedy')
@@ -112,7 +116,7 @@ def main():
     if args.dry_run:
         print(shlex.join(argv))
         return
-    raise SystemExit(subprocess.call(argv, cwd=ROOT, env=env))
+    raise SystemExit(supervise(argv, cwd=ROOT, env=env))
 
 
 if __name__ == '__main__':
