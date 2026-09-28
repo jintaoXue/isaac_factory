@@ -10,8 +10,8 @@
 
 | 入口 | 含义 | 目录 / W&B |
 |--|--|--|
-| **G0** | gap hard 新教师/基线（对位旧 T0；默认 100 ep；**无教师**） | `hier_G0` / `G0-N10-S42` |
-| **G0-human-match** | 同 G0 的 scratch 配方 + 人因奖励 + D match（**无教师**；默认 100 ep） | `hier_G0-human-match` / `G0-human-match-N10-S42` |
+| **G0** | gap hard 新教师/基线（对位旧 T0；默认 200 ep；**无教师**） | `hier_G0` / `G0-N10-S42` |
+| **G0-human-match** | 同 G0 的 scratch 配方 + 人因奖励 + D match（**无教师**；默认 200 ep） | `hier_G0-human-match` / `G0-human-match-N10-S42` |
 | **G0-greedy** | 同 G0 scratch，但人 D 固定 η×skill 贪心（不训人头） | `hier_G0-greedy` / `G0-greedy-N10-S42` |
 | G1 / G2 / G3 | 可选：无教师 AR / G0 热启 no-oru / 仅人因 | `hier_G1` … |
 

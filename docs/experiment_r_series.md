@@ -62,7 +62,7 @@ bash run_2026_journal_experiments.sh R1 cuda:0
 bash run_2026_journal_experiments.sh R2 cuda:0
 ```
 
-这些命令是分别启动各实验，不建议把同一 GPU 上的多组长训练同时启动。默认100局、seed42，W&B 项目仍为 HcFactory_TPA；目录分别为 `logs/rl_games/HcFactory/hier_R0-S42` 等，已有目录自动加 `-v1` 后缀。
+这些命令是分别启动各实验，不建议把同一 GPU 上的多组长训练同时启动。默认200局、seed42，W&B 项目仍为 HcFactory_TPA；目录分别为 `logs/rl_games/HcFactory/hier_R0-S42` 等，已有目录自动加 `-v1` 后缀。
 
 ```bash
 HC_R_SEED=53 bash run_2026_journal_experiments.sh R2 cuda:0

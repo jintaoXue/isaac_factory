@@ -62,7 +62,7 @@ def command(mode, device, env, dry_run=False):
                  env.get('HC_TEST_SEEDS', '43,44,45,46,47,48,49,50,51,52'),
                  '--test_times', env.get('HC_TEST_TIMES', '1'), '--load_dir', directory, '--load_step', step]
     else:
-        argv += ['--max_sim_episodes', env.get('HC_MAX_HARD_EPISODES', '100')]
+        argv += ['--max_sim_episodes', env.get('HC_MAX_HARD_EPISODES', '200')]
     if env.get('HC_R_WANDB', '1') != '0':
         argv += ['--wandb_activate', '--wandb_project',
                  env.get('HC_WANDB_TEST_PROJECT' if evaluation else 'HC_WANDB_TRAIN_PROJECT',

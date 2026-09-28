@@ -48,13 +48,13 @@ export HC_WANDB_BASELINE_PROJECT="${HC_WANDB_BASELINE_PROJECT:-${HC_WANDB_TEST_P
 export HC_TEST_SEEDS="${HC_TEST_SEEDS:-43,44,45,46,47,48,49,50,51,52}"
 export HC_TEST_TIMES="${HC_TEST_TIMES:-1}"
 export HC_CATALOG_TAG="${HC_CATALOG_TAG:-T1_random_ep20}"
-# E1–E6 微调默认 60；T0/T1 hard 与 G0-human-match* 默认 100
+# E1–E6 微调默认 60；T0/T1 hard 与 G0-human-match* 默认 200
 _HC_USER_MAX_TRAIN_EPISODES="${HC_MAX_TRAIN_EPISODES-}"
 export HC_MAX_TRAIN_EPISODES="${HC_MAX_TRAIN_EPISODES:-60}"
-export HC_MAX_HARD_EPISODES="${HC_MAX_HARD_EPISODES:-100}"
-# G0-human-match*（含旧别名 G5-human-match*）未显式设预算时用 100，与 G0 hard 对齐
+export HC_MAX_HARD_EPISODES="${HC_MAX_HARD_EPISODES:-200}"
+# G0-human-match*（含旧别名 G5-human-match*）未显式设预算时用 200，与 G0 hard 对齐
 if [[ ( "${MODE}" == G0-human* || "${MODE}" == G5-human-match* ) && -z "${_HC_USER_MAX_TRAIN_EPISODES}" ]]; then
-    export HC_MAX_TRAIN_EPISODES=100
+    export HC_MAX_TRAIN_EPISODES=200
 fi
 
 EVAL_STEPS="${HC_EVAL_STEPS:-}"
@@ -246,10 +246,10 @@ usage() {
 用法: $0 <mode> [cuda:N]
 
 G 系列（gap 动力学；序号 G0–G4，勿与 E* 混用）:
-  G0                 hard 基线（gap；无教师；默认 ${HC_MAX_HARD_EPISODES:-100} ep）
-  G0-greedy          同 G0，人 D 固定 η×skill 贪心（不训人头；默认 100 ep）
-  G0-human-match     同 scratch + 人因奖励 + D match（无教师；默认 100 ep）
-  G0-human-match-c   同上 + C match 汇总（无教师；默认 100 ep）
+  G0                 hard 基线（gap；无教师；默认 ${HC_MAX_HARD_EPISODES:-200} ep）
+  G0-greedy          同 G0，人 D 固定 η×skill 贪心（不训人头；默认 200 ep）
+  G0-human-match     同 scratch + 人因奖励 + D match（无教师；默认 200 ep）
+  G0-human-match-c   同上 + C match 汇总（无教师；默认 200 ep）
   G1                 无教师热启：AR + 低 lr（可选）
   G2                 G0 热启 + 教师探索 + AR（可选对照）
   G3                 G2 + 仅人因奖励（可选）
