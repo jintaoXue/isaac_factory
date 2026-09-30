@@ -81,10 +81,16 @@ class HierObsEncoder(nn.Module):
         return preprocess_for_buffer(env_state_action_dict, device=self.cuda_device)
 
     def _to_device(self, pre: dict) -> dict:
+        """Move nested tensors to ``cuda_device``; skip tensors already there.
+
+        Learn-path encodes often call ``pre_to_device`` then ``encode_*`` which used to
+        recurse through ``preprocess`` → ``_to_device`` again. Redundant ``.to()`` on
+        long-lived replay tensors has been a SIGSEGV surface under CUDA.
+        """
         out = {}
         for k, v in pre.items():
             if isinstance(v, torch.Tensor):
-                out[k] = v.to(self.cuda_device)
+                out[k] = v if v.device == self.cuda_device else v.to(self.cuda_device)
             elif isinstance(v, dict):
                 out[k] = self._to_device(v)
             else:

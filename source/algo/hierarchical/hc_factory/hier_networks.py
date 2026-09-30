@@ -3,10 +3,83 @@
 from __future__ import annotations
 
 import math
+import os
+from pathlib import Path
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+# Opt-in Embedding crash probes (default off; see docs/training_crash_diagnosis_2026-09-29.md).
+#   HC_EMB_DEBUG=1              log id tensors before emb(...)
+#   HC_EMB_DEBUG_EVERY=N        log every N-th _e call (default 100); 1 = every call
+#   HC_EMB_DEBUG_NAMES=a,b      only these names (default: next_logistic_id)
+#   HC_EMB_DEBUG_PATH=file      append log path (default: outputs/train_monitor/emb_debug.log)
+#   HC_CUDA_SYNC_ENCODE=1       torch.cuda.synchronize() before _encode_ongoing embeddings
+_EMB_DEBUG_COUNT = 0
+
+
+def _emb_debug_enabled() -> bool:
+    return os.environ.get("HC_EMB_DEBUG", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _cuda_sync_encode_enabled() -> bool:
+    return os.environ.get("HC_CUDA_SYNC_ENCODE", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _emb_debug_names() -> set[str]:
+    raw = os.environ.get("HC_EMB_DEBUG_NAMES", "next_logistic_id").strip()
+    if raw in ("*", "all"):
+        return set()  # empty => all names
+    return {part.strip() for part in raw.split(",") if part.strip()}
+
+
+def _emb_debug_path() -> Path:
+    raw = os.environ.get("HC_EMB_DEBUG_PATH", "").strip()
+    if raw:
+        return Path(raw)
+    return Path("outputs/train_monitor/emb_debug.log")
+
+
+def _log_emb_debug(name: str, t: torch.Tensor, clamped: torch.Tensor, emb: nn.Embedding) -> None:
+    """Append one line describing Embedding inputs; never raises into training."""
+    global _EMB_DEBUG_COUNT
+    _EMB_DEBUG_COUNT += 1
+    try:
+        every = max(1, int(os.environ.get("HC_EMB_DEBUG_EVERY", "100")))
+    except ValueError:
+        every = 100
+    names = _emb_debug_names()
+    if names and name not in names:
+        return
+    if _EMB_DEBUG_COUNT % every != 0:
+        return
+    try:
+        w = emb.weight
+        line = (
+            f"n={_EMB_DEBUG_COUNT} name={name} "
+            f"t_dtype={t.dtype} t_device={t.device} t_shape={tuple(t.shape)} "
+            f"t_min={int(t.min().item()) if t.numel() else 'na'} "
+            f"t_max={int(t.max().item()) if t.numel() else 'na'} "
+            f"c_min={int(clamped.min().item()) if clamped.numel() else 'na'} "
+            f"c_max={int(clamped.max().item()) if clamped.numel() else 'na'} "
+            f"num_emb={emb.num_embeddings} "
+            f"w_device={w.device} w_dtype={w.dtype} w_finite={bool(torch.isfinite(w).all().item())} "
+            f"t_contig={t.is_contiguous()} c_contig={clamped.is_contiguous()}\n"
+        )
+        path = _emb_debug_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(line)
+            stream.flush()
+    except Exception as exc:  # noqa: BLE001 — probe must not alter training
+        try:
+            path = _emb_debug_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as stream:
+                stream.write(f"n={_EMB_DEBUG_COUNT} name={name} probe_error={exc!r}\n")
+        except Exception:
+            pass
 
 
 def _human_mover_extra_dim() -> int:
@@ -260,11 +333,17 @@ class StateEncoder(nn.Module):
             mask = mask.unsqueeze(0)
         b, m = mask.shape
 
+        if _cuda_sync_encode_enabled() and torch.cuda.is_available():
+            torch.cuda.synchronize()
+
         def _e(name: str, emb: nn.Embedding) -> torch.Tensor:
             t = ot[name]
             if t.ndim == 1:
                 t = t.unsqueeze(0)
-            return emb(self._clamp_id(t, emb.num_embeddings))
+            clamped = self._clamp_id(t, emb.num_embeddings)
+            if _emb_debug_enabled():
+                _log_emb_debug(name, t, clamped, emb)
+            return emb(clamped)
 
         task = _e("task_id", self.task_emb)
         ttype = _e("task_type_id", self.task_type_emb)

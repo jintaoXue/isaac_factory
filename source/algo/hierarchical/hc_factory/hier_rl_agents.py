@@ -509,7 +509,7 @@ class RLProductSequencingAgent:
         if not learn:
             return None
         return self.dqn.compute_loss(
-            lambda pre, transition: self.obs_encoder.encode_A(pre),
+            lambda pre, transition: self.obs_encoder.encode_A(pre, pre=pre),
             offline_buffer=offline_buffer,
             mix_ratio=mix_ratio,
         )
@@ -680,7 +680,7 @@ class RLProductSelectionAgent:
         if not learn:
             return None
         return self.dqn.compute_loss(
-            lambda pre, transition: self.obs_encoder.encode_B(pre, transition.context.to(self.device)),
+            lambda pre, transition: self.obs_encoder.encode_B(pre, transition.context.to(self.device), pre=pre),
             offline_buffer=offline_buffer,
             mix_ratio=mix_ratio,
         )
@@ -975,7 +975,7 @@ class RLHumanRobotAllocatorAgent:
         self._ensure_dqn(env_state_action_dict, process_task_planning_action)
         c_plan = process_task_planning_action
         encode_d = lambda pre, transition: self.obs_encoder.encode_D(
-            pre, transition.context.to(self.device)
+            pre, transition.context.to(self.device), pre=pre
         )
 
         human_mask = env_state_action_dict["agent_action_mask"]["human"]["self_availability_mask"].float()

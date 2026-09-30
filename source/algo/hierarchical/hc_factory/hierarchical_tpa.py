@@ -935,7 +935,7 @@ class HierarchicalTPA:
             (
                 "A",
                 self.agent_A.dqn,
-                (lambda pre, transition: self.obs_encoder.encode_A(pre)),
+                (lambda pre, transition: self.obs_encoder.encode_A(pre, pre=pre)),
                 "A",
             ),
             (
@@ -943,7 +943,7 @@ class HierarchicalTPA:
                 self.agent_B.dqn,
                 (
                     lambda pre, transition: self.obs_encoder.encode_B(
-                        pre, transition.context.to(self.cuda_device)
+                        pre, transition.context.to(self.cuda_device), pre=pre
                     )
                 ),
                 "B",
@@ -953,7 +953,7 @@ class HierarchicalTPA:
                 self.agent_C.dqn,
                 (
                     lambda pre, transition: self.agent_C.encode_task_obs(
-                        pre, transition.context.to(self.cuda_device)
+                        pre, transition.context.to(self.cuda_device), pre=pre
                     )
                 ),
                 "C",
@@ -963,7 +963,7 @@ class HierarchicalTPA:
                 self.agent_D.human_dqn,
                 (
                     lambda pre, transition: self.agent_D.encode_human_obs(
-                        pre, transition.context.to(self.cuda_device)
+                        pre, transition.context.to(self.cuda_device), pre=pre
                     )
                 ),
                 "D_human",
@@ -973,7 +973,7 @@ class HierarchicalTPA:
                 self.agent_D.robot_dqn,
                 (
                     lambda pre, transition: self.obs_encoder.encode_D(
-                        pre, transition.context.to(self.cuda_device)
+                        pre, transition.context.to(self.cuda_device), pre=pre
                     )
                 ),
                 "D_robot",

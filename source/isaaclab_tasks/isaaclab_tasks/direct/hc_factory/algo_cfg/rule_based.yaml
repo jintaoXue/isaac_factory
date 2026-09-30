@@ -73,7 +73,6 @@ params:
     # wandb_group: ''
     # wandb_name: ''
     wandb_project: 'HcFactory'
-    time_str: 'None'
 
     # load_checkpoint: False
     load_dir: ''

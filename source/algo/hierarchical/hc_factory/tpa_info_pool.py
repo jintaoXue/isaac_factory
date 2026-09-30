@@ -7,6 +7,7 @@ C/D masks stay consistent across multiple dispatches in one env step.
 from __future__ import annotations
 
 import copy
+from typing import Any
 
 import torch
 
@@ -22,6 +23,29 @@ from .hc_factory_imports import (
 )
 
 
+def clone_env_subtree(obj: Any) -> Any:
+    """Deep-copy env state trees that mix plain Python with torch tensors.
+
+    ``copy.deepcopy`` on long-lived CUDA tensors can hit Torch ``__deepcopy__`` /
+    memo failures (``TypeError: unhashable type: 'dict'``) or SIGSEGV. Clone
+    tensors via ``detach().clone()`` and recurse containers instead.
+    """
+    if torch.is_tensor(obj):
+        return obj.detach().clone()
+    if isinstance(obj, dict):
+        return {k: clone_env_subtree(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [clone_env_subtree(v) for v in obj]
+    if isinstance(obj, tuple):
+        return tuple(clone_env_subtree(v) for v in obj)
+    if isinstance(obj, set):
+        return {clone_env_subtree(v) for v in obj}
+    try:
+        return copy.deepcopy(obj)
+    except Exception:
+        return obj
+
+
 class TpaInfoPool:
     """Per-step working copy of env state for hierarchical A→B→C→D loops."""
 
@@ -30,13 +54,13 @@ class TpaInfoPool:
         self.parallel_producing_limit = int(HcVectorEnvCfg().single_env_parallel_producing_limit)
         self.staging_slot = staging_slot_index(self.parallel_producing_limit)
 
-        self.progress = copy.deepcopy(env_state_action_dict["progress"])
+        self.progress = clone_env_subtree(env_state_action_dict["progress"])
         self._env_ongoing_keys = set(env_state_action_dict["progress"]["ongoing_task_records"].keys())
 
-        self.material = copy.deepcopy(env_state_action_dict["material"])
-        self.human = copy.deepcopy(env_state_action_dict["human"])
-        self.robot = copy.deepcopy(env_state_action_dict["robot"])
-        self.machine = copy.deepcopy(env_state_action_dict["machine"])
+        self.material = clone_env_subtree(env_state_action_dict["material"])
+        self.human = clone_env_subtree(env_state_action_dict["human"])
+        self.robot = clone_env_subtree(env_state_action_dict["robot"])
+        self.machine = clone_env_subtree(env_state_action_dict["machine"])
 
         self.dispatched_product_indices: set[int] = set()
         self.served_slots: set[int] = set()
@@ -54,7 +78,7 @@ class TpaInfoPool:
             "robot": self.robot,
             "machine": self.machine,
             "material": self.material,
-            "agent_action_mask": copy.deepcopy(env_state_action_dict["agent_action_mask"]),
+            "agent_action_mask": clone_env_subtree(env_state_action_dict["agent_action_mask"]),
         }
 
     def apply_product_sequencing(self, product_sequencing: torch.Tensor) -> None:

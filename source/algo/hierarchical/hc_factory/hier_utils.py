@@ -107,11 +107,15 @@ def count_busy_agents(agent_group: dict | None) -> int:
 
 
 def detach_pre_to_cpu(pre: dict) -> dict:
-    """Deep-copy preprocessed dict tensors to CPU without grad."""
+    """Deep-copy preprocessed dict tensors to CPU without grad.
+
+    Always ``clone()`` so event/replay snapshots stay immutable even when
+    source tensors are already on CPU (``detach().cpu()`` alone may share storage).
+    """
     out: dict = {}
     for key, value in pre.items():
         if isinstance(value, torch.Tensor):
-            out[key] = value.detach().cpu()
+            out[key] = value.detach().cpu().clone()
         elif isinstance(value, dict):
             out[key] = detach_pre_to_cpu(value)
         else:
@@ -120,11 +124,15 @@ def detach_pre_to_cpu(pre: dict) -> dict:
 
 
 def pre_to_device(pre: dict, device: torch.device) -> dict:
-    """Move nested tensor fields in a preprocessed dict to ``device``."""
+    """Move nested tensor fields in a preprocessed dict to ``device``.
+
+    Skip ``.to()`` when the tensor is already on ``device`` to avoid redundant
+    copies on long-lived replay tensors (overnight SIGSEGV surface).
+    """
     out: dict = {}
     for key, value in pre.items():
         if isinstance(value, torch.Tensor):
-            out[key] = value.to(device)
+            out[key] = value if value.device == device else value.to(device)
         elif isinstance(value, dict):
             out[key] = pre_to_device(value, device)
         else:

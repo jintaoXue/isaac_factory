@@ -99,7 +99,8 @@ class DecisionPool(TpaInfoPool):
 
 
 def event(head, pre, action, mask, context=None, dispatch=None):
-    return dict(head=head, pre=copy.deepcopy(detach_pre_to_cpu(pre)), action=int(action.argmax()),
+    # detach_pre_to_cpu already copies tensors; avoid copy.deepcopy on CUDA/CPU tensor trees.
+    return dict(head=head, pre=detach_pre_to_cpu(pre), action=int(action.argmax()),
                 mask=mask.detach().cpu().clone(),
                 context=None if context is None else context.detach().cpu().clone(), dispatch=dispatch)
 
@@ -137,7 +138,7 @@ def build_decision_action(state, agents, epsilon):
             break
         local = pool.observation(encoder, eligible, rows)
         # B is a sequential slot choice, not a whole ranking receiving duplicated credit.
-        b = agents.agent_B.dqn.act_tensor(encoder.encode_B(local, sequence), eligible, epsilon)
+        b = agents.agent_B.dqn.act_tensor(encoder.encode_B(local, sequence, pre=local), eligible, epsilon)
         slot = int(b.argmax())
         c = agents.agent_C.act_with_mask(local, b, rows[slot], epsilon, pre=local)
         dmask = pool.get_d_masks()
@@ -246,13 +247,15 @@ class DecisionReplay:
         ctx = transition.next_context if next_state else transition.context
         if ctx is not None:
             ctx = ctx.to(self.owner.cuda_device)
+        # ``pre`` is already on device from ``_encode_batch``/``pre_to_device``; pass as
+        # keyword so encode_* skips preprocess→_to_device (overnight SIGSEGV surface).
         if head == "A":
-            return encoder.encode_A(pre)
+            return encoder.encode_A(pre, pre=pre)
         if head == "B":
-            return encoder.encode_B(pre, ctx)
+            return encoder.encode_B(pre, ctx, pre=pre)
         if head == "C":
-            return encoder.encode_C(pre, ctx)
-        base = encoder.encode_D(pre, ctx)
+            return encoder.encode_C(pre, ctx, pre=pre)
+        base = encoder.encode_D(pre, ctx, pre=pre)
         if head == "D_human" and self.owner.agent_D.human_match_head:
             features = human_task_match_features(pre, ctx, self.dqn(head).action_dim)
             return torch.cat((base, features.flatten()))

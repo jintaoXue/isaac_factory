@@ -62,14 +62,21 @@ class _RoadmapGraph:
         return adjacency
 
     def _collect_graph_node_ids(self) -> set[int]:
+        # Use builtins.int: Isaac/Hydra stacks have been observed to shadow `int` with a set.
+        import builtins
+        to_int = builtins.int
         node_ids: set[int] = set()
         for edge in self.edges:
-            node_ids.add(int(edge["u"]))
-            node_ids.add(int(edge["v"]))
-        for src_id in self.paths.keys():
-            node_ids.add(int(src_id))
-            for dst_id in self.paths[src_id].keys():
-                node_ids.add(int(dst_id))
+            if not isinstance(edge, dict):
+                continue
+            node_ids.add(to_int(edge["u"]))
+            node_ids.add(to_int(edge["v"]))
+        for src_id, dst_map in self.paths.items():
+            node_ids.add(to_int(src_id))
+            if not isinstance(dst_map, dict):
+                continue
+            for dst_id in dst_map:
+                node_ids.add(to_int(dst_id))
         return node_ids
 
     @staticmethod

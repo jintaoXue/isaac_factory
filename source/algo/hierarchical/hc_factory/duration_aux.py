@@ -63,7 +63,8 @@ class DurationAuxReplay:
         obs, actions, durations = [], [], []
         for pre, task, human, duration in batch:
             task_action = F.one_hot(torch.tensor(task, device=allocator.device), 13).float()
-            obs.append(allocator.encode_human_obs(pre_to_device(pre, allocator.device), task_action))
+            pre_dev = pre_to_device(pre, allocator.device)
+            obs.append(allocator.encode_human_obs(pre_dev, task_action, pre=pre_dev))
             actions.append(human)
             durations.append(duration)
         predictions = allocator.human_dqn.q_net.predict_duration(torch.stack(obs))
