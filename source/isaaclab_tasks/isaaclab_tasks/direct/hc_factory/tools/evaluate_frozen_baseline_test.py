@@ -10,11 +10,14 @@ the only persistent output is the single JSON report requested by ``--report``.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
+import math
 import tempfile
+import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from factory_baselines import protocol_20260913 as matched_protocol
 from factory_baselines import torch_trainer
@@ -36,6 +39,61 @@ def _sha(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _sha_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+@contextlib.contextmanager
+def _stage_artifacts(task: dict[str, Any], cap: int) -> Iterator[tuple[Path, str, float]]:
+    """Materialize the frozen artifacts for one stage without changing the repo.
+
+    The matched runners keep the latest stage in ``output_dir`` and move the
+    previous stages into the registered ZIP archive.  Test evaluation must use
+    the stage-specific snapshot, otherwise every cap reads the final cap=15
+    checkpoint and threshold.
+    """
+    output_dir = Path(task["output_dir"]).resolve()
+    record_path = Path(task["record"]).resolve()
+    record = _read(record_path)
+    if record.get("status") != "validation_completed" or record.get("test_evaluated"):
+        raise ValueError(f"Stage is not a frozen validation result: {record_path}")
+    expected = record.get("artifact_sha256")
+    if not isinstance(expected, dict) or not expected:
+        raise ValueError(f"Missing artifact hashes in stage record: {record_path}")
+    summary = record.get("summary", {})
+    threshold = float(summary["event_report_threshold"])
+    archive_path = Path(task["archive"]).resolve()
+
+    with tempfile.TemporaryDirectory(prefix=f"baseline_stage_{task['model'].lower()}_{cap}_") as temp:
+        materialized = Path(temp)
+        if cap < 15:
+            if not archive_path.is_file():
+                raise ValueError(f"Missing frozen stage archive: {archive_path}")
+            with zipfile.ZipFile(archive_path) as archive:
+                manifest = json.loads(archive.read("archive_manifest.json"))
+                if manifest != expected:
+                    raise ValueError(f"Archive manifest differs from stage record: {archive_path}")
+                names = set(archive.namelist())
+                for name, digest in expected.items():
+                    if Path(name).name != name or name not in names:
+                        raise ValueError(f"Missing or unsafe archive artifact: {name}")
+                    value = archive.read(name)
+                    if _sha_bytes(value) != digest:
+                        raise ValueError(f"Archive artifact hash mismatch: {archive_path}:{name}")
+                    (materialized / name).write_bytes(value)
+            origin = str(archive_path)
+        else:
+            for name, digest in expected.items():
+                if Path(name).name != name:
+                    raise ValueError(f"Unsafe stage artifact name: {name}")
+                source = output_dir / name
+                if not source.is_file() or _sha(source) != digest:
+                    raise ValueError(f"Current stage artifact hash mismatch: {source}")
+                (materialized / name).write_bytes(source.read_bytes())
+            origin = str(output_dir)
+        yield materialized, origin, threshold
 
 
 def _tasks(dataset_dir: Path) -> dict[tuple[str, int], dict[str, Any]]:
@@ -86,13 +144,25 @@ def _load_b2_head(model_dir: Path, metadata: dict[str, Any]) -> b2_xgboost._Head
     )
 
 
-def _evaluate_b2(dataset_dir: Path, model_dir: Path, cap: int) -> dict[str, Any]:
+def _evaluate_b2(
+    dataset_dir: Path,
+    model_dir: Path,
+    cap: int,
+    frozen_threshold: float,
+) -> dict[str, Any]:
     """Reuse the B2 evaluator while replacing every fit with a saved head."""
     saved_config = _read(model_dir / "config.json")
     config_values = dict(saved_config["config"])
+    if int(config_values.get("event_max_start_windows", cap)) != cap:
+        raise ValueError(f"B2 artifact config cap does not match task cap: {model_dir}")
     config_values["evaluation_protocol"] = matched_protocol.VERSION
     config_values["event_max_start_windows"] = cap
     config_values["evaluate_test"] = False
+    # The threshold was selected on validation and is frozen for test.  Restrict
+    # the validation candidate list to this value so the test pass performs no
+    # new threshold selection.
+    config_values["event_report_threshold"] = frozen_threshold
+    config_values["report_threshold_sweep"] = (frozen_threshold,)
     config = B2XGBoostConfig(**config_values)
     config.evaluate_test = True
 
@@ -135,8 +205,28 @@ def _evaluate_b2(dataset_dir: Path, model_dir: Path, cap: int) -> dict[str, Any]
     return metrics
 
 
-def _evaluate_torch(dataset_dir: Path, model_dir: Path, cap: int) -> dict[str, Any]:
+def _evaluate_torch(
+    dataset_dir: Path,
+    model_dir: Path,
+    cap: int,
+    frozen_threshold: float,
+) -> dict[str, Any]:
     checkpoint = model_dir / "best.pt"
+    checkpoint_data = __import__("torch").load(
+        checkpoint, map_location="cpu", weights_only=False
+    )
+    checkpoint_cap = int(checkpoint_data["train_config"]["event_max_start_windows"])
+    if checkpoint_cap != cap:
+        raise ValueError(
+            f"Checkpoint cap does not match task cap for {checkpoint}: "
+            f"checkpoint={checkpoint_cap}, task={cap}"
+        )
+    checkpoint_threshold = float(checkpoint_data["metadata"]["event_report_threshold"])
+    if not math.isclose(checkpoint_threshold, frozen_threshold, abs_tol=1e-12, rel_tol=0.0):
+        raise ValueError(
+            f"Frozen threshold mismatch for {checkpoint}: "
+            f"checkpoint={checkpoint_threshold}, record={frozen_threshold}"
+        )
     with tempfile.TemporaryDirectory(prefix="baseline_torch_test_") as temp:
         return torch_trainer.evaluate_torch_checkpoint(
             dataset_dir=dataset_dir,
@@ -149,12 +239,19 @@ def _evaluate_torch(dataset_dir: Path, model_dir: Path, cap: int) -> dict[str, A
         )
 
 
-def _compact(model: str, cap: int, model_dir: Path, metrics: dict[str, Any]) -> dict[str, Any]:
+def _compact(
+    model: str,
+    cap: int,
+    model_dir: Path,
+    artifact_origin: str,
+    metrics: dict[str, Any],
+) -> dict[str, Any]:
     report = metrics["station_report"]
     result = {
         "model": model,
         "max_start": cap,
         "model_dir": str(model_dir),
+        "artifact_origin": artifact_origin,
         "test": metrics,
         "selected_threshold": report["report_threshold_used"],
         "test_will15_precision": report["will15_precision"],
@@ -194,15 +291,17 @@ def main() -> None:
     results: list[dict[str, Any]] = []
     for cap in CAPS:
         for model in MODELS:
-            model_dir = Path(tasks[(model, cap)]["output_dir"]).resolve()
+            task = tasks[(model, cap)]
+            model_dir = Path(task["output_dir"]).resolve()
             if not model_dir.is_relative_to((dataset_dir / "models").resolve()):
                 raise ValueError(f"Model output is outside authorized models directory: {model_dir}")
-            metrics = (
-                _evaluate_b2(dataset_dir, model_dir, cap)
-                if model == "B2"
-                else _evaluate_torch(dataset_dir, model_dir, cap)
-            )
-            result = _compact(model, cap, model_dir, metrics)
+            with _stage_artifacts(task, cap) as (stage_dir, artifact_origin, frozen_threshold):
+                metrics = (
+                    _evaluate_b2(dataset_dir, stage_dir, cap, frozen_threshold)
+                    if model == "B2"
+                    else _evaluate_torch(dataset_dir, stage_dir, cap, frozen_threshold)
+                )
+            result = _compact(model, cap, model_dir, artifact_origin, metrics)
             results.append(result)
             print(
                 f"TEST_STAGE_COMPLETE {model} {cap} "
