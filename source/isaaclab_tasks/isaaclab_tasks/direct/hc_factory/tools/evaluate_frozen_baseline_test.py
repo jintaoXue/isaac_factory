@@ -64,7 +64,19 @@ def _stage_artifacts(task: dict[str, Any], cap: int) -> Iterator[tuple[Path, str
         raise ValueError(f"Missing artifact hashes in stage record: {record_path}")
     summary = record.get("summary", {})
     threshold = float(summary["event_report_threshold"])
-    archive_path = Path(task["archive"]).resolve()
+    registered_archive = Path(task["archive"]).resolve()
+    # The archive registered on a task preserves the directory *before* that
+    # stage started.  The completed stage itself is archived immediately before
+    # the next stage starts, so use the next-stage archive (the same convention
+    # as verify_baseline_matched_results.py).
+    archive_path = registered_archive
+    if cap < 15:
+        suffix = f"_s{cap}.zip"
+        if not registered_archive.name.endswith(suffix):
+            raise ValueError(f"Unexpected registered archive name: {registered_archive}")
+        archive_path = registered_archive.with_name(
+            registered_archive.name[: -len(suffix)] + f"_s{cap + 5}.zip"
+        )
 
     with tempfile.TemporaryDirectory(prefix=f"baseline_stage_{task['model'].lower()}_{cap}_") as temp:
         materialized = Path(temp)
