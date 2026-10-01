@@ -355,7 +355,9 @@ class StateEncoder(nn.Module):
         next_l = _e("next_logistic_id", self.task_emb)
 
         def _f(name: str) -> torch.Tensor:
-            t = ot[name].float()
+            # Clone+contiguous: overnight/R0-debug SIGSEGV hit torch.stack on replay
+            # views inside learn/encode_D (_encode_ongoing continuous fields).
+            t = ot[name].detach().clone().float().contiguous()
             return t.unsqueeze(0) if t.ndim == 1 else t
 
         cont = torch.stack(
@@ -365,9 +367,9 @@ class StateEncoder(nn.Module):
                 _f("age_norm"),
                 _f("ongoing_index"),
                 _f("num_subtasks_n"),
-                _f("human_slot").clamp_min(-1).float() / 10.0,
-                _f("robot_slot").clamp_min(-1).float() / 10.0,
-                _f("workstation_i").clamp_min(-1).float() / 4.0,
+                _f("human_slot").clamp_min(-1) / 10.0,
+                _f("robot_slot").clamp_min(-1) / 10.0,
+                _f("workstation_i").clamp_min(-1) / 4.0,
             ],
             dim=-1,
         )  # (B, M, 8)

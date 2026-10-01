@@ -197,10 +197,17 @@ def read_console(evidence: Path | None) -> str:
         return ""
 
 
-def wait_finished(proc: subprocess.Popen, evidence: Path | None, state: dict, poll_s: float = 15.0):
+def wait_finished(
+    proc: subprocess.Popen,
+    evidence: Path | None,
+    state: dict,
+    poll_s: float = 10.0,
+    hb_s: float = 60.0,
+):
     """Poll until train supervisor exits; write heartbeats. Returns final status dict."""
     last_step = None
     stall_since = None
+    state["_last_hb"] = 0.0  # force immediate heartbeat
     while True:
         if STOP_PATH.exists() or state.get("stop"):
             try:
@@ -210,14 +217,20 @@ def wait_finished(proc: subprocess.Popen, evidence: Path | None, state: dict, po
             state["phase"] = "stopped_by_user"
             state["stop"] = True
             save_state(state)
-            proc.wait(timeout=30)
+            try:
+                proc.wait(timeout=30)
+            except Exception:
+                pass
             return read_status(evidence)
 
         rc = proc.poll()
         status = read_status(evidence)
         console = read_console(evidence)
         prog = parse_progress(console)
-        alive = status.get("state") == "running" or (rc is None and status.get("state") != "failed")
+
+        # Also treat finalized failed status as exit even if poll lags.
+        if rc is None and status.get("state") in ("finished", "failed"):
+            rc = status.get("shell_exit_code", status.get("returncode", 1))
 
         # Stall detection (desk freeze often freezes logging without killing process)
         step = prog.get("step")
@@ -238,7 +251,7 @@ def wait_finished(proc: subprocess.Popen, evidence: Path | None, state: dict, po
             stall_since = None
             last_step = step
 
-        if time.time() - state.get("_last_hb", 0) >= 600 or rc is not None:
+        if time.time() - float(state.get("_last_hb") or 0) >= hb_s or rc is not None:
             state["_last_hb"] = time.time()
             tick = {
                 "at": now(),
@@ -251,15 +264,18 @@ def wait_finished(proc: subprocess.Popen, evidence: Path | None, state: dict, po
                 "returncode": status.get("returncode"),
                 "train_alive": rc is None,
                 "segv": status.get("signal") == "SIGSEGV" or "Fatal Python error" in console[-20000:],
+                "loop_pid": os.getpid(),
             }
             state.setdefault("ticks", []).append(tick)
+            # keep ticks bounded
+            if len(state["ticks"]) > 500:
+                state["ticks"] = state["ticks"][-300:]
             state["progress"] = tick
             state["last_tick"] = tick["at"]
             save_state(state)
             print(json.dumps(tick), flush=True)
 
         if rc is not None:
-            # give supervisor a moment to finalize status.json
             for _ in range(20):
                 status = read_status(evidence)
                 if status.get("state") in ("finished", "failed"):
@@ -276,35 +292,80 @@ def main() -> int:
     base_tag = os.environ.get("HC_R_RUN_TAG", "R0-debug")
 
     missing = ensure_patches()
+    prev = load_state() if STATE_PATH.exists() else {}
+    resume = os.environ.get("HC_LOOP_RESUME", "1") != "0"
+    relaunch = int(os.environ.get("HC_LOOP_START_RELAUNCH", "0"))
+    blocking = os.environ.get("HC_LOOP_BLOCKING", "0") == "1"
+    if resume and prev:
+        relaunch = max(relaunch, int(prev.get("policy", {}).get("relaunch_count") or 0))
+        blocking = blocking or bool(prev.get("policy", {}).get("cuda_launch_blocking"))
+        # If previous active_run evidence shows a crash that was never recorded, count it.
+        active = prev.get("active_run") or {}
+        ev = active.get("evidence")
+        if ev and Path(ev).joinpath("status.json").exists():
+            st = json.loads(Path(ev).joinpath("status.json").read_text())
+            if st.get("state") == "failed" and not any(
+                h.get("evidence") == ev for h in (prev.get("history") or [])
+            ):
+                console = read_console(Path(ev))
+                prog = parse_progress(console)
+                kind = classify_crash(console, st)
+                miss = {
+                    "at": now(),
+                    "tag": active.get("tag"),
+                    "kind": kind,
+                    "status": st,
+                    "step": prog.get("step"),
+                    "episode": prog.get("episode"),
+                    "evidence": ev,
+                    "note": "recovered after supervisor death (missed auto-relaunch)",
+                }
+                prev.setdefault("history", []).append(miss)
+                prev["last_crash"] = miss
+                prev.setdefault("findings", []).append(
+                    f"MISSED: {active.get('tag')} {kind} @ step={prog.get('step')} (supervisor died)"
+                )
+                relaunch = max(relaunch, 1)
+                if KNOWN.get(kind, {}).get("blocking_next"):
+                    blocking = True
+                append_diag(
+                    f"- Recovered missed crash `{active.get('tag')}` `{kind}` "
+                    f"step={prog.get('step')} evidence=`{ev}` (supervisor had died)."
+                )
+
     state = {
         "goal": "Closed-loop R0 train (wandb R0-debug*) + auto-fix prior SIGSEGV/device-path crashes",
-        "started_at": now(),
+        "started_at": prev.get("started_at") or now(),
+        "resumed_at": now() if prev else None,
         "phase": "running",
         "stop": False,
         "policy": {
             "variant": "R0",
             "wandb_tag_base": base_tag,
-            "cuda_launch_blocking": False,
+            "cuda_launch_blocking": blocking,
             "hc_emb_debug": True,
             "max_hard_episodes": int(os.environ.get("HC_MAX_HARD_EPISODES", "100")),
             "seed": int(os.environ.get("HC_R_SEED", "42")),
             "max_auto_relaunch": max_relaunch,
-            "relaunch_count": 0,
+            "relaunch_count": relaunch,
+            "heartbeat_sec": 60,
         },
         "patch_check_missing": missing,
-        "ticks": [],
-        "findings": [],
+        "ticks": list(prev.get("ticks") or [])[-100:],
+        "findings": list(prev.get("findings") or []),
+        "history": list(prev.get("history") or []),
+        "last_crash": prev.get("last_crash"),
         "active_run": None,
     }
     if missing:
         state["findings"].append(f"WARNING missing patches: {missing}")
         print(f"[loop] WARNING missing patches: {missing}", flush=True)
     else:
-        state["findings"].append("device-path / clone_env_subtree / event-clone patches present")
+        state["findings"].append(
+            f"patches ok; continuous-field clone in _encode_ongoing; resume relaunch={relaunch} blocking={blocking}"
+        )
     save_state(state)
 
-    blocking = False
-    relaunch = 0
     while True:
         if STOP_PATH.exists():
             state["phase"] = "stopped_by_user"

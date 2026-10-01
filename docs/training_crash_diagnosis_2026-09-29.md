@@ -169,3 +169,7 @@ Unit tests: `tests.test_decision_consistent` + `tests.test_emb_debug_probe` pass
 - State: `outputs/train_monitor/r0_debug_loop/STATE.json`（`touch .../STOP` 停止）
 - W&B name: **`R0-debug-N10`**（relaunch → `R0-debug-reN-N10`）
 - Policy: 100 hard eps, seed 42, `HC_EMB_DEBUG=1`, no blocking initially; on known SIGSEGV surfaces auto-relaunch (max 8) and escalate to `CUDA_LAUNCH_BLOCKING`+sync when classified.
+
+### Closed-loop tick (2026-09-30T16:29:11+08:00)
+
+- Recovered missed crash `R0-debug` `segv_stack_ongoing` step=58900 evidence=`/home/xue/work/isaac_factory/outputs/train_monitor/run_20260930_151040_2_9ppnmu` (supervisor had died).
