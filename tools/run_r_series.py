@@ -96,7 +96,7 @@ def main():
     env = dict(os.environ)
     # Read identity only for a real run. Never print secrets or execute an env file as shell code.
     if not args.dry_run and (ROOT/'.wandb_local.env').exists():
-        for raw in (ROOT/'.wandb_local.env').read_text().splitlines():
+        for raw in (ROOT/'.wandb_local.env').read_text(encoding='utf-8').splitlines():
             line = raw.strip().removeprefix('export ')
             if not line or line.startswith('#') or '=' not in line:
                 continue
