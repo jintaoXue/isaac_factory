@@ -12,11 +12,31 @@ import time
 
 def _save(path, data):
     tmp = path.with_suffix('.tmp')
-    with tmp.open('w') as stream:
+    with tmp.open('w', encoding='utf-8') as stream:
         json.dump(data, stream, indent=2)
         stream.flush()
         os.fsync(stream.fileno())
     tmp.replace(path)
+
+
+def _available_signals(*names):
+    return tuple(sig for name in names if (sig := getattr(signal, name, None)) is not None)
+
+
+def _signal_child(proc, signum):
+    """Best-effort stop: process group on POSIX, process handle on Windows."""
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        if hasattr(os, 'killpg'):
+            os.killpg(proc.pid, signum)
+        else:
+            proc.send_signal(signum)
+    except (ProcessLookupError, OSError, ValueError):
+        try:
+            proc.terminate()
+        except (ProcessLookupError, OSError):
+            pass
 
 
 def supervise(argv, *, cwd, env, output_root=None, resources=True, kernel=True):
@@ -34,6 +54,9 @@ def supervise(argv, *, cwd, env, output_root=None, resources=True, kernel=True):
     monitor = child = None
     handlers = {}
     console_ok = True
+    forward_signals = _available_signals('SIGINT', 'SIGTERM', 'SIGHUP')
+    soft_stop = getattr(signal, 'SIGTERM', signal.SIGINT)
+    hard_stop = getattr(signal, 'SIGKILL', soft_stop)
 
     def display(data):
         nonlocal console_ok
@@ -45,16 +68,12 @@ def supervise(argv, *, cwd, env, output_root=None, resources=True, kernel=True):
                 console_ok = False
 
     def forward(signum, frame):
-        if child is not None and child.poll() is None:
-            try:
-                os.killpg(child.pid, signum)
-            except ProcessLookupError:
-                pass
+        _signal_child(child, signum)
 
     with (directory / 'console.log').open('wb', buffering=0) as log, \
             (directory / 'monitor.log').open('wb', buffering=0) as monitor_log:
         try:
-            for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            for sig in forward_signals:
                 handlers[sig] = signal.signal(sig, forward)
             child = subprocess.Popen(argv, cwd=cwd, env=child_env, stdout=log,
                                      stderr=subprocess.STDOUT, start_new_session=True)
@@ -96,14 +115,15 @@ def supervise(argv, *, cwd, env, output_root=None, resources=True, kernel=True):
             raise
         finally:
             if child is not None and child.poll() is None:
-                try:
-                    os.killpg(child.pid, signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
+                _signal_child(child, soft_stop)
                 try:
                     child.wait(timeout=10)
                 except subprocess.TimeoutExpired:
-                    os.killpg(child.pid, signal.SIGKILL)
+                    _signal_child(child, hard_stop)
+                    try:
+                        child.kill()
+                    except (ProcessLookupError, OSError):
+                        pass
                     child.wait()
             if monitor is not None:
                 status['monitor_returncode_before_cleanup'] = monitor.poll()
