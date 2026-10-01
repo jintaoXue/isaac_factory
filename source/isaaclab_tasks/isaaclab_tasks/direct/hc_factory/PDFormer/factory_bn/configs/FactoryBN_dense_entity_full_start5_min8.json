@@ -4,5 +4,5 @@
   "init_ckpt": "",
   "max_epoch": 50,
   "patience": 50,
-  "wandb_name": "dense_i1_entity_full_start5_min8_cold_ep50"
+  "wandb_name": "entity_full_start5_min8_cold_ep50"
 }

@@ -1,8 +1,8 @@
-"""Serial GNN-structure ablations: start<=5/10/15, Min8.
+"""Serial GNN-structure ablations: start<=5/10/15, Min8, train from scratch.
 
-Each arm trains start5 → start10 → start15, warm-starting from the previous
-best checkpoint. The default skips ``full`` because its three official runs
-already exist, then runs ablations in evidence-value priority order.
+Each (arm, start) run is independent — no curriculum warm-start / init_ckpt.
+Default skips ``full`` (already available) and runs nograph → nogroup → nosem → nopattern.
+Save / wandb names: ``ablation_{arm}_start{start}_seed{seed}``.
 """
 
 from __future__ import annotations
@@ -37,28 +37,24 @@ def main() -> int:
         action="append",
         choices=list(ARMS),
         help=(
-            "Repeat to pick a subset. Default priority: "
+            "Repeat to pick a subset. Default: "
             "nograph, nogroup, nosem, nopattern; full is already available."
         ),
     )
     parser.add_argument(
         "--data_dir",
         default="raw_data/dense_i1",
-        help="Keep the official pack for the paper table.",
+        help="Official pack for the paper table.",
     )
     args = parser.parse_args()
     if not torch.cuda.is_available():
         raise SystemExit("CUDA is unavailable in this Python environment")
-    epochs = 15 if args.phase == "screen" else 100
+    epochs = 15 if args.phase == "screen" else 50
     arms = args.arm or list(DEFAULT_ARMS)
     for arm in arms:
-        previous_ckpt: Path | None = None
         for max_start in STARTS:
             cfg_name = ARMS[arm].format(start=max_start)
-            name = (
-                f"dense_i1_struct_{arm}_start{max_start}_min8_"
-                f"{args.phase}_seed{args.seed}"
-            )
+            name = f"ablation_{arm}_start{max_start}_seed{args.seed}"
             save_rel = Path("libcity/cache/model_cache") / name
             cmd = [
                 sys.executable,
@@ -82,13 +78,10 @@ def main() -> int:
                 "--wandb_name",
                 name,
             ]
-            if previous_ckpt is not None:
-                cmd.extend(["--init_ckpt", str(previous_ckpt)])
-            print(f"[{arm} start<={max_start} Min8]", " ".join(cmd), flush=True)
+            print(f"[{name}]", " ".join(cmd), flush=True)
             result = subprocess.run(cmd, cwd=str(ROOT))
             if result.returncode != 0:
                 return int(result.returncode)
-            previous_ckpt = ROOT / save_rel / "BNPDFormer_best.pt"
     return 0
 
 

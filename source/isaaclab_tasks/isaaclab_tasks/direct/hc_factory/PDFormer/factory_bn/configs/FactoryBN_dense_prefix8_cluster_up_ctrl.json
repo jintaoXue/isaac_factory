@@ -179,7 +179,7 @@
   "type_balanced_occupancy": true,
   "wandb_activate": true,
   "wandb_project": "FactoryBN_PDFormer",
-  "wandb_name": "dense_i1_a1_prefix8_cluster_up_ctrl",
+  "wandb_name": "a1_prefix8_cluster_up_ctrl",
   "wandb_entity": "",
   "fuse_hist_cluster": false,
   "oversample_upcoming_windows": 6.0,

@@ -69,7 +69,7 @@ def main() -> int:
                 "--wandb_project",
                 "FactoryBN_PDFormer",
                 "--wandb_name",
-                name,
+                name.removeprefix("dense_i1_"),
             ]
             cmd.extend(["--init_ckpt", ""])
             print(f"[{arm} Start<={start}]", " ".join(cmd), flush=True)

@@ -21,5 +21,5 @@
   "w_remain_len": 0.5,
   "max_epoch": 100,
   "patience": 40,
-  "wandb_name": "dense_i1_12_3_start5_min8_cause4_opt"
+  "wandb_name": "12_3_start5_min8_cause4_opt"
 }

@@ -179,7 +179,7 @@
   "type_balanced_occupancy": true,
   "wandb_activate": true,
   "wandb_project": "FactoryBN_PDFormer",
-  "wandb_name": "dense_i1_a1_start5_min10_v3",
+  "wandb_name": "a1_start5_min10_v3",
   "wandb_entity": "",
   "event_f1_ongoing_mix": 0.25,
   "event_will_far_start_pos_weight": 11.0,

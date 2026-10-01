@@ -3,5 +3,5 @@
   "split_will_heads": false,
   "init_ckpt": "",
   "save_dir": "libcity/cache/model_cache/dense_i1_struct_nosplit_start5_min8",
-  "wandb_name": "dense_i1_struct_nosplit_start5_min8"
+  "wandb_name": "struct_nosplit_start5_min8"
 }

@@ -3,5 +3,6 @@
   "save_dir": "libcity/cache/model_cache/dense_i1_entity_nocross_start5_min8_cold_ep50",
   "graph_mode": "factory_within_type",
   "mask_cross_type_attention": true,
-  "wandb_name": "dense_i1_entity_nocross_start5_min8_cold_ep50"
+  "unfreeze_last_encoder_blocks": 0,
+  "wandb_name": "entity_nocross_start5_min8_cold_ep50"
 }

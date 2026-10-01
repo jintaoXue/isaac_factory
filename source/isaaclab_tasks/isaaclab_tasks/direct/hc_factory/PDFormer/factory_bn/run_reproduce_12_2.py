@@ -51,7 +51,7 @@ def main() -> int:
             "--wandb_project",
             "FactoryBN_PDFormer",
             "--wandb_name",
-            f"dense_i1_start5_min10_{name}_{suffix}",
+            f"start5_min10_{name}_{suffix}",
         ]
         if previous_ckpt is not None:
             if not previous_ckpt.is_file():

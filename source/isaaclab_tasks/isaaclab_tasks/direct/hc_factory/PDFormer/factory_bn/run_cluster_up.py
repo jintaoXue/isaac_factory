@@ -19,13 +19,13 @@ RUNS = [
         "name": "cluster_up",
         "config": "factory_bn/configs/FactoryBN_dense_prefix8_cluster_up.json",
         "save_dir": "libcity/cache/model_cache/dense_i1_a1_prefix8_cluster_up",
-        "wandb_name": "dense_i1_a1_prefix8_cluster_up",
+        "wandb_name": "a1_prefix8_cluster_up",
     },
     {
         "name": "cluster_up_ctrl",
         "config": "factory_bn/configs/FactoryBN_dense_prefix8_cluster_up_ctrl.json",
         "save_dir": "libcity/cache/model_cache/dense_i1_a1_prefix8_cluster_up_ctrl",
-        "wandb_name": "dense_i1_a1_prefix8_cluster_up_ctrl",
+        "wandb_name": "a1_prefix8_cluster_up_ctrl",
     },
 ]
 

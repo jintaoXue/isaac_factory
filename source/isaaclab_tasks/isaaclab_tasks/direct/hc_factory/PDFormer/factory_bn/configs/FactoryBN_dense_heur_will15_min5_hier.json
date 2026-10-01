@@ -27,5 +27,5 @@
   "patience": 40,
   "wandb_activate": true,
   "wandb_project": "FactoryBN_PDFormer",
-  "wandb_name": "dense_i1_heur_will15_min5_hier"
+  "wandb_name": "heur_will15_min5_hier"
 }

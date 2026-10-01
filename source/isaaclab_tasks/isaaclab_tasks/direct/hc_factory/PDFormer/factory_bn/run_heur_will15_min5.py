@@ -31,7 +31,7 @@ def main() -> int:
         f"libcity/cache/model_cache/dense_i1_heur_will15_min5_hier_"
         f"{args.phase}_seed{args.seed}"
     )
-    run_name = f"dense_i1_heur_will15_min5_hier_{args.phase}_seed{args.seed}"
+    run_name = f"heur_will15_min5_hier_{args.phase}_seed{args.seed}"
     cmd = [
         sys.executable,
         "-u",

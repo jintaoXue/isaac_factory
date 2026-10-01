@@ -48,7 +48,7 @@ def main() -> int:
             "--wandb_project",
             "FactoryBN_PDFormer",
             "--wandb_name",
-            name,
+            name.removeprefix("dense_i1_"),
         ]
         if previous_ckpt is not None:
             cmd.extend(["--init_ckpt", str(previous_ckpt)])

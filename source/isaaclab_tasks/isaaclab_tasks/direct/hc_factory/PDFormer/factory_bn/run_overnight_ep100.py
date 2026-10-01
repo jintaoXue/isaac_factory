@@ -19,13 +19,13 @@ RUNS = [
         "name": "heur_cluster",
         "config": "factory_bn/configs/FactoryBN_dense_prefix8_heur_cluster.json",
         "save_dir": "libcity/cache/model_cache/dense_i1_a1_prefix8_heur_cluster_ep100",
-        "wandb_name": "dense_i1_a1_prefix8_heur_cluster_ep100",
+        "wandb_name": "a1_prefix8_heur_cluster_ep100",
     },
     {
         "name": "start5_min10",
         "config": "factory_bn/configs/FactoryBN_dense_start5_min10.json",
         "save_dir": "libcity/cache/model_cache/dense_i1_a1_start5_min10_ep100",
-        "wandb_name": "dense_i1_a1_start5_min10_ep100",
+        "wandb_name": "a1_start5_min10_ep100",
     },
 ]
 

@@ -9,5 +9,5 @@
   "hot_min_windows": 8,
   "event_min_windows": 8,
   "event_max_start_windows": 5,
-  "wandb_name": "dense_i1_12_2_start5_min8_ep100"
+  "wandb_name": "12_2_start5_min8_ep100"
 }

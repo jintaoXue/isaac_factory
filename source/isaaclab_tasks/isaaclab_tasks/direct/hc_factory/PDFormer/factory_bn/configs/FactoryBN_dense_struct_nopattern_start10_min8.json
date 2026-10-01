@@ -4,5 +4,8 @@
   "event_will_upcoming_pos_weight": 10.0,
   "event_will_far_start_pos_weight": 10.0,
   "save_dir": "libcity/cache/model_cache/dense_i1_struct_nopattern_start10_min8",
-  "wandb_name": "dense_i1_struct_nopattern_start10_min8"
+  "wandb_name": "struct_nopattern_start10_min8",
+  "init_ckpt": "",
+  "unfreeze_last_encoder_blocks": 0,
+  "max_epoch": 50
 }

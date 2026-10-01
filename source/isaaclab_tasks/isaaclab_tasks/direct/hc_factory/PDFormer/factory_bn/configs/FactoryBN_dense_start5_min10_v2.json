@@ -179,6 +179,6 @@
   "type_balanced_occupancy": true,
   "wandb_activate": true,
   "wandb_project": "FactoryBN_PDFormer",
-  "wandb_name": "dense_i1_a1_start5_min10_v2",
+  "wandb_name": "a1_start5_min10_v2",
   "wandb_entity": ""
 }

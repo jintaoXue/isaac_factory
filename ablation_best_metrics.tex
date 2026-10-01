@@ -913,4 +913,813 @@ nogroup & $\le 15$ & 0.567 & 0.690 & \bfseries 0.623 & 0.395 & 0.922 & 10.6 \\
 (2)~\texttt{nosem} (\texttt{ablation\_nosem\_start5\_seed42}) aborted before epoch 1: a convolution weight of shape \texttt{[0, 80, 1, 1]}. \texttt{nopattern} was never started.
 (3)~Cause macro recall stays near the full model for \texttt{nogroup} (0.955 / 0.953 / 0.949) and drops for \texttt{nograph}, especially \textit{queue\_buildup} (0.734 / 0.290 / 0.290 vs full ${\approx}0.98$).
 
+
+\clearpage
+%==============================================================================
+\begin{center}
+{\LARGE\bfseries BNPDFormer Best Checkpoint Metrics}\\[3pt]
+{\large\texttt{dense\_i1\_entity\_noinfo\_start5\_min8\_cold\_ep50\_seed42}}\\[2pt]
+{\normalsize Recipe: \texttt{FactoryBN\_dense\_entity\_noinfo\_start5\_min8.json}; best epoch 12}
+\end{center}
+
+\textbf{Protocol.}
+Same \texttt{dense\_i1} pack and episode split (seed 42).
+Entity ablation E1: machine-only observations; human/gantry/AGV/buffer dynamics + derived channels masked (indices 13,14,15,17,26). Graph structure kept.
+Event horizon capped at $\mathrm{start}\le 5$\,min; Min8 occupancy filter.
+From-scratch, 50 epochs, empty \texttt{init\_ckpt}, \texttt{unfreeze\_last\_encoder\_blocks=0}.
+Checkpoint metric is will15 F1.
+Numbers from \texttt{last\_metrics.json}.
+
+\begin{center}
+\captionof{table}{Station-level event reports ($\mathrm{start}\le 5$, entity noinfo). Checkpoint metric is will15 F1.}
+\begin{tabular}{l l S[table-format=1.3] S[table-format=1.3]}
+\toprule
+{Group} & {Metric} & {Validation} & {Test} \\
+\midrule
+\multirow{3}{*}{Report / will15 (primary)}
+  & Precision $P$ & 0.802 & 0.770 \\
+  & Recall $R$    & 0.539 & 0.553 \\
+  & F1            & 0.645 & \bfseries 0.644 \\
+\midrule
+\multirow{2}{*}{Stratified recall}
+  & Upcoming $R_{\mathrm{up}}$ ($s>0$) & 0.056 & 0.049 \\
+  & Ongoing $R_{\mathrm{on}}$ ($s{=}0$)  & 0.895 & 0.899 \\
+\midrule
+\multirow{3}{*}{Support}
+  & $n_{\mathrm{true}}$ upcoming & {---} & {389} \\
+  & $n_{\mathrm{true}}$ ongoing  & {---} & {566} \\
+  & $n_{\mathrm{true}}$ total    & {---} & {955} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\captionof{table}{Order remaining time and process-cause heads ($\mathrm{start}\le 5$, entity noinfo).}
+\begin{tabular}{l l l l}
+\toprule
+Layer & Metric & Validation & Test \\
+\midrule
+Order remaining time
+  & $\mathrm{MAE}(\textit{remain\_len})$ (min)
+  & 21.6
+  & \textbf{19.4} \\
+\midrule
+Process cause (4 active / 6 classes)
+  & Overall accuracy
+  & 0.886
+  & 0.870 \\
+  & Macro recall (support${>}0$)
+  & 0.906
+  & \textbf{0.888} \\
+  & Majority-class baseline (train)
+  & \multicolumn{2}{c}{0.409} \\
+  & Valid samples $n_{\mathrm{cause}}$
+  & ---
+  & 579 \\
+\midrule
+Per-class recall
+  & \textit{transport\_delay}
+  & --- & 0.757 \\
+  & \textit{material\_shortage}
+  & --- & 0.976 \\
+  & \textit{starved\_upstream}
+  & --- & 0.844 \\
+  & \textit{queue\_buildup}
+  & --- & 0.976 \\
+  & \textit{blocked\_downstream}
+  & \multicolumn{2}{c}{no support on test} \\
+  & \textit{high\_utilization}
+  & \multicolumn{2}{c}{no support on test} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\small
+\textbf{Notes.}
+(1)~Val primary numbers are \texttt{report\_*} at the best will15 epoch; test primary is \texttt{will15\_*} (F1 0.644; report F1 0.644).
+(2)~Best epoch 12/50. Upcoming recall 0.049 on 389 test events.
+
+\clearpage
+%==============================================================================
+\begin{center}
+{\LARGE\bfseries BNPDFormer Best Checkpoint Metrics}\\[3pt]
+{\large\texttt{dense\_i1\_entity\_noinfo\_start10\_min8\_cold\_ep50\_seed42}}\\[2pt]
+{\normalsize Recipe: \texttt{FactoryBN\_dense\_entity\_noinfo\_start10\_min8.json}; best epoch 7}
+\end{center}
+
+\textbf{Protocol.}
+Same \texttt{dense\_i1} pack and episode split (seed 42).
+Entity ablation E1: machine-only observations; human/gantry/AGV/buffer dynamics + derived channels masked (indices 13,14,15,17,26). Graph structure kept.
+Event horizon capped at $\mathrm{start}\le 10$\,min; Min8 occupancy filter.
+From-scratch, 50 epochs, empty \texttt{init\_ckpt}, \texttt{unfreeze\_last\_encoder\_blocks=0}.
+Checkpoint metric is will15 F1.
+Numbers from \texttt{last\_metrics.json}.
+
+\begin{center}
+\captionof{table}{Station-level event reports ($\mathrm{start}\le 10$, entity noinfo). Checkpoint metric is will15 F1.}
+\begin{tabular}{l l S[table-format=1.3] S[table-format=1.3]}
+\toprule
+{Group} & {Metric} & {Validation} & {Test} \\
+\midrule
+\multirow{3}{*}{Report / will15 (primary)}
+  & Precision $P$ & 0.777 & 0.759 \\
+  & Recall $R$    & 0.417 & 0.425 \\
+  & F1            & 0.543 & \bfseries 0.545 \\
+\midrule
+\multirow{2}{*}{Stratified recall}
+  & Upcoming $R_{\mathrm{up}}$ ($s>0$) & 0.021 & 0.020 \\
+  & Ongoing $R_{\mathrm{on}}$ ($s{=}0$)  & 0.925 & 0.896 \\
+\midrule
+\multirow{3}{*}{Support}
+  & $n_{\mathrm{true}}$ upcoming & {---} & {659} \\
+  & $n_{\mathrm{true}}$ ongoing  & {---} & {566} \\
+  & $n_{\mathrm{true}}$ total    & {---} & {1225} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\captionof{table}{Order remaining time and process-cause heads ($\mathrm{start}\le 10$, entity noinfo).}
+\begin{tabular}{l l l l}
+\toprule
+Layer & Metric & Validation & Test \\
+\midrule
+Order remaining time
+  & $\mathrm{MAE}(\textit{remain\_len})$ (min)
+  & 27.0
+  & \textbf{24.7} \\
+\midrule
+Process cause (4 active / 6 classes)
+  & Overall accuracy
+  & 0.616
+  & 0.682 \\
+  & Macro recall (support${>}0$)
+  & 0.675
+  & \textbf{0.707} \\
+  & Majority-class baseline (train)
+  & \multicolumn{2}{c}{0.409} \\
+  & Valid samples $n_{\mathrm{cause}}$
+  & ---
+  & 579 \\
+\midrule
+Per-class recall
+  & \textit{transport\_delay}
+  & --- & 0.934 \\
+  & \textit{material\_shortage}
+  & --- & 1.000 \\
+  & \textit{starved\_upstream}
+  & --- & 0.667 \\
+  & \textit{queue\_buildup}
+  & --- & 0.226 \\
+  & \textit{blocked\_downstream}
+  & \multicolumn{2}{c}{no support on test} \\
+  & \textit{high\_utilization}
+  & \multicolumn{2}{c}{no support on test} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\small
+\textbf{Notes.}
+(1)~Val primary numbers are \texttt{report\_*} at the best will15 epoch; test primary is \texttt{will15\_*} (F1 0.545; report F1 0.544).
+(2)~Best epoch 7/50. Upcoming recall 0.020 on 659 test events.
+
+\clearpage
+%==============================================================================
+\begin{center}
+{\LARGE\bfseries BNPDFormer Best Checkpoint Metrics}\\[3pt]
+{\large\texttt{dense\_i1\_entity\_noinfo\_start15\_min8\_cold\_ep50\_seed42}}\\[2pt]
+{\normalsize Recipe: \texttt{FactoryBN\_dense\_entity\_noinfo\_start15\_min8.json}; best epoch 41}
+\end{center}
+
+\textbf{Protocol.}
+Same \texttt{dense\_i1} pack and episode split (seed 42).
+Entity ablation E1: machine-only observations; human/gantry/AGV/buffer dynamics + derived channels masked (indices 13,14,15,17,26). Graph structure kept.
+Event horizon capped at $\mathrm{start}\le 15$\,min; Min8 occupancy filter.
+From-scratch, 50 epochs, empty \texttt{init\_ckpt}, \texttt{unfreeze\_last\_encoder\_blocks=0}.
+Checkpoint metric is will15 F1.
+Numbers from \texttt{last\_metrics.json}.
+
+\begin{center}
+\captionof{table}{Station-level event reports ($\mathrm{start}\le 15$, entity noinfo). Checkpoint metric is will15 F1.}
+\begin{tabular}{l l S[table-format=1.3] S[table-format=1.3]}
+\toprule
+{Group} & {Metric} & {Validation} & {Test} \\
+\midrule
+\multirow{3}{*}{Report / will15 (primary)}
+  & Precision $P$ & 0.455 & 0.466 \\
+  & Recall $R$    & 0.494 & 0.518 \\
+  & F1            & 0.474 & \bfseries 0.490 \\
+\midrule
+\multirow{2}{*}{Stratified recall}
+  & Upcoming $R_{\mathrm{up}}$ ($s>0$) & 0.175 & 0.127 \\
+  & Ongoing $R_{\mathrm{on}}$ ($s{=}0$)  & 0.973 & 0.922 \\
+\midrule
+\multirow{3}{*}{Support}
+  & $n_{\mathrm{true}}$ upcoming & {---} & {765} \\
+  & $n_{\mathrm{true}}$ ongoing  & {---} & {566} \\
+  & $n_{\mathrm{true}}$ total    & {---} & {1331} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\captionof{table}{Order remaining time and process-cause heads ($\mathrm{start}\le 15$, entity noinfo).}
+\begin{tabular}{l l l l}
+\toprule
+Layer & Metric & Validation & Test \\
+\midrule
+Order remaining time
+  & $\mathrm{MAE}(\textit{remain\_len})$ (min)
+  & 15.2
+  & \textbf{14.0} \\
+\midrule
+Process cause (4 active / 6 classes)
+  & Overall accuracy
+  & 0.917
+  & 0.917 \\
+  & Macro recall (support${>}0$)
+  & 0.926
+  & \textbf{0.929} \\
+  & Majority-class baseline (train)
+  & \multicolumn{2}{c}{0.409} \\
+  & Valid samples $n_{\mathrm{cause}}$
+  & ---
+  & 579 \\
+\midrule
+Per-class recall
+  & \textit{transport\_delay}
+  & --- & 0.868 \\
+  & \textit{material\_shortage}
+  & --- & 0.976 \\
+  & \textit{starved\_upstream}
+  & --- & 0.890 \\
+  & \textit{queue\_buildup}
+  & --- & 0.984 \\
+  & \textit{blocked\_downstream}
+  & \multicolumn{2}{c}{no support on test} \\
+  & \textit{high\_utilization}
+  & \multicolumn{2}{c}{no support on test} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\small
+\textbf{Notes.}
+(1)~Val primary numbers are \texttt{report\_*} at the best will15 epoch; test primary is \texttt{will15\_*} (F1 0.490; report F1 0.441).
+(2)~Best epoch 41/50. Upcoming recall 0.127 on 765 test events.
+
+\clearpage
+%==============================================================================
+\begin{center}
+{\LARGE\bfseries BNPDFormer Best Checkpoint Metrics}\\[3pt]
+{\large\texttt{dense\_i1\_entity\_nocross\_start5\_min8\_cold\_ep50\_seed42}}\\[2pt]
+{\normalsize Recipe: \texttt{FactoryBN\_dense\_entity\_nocross\_start5\_min8.json}; best epoch 29}
+\end{center}
+
+\textbf{Protocol.}
+Same \texttt{dense\_i1} pack and episode split (seed 42).
+Entity ablation E2: all entity features kept; \texttt{graph\_mode=factory\_within\_type} and \texttt{mask\_cross\_type\_attention=true} (no cross-type edges / attention).
+Event horizon capped at $\mathrm{start}\le 5$\,min; Min8 occupancy filter.
+From-scratch, 50 epochs, empty \texttt{init\_ckpt}, \texttt{unfreeze\_last\_encoder\_blocks=0}.
+Checkpoint metric is will15 F1.
+Numbers from \texttt{last\_metrics.json}.
+
+\begin{center}
+\captionof{table}{Station-level event reports ($\mathrm{start}\le 5$, entity nocross). Checkpoint metric is will15 F1.}
+\begin{tabular}{l l S[table-format=1.3] S[table-format=1.3]}
+\toprule
+{Group} & {Metric} & {Validation} & {Test} \\
+\midrule
+\multirow{3}{*}{Report / will15 (primary)}
+  & Precision $P$ & 0.759 & 0.750 \\
+  & Recall $R$    & 0.696 & 0.698 \\
+  & F1            & 0.726 & \bfseries 0.723 \\
+\midrule
+\multirow{2}{*}{Stratified recall}
+  & Upcoming $R_{\mathrm{up}}$ ($s>0$) & 0.224 & 0.199 \\
+  & Ongoing $R_{\mathrm{on}}$ ($s{=}0$)  & 0.939 & 0.907 \\
+\midrule
+\multirow{3}{*}{Support}
+  & $n_{\mathrm{true}}$ upcoming & {---} & {336} \\
+  & $n_{\mathrm{true}}$ ongoing  & {---} & {766} \\
+  & $n_{\mathrm{true}}$ total    & {---} & {1102} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\captionof{table}{Order remaining time and process-cause heads ($\mathrm{start}\le 5$, entity nocross).}
+\begin{tabular}{l l l l}
+\toprule
+Layer & Metric & Validation & Test \\
+\midrule
+Order remaining time
+  & $\mathrm{MAE}(\textit{remain\_len})$ (min)
+  & 19.1
+  & \textbf{17.8} \\
+\midrule
+Process cause (4 active / 6 classes)
+  & Overall accuracy
+  & 0.862
+  & 0.862 \\
+  & Macro recall (support${>}0$)
+  & 0.870
+  & \textbf{0.864} \\
+  & Majority-class baseline (train)
+  & \multicolumn{2}{c}{0.409} \\
+  & Valid samples $n_{\mathrm{cause}}$
+  & ---
+  & 579 \\
+\midrule
+Per-class recall
+  & \textit{transport\_delay}
+  & --- & 0.956 \\
+  & \textit{material\_shortage}
+  & --- & 0.963 \\
+  & \textit{starved\_upstream}
+  & --- & 0.882 \\
+  & \textit{queue\_buildup}
+  & --- & 0.653 \\
+  & \textit{blocked\_downstream}
+  & \multicolumn{2}{c}{no support on test} \\
+  & \textit{high\_utilization}
+  & \multicolumn{2}{c}{no support on test} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\small
+\textbf{Notes.}
+(1)~Val primary numbers are \texttt{report\_*} at the best will15 epoch; test primary is \texttt{will15\_*} (F1 0.723; report F1 0.716).
+(2)~Best epoch 29/50. Upcoming recall 0.199 on 336 test events.
+
+\clearpage
+%==============================================================================
+\begin{center}
+{\LARGE\bfseries BNPDFormer Best Checkpoint Metrics}\\[3pt]
+{\large\texttt{dense\_i1\_entity\_nocross\_start10\_min8\_cold\_ep50\_seed42}}\\[2pt]
+{\normalsize Recipe: \texttt{FactoryBN\_dense\_entity\_nocross\_start10\_min8.json}; best epoch 32}
+\end{center}
+
+\textbf{Protocol.}
+Same \texttt{dense\_i1} pack and episode split (seed 42).
+Entity ablation E2: all entity features kept; \texttt{graph\_mode=factory\_within\_type} and \texttt{mask\_cross\_type\_attention=true} (no cross-type edges / attention).
+Event horizon capped at $\mathrm{start}\le 10$\,min; Min8 occupancy filter.
+From-scratch, 50 epochs, empty \texttt{init\_ckpt}, \texttt{unfreeze\_last\_encoder\_blocks=0}.
+Checkpoint metric is will15 F1.
+Numbers from \texttt{last\_metrics.json}.
+
+\begin{center}
+\captionof{table}{Station-level event reports ($\mathrm{start}\le 10$, entity nocross). Checkpoint metric is will15 F1.}
+\begin{tabular}{l l S[table-format=1.3] S[table-format=1.3]}
+\toprule
+{Group} & {Metric} & {Validation} & {Test} \\
+\midrule
+\multirow{3}{*}{Report / will15 (primary)}
+  & Precision $P$ & 0.625 & 0.596 \\
+  & Recall $R$    & 0.589 & 0.593 \\
+  & F1            & 0.606 & \bfseries 0.595 \\
+\midrule
+\multirow{2}{*}{Stratified recall}
+  & Upcoming $R_{\mathrm{up}}$ ($s>0$) & 0.233 & 0.157 \\
+  & Ongoing $R_{\mathrm{on}}$ ($s{=}0$)  & 0.922 & 0.893 \\
+\midrule
+\multirow{3}{*}{Support}
+  & $n_{\mathrm{true}}$ upcoming & {---} & {604} \\
+  & $n_{\mathrm{true}}$ ongoing  & {---} & {768} \\
+  & $n_{\mathrm{true}}$ total    & {---} & {1372} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\captionof{table}{Order remaining time and process-cause heads ($\mathrm{start}\le 10$, entity nocross).}
+\begin{tabular}{l l l l}
+\toprule
+Layer & Metric & Validation & Test \\
+\midrule
+Order remaining time
+  & $\mathrm{MAE}(\textit{remain\_len})$ (min)
+  & 15.2
+  & \textbf{13.9} \\
+\midrule
+Process cause (4 active / 6 classes)
+  & Overall accuracy
+  & 0.831
+  & 0.841 \\
+  & Macro recall (support${>}0$)
+  & 0.846
+  & \textbf{0.851} \\
+  & Majority-class baseline (train)
+  & \multicolumn{2}{c}{0.409} \\
+  & Valid samples $n_{\mathrm{cause}}$
+  & ---
+  & 579 \\
+\midrule
+Per-class recall
+  & \textit{transport\_delay}
+  & --- & 0.978 \\
+  & \textit{material\_shortage}
+  & --- & 1.000 \\
+  & \textit{starved\_upstream}
+  & --- & 0.844 \\
+  & \textit{queue\_buildup}
+  & --- & 0.581 \\
+  & \textit{blocked\_downstream}
+  & \multicolumn{2}{c}{no support on test} \\
+  & \textit{high\_utilization}
+  & \multicolumn{2}{c}{no support on test} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\small
+\textbf{Notes.}
+(1)~Val primary numbers are \texttt{report\_*} at the best will15 epoch; test primary is \texttt{will15\_*} (F1 0.595; report F1 0.571).
+(2)~Best epoch 32/50. Upcoming recall 0.157 on 604 test events.
+
+\clearpage
+%==============================================================================
+\begin{center}
+{\LARGE\bfseries BNPDFormer Best Checkpoint Metrics}\\[3pt]
+{\large\texttt{dense\_i1\_entity\_nocross\_start15\_min8\_cold\_ep50\_seed42}}\\[2pt]
+{\normalsize Recipe: \texttt{FactoryBN\_dense\_entity\_nocross\_start15\_min8.json}; best epoch 41}
+\end{center}
+
+\textbf{Protocol.}
+Same \texttt{dense\_i1} pack and episode split (seed 42).
+Entity ablation E2: all entity features kept; \texttt{graph\_mode=factory\_within\_type} and \texttt{mask\_cross\_type\_attention=true} (no cross-type edges / attention).
+Event horizon capped at $\mathrm{start}\le 15$\,min; Min8 occupancy filter.
+From-scratch, 50 epochs, empty \texttt{init\_ckpt}, \texttt{unfreeze\_last\_encoder\_blocks=0}.
+Checkpoint metric is will15 F1.
+Numbers from \texttt{last\_metrics.json}.
+
+\begin{center}
+\captionof{table}{Station-level event reports ($\mathrm{start}\le 15$, entity nocross). Checkpoint metric is will15 F1.}
+\begin{tabular}{l l S[table-format=1.3] S[table-format=1.3]}
+\toprule
+{Group} & {Metric} & {Validation} & {Test} \\
+\midrule
+\multirow{3}{*}{Report / will15 (primary)}
+  & Precision $P$ & 0.518 & 0.518 \\
+  & Recall $R$    & 0.561 & 0.616 \\
+  & F1            & 0.539 & \bfseries 0.563 \\
+\midrule
+\multirow{2}{*}{Stratified recall}
+  & Upcoming $R_{\mathrm{up}}$ ($s>0$) & 0.247 & 0.205 \\
+  & Ongoing $R_{\mathrm{on}}$ ($s{=}0$)  & 0.908 & 0.892 \\
+\midrule
+\multirow{3}{*}{Support}
+  & $n_{\mathrm{true}}$ upcoming & {---} & {708} \\
+  & $n_{\mathrm{true}}$ ongoing  & {---} & {770} \\
+  & $n_{\mathrm{true}}$ total    & {---} & {1478} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\captionof{table}{Order remaining time and process-cause heads ($\mathrm{start}\le 15$, entity nocross).}
+\begin{tabular}{l l l l}
+\toprule
+Layer & Metric & Validation & Test \\
+\midrule
+Order remaining time
+  & $\mathrm{MAE}(\textit{remain\_len})$ (min)
+  & 16.5
+  & \textbf{15.3} \\
+\midrule
+Process cause (4 active / 6 classes)
+  & Overall accuracy
+  & 0.798
+  & 0.801 \\
+  & Macro recall (support${>}0$)
+  & 0.807
+  & \textbf{0.811} \\
+  & Majority-class baseline (train)
+  & \multicolumn{2}{c}{0.409} \\
+  & Valid samples $n_{\mathrm{cause}}$
+  & ---
+  & 579 \\
+\midrule
+Per-class recall
+  & \textit{transport\_delay}
+  & --- & 0.971 \\
+  & \textit{material\_shortage}
+  & --- & 1.000 \\
+  & \textit{starved\_upstream}
+  & --- & 0.814 \\
+  & \textit{queue\_buildup}
+  & --- & 0.460 \\
+  & \textit{blocked\_downstream}
+  & \multicolumn{2}{c}{no support on test} \\
+  & \textit{high\_utilization}
+  & \multicolumn{2}{c}{no support on test} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\small
+\textbf{Notes.}
+(1)~Val primary numbers are \texttt{report\_*} at the best will15 epoch; test primary is \texttt{will15\_*} (F1 0.563; report F1 0.514).
+(2)~Best epoch 41/50. Upcoming recall 0.205 on 708 test events.
+
+\clearpage
+%==============================================================================
+\begin{center}
+{\LARGE\bfseries BNPDFormer Best Checkpoint Metrics}\\[3pt]
+{\large\texttt{dense\_i1\_entity\_machineonly\_start5\_min8\_cold\_ep50\_seed42}}\\[2pt]
+{\normalsize Recipe: \texttt{FactoryBN\_dense\_entity\_machineonly\_start5\_min8.json}; best epoch 12}
+\end{center}
+
+\textbf{Protocol.}
+Same \texttt{dense\_i1} pack and episode split (seed 42).
+Entity ablation E3: E1+E2 combined (machine observations only + no cross-type relations). Closest to machine-only factory logging.
+Event horizon capped at $\mathrm{start}\le 5$\,min; Min8 occupancy filter.
+From-scratch, 50 epochs, empty \texttt{init\_ckpt}, \texttt{unfreeze\_last\_encoder\_blocks=0}.
+Checkpoint metric is will15 F1.
+Numbers from \texttt{last\_metrics.json}.
+
+\begin{center}
+\captionof{table}{Station-level event reports ($\mathrm{start}\le 5$, entity machineonly). Checkpoint metric is will15 F1.}
+\begin{tabular}{l l S[table-format=1.3] S[table-format=1.3]}
+\toprule
+{Group} & {Metric} & {Validation} & {Test} \\
+\midrule
+\multirow{3}{*}{Report / will15 (primary)}
+  & Precision $P$ & 0.829 & 0.798 \\
+  & Recall $R$    & 0.554 & 0.549 \\
+  & F1            & 0.664 & \bfseries 0.650 \\
+\midrule
+\multirow{2}{*}{Stratified recall}
+  & Upcoming $R_{\mathrm{up}}$ ($s>0$) & 0.043 & 0.033 \\
+  & Ongoing $R_{\mathrm{on}}$ ($s{=}0$)  & 0.930 & 0.903 \\
+\midrule
+\multirow{3}{*}{Support}
+  & $n_{\mathrm{true}}$ upcoming & {---} & {389} \\
+  & $n_{\mathrm{true}}$ ongoing  & {---} & {566} \\
+  & $n_{\mathrm{true}}$ total    & {---} & {955} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\captionof{table}{Order remaining time and process-cause heads ($\mathrm{start}\le 5$, entity machineonly).}
+\begin{tabular}{l l l l}
+\toprule
+Layer & Metric & Validation & Test \\
+\midrule
+Order remaining time
+  & $\mathrm{MAE}(\textit{remain\_len})$ (min)
+  & 25.2
+  & \textbf{23.3} \\
+\midrule
+Process cause (4 active / 6 classes)
+  & Overall accuracy
+  & 0.704
+  & 0.699 \\
+  & Macro recall (support${>}0$)
+  & 0.680
+  & \textbf{0.676} \\
+  & Majority-class baseline (train)
+  & \multicolumn{2}{c}{0.409} \\
+  & Valid samples $n_{\mathrm{cause}}$
+  & ---
+  & 579 \\
+\midrule
+Per-class recall
+  & \textit{transport\_delay}
+  & --- & 0.816 \\
+  & \textit{material\_shortage}
+  & --- & 0.988 \\
+  & \textit{starved\_upstream}
+  & --- & 0.899 \\
+  & \textit{queue\_buildup}
+  & --- & 0.000 \\
+  & \textit{blocked\_downstream}
+  & \multicolumn{2}{c}{no support on test} \\
+  & \textit{high\_utilization}
+  & \multicolumn{2}{c}{no support on test} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\small
+\textbf{Notes.}
+(1)~Val primary numbers are \texttt{report\_*} at the best will15 epoch; test primary is \texttt{will15\_*} (F1 0.650; report F1 0.650).
+(2)~Best epoch 12/50. Upcoming recall 0.033 on 389 test events.
+
+\clearpage
+%==============================================================================
+\begin{center}
+{\LARGE\bfseries BNPDFormer Best Checkpoint Metrics}\\[3pt]
+{\large\texttt{dense\_i1\_entity\_machineonly\_start10\_min8\_cold\_ep50\_seed42}}\\[2pt]
+{\normalsize Recipe: \texttt{FactoryBN\_dense\_entity\_machineonly\_start10\_min8.json}; best epoch 11}
+\end{center}
+
+\textbf{Protocol.}
+Same \texttt{dense\_i1} pack and episode split (seed 42).
+Entity ablation E3: E1+E2 combined (machine observations only + no cross-type relations). Closest to machine-only factory logging.
+Event horizon capped at $\mathrm{start}\le 10$\,min; Min8 occupancy filter.
+From-scratch, 50 epochs, empty \texttt{init\_ckpt}, \texttt{unfreeze\_last\_encoder\_blocks=0}.
+Checkpoint metric is will15 F1.
+Numbers from \texttt{last\_metrics.json}.
+
+\begin{center}
+\captionof{table}{Station-level event reports ($\mathrm{start}\le 10$, entity machineonly). Checkpoint metric is will15 F1.}
+\begin{tabular}{l l S[table-format=1.3] S[table-format=1.3]}
+\toprule
+{Group} & {Metric} & {Validation} & {Test} \\
+\midrule
+\multirow{3}{*}{Report / will15 (primary)}
+  & Precision $P$ & 0.818 & 0.820 \\
+  & Recall $R$    & 0.417 & 0.424 \\
+  & F1            & 0.552 & \bfseries 0.559 \\
+\midrule
+\multirow{2}{*}{Stratified recall}
+  & Upcoming $R_{\mathrm{up}}$ ($s>0$) & 0.023 & 0.014 \\
+  & Ongoing $R_{\mathrm{on}}$ ($s{=}0$)  & 0.923 & 0.901 \\
+\midrule
+\multirow{3}{*}{Support}
+  & $n_{\mathrm{true}}$ upcoming & {---} & {659} \\
+  & $n_{\mathrm{true}}$ ongoing  & {---} & {566} \\
+  & $n_{\mathrm{true}}$ total    & {---} & {1225} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\captionof{table}{Order remaining time and process-cause heads ($\mathrm{start}\le 10$, entity machineonly).}
+\begin{tabular}{l l l l}
+\toprule
+Layer & Metric & Validation & Test \\
+\midrule
+Order remaining time
+  & $\mathrm{MAE}(\textit{remain\_len})$ (min)
+  & 28.6
+  & \textbf{26.8} \\
+\midrule
+Process cause (4 active / 6 classes)
+  & Overall accuracy
+  & 0.700
+  & 0.736 \\
+  & Macro recall (support${>}0$)
+  & 0.710
+  & \textbf{0.730} \\
+  & Majority-class baseline (train)
+  & \multicolumn{2}{c}{0.409} \\
+  & Valid samples $n_{\mathrm{cause}}$
+  & ---
+  & 579 \\
+\midrule
+Per-class recall
+  & \textit{transport\_delay}
+  & --- & 0.956 \\
+  & \textit{material\_shortage}
+  & --- & 1.000 \\
+  & \textit{starved\_upstream}
+  & --- & 0.835 \\
+  & \textit{queue\_buildup}
+  & --- & 0.129 \\
+  & \textit{blocked\_downstream}
+  & \multicolumn{2}{c}{no support on test} \\
+  & \textit{high\_utilization}
+  & \multicolumn{2}{c}{no support on test} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\small
+\textbf{Notes.}
+(1)~Val primary numbers are \texttt{report\_*} at the best will15 epoch; test primary is \texttt{will15\_*} (F1 0.559; report F1 0.559).
+(2)~Best epoch 11/50. Upcoming recall 0.014 on 659 test events.
+
+\clearpage
+%==============================================================================
+\begin{center}
+{\LARGE\bfseries BNPDFormer Best Checkpoint Metrics}\\[3pt]
+{\large\texttt{dense\_i1\_entity\_machineonly\_start15\_min8\_cold\_ep50\_seed42}}\\[2pt]
+{\normalsize Recipe: \texttt{FactoryBN\_dense\_entity\_machineonly\_start15\_min8.json}; best epoch 14}
+\end{center}
+
+\textbf{Protocol.}
+Same \texttt{dense\_i1} pack and episode split (seed 42).
+Entity ablation E3: E1+E2 combined (machine observations only + no cross-type relations). Closest to machine-only factory logging.
+Event horizon capped at $\mathrm{start}\le 15$\,min; Min8 occupancy filter.
+From-scratch, 50 epochs, empty \texttt{init\_ckpt}, \texttt{unfreeze\_last\_encoder\_blocks=0}.
+Checkpoint metric is will15 F1.
+Numbers from \texttt{last\_metrics.json}.
+
+\begin{center}
+\captionof{table}{Station-level event reports ($\mathrm{start}\le 15$, entity machineonly). Checkpoint metric is will15 F1.}
+\begin{tabular}{l l S[table-format=1.3] S[table-format=1.3]}
+\toprule
+{Group} & {Metric} & {Validation} & {Test} \\
+\midrule
+\multirow{3}{*}{Report / will15 (primary)}
+  & Precision $P$ & 0.787 & 0.802 \\
+  & Recall $R$    & 0.387 & 0.400 \\
+  & F1            & 0.519 & \bfseries 0.534 \\
+\midrule
+\multirow{2}{*}{Stratified recall}
+  & Upcoming $R_{\mathrm{up}}$ ($s>0$) & 0.021 & 0.021 \\
+  & Ongoing $R_{\mathrm{on}}$ ($s{=}0$)  & 0.936 & 0.912 \\
+\midrule
+\multirow{3}{*}{Support}
+  & $n_{\mathrm{true}}$ upcoming & {---} & {765} \\
+  & $n_{\mathrm{true}}$ ongoing  & {---} & {566} \\
+  & $n_{\mathrm{true}}$ total    & {---} & {1331} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\captionof{table}{Order remaining time and process-cause heads ($\mathrm{start}\le 15$, entity machineonly).}
+\begin{tabular}{l l l l}
+\toprule
+Layer & Metric & Validation & Test \\
+\midrule
+Order remaining time
+  & $\mathrm{MAE}(\textit{remain\_len})$ (min)
+  & 23.0
+  & \textbf{21.2} \\
+\midrule
+Process cause (4 active / 6 classes)
+  & Overall accuracy
+  & 0.724
+  & 0.744 \\
+  & Macro recall (support${>}0$)
+  & 0.728
+  & \textbf{0.735} \\
+  & Majority-class baseline (train)
+  & \multicolumn{2}{c}{0.409} \\
+  & Valid samples $n_{\mathrm{cause}}$
+  & ---
+  & 579 \\
+\midrule
+Per-class recall
+  & \textit{transport\_delay}
+  & --- & 0.875 \\
+  & \textit{material\_shortage}
+  & --- & 1.000 \\
+  & \textit{starved\_upstream}
+  & --- & 0.865 \\
+  & \textit{queue\_buildup}
+  & --- & 0.202 \\
+  & \textit{blocked\_downstream}
+  & \multicolumn{2}{c}{no support on test} \\
+  & \textit{high\_utilization}
+  & \multicolumn{2}{c}{no support on test} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\small
+\textbf{Notes.}
+(1)~Val primary numbers are \texttt{report\_*} at the best will15 epoch; test primary is \texttt{will15\_*} (F1 0.534; report F1 0.534).
+(2)~Best epoch 14/50. Upcoming recall 0.021 on 765 test events.
+
+\clearpage
+\begin{center}
+{\LARGE\bfseries Entity ablation vs full baseline}\\[3pt]
+{\large Test will15, same \texttt{dense\_i1} split, seed 42}
+\end{center}
+
+\textbf{Reading.}
+Full rows are the retained \texttt{12\_3} runs (up to 100 epochs). Entity arms are cold-start, 50 epochs.
+The planned \texttt{Full-Scratch-50} (E0) control was \emph{not} run, so $\Delta$ vs full mixes structure removal and training-budget differences.
+\texttt{noinfo}/\texttt{machineonly} change the observed event pool ($n_{\mathrm{true}}$ differs from full/\texttt{nocross}); compare those two against each other first, and treat full deltas as directional only.
+$R_{\mathrm{up}}$ is report upcoming recall.
+
+\begin{center}
+\captionof{table}{Test will15 and auxiliary heads. Bold F1 is the checkpoint metric.}
+\begin{tabular}{ll S[table-format=1.3] S[table-format=1.3] S[table-format=1.3] S[table-format=1.3] S[table-format=1.3] S[table-format=2.1]}
+\toprule
+{Arm} & {Start} & {$P$} & {$R$} & {F1} & {$R_{\mathrm{up}}$} & {$R_{\mathrm{on}}$} & {remain MAE} \\
+\midrule
+full         & $\le 5$  & 0.794 & 0.817 & \bfseries 0.805 & 0.539 & 0.937 & 10.9 \\
+noinfo       & $\le 5$  & 0.770 & 0.553 & \bfseries 0.644 & 0.049 & 0.899 & 19.4 \\
+nocross      & $\le 5$  & 0.750 & 0.698 & \bfseries 0.723 & 0.199 & 0.907 & 17.8 \\
+machineonly  & $\le 5$  & 0.798 & 0.549 & \bfseries 0.650 & 0.033 & 0.903 & 23.3 \\
+\midrule
+full         & $\le 10$ & 0.806 & 0.761 & \bfseries 0.783 & 0.528 & 0.936 & 11.2 \\
+noinfo       & $\le 10$ & 0.759 & 0.425 & \bfseries 0.545 & 0.020 & 0.896 & 24.7 \\
+nocross      & $\le 10$ & 0.596 & 0.593 & \bfseries 0.595 & 0.157 & 0.893 & 13.9 \\
+machineonly  & $\le 10$ & 0.820 & 0.424 & \bfseries 0.559 & 0.014 & 0.901 & 26.8 \\
+\midrule
+full         & $\le 15$ & 0.806 & 0.742 & \bfseries 0.772 & 0.534 & 0.925 & 9.7 \\
+noinfo       & $\le 15$ & 0.466 & 0.518 & \bfseries 0.490 & 0.127 & 0.922 & 14.0 \\
+nocross      & $\le 15$ & 0.518 & 0.616 & \bfseries 0.563 & 0.205 & 0.892 & 15.3 \\
+machineonly  & $\le 15$ & 0.802 & 0.400 & \bfseries 0.534 & 0.021 & 0.912 & 21.2 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\small
+\textbf{Notes.}
+(1)~E1 \texttt{noinfo} and E3 \texttt{machineonly} share the masked-observation event pool ($n_{\mathrm{who}}{=}955/1225/1331$); E2 \texttt{nocross} matches full ($1102/1372/1478$).
+(2)~Across starts, removing entity dynamics (E1) hurts early warning most: $R_{\mathrm{up}}$ collapses to $0.049/0.020/0.127$ vs full ${\approx}0.53$.
+(3)~Removing only cross-type relations (E2) keeps more upcoming recall ($0.199/0.157/0.205$) than E1/E3, but still drops F1 by ${\sim}0.08$--$0.21$ vs full and damages \textit{queue\_buildup} cause recall ($0.653/0.581/0.460$).
+(4)~E3 is not much worse than E1 on F1 at Start$\le5/10$ ($0.650$ vs $0.644$; $0.559$ vs $0.545$), so once entity dynamics are gone, further cutting cross-type edges adds little; the extra damage shows mainly in remain MAE and \textit{queue\_buildup}.
+
 \end{document}

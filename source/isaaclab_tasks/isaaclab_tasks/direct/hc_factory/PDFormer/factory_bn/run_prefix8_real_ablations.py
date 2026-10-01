@@ -100,7 +100,7 @@ def write_remain_config() -> Path:
             "init_ckpt": PREFIX8,
             "max_epoch": 8,
             "patience": 8,
-            "wandb_name": "dense_i1_a1_prefix8_remain_frozen",
+            "wandb_name": "a1_prefix8_remain_frozen",
         }
     )
     path = CFG_DIR / "FactoryBN_dense_prefix8_remain_frozen.json"
