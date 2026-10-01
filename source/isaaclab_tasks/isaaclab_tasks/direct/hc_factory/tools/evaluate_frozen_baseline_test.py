@@ -5,6 +5,9 @@ The v1 matched experiments selected checkpoints and thresholds on validation.
 This entry point only loads those saved artifacts and scores the untouched test
 split.  Temporary evaluation files are written under the system temp directory;
 the only persistent output is the single JSON report requested by ``--report``.
+The top-level task records include the primary who/report, ongoing/upcoming,
+event-error, remaining-time, and cause metrics for convenient log extraction;
+the complete nested ``test`` record remains the source of truth.
 """
 
 from __future__ import annotations
@@ -27,6 +30,78 @@ from factory_baselines import b2_xgboost
 
 MODELS = ("B2", "B3", "B4", "B5")
 CAPS = (5, 10, 15)
+
+
+# These fields are deliberately copied to the task-level summary.  The complete
+# station report is still preserved under ``task["test"]["station_report"]``;
+# this list only makes the aligned headline metrics visible without parsing the
+# nested report on the server.
+COMPACT_STATION_FIELDS = (
+    "who_precision",
+    "who_recall",
+    "who_f1",
+    "report_precision",
+    "report_recall",
+    "report_f1",
+    "n_pred_who",
+    "n_true_who",
+    "n_matched_who",
+    "n_matched_report",
+    "n_true_ongoing",
+    "n_matched_who_ongoing",
+    "n_matched_report_ongoing",
+    "who_recall_ongoing",
+    "report_recall_ongoing",
+    "start_mae_ongoing",
+    "dur_mae_ongoing",
+    "n_true_upcoming",
+    "n_matched_who_upcoming",
+    "n_matched_report_upcoming",
+    "who_recall_upcoming",
+    "report_recall_upcoming",
+    "start_mae_upcoming",
+    "dur_mae_upcoming",
+    "start_mae",
+    "dur_mae",
+    "exact_start_accuracy",
+    "exact_start_accuracy_upcoming",
+    "onset_bucket_accuracy",
+    "report_f1_at_1",
+    "report_f1_at_2",
+    "report_f1_at_3",
+    "report_precision_at_1",
+    "report_precision_at_2",
+    "report_precision_at_3",
+    "report_recall_at_1",
+    "report_recall_at_2",
+    "report_recall_at_3",
+    "time_mae_sample_count",
+    "time_mae_sample_count_ongoing",
+    "time_mae_sample_count_upcoming",
+    "start_mae_minutes",
+    "dur_mae_minutes",
+    "start_mae_ongoing_minutes",
+    "dur_mae_ongoing_minutes",
+    "start_mae_upcoming_minutes",
+    "dur_mae_upcoming_minutes",
+)
+
+COMPACT_REMAIN_FIELDS = (
+    "remain_len_mae",
+    "remain_len_mae_progress_weighted",
+    "remain_len_mae_primary",
+    "remain_len_mae_middle_weighted",
+    "remain_len_mae_sample_count",
+    "remain_len_mae_seconds",
+    "remain_len_mae_minutes",
+)
+
+COMPACT_CAUSE_FIELDS = (
+    "cause_acc",
+    "cause_macro_recall",
+    "cause_n",
+    "cause_majority_acc",
+)
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -259,6 +334,8 @@ def _compact(
     metrics: dict[str, Any],
 ) -> dict[str, Any]:
     report = metrics["station_report"]
+    remain = metrics["remain"]
+    cause = metrics["cause"]
     result = {
         "model": model,
         "max_start": cap,
@@ -277,6 +354,12 @@ def _compact(
         "test_cause_accuracy": metrics["cause"]["cause_acc"],
         "test_cause_macro_recall": metrics["cause"]["cause_macro_recall"],
     }
+    for key in COMPACT_STATION_FIELDS:
+        result[f"test_{key}"] = report[key]
+    for key in COMPACT_REMAIN_FIELDS:
+        result[f"test_{key}"] = remain[key]
+    for key in COMPACT_CAUSE_FIELDS:
+        result[f"test_{key}"] = cause.get(key)
     return result
 
 
@@ -315,12 +398,39 @@ def main() -> None:
                 )
             result = _compact(model, cap, model_dir, artifact_origin, metrics)
             results.append(result)
+            log_fields = (
+                "selected_threshold",
+                "test_will15_precision",
+                "test_will15_recall",
+                "test_will15_f1",
+                "test_who_precision",
+                "test_who_recall",
+                "test_who_f1",
+                "test_report_precision",
+                "test_report_recall",
+                "test_report_f1",
+                "test_upcoming_who_hits",
+                "test_upcoming_strict_hits",
+                "test_upcoming_support",
+                "test_upcoming_who_recall",
+                "test_upcoming_report_recall",
+                "test_ongoing_who_recall",
+                "test_ongoing_report_recall",
+                "test_start_mae",
+                "test_dur_mae",
+                "test_start_mae_upcoming",
+                "test_dur_mae_upcoming",
+                "test_remain_len_mae_middle_weighted",
+                "test_cause_acc",
+                "test_cause_macro_recall",
+            )
             print(
                 f"TEST_STAGE_COMPLETE {model} {cap} "
-                + json.dumps({k: result[k] for k in (
-                    "selected_threshold", "test_will15_precision", "test_will15_recall",
-                    "test_will15_f1", "test_upcoming_strict_hits", "test_upcoming_support",
-                )}, ensure_ascii=False, separators=(",", ":")),
+                + json.dumps(
+                    {key: result[key] for key in log_fields},
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
                 flush=True,
             )
 
