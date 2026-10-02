@@ -54,7 +54,7 @@ Start≤5、10、15 三档上的冻结 Test 评估，共 12 组任务。
 who recall` 只要求 who 命中。`start_mae`、`dur_mae` 和 `remain_primary` 的单位均为
 窗口，当前每个窗口等于 1 分钟。
 
-| 模型 | Start≤ | upcoming strict hits / support | upcoming who recall | upcoming report recall | start MAE | dur MAE | remain primary MAE | cause acc | cause macro recall |
+| 模型 | Start≤ | upcoming strict hits / support | upcoming who recall | upcoming report recall | start MAE | dur MAE | baseline primary remain MAE | cause acc | cause macro recall |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | B2 | 5 | 27 / 483 | 0.060041 | 0.055901 | 0.030334 | 3.264480 | 4.446202 | 0.990323 | 0.987534 |
 | B3 | 5 | 45 / 483 | 0.099379 | 0.093168 | 0.056272 | 3.855116 | 8.839986 | 0.937928 | 0.920129 |
@@ -68,6 +68,10 @@ who recall` 只要求 who 命中。`start_mae`、`dur_mae` 和 `remain_primary` 
 | B3 | 15 | 71 / 987 | 0.102330 | 0.071935 | 0.452765 | 3.615068 | 7.275809 | 0.944300 | 0.922290 |
 | B4 | 15 | 36 / 987 | 0.053698 | 0.036474 | 0.302483 | 3.120506 | 11.082990 | 0.906538 | 0.899725 |
 | B5 | 15 | 39 / 987 | 0.043566 | 0.039514 | 0.222348 | 3.421640 | 9.370792 | 0.951381 | 0.935169 |
+
+这里的 `baseline primary remain MAE` 是 baseline 协议指定的
+`remain_len_mae_primary`，对应 middle-weighted 评估口径。它与 JSON 中同时保存的全局
+`remain_len_mae`、`remain_len_mae_progress_weighted` 和分阶段 MAE 是不同统计量。
 
 ## 5. 完整 JSON 指标覆盖
 
@@ -96,6 +100,21 @@ who recall` 只要求 who 命中。`start_mae`、`dur_mae` 和 `remain_primary` 
 中同时报告整体事件指标、ongoing/upcoming 分项、起点和持续时间 MAE，以及原因识别指标。
 `score_mae` 仅作为 baseline 辅助指标保存，不能直接与主模型的无监督 `score_mae` 做
 横向结论。
+
+### 与主实验的 MAE 比较口径
+
+主实验参考文件 `main_validation_reference_20260906.json` 中记录的是全局
+`remain_len_mae=5.5036`。本报告表格展示的是 baseline 的
+`remain_len_mae_primary`，因此不能把表中的 primary 数值直接与主实验的 5.5036 做
+优劣比较。严格横向比较应使用双方的同名字段：
+
+1. 主实验全局 `remain_len_mae` 对 baseline 全局 `remain_len_mae`；
+2. 双方都提供时，再比较 `remain_len_mae_primary`；
+3. 全局、progress-weighted、middle-weighted 和 primary MAE 分开报告。
+
+因此，本报告保留 baseline 的 primary MAE 作为协议内主指标，同时不把它解释成已经完成
+的主实验全局 MAE 差距判断。这个字段选择问题只影响跨实验的解读，不影响本次 Test
+评估结果或 JSON 中各指标的计算。
 
 ## 7. 来源
 
