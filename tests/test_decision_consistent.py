@@ -95,6 +95,25 @@ class ReplayTests(unittest.TestCase):
             {'dispatch_outcomes':[{'index':0,'accepted':True,'robot_index':None}]},0,True)
         self.assertEqual(len(self.buffers['D_robot']),0)
 
+    def test_hierarchical_credit_scales_at_close(self):
+        self.o.hierarchical_credit = True
+        self.o.credit_scale_A = 2.0
+        self.o.credit_scale_B = 1.5
+        self.o.credit_scale_CD = 1.0
+        self.o.decision_reward_scale = 1.0
+        ok = {'dispatch_outcomes': [{'index': 0, 'accepted': True}]}
+        a = {'dispatch_list': [{}], '_decision_trace': [
+            self.e('A', dispatch=None), self.e('B'), self.e('C')]}
+        # A-only path uses dispatch=None; give A a separate observe without dispatch_list.
+        self.r.observe(0, {'_decision_trace': [self.e('A', dispatch=None)]}, {}, 1., False)
+        self.r.observe(0, {'dispatch_list': [{}], '_decision_trace': [self.e('B'), self.e('C')]},
+                       ok, 0., False)
+        self.r.observe(0, {}, {}, 0., True)
+        # Terminal close: A accrued 1 then 0; scaled ×2 at close.
+        self.assertAlmostEqual(self.buffers['A'].buffer[-1].reward, 2.0)
+        self.assertAlmostEqual(self.buffers['B'].buffer[-1].reward, 0.0 * 1.5)
+        self.assertAlmostEqual(self.buffers['C'].buffer[-1].reward, 0.0)
+
 
 class IntegrationTests(unittest.TestCase):
     def test_real_dispatch_trace_replay_and_target_update(self):
@@ -153,6 +172,27 @@ class IntegrationTests(unittest.TestCase):
         self.assertFalse(recipe('R2')['human_aware_reward'])
         self.assertEqual(recipe('R2-mismatch')['human_overwork_coef'],0)
         self.assertEqual(recipe('R2-fatigue')['human_mismatch_coef'],0)
+        # R2-AR / R2-H: matched E5/E4 knobs; plain R2 stays off.
+        self.assertFalse(recipe('R2')['autoregressive'])
+        self.assertFalse(recipe('R2')['hierarchical_credit'])
+        self.assertTrue(recipe('R2-AR')['autoregressive'])
+        self.assertFalse(recipe('R2-AR')['hierarchical_credit'])
+        self.assertTrue(recipe('R2-AR')['human_match_head'])
+        self.assertEqual(recipe('R2-AR')['ar_eps_scale_A'], .5)
+        self.assertTrue(recipe('R2-H')['hierarchical_credit'])
+        self.assertFalse(recipe('R2-H')['autoregressive'])
+        self.assertEqual(recipe('R2-H')['credit_scale_A'], 2.)
+        self.assertEqual(recipe('R2-H')['credit_scale_B'], 1.5)
+        self.assertEqual(recipe('R2-H')['credit_scale_CD'], 1.)
+        self.assertFalse(recipe('R2-AR', True)['human_aware_reward'])
+        self.assertFalse(recipe('R2-H', True)['human_aware_reward'])
+        argv_ar = command('R2-AR', 'cpu', {'HC_R_WANDB': '0'}, True)
+        self.assertIn('agent.params.config.autoregressive=true', argv_ar)
+        self.assertIn('agent.params.config.hierarchical_credit=false', argv_ar)
+        argv_h = command('R2-H', 'cpu', {'HC_R_WANDB': '0'}, True)
+        self.assertIn('agent.params.config.hierarchical_credit=true', argv_h)
+        self.assertIn('agent.params.config.autoregressive=false', argv_h)
+        self.assertIn('agent.params.config.b_score_rl=false', argv_h)
         o.config['decision_target_encoder']=False
         self.assertIsNone(DecisionReplay(o).target_encoder)
         with self.assertRaises(ValueError):command('eval-R2','cpu',{},True)

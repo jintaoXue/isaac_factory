@@ -13,7 +13,8 @@ else:
     from training_supervisor import supervise
 
 ROOT = Path(__file__).resolve().parents[1]
-VARIANTS = ('R0', 'R1', 'R2', 'R2-mismatch', 'R2-fatigue', 'R2-both', 'R2-greedy')
+VARIANTS = ('R0', 'R1', 'R2', 'R2-mismatch', 'R2-fatigue', 'R2-both', 'R2-greedy',
+            'R2-AR', 'R2-H')
 
 
 def recipe(variant, evaluation=False):
@@ -21,13 +22,24 @@ def recipe(variant, evaluation=False):
         raise ValueError(variant)
     mismatch = variant in ('R2-mismatch', 'R2-both') and not evaluation
     fatigue = variant in ('R2-fatigue', 'R2-both') and not evaluation
-    return dict(decision_consistent=True, decision_target_encoder=variant != 'R0',
+    # R2-AR / R2-H stack on R2 (match head, EMA encoder, no shaping). Eval keeps
+    # the same config flags for checkpoint schema; AR sampling is disabled at ε=0.
+    ar = variant == 'R2-AR'
+    credit = variant == 'R2-H'
+    knobs = dict(decision_consistent=True, decision_target_encoder=variant != 'R0',
                 human_match_head=variant.startswith('R2') and variant != 'R2-greedy',
                 human_policy='greedy' if variant == 'R2-greedy' else 'rl',
                 human_aware_reward=mismatch or fatigue, human_reward_metrics=True,
                 human_mismatch_coef=.05 if mismatch else 0.,
                 human_overwork_coef=.01 if fatigue else 0., human_recovery_coef=0.,
-                human_shaping_cap=.04, human_fatigue_threshold=.8)
+                human_shaping_cap=.04, human_fatigue_threshold=.8,
+                autoregressive=ar, hierarchical_credit=credit,
+                # Matched to E5 / E4; inert when the parent switch is false.
+                ar_eps_scale_A=.5, ar_eps_scale_B=.5, ar_eps_scale_C=1., ar_eps_scale_D=1.,
+                ar_n_candidates=4, ar_softmax_temperature=1.,
+                credit_scale_A=2. if credit else 1., credit_scale_B=1.5 if credit else 1.,
+                credit_scale_CD=1.)
+    return knobs
 
 
 def command(mode, device, env, dry_run=False):
@@ -75,9 +87,10 @@ def command(mode, device, env, dry_run=False):
         batch_size=64, batch_size_A=16, replay_buffer_size=50000, replay_buffer_size_A=5000,
         target_tau=.005, learn_interval=8, greedy_human_eval=False,
         warmstart='', load_name='', wandb_activate=env.get('HC_R_WANDB', '1') != '0'))
-    for key in ('oru', 'teacher_explore', 'autoregressive', 'curriculum', 'explore', 'explore_catalog',
+    # Keep recipe-owned AR / credit switches; force-off unrelated E/G extensions.
+    for key in ('oru', 'teacher_explore', 'curriculum', 'explore', 'explore_catalog',
                 'catalog_collect', 'teacher_collect', 'human_pair_head', 'task_pair_head', 'task_match_head',
-                'human_duration_aux', 'noisy_net', 'hierarchical_credit', 'b_score_rl', 'env_rule_based_exploration'):
+                'human_duration_aux', 'noisy_net', 'b_score_rl', 'env_rule_based_exploration'):
         knobs[key] = False
     if not evaluation:
         knobs['load_dir'] = ''

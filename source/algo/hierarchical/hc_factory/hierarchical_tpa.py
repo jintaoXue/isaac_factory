@@ -728,6 +728,9 @@ class HierarchicalTPA:
         from .hierarchical_dispatch import build_hier_rl_action
         if self.decision_consistent:
             from .decision_consistent import build_decision_action
+            # R2-AR: stamp layered-ε / candidate-sampling flags onto lazy DQN heads.
+            # Protocol eval calls _apply_ar_to_agents(sample_at_act=False) before test().
+            self._apply_ar_to_agents(sample_at_act=True)
             return build_decision_action(env_state_action_dict, self, epsilon), {"explore_mode": "R"}
 
         self._apply_ar_to_agents(sample_at_act=True)

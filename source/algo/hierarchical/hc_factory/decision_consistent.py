@@ -23,10 +23,12 @@ HEADS = ("A", "B", "C", "D_human", "D_robot")
 
 
 def validate_config(config):
-    unsupported = ("oru", "teacher_explore", "autoregressive", "curriculum", "explore",
+    # R2-AR / R2-H intentionally allow autoregressive + hierarchical_credit.
+    # ORU / teacher_explore / curriculum / pair heads remain unsupported on R replay.
+    unsupported = ("oru", "teacher_explore", "curriculum", "explore",
                    "explore_catalog", "catalog_collect", "teacher_collect", "human_pair_head",
                    "task_pair_head", "task_match_head", "human_duration_aux", "noisy_net",
-                   "hierarchical_credit")
+                   "b_score_rl")
     enabled = [key for key in unsupported if config.get(key, False)]
     if enabled:
         raise ValueError(f"R replay does not support these legacy extensions: {enabled}")
@@ -34,6 +36,51 @@ def validate_config(config):
         raise ValueError("R series dispatches feasible tasks; c_forbid_none_mode must be always")
     if config.get("decision_target_encoder", False) and float(config.get("target_tau", .005)) <= 0:
         raise ValueError("R target encoder requires a positive EMA target_tau")
+
+
+def _layer_epsilon(agents, base_eps, name):
+    """Match hierarchical_dispatch layered ε when autoregressive is on."""
+    eps = float(base_eps)
+    if not bool(getattr(agents, "autoregressive", False)):
+        return eps
+    if eps <= 0.0 or eps >= 1.0:
+        return eps
+    from .autoregressive import layered_epsilon, default_ar_eps_scales
+    scales = getattr(agents, "ar_eps_scale", None) or default_ar_eps_scales(
+        getattr(agents, "config", None) or {})
+    return layered_epsilon(eps, float(scales.get(name, 1.0)))
+
+
+def _schema_flags(owner):
+    cfg = getattr(owner, "config", {}) or {}
+    return dict(
+        schema=SCHEMA,
+        variant=str(cfg.get("algo_variant", "R")),
+        target_encoder=bool(cfg.get("decision_target_encoder", False)),
+        human_match_head=owner.agent_D.human_match_head,
+        human_policy=owner.agent_D.human_policy,
+        autoregressive=bool(getattr(owner, "autoregressive", False) or cfg.get("autoregressive", False)),
+        hierarchical_credit=bool(
+            getattr(owner, "hierarchical_credit", False) or cfg.get("hierarchical_credit", False)),
+    )
+
+
+def _normalize_schema_meta(meta):
+    """Old R bundles omit AR/credit keys → treat as false (load into plain R*)."""
+    out = dict(meta)
+    out.setdefault("autoregressive", False)
+    out.setdefault("hierarchical_credit", False)
+    return out
+
+
+def _credit_scale(owner, head):
+    if not bool(getattr(owner, "hierarchical_credit", False)):
+        return 1.0
+    if head == "A":
+        return float(getattr(owner, "credit_scale_A", 1.0))
+    if head == "B":
+        return float(getattr(owner, "credit_scale_B", 1.0))
+    return float(getattr(owner, "credit_scale_CD", 1.0))
 
 
 class DecisionPool(TpaInfoPool):
@@ -126,7 +173,8 @@ def build_decision_action(state, agents, epsilon):
         agents.agent_D.human_dqn.q_net.prior_weight.zero_()
         agents.agent_D.human_dqn.target_net.prior_weight.zero_()
         agents.agent_D._r_prior_initialized = True
-    sequence = agents.agent_A.act(pre, epsilon, pre=pre)
+    eps_a = _layer_epsilon(agents, epsilon, "A")
+    sequence = agents.agent_A.act(pre, eps_a, pre=pre)
     trace = []
     if bool(sequence.any()):
         trace.append(event("A", pre, sequence, aam["agent_A_product_sequencer"]))
@@ -138,11 +186,15 @@ def build_decision_action(state, agents, epsilon):
             break
         local = pool.observation(encoder, eligible, rows)
         # B is a sequential slot choice, not a whole ranking receiving duplicated credit.
-        b = agents.agent_B.dqn.act_tensor(encoder.encode_B(local, sequence, pre=local), eligible, epsilon)
+        eps_b = _layer_epsilon(agents, epsilon, "B")
+        b = agents.agent_B.dqn.act_tensor(
+            encoder.encode_B(local, sequence, pre=local), eligible, eps_b)
         slot = int(b.argmax())
-        c = agents.agent_C.act_with_mask(local, b, rows[slot], epsilon, pre=local)
+        c = agents.agent_C.act_with_mask(
+            local, b, rows[slot], _layer_epsilon(agents, epsilon, "C"), pre=local)
         dmask = pool.get_d_masks()
-        d = agents.agent_D.act_with_masks(local, c, dmask, epsilon, pre=local)
+        d = agents.agent_D.act_with_masks(
+            local, c, dmask, _layer_epsilon(agents, epsilon, "D"), pre=local)
         record = pool.record(slot, c, d["human"], d["robot"])
         if record is None:
             raise RuntimeError("R feasibility changed inside a shadow dispatch")
@@ -196,7 +248,9 @@ class DecisionReplay:
 
     def _close(self, old, nxt, done):
         head = old["head"]
-        tr = Transition(action=old["action"], reward=old["reward"] * self.owner.decision_reward_scale,
+        # R2-H: scale A/B (and CD) at pending close — same place legacy observe_one_env scales.
+        scale = self.owner.decision_reward_scale * _credit_scale(self.owner, head)
+        tr = Transition(action=old["action"], reward=old["reward"] * scale,
                         mask=old["mask"], next_mask=torch.zeros_like(old["mask"]) if done else nxt["mask"],
                         done=done, discount=old["discount"], context=old["context"],
                         next_context=old["context"] if done else nxt["context"],
@@ -300,10 +354,8 @@ class DecisionReplay:
 
     def save(self, directory, step):
         p = Path(directory)
-        metadata = {"schema": SCHEMA, "variant": str(self.owner.config.get("algo_variant", "R")),
-                    "target_encoder": self.target_encoder is not None,
-                    "human_match_head": self.owner.agent_D.human_match_head,
-                    "human_policy": self.owner.agent_D.human_policy}
+        metadata = _schema_flags(self.owner)
+        metadata["target_encoder"] = self.target_encoder is not None
         # Written last: marks a complete R weight bundle, never a resumable optimizer/replay dump.
         (p / f"decision_schema_step_{step}.json").write_text(json.dumps(metadata, indent=2))
 
@@ -314,10 +366,8 @@ def check_checkpoint(owner, directory, step):
     if path.exists() != enabled:
         raise RuntimeError("R and legacy G/E checkpoint semantics differ; use the matching series")
     if enabled:
-        meta = json.loads(path.read_text())
-        expected = dict(schema=SCHEMA, variant=str(owner.config.get("algo_variant", "R")),
-                        target_encoder=bool(owner.config.get("decision_target_encoder", False)),
-                        human_match_head=owner.agent_D.human_match_head, human_policy=owner.agent_D.human_policy)
+        meta = _normalize_schema_meta(json.loads(path.read_text()))
+        expected = _schema_flags(owner)
         if meta != expected:
             raise RuntimeError(f"R checkpoint configuration mismatch: {meta} != {expected}")
         names = ("state_encoder", "agent_A", "agent_B", "agent_C", "agent_D_human", "agent_D_robot")

@@ -25,10 +25,14 @@
 | R0 | 可启动动作 + 逐层决策回放 + 正确前缀/next context/mask | 原奖励 |
 | R1 | R0 + EMA target encoder | 原奖励 |
 | R2 | R1 + task-human match 候选结构 | 原奖励 |
+| R2-AR | R2 + 自回归（分层 ε + 步内候选；对齐 E5；评测仍贪心） | 原奖励 |
+| R2-H | R2 + A/B 信用缩放（A×2.0 / B×1.5 / CD×1.0；对齐 E4，无 b_score） | 原奖励 |
 | R2-mismatch | R2 + 仅人员错配项 | mismatch=.05，overwork=0 |
 | R2-fatigue | R2 + 仅疲劳项 | mismatch=0，overwork=.01 |
 | R2-both | R2 + 两项 | mismatch=.05，overwork=.01 |
 | R2-greedy | 相同新动作/target 路径，人 D 固定贪心 | 原奖励；人头不训 |
+
+`R2-AR` / `R2-H` 与 R2 同设定（gap、scratch、N10、K10、T25000、无教师、无 shaping）。勿与 R0/R1 混叠；两项分开跑以便归因。`eval-R2-AR` / `eval-R2-H` 关 shaping，ε=0 时 AR 候选采样关闭。
 
 R2 复用候选 match 特征和评分结构，但 `prior_weight` 从0初始化，不沿用旧 match 的固定正向速度初始化。其余匹配参数从零训练的随机初始化开始；没有教师、BC 或额外奖励。R2-greedy 的人头不执行、不训练，因此不启用无用的 match 网络。
 
@@ -67,6 +71,8 @@ bash run_2026_journal_experiments.sh R2 cuda:0
 ```bash
 HC_R_SEED=53 bash run_2026_journal_experiments.sh R2 cuda:0
 HC_MAX_HARD_EPISODES=10 HC_R_WANDB=0 bash run_2026_journal_experiments.sh R0 cpu
+bash run_2026_journal_experiments.sh R2-AR cuda:0
+bash run_2026_journal_experiments.sh R2-H cuda:0
 bash run_2026_journal_experiments.sh R2-mismatch cuda:0
 bash run_2026_journal_experiments.sh R2-fatigue cuda:0
 bash run_2026_journal_experiments.sh R2-both cuda:0
