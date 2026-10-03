@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import csv
 import hashlib
 import json
 import math
@@ -21,6 +22,8 @@ import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any, Iterator
+
+import numpy as np
 
 from factory_baselines import protocol_20260913 as matched_protocol
 from factory_baselines import torch_trainer
@@ -236,7 +239,7 @@ def _evaluate_b2(
     model_dir: Path,
     cap: int,
     frozen_threshold: float,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
     """Reuse the B2 evaluator while replacing every fit with a saved head."""
     saved_config = _read(model_dir / "config.json")
     config_values = dict(saved_config["config"])
@@ -282,14 +285,15 @@ def _evaluate_b2(
     b2_xgboost._fit_regressor = use_saved_regressor
     try:
         with tempfile.TemporaryDirectory(prefix="baseline_b2_test_") as temp:
-            b2_xgboost.train_b2_xgboost(dataset_dir, Path(temp), config)
-            metrics = _read(Path(temp) / "metrics.json")["test"]
+            metrics, arrays = b2_xgboost.train_b2_xgboost(
+                dataset_dir, Path(temp), config, return_arrays=True
+            )
     finally:
         b2_xgboost._fit_classifier = original_classifier
         b2_xgboost._fit_regressor = original_regressor
     if queue_classifier or queue_regressor:
         raise AssertionError("Saved B2 heads were not all consumed")
-    return metrics
+    return metrics, arrays
 
 
 def _evaluate_torch(
@@ -297,7 +301,7 @@ def _evaluate_torch(
     model_dir: Path,
     cap: int,
     frozen_threshold: float,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
     checkpoint = model_dir / "best.pt"
     checkpoint_data = __import__("torch").load(
         checkpoint, map_location="cpu", weights_only=False
@@ -323,7 +327,42 @@ def _evaluate_torch(
             device_name="auto",
             batch_size=32,
             num_workers=0,
+            return_arrays=True,
         )
+
+
+def _node_catalog(dataset_dir: Path) -> tuple[list[str], list[str]]:
+    rows = list(csv.DictReader((dataset_dir / "node_catalog.csv").open(newline="", encoding="utf-8")))
+    rows.sort(key=lambda row: int(row["node_index"]))
+    return [row["resource_id"] for row in rows], [row["resource_type"] for row in rows]
+
+
+def _write_bottleneck_artifacts(
+    root: Path,
+    model: str,
+    cap: int,
+    metrics: dict[str, Any],
+    arrays: dict[str, np.ndarray],
+    node_ids: list[str],
+    node_types: list[str],
+) -> None:
+    from factory_baselines.evaluation import bottleneck_series
+
+    task_root = root / f"{model.lower()}_cap{cap}"
+    task_root.mkdir(parents=True, exist_ok=True)
+    series, per_device = bottleneck_series(
+        arrays,
+        node_ids=node_ids,
+        node_types=node_types,
+        threshold=float(metrics["station_report"]["report_threshold_used"]),
+        min_windows=int(arrays.get("event_min_windows", 8)),
+    )
+    metrics["bottleneck_per_device"] = per_device
+    np.savez_compressed(task_root / "series.npz", **series)
+    (task_root / "metrics.json").write_text(
+        json.dumps(metrics, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _compact(
@@ -360,6 +399,16 @@ def _compact(
         result[f"test_{key}"] = remain[key]
     for key in COMPACT_CAUSE_FIELDS:
         result[f"test_{key}"] = cause.get(key)
+    for key in (
+        "dur_mae_union", "dur_rmse_union", "dur_mae_union_minutes",
+        "dur_rmse_union_minutes", "dur_mae_tp", "dur_rmse_tp",
+        "dur_mae_cells", "dur_rmse_cells",
+        "start_mae_union", "start_rmse_union", "start_mae_tp", "start_rmse_tp",
+        "state_acc_1step", "state_f1_1step", "state_f1_horizon",
+        "state_vs_event_acc_1step", "state_vs_event_acc_horizon",
+        "duration_union_support", "duration_tp_support",
+    ):
+        result[f"test_{key}"] = metrics.get(key)
     return result
 
 
@@ -367,9 +416,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset_dir", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument(
+        "--artifacts_root",
+        type=Path,
+        help="Directory for chart-ready bottleneck series and per-device metrics; defaults beside the report.",
+    )
     args = parser.parse_args()
     dataset_dir = args.dataset_dir.resolve()
     report_path = args.report.resolve()
+    artifacts_root = (args.artifacts_root or report_path.with_name(report_path.stem + "_artifacts")).resolve()
     if not dataset_dir.is_dir() or not (dataset_dir / "dataset_manifest.json").is_file():
         raise ValueError(f"Invalid matched dataset directory: {dataset_dir}")
     repo_root = dataset_dir
@@ -383,6 +438,8 @@ def main() -> None:
         raise ValueError("Test evaluation must run on BSTAN_isaac_factory/dev_xwt")
 
     tasks = _tasks(dataset_dir)
+    node_ids: list[str] | None = None
+    node_types: list[str] | None = None
     results: list[dict[str, Any]] = []
     for cap in CAPS:
         for model in MODELS:
@@ -391,11 +448,22 @@ def main() -> None:
             if not model_dir.is_relative_to((dataset_dir / "models").resolve()):
                 raise ValueError(f"Model output is outside authorized models directory: {model_dir}")
             with _stage_artifacts(task, cap) as (stage_dir, artifact_origin, frozen_threshold):
-                metrics = (
+                evaluated = (
                     _evaluate_b2(dataset_dir, stage_dir, cap, frozen_threshold)
                     if model == "B2"
                     else _evaluate_torch(dataset_dir, stage_dir, cap, frozen_threshold)
                 )
+            if isinstance(evaluated, tuple):
+                metrics, arrays = evaluated
+                if node_ids is None or node_types is None:
+                    node_ids, node_types = _node_catalog(dataset_dir)
+                _write_bottleneck_artifacts(
+                    artifacts_root, model, cap, metrics, arrays, node_ids, node_types
+                )
+            else:
+                # Keep the lightweight report-output test doubles and older
+                # callers compatible with the metrics-only evaluator contract.
+                metrics = evaluated
             result = _compact(model, cap, model_dir, artifact_origin, metrics)
             results.append(result)
             log_fields = (
@@ -420,6 +488,18 @@ def main() -> None:
                 "test_dur_mae",
                 "test_start_mae_upcoming",
                 "test_dur_mae_upcoming",
+                "test_dur_mae_union",
+                "test_dur_rmse_union",
+                "test_dur_mae_tp",
+                "test_dur_rmse_tp",
+                "test_dur_mae_cells",
+                "test_dur_rmse_cells",
+                "test_start_mae_union",
+                "test_start_rmse_union",
+                "test_state_f1_1step",
+                "test_state_f1_horizon",
+                "test_state_vs_event_acc_1step",
+                "test_state_vs_event_acc_horizon",
                 "test_remain_len_mae_middle_weighted",
                 "test_cause_acc",
                 "test_cause_macro_recall",

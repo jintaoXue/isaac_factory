@@ -468,6 +468,8 @@ def _evaluate_loader(
                 "hot_probability_grid": torch.sigmoid(outputs["remain_hot_logit"]),
                 "event_will_target": batch["event_will"],
                 "event_will_probability": torch.sigmoid(outputs["event_will_logit"]),
+                "event_start_index_target": batch["event_start"],
+                "event_duration_windows_target": batch["event_duration"],
                 "event_start_index": outputs["event_start_logit"].argmax(dim=-1),
                 "event_duration_windows": outputs["event_duration"],
             }
@@ -640,6 +642,14 @@ def _evaluate_loader(
     )
     metrics["occupancy_event"] = occupancy_metrics
     metrics.update(occupancy_metrics)
+    from .evaluation import add_bottleneck_forecast_metrics
+    add_bottleneck_forecast_metrics(
+        metrics,
+        arrays,
+        threshold=selected_threshold,
+        window_size_s=window_size_s,
+        min_windows=event_min_windows,
+    )
     metrics["loss"] = {name: value / sample_count for name, value in totals.items()}
     metrics["sample_count"] = sample_count
     add_time_metric_metadata(metrics, window_size_s=window_size_s, sample_count=sample_count, contract=contract)
@@ -1385,7 +1395,8 @@ def evaluate_torch_checkpoint(
     device_name: str = "auto",
     batch_size: int = 32,
     num_workers: int = 0,
-) -> dict[str, Any]:
+    return_arrays: bool = False,
+) -> dict[str, Any] | tuple[dict[str, Any], dict[str, np.ndarray]]:
     """Evaluate a saved checkpoint against one dataset split."""
     if split_name not in {"train", "validation", "test"}:
         raise ValueError(f"Unknown split: {split_name}")
@@ -1479,4 +1490,4 @@ def evaluate_torch_checkpoint(
             }
         )
     _write_json(summary_path, summary)
-    return metrics
+    return (metrics, arrays) if return_arrays else metrics

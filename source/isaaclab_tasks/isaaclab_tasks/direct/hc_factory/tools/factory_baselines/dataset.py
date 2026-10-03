@@ -284,13 +284,6 @@ def _validate_dataset(
         raise ValueError("Observation mask shape does not match x")
     if payload["target_node_mask"].shape != (sample_count, node_count):
         raise ValueError("Target node mask shape does not match x")
-    if "recon_target" in payload:
-        if payload["recon_target"].shape[:1] != (sample_count,):
-            raise ValueError("Reconstruction target sample count does not match x")
-        if payload["recon_target"].shape[2] != node_count or payload["recon_target"].shape[3] != 2:
-            raise ValueError("Reconstruction target must have two channels per graph node")
-        if payload["recon_valid"].shape != payload["recon_target"].shape[:2]:
-            raise ValueError("Reconstruction validity shape does not match target")
     if bool((payload["target_node_mask"] & ~payload["node_mask"]).any()):
         raise ValueError("Target node mask contains inactive graph nodes")
     if not bool(payload["target_node_mask"].any(dim=1).all()):
@@ -359,13 +352,6 @@ class FactoryBaselineTensorDataset(Dataset):
             if not bool(self.payload["event_history_hot_valid"][sample_index]):
                 raise ValueError("Observed onset history was not built for this sample/split")
             sample["event_history_hot"] = self.payload["event_history_hot"][sample_index]
-        # The optional reconstruction targets are kept separate from the
-        # existing event/remaining-time contract so old frozen baseline
-        # datasets remain readable.  New recon-readout experiments opt in to
-        # these raw seconds-per-window targets.
-        if "recon_target" in self.payload:
-            sample["recon_target"] = self.payload["recon_target"][sample_index]
-            sample["recon_valid"] = self.payload["recon_valid"][sample_index]
         group_number = str(int(sample["sample_group_id"]))
         series = self.payload["remain_series"][group_number]
         y_score, y_hot, remain_mask, _ = pack_remain_target(
@@ -525,8 +511,6 @@ def build_factory_baseline_dataset(
     resource_type_index = {name: index for index, name in enumerate(resource_types)}
 
     continuous_samples: list[torch.Tensor] = []
-    recon_target_samples: list[torch.Tensor] = []
-    recon_valid_samples: list[torch.Tensor] = []
     labor_samples: list[torch.Tensor] = []
     applicability_samples: list[torch.Tensor] = []
     type_samples: list[torch.Tensor] = []
@@ -540,10 +524,6 @@ def build_factory_baseline_dataset(
     edge_rows: list[dict[str, Any]] = []
     group_sample_indices: dict[str, list[int]] = defaultdict(list)
     remain_series: dict[str, dict[str, torch.Tensor]] = {}
-    recon_indices = [
-        CONTINUOUS_FEATURES.index("blocked_time_s"),
-        CONTINUOUS_FEATURES.index("starved_time_s"),
-    ]
 
     for group in groups:
         by_window: dict[int, dict[str, dict[str, str]]] = defaultdict(dict)
@@ -696,20 +676,6 @@ def build_factory_baseline_dataset(
             anchor_index = sequence_indices[-1]
             sample_index = len(continuous_samples)
             continuous_samples.append(x_continuous)
-            recon_target = torch.zeros(
-                (max_remain_windows, len(node_ids), len(recon_indices)),
-                dtype=torch.float32,
-            )
-            recon_length = min(int(remain_len), max_remain_windows)
-            if recon_length > 0:
-                recon_target[:recon_length] = raw_features[
-                    position : position + recon_length, :, recon_indices
-                ]
-            recon_target_samples.append(recon_target)
-            recon_valid_samples.append(
-                torch.arange(max_remain_windows, dtype=torch.float32)
-                < float(recon_length)
-            )
             labor_samples.append(x_labor)
             applicability_samples.append(applicability)
             type_samples.append(x_type)
@@ -752,8 +718,6 @@ def build_factory_baseline_dataset(
         raise ValueError("No horizon-ready causal samples were generated")
 
     x_continuous = torch.stack(continuous_samples)
-    recon_target = torch.stack(recon_target_samples)
-    recon_valid = torch.stack(recon_valid_samples)
     x_labor = torch.stack(labor_samples)
     applicability = torch.stack(applicability_samples)
     x_type = torch.stack(type_samples)
@@ -805,10 +769,6 @@ def build_factory_baseline_dataset(
 
     payload: dict[str, Any] = {
         "x": torch.cat((normalized_continuous, x_type, x_labor), dim=-1),
-        # Raw seconds per 60-second window.  The probe evaluator applies the
-        # same [0, window_size_s] clipping as the main recon evaluator.
-        "recon_target": recon_target,
-        "recon_valid": recon_valid,
         "adjacency": adjacency,
         "node_mask": node_mask,
         "observation_mask": observation_mask,
@@ -843,12 +803,6 @@ def build_factory_baseline_dataset(
         "event_min_windows": hot_min_windows,
         "evaluation_contract": dict(EVALUATION_CONTRACT),
         "window_size_s": window_size,
-        "reconstruction_target": {
-            "channels": ["blocked_time_s", "starved_time_s"],
-            "horizon_windows": int(max_remain_windows),
-            "units": "seconds_per_window",
-            "validity": "remain_len_until_episode_done",
-        },
         "sample_group_id": torch.tensor(
             [target["group_number"] for target in targets], dtype=torch.int64
         ),

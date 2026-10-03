@@ -500,6 +500,8 @@ def _predict_event_heads(
     node_count = int(payload["x"].shape[2])
     max_windows = int(payload["max_remain_windows"])
     target_will = np.zeros((batch_size, node_count), dtype=np.float32)
+    target_start = np.zeros((batch_size, node_count), dtype=np.int64)
+    target_duration = np.zeros((batch_size, node_count), dtype=np.float32)
     will_probability = np.zeros_like(target_will)
     start_index = np.zeros((batch_size, node_count), dtype=np.int64)
     duration_windows = np.zeros((batch_size, node_count), dtype=np.float32)
@@ -514,6 +516,8 @@ def _predict_event_heads(
         target_will[row_position, valid_nodes] = sample["event_will"].numpy()[
             valid_nodes
         ]
+        target_start[row_position, valid_nodes] = sample["event_start"].numpy()[valid_nodes]
+        target_duration[row_position, valid_nodes] = sample["event_duration"].numpy()[valid_nodes]
         row_parts.append(
             np.full(len(valid_nodes), row_position, dtype=np.int64)
         )
@@ -526,6 +530,8 @@ def _predict_event_heads(
     if not sample_parts:
         return {
             "event_will_target": target_will,
+            "event_start_index_target": target_start,
+            "event_duration_windows_target": target_duration,
             "event_will_probability": will_probability,
             "event_start_index": start_index,
             "event_duration_windows": duration_windows,
@@ -546,6 +552,8 @@ def _predict_event_heads(
     )
     return {
         "event_will_target": target_will,
+        "event_start_index_target": target_start,
+        "event_duration_windows_target": target_duration,
         "event_will_probability": will_probability,
         "event_start_index": start_index,
         "event_duration_windows": duration_windows,
@@ -656,7 +664,8 @@ def train_b2_xgboost(
     dataset_dir: Path,
     output_dir: Path,
     config: B2XGBoostConfig | None = None,
-) -> dict[str, Any]:
+    return_arrays: bool = False,
+) -> dict[str, Any] | tuple[dict[str, Any], dict[str, np.ndarray]]:
     """Train B2 heads and optionally evaluate the validation-selected model on test."""
     config = config or B2XGBoostConfig()
     random.seed(config.seed)
@@ -968,6 +977,17 @@ def train_b2_xgboost(
         )
         metrics["occupancy_event"] = occupancy_metrics
         metrics.update(occupancy_metrics)
+        from .evaluation import add_bottleneck_forecast_metrics
+        arrays["y_hot_grid"] = target_grid_array
+        arrays["remain_mask_grid"] = remain_mask_array
+        arrays["occ_node_mask_grid"] = occupancy_mask_array
+        add_bottleneck_forecast_metrics(
+            metrics,
+            arrays,
+            threshold=event_report_threshold,
+            window_size_s=float(manifest["window_size_s"]),
+            min_windows=int(payload["event_min_windows"]),
+        )
         metrics["sample_count"] = len(arrays["sample_index"])
         add_time_metric_metadata(
             metrics, window_size_s=float(manifest["window_size_s"]),
@@ -1151,4 +1171,6 @@ def train_b2_xgboost(
             }
         )
     _write_json(output_dir / "run_summary.json", summary)
+    if return_arrays:
+        return all_metrics["test"], arrays
     return summary
