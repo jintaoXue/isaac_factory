@@ -1,0 +1,6 @@
+{
+  "main_run": "dense_i1_12_3_start5_min8_cause4_opt_main_seed42",
+  "key_device": "num02_rollerbedCNCPipeIntersectionCuttingMachine_ws0",
+  "key_episode": "n10_human1.0__episode_03",
+  "heatmap_episode": "n10_human1.0__episode_03"
+}
