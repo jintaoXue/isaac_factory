@@ -8,11 +8,29 @@
 
 | 简称 | GPU | 典型路径 / 环境 | 账号痕迹 |
 | --- | --- | --- | --- |
-| **4090 工位** | RTX 4090 | `/home/xue/work/isaac_factory`，`isaac-lab` | `username=xue` |
-| **5090** | RTX 5090 | `/home/sci/work/isaac_factory_tpa`，`env_isaaclab` | 多为 `sci` 环境；metadata 里 `username` 常为空 |
+| **4090 工位** | RTX 4090 | `/home/xue/work/isaac_factory`，`isaaclab` | `username=xue`；Tailscale `sci-1` / `100.92.127.35` |
+| **5090** | RTX 5090 | `/home/sci/work/isaac_factory_tpa`，`env_isaaclab` | `sci`；Tailscale `sci-2` / `100.85.45.124` |
 | **4090 服务器** | RTX 4090 | `/root/work/isaac_factory_master` | `root` 用户目录 |
 
-**判定规则（优先顺序）：** GPU 型号 → `root`/`program` 路径前缀 → username。
+**判定规则（优先顺序）：** GPU 型号 → `root`/`program` 路径前缀 → username。hostname 多台都叫 `sci`，不可靠。
+
+### 5090 连接（2026-10-02 实测）
+
+| 项 | 内容 |
+| --- | --- |
+| 路径 | `/home/sci/work/isaac_factory_tpa` |
+| SSH（推荐） | `ssh sci@100.85.45.124` 或 `ssh sci@sci-2`（Tailscale；稳定） |
+| SSH（校园网） | `ssh sci@10.68.134.197`（Wi‑Fi DHCP，会变；勿写死进脚本） |
+| Tailscale | 节点名 `sci-2`；IPv4 `100.85.45.124`；账号 `thecaichicken@` |
+| 网卡 | Wi‑Fi `wlo1` UP；有线 `enp4s0` DOWN（NO-CARRIER） |
+| MAC(Wi‑Fi) | `bc:f1:05:d7:49:a2`（申请 DHCP 保留用） |
+| MAC(有线) | `30:56:0f:25:3a:cd` |
+| 网关 / DNS | `10.68.0.1` / HKU `147.8.235.74`、`147.8.235.73` |
+| AnyDesk | `1932745231`（active） |
+| GPU / 驱动 | RTX 5090 · `580.178.04` · 约 32 GB |
+| conda | 主用 `env_isaaclab`（另有 `isaaclab`、`bn_pdformer`） |
+
+工位本机 Tailscale：`sci-1` / `100.92.127.35`。跨机传文件优先 Tailscale SSH/rsync，避免追 DHCP。
 
 ---
 

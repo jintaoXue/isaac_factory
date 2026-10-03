@@ -77,7 +77,7 @@ ls "$HC_LOAD_DIR/nn/state_encoder_step_${HC_LOAD_STEP}.pth"
 
 ```bash
 cd ~/work/isaac_factory
-REMOTE=sci@10.68.241.145
+REMOTE=sci@100.85.45.124          # 5090 Tailscale（sci-2）；校园网 DHCP 会变，勿写死局域网 IP
 REMOTE_REPO=/home/sci/work/isaac_factory_tpa
 SRC=logs/rl_games/HcFactory/hier_2026-09-18_21-14-57/nn
 STEPS="240000 495000 870000 205000 85000 990000 480000 1010000 595000 940000"
@@ -168,7 +168,7 @@ cd ~/work/isaac_factory_tpa && git pull origin master
 
 ```bash
 # 在工位 xue@sci / home/xue/work/isaac_factory
-REMOTE=sci@10.68.241.145          # 5090；DHCP 可能变化，以资源笔记为准
+REMOTE=sci@100.85.45.124          # 5090 Tailscale（sci-2）；校园网 DHCP 会变，勿写死局域网 IP
 REMOTE_REPO=/home/sci/work/isaac_factory_tpa
 SRC=logs/rl_games/HcFactory/hier_2026-09-17_06-43-17/nn
 STEP=750000
