@@ -1,0 +1,5 @@
+{
+  "main_run": "dense_i1_12_3_start5_min8_cause4_opt_main_seed42",
+  "key_device": "num01_weldingRobot_ws0",
+  "key_episode": "logistics20__episode_16"
+}

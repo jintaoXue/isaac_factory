@@ -487,6 +487,7 @@ def _build_samples(
                 "duration": float(duration[label_idx]),
                 "episode_id": int(ep["episode_id"]),
                 "episode_name": str(ep.get("name") or ep["episode_id"]),
+                "t_index": int(t),
                 **padded,
                 "next_tau": next_tau,
                 "next_dur": next_dur,
