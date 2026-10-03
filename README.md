@@ -243,11 +243,12 @@ Jobs 22–32 in `batch_train.sh` enable `--wandb_activate` by default with **`WA
 
 ```bash
 cd /path/to/isaac_factory   # or isaac_factory_tpa on a remote box
-cp .wandb_local.env.example .wandb_local.env
-# Edit .wandb_local.env:
-#   HC_WANDB_API_KEY=<your API key>
-#   HC_WANDB_ENTITY=<your user or team>
-#   HC_WANDB_MODE=online
+# Create gitignored .wandb_local.env (do not commit):
+cat > .wandb_local.env <<'EOF'
+HC_WANDB_API_KEY=<your API key>
+HC_WANDB_ENTITY=<your user or team>
+HC_WANDB_MODE=online
+EOF
 ```
 
 Then `./batch_train.sh ...`. The script only injects `WANDB_API_KEY` / `WANDB_ENTITY` into **this process**.
@@ -387,7 +388,7 @@ Each environment instance maintains an `env_state_action_dict` containing:
 isaac_factory/
 ├── train.py                          # Training / simulation entry
 ├── batch_train.sh                    # Hier4TPA batch jobs (22–32)
-├── .wandb_local.env.example          # Shared-host private wandb template
+├── .wandb_local.env                  # Shared-host private wandb (gitignored; create locally)
 ├── isaaclab.sh
 ├── map_data/                         # Map tools (maintenance)
 ├── source/

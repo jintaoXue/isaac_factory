@@ -243,11 +243,12 @@ logs/rl_games/HcFactory/<exp>/metrics_summary.json   # 结束时汇总
 
 ```bash
 cd /path/to/isaac_factory   # 或远端 isaac_factory_tpa 等
-cp .wandb_local.env.example .wandb_local.env
-# 编辑 .wandb_local.env：
-#   HC_WANDB_API_KEY=<你的 API key>
-#   HC_WANDB_ENTITY=<你的用户名或团队>
-#   HC_WANDB_MODE=online
+# 创建已 gitignore 的 .wandb_local.env（勿提交）：
+cat > .wandb_local.env <<'EOF'
+HC_WANDB_API_KEY=<你的 API key>
+HC_WANDB_ENTITY=<你的用户名或团队>
+HC_WANDB_MODE=online
+EOF
 ```
 
 再跑 `./batch_train.sh ...`。脚本只在当前进程注入 `WANDB_API_KEY` / `WANDB_ENTITY`，**不改系统全局登录**。
@@ -387,7 +388,7 @@ python train.py \
 isaac_factory/
 ├── train.py                          # 训练 / 仿真入口
 ├── batch_train.sh                    # Hier4TPA 批量任务（22–32）
-├── .wandb_local.env.example          # 共享机私有 wandb 模板（复制为 .wandb_local.env）
+├── .wandb_local.env                  # 共享机私有 wandb（已 gitignore；本地自行创建）
 ├── isaaclab.sh
 ├── map_data/                         # 地图工具（维护用）
 ├── source/
